@@ -144,19 +144,43 @@ function AddSeriesPageContent() {
   const remembered = readAddDefaults('sonarr', instanceId);
   const profileIds = profiles.map((p) => String(p.id));
   const folderPaths = rootFolders.map((f) => f.path);
+  // An anime series starts from Seerr's anime profile and folder.
+  const seerrPickFor = (type: string) => (type === 'anime' ? seerrDefaults.data?.anime : seerrDefaults.data);
+  const seerrPick = seerrPickFor(seriesType);
+  // Switching the series type moves a profile or folder that is still Seerr's
+  // pick for the old type to the new type's; one remembered or chosen stays.
+  const [prevSeriesType, setPrevSeriesType] = useState(seriesType);
+  if (seriesType !== prevSeriesType) {
+    setPrevSeriesType(seriesType);
+    const oldPick = seerrPickFor(prevSeriesType);
+    if (
+      !(remembered.profileId !== undefined && profileIds.includes(remembered.profileId))
+      && profileId && profileId === oldPick?.profileId
+      && seerrPick?.profileId && profileIds.includes(seerrPick.profileId)
+    ) {
+      setProfileId(seerrPick.profileId);
+    }
+    if (
+      !(remembered.rootFolder !== undefined && folderPaths.includes(remembered.rootFolder))
+      && rootFolder && rootFolder === oldPick?.rootFolder
+      && seerrPick?.rootFolder && folderPaths.includes(seerrPick.rootFolder)
+    ) {
+      setRootFolder(seerrPick.rootFolder);
+    }
+  }
   if (
     profiles.length > 0
     && !(profileId && profileIds.includes(profileId))
     && (!seerrDefaults.isLoading || (remembered.profileId !== undefined && profileIds.includes(remembered.profileId)))
   ) {
-    setProfileId(pickRememberedOption(profileIds, remembered.profileId, seerrDefaults.data?.profileId)!);
+    setProfileId(pickRememberedOption(profileIds, remembered.profileId, seerrPick?.profileId)!);
   }
   if (
     rootFolders.length > 0
     && !(rootFolder && folderPaths.includes(rootFolder))
     && (!seerrDefaults.isLoading || (remembered.rootFolder !== undefined && folderPaths.includes(remembered.rootFolder)))
   ) {
-    setRootFolder(pickRememberedOption(folderPaths, remembered.rootFolder, seerrDefaults.data?.rootFolder)!);
+    setRootFolder(pickRememberedOption(folderPaths, remembered.rootFolder, seerrPick?.rootFolder)!);
   }
 
 

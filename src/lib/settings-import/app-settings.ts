@@ -66,6 +66,8 @@ export function buildAppSettingsUpdate(
     out.animeAutoMapEnabled = Boolean(input.animeAutoMapEnabled);
   if (input.animeAutoMapHour !== undefined)
     out.animeAutoMapHour = clampInt(input.animeAutoMapHour, 0, 23, 0);
+  if (input.updateCheckEnabled !== undefined)
+    out.updateCheckEnabled = Boolean(input.updateCheckEnabled);
   // AniList cache TTLs in minutes (max 30 days), mirroring PATCH /api/settings.
   if (input.anilistSectionsTtlMin !== undefined)
     out.anilistSectionsTtlMin = clampInt(input.anilistSectionsTtlMin, 1, 43_200, 5);
@@ -129,6 +131,7 @@ export async function applyAppSettingsInTxn(
       notificationGroupingEnabled: (data.notificationGroupingEnabled as boolean | undefined) ?? true,
       animeAutoMapEnabled: (data.animeAutoMapEnabled as boolean | undefined) ?? true,
       animeAutoMapHour: (data.animeAutoMapHour as number | undefined) ?? 0,
+      updateCheckEnabled: (data.updateCheckEnabled as boolean | undefined) ?? true,
       anilistSectionsTtlMin: (data.anilistSectionsTtlMin as number | undefined) ?? 5,
       anilistBrowseTtlMin: (data.anilistBrowseTtlMin as number | undefined) ?? 10,
       anilistDetailTtlMin: (data.anilistDetailTtlMin as number | undefined) ?? 1440,

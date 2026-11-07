@@ -7,10 +7,11 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(async () => ({})),
   admins: vi.fn(async () => [{ id: 'admin-1' }]),
   notify: vi.fn(async () => 1),
+  firstUser: vi.fn(async () => ({ createdAt: new Date('2026-10-01T00:00:00Z') }) as { createdAt: Date } | null),
 }));
 
 vi.mock('@/lib/database-backup', () => ({ startDatabaseBackup: mocks.start, isBackupRunning: mocks.running }));
-vi.mock('@/lib/db', () => ({ prisma: { appSettings: { update: mocks.update }, user: { findMany: mocks.admins } } }));
+vi.mock('@/lib/db', () => ({ prisma: { appSettings: { update: mocks.update }, user: { findMany: mocks.admins, findFirst: mocks.firstUser } } }));
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn() } }));
 vi.mock('./shared', () => ({ notifyAndLog: mocks.notify }));
 
@@ -66,17 +67,27 @@ describe('isScheduledBackupDue', () => {
 
 describe('isBackupOverdue', () => {
   const now = Date.parse('2026-11-08T12:00:00Z');
-  it('alerts only while scheduled, once a backup is older than the alert', () => {
+  it('alerts once a backup is older than the alert, with or without a schedule', () => {
     const old = new Date(now - 8 * DAY);
     expect(isBackupOverdue({ ...base, lastDatabaseBackupAt: old }, now)).toBe(true);
     expect(isBackupOverdue({ ...base, lastDatabaseBackupAt: new Date(now - 6 * DAY) }, now)).toBe(false);
     // A weekly backup across a DST change, or one due in a few hours, is not overdue yet.
     expect(isBackupOverdue({ ...base, lastDatabaseBackupAt: new Date(now - 7 * DAY - 60 * 60 * 1000) }, now)).toBe(false);
-    // backup.sh alone (no schedule) is never nagged, and 0 turns it off.
-    expect(isBackupOverdue({ ...base, databaseBackupSchedule: 'off', lastDatabaseBackupAt: old }, now)).toBe(false);
+    // backup.sh alone (no schedule) is reminded too; 0 turns it off.
+    const off = { ...base, databaseBackupSchedule: 'off' };
+    expect(isBackupOverdue({ ...off, lastDatabaseBackupAt: old }, now)).toBe(true);
     expect(isBackupOverdue({ ...base, databaseBackupAlertDays: 0, lastDatabaseBackupAt: old }, now)).toBe(false);
-    // Never backed up: the failure push covers it.
-    expect(isBackupOverdue(base, now)).toBe(false);
+  });
+
+  it('reminds a never-backed-up install once, after it has been set up longer than the alert', () => {
+    const off = { ...base, databaseBackupSchedule: 'off' };
+    expect(isBackupOverdue(off, now, new Date(now - 8 * DAY))).toBe(true);
+    // Set up only 6 days ago, or not known: not yet.
+    expect(isBackupOverdue(off, now, new Date(now - 6 * DAY))).toBe(false);
+    expect(isBackupOverdue(off, now, null)).toBe(false);
+    // Reminded once already, even weeks ago: never again until a backup is recorded.
+    expect(isBackupOverdue({ ...off, databaseBackupAlertedAt: new Date(now - 30 * DAY) }, now, new Date(now - 60 * DAY))).toBe(false);
+    expect(isBackupOverdue({ ...off, databaseBackupAlertDays: 0 }, now, new Date(now - 60 * DAY))).toBe(false);
   });
 
   it('reminds at most once a day', () => {
@@ -124,6 +135,30 @@ describe('checkDatabaseBackup', () => {
       userIds: ['admin-1'],
     }), expect.anything());
     expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'singleton' }, data: { databaseBackupAlertedAt: new Date(at) } });
+  });
+
+  it('reminds about an old backup.sh backup with the schedule off', async () => {
+    const at = '2026-11-08T12:00:00Z';
+    await checkDatabaseBackup(context({ databaseBackupSchedule: 'off', lastDatabaseBackupAt: new Date(Date.parse(at) - 10 * DAY) }, at));
+    expect(mocks.start).not.toHaveBeenCalled();
+    expect(mocks.notify).toHaveBeenCalledWith(expect.objectContaining({ title: 'Database backup overdue' }), expect.anything());
+  });
+
+  it('sends one gentle reminder to an install that never backed up, then stops', async () => {
+    const at = '2026-11-08T12:00:00Z';
+    const off = { databaseBackupSchedule: 'off' };
+    await checkDatabaseBackup(context(off, at));
+    expect(mocks.notify).toHaveBeenCalledTimes(1);
+    expect(mocks.notify).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'No database backup yet',
+      userIds: ['admin-1'],
+      url: '/settings/backup',
+    }), expect.anything());
+    expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'singleton' }, data: { databaseBackupAlertedAt: new Date(at) } });
+
+    // The next day (and any day after), with that reminder recorded: nothing.
+    await checkDatabaseBackup(context({ ...off, databaseBackupAlertedAt: new Date(at) }, '2026-11-20T12:00:00Z'));
+    expect(mocks.notify).toHaveBeenCalledTimes(1);
   });
 
   it('does not report an old backup while one is running', async () => {

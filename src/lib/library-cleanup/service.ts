@@ -30,7 +30,7 @@ import {
   type LibraryMediaType,
 } from './config';
 import { evaluateTitle, exclusionsFor, titleKey, type TitleFacts } from './evaluate';
-import { gatherLibraryFacts, LibraryCleanupUnavailableError } from './inputs';
+import { gatherLibraryFacts } from './inputs';
 
 const LOG = 'library-cleanup';
 export const MAX_MARK_ITEMS = 500;
@@ -333,6 +333,8 @@ interface DueEvaluation {
   gone: LeavingSoonItem[];
   binding: CleanupExecutionBinding;
   warnings: string[];
+  /** False when no Seerr connection exists, so requests made in Seerr were not checked. */
+  seerrChecked: boolean;
 }
 
 /**
@@ -350,16 +352,15 @@ async function evaluateDue(addImportListExclusion: boolean, now: number): Promis
   const ready: DueEvaluation['ready'] = [];
   const gone: LeavingSoonItem[] = [];
   const warnings: string[] = [];
+  let seerrChecked = true;
   for (const mediaType of LIBRARY_MEDIA_TYPES) {
     const ofType = due.filter((item) => item.mediaType === mediaType);
     if (ofType.length === 0) continue;
+    // No Seerr connection at all: Delete now still runs, on Helprr's own requests
+    // and every other check, and says so (the warning). A Seerr that is connected
+    // but cannot be read still throws in gatherLibraryFacts: nothing is deleted.
     const gathered = await gatherLibraryFacts(mediaType, settings.keepTag, now);
-    if (!gathered.seerrConnected) {
-      // Without Seerr an open request cannot be ruled out, so nothing may be deleted.
-      throw new LibraryCleanupUnavailableError(
-        'Seerr is not connected, so open requests cannot be checked. Delete now needs Seerr: connect it in Settings. Nothing was deleted.',
-      );
-    }
+    if (!gathered.seerrConnected) seerrChecked = false;
     warnings.push(...gathered.warnings);
     const byKey = new Map(gathered.titles.map((t) => [titleKey(t), t]));
     const rule = ruleFor(settings, mediaType);
@@ -400,16 +401,18 @@ async function evaluateDue(addImportListExclusion: boolean, now: number): Promis
   }));
   const binding = buildExecutionBinding(
     'library',
-    libraryConfigFingerprint(settings),
+    // Whether requests in Seerr were checked is part of what the admin confirmed:
+    // Seerr connected or removed since the preview makes it stale.
+    `${libraryConfigFingerprint(settings)}:seerr-${seerrChecked ? 'checked' : 'unchecked'}`,
     await cleanupScopeFingerprint(),
     candidates,
   );
-  return { items, ready, gone, binding, warnings: [...new Set(warnings)] };
+  return { items, ready, gone, binding, warnings: [...new Set(warnings)], seerrChecked };
 }
 
 export async function previewLibraryDeletion(addImportListExclusion: boolean, now = Date.now()) {
-  const { items, binding, warnings } = await evaluateDue(addImportListExclusion, now);
-  return { items, binding, warnings, readyCount: binding.candidates.length };
+  const { items, binding, warnings, seerrChecked } = await evaluateDue(addImportListExclusion, now);
+  return { items, binding, warnings, seerrChecked, readyCount: binding.candidates.length };
 }
 
 export type DeletionOutcome = 'deleted' | 'failed' | 'skipped';
@@ -553,6 +556,7 @@ async function deleteOne(
   addImportListExclusion: boolean,
   actor: AuditActor,
   previewId: string,
+  seerrChecked: boolean,
 ): Promise<DeletionItemResult> {
   // Claim the title. If someone pressed Keep while this run was going, they hold it and it is
   // left alone. Whether their Keep goes through is their own audit row, not this one.
@@ -563,7 +567,7 @@ async function deleteOne(
   }
   const release = hold(item);
   try {
-    return await deleteClaimed(item, facts, keepTagId, addImportListExclusion, actor, previewId);
+    return await deleteClaimed(item, facts, keepTagId, addImportListExclusion, actor, previewId, seerrChecked);
   } finally {
     release();
   }
@@ -576,6 +580,7 @@ async function deleteClaimed(
   addImportListExclusion: boolean,
   actor: AuditActor,
   previewId: string,
+  seerrChecked: boolean,
 ): Promise<DeletionItemResult> {
   // A last look at this one title right before the call: a keep tag added in
   // Sonarr/Radarr since the run started, or a different title under the id, stops it.
@@ -669,6 +674,7 @@ async function deleteClaimed(
       sizeBytes: Number(item.sizeBytes),
       lastWatchedAt: facts.lastWatchedAt?.toISOString() ?? null,
       reasons: item.reasons,
+      seerrChecked,
       callError: errorMessage,
       after,
     },
@@ -699,7 +705,7 @@ export async function executeLibraryDeletion(
   previewId: string,
   actor: AuditActor,
   now = Date.now(),
-): Promise<{ results: DeletionItemResult[]; deleted: number; failed: number; skipped: number }> {
+): Promise<{ results: DeletionItemResult[]; deleted: number; failed: number; skipped: number; seerrChecked: boolean; warnings: string[] }> {
   const first = expected.candidates[0];
   const addImportListExclusion = first?.cleaner === 'library' ? first.addImportListExclusion : false;
   const current = await evaluateDue(addImportListExclusion, now);
@@ -707,7 +713,7 @@ export async function executeLibraryDeletion(
 
   const results: DeletionItemResult[] = [];
   for (const { item, facts, keepTagId } of current.ready) {
-    results.push(await deleteOne(item, facts, keepTagId, addImportListExclusion, actor, previewId));
+    results.push(await deleteOne(item, facts, keepTagId, addImportListExclusion, actor, previewId, current.seerrChecked));
   }
   // Titles already removed outside Helprr leave the list (the arr was read in full, so absent is gone).
   for (const item of current.gone) {
@@ -725,6 +731,8 @@ export async function executeLibraryDeletion(
     deleted: results.filter((r) => r.outcome === 'deleted').length,
     failed: results.filter((r) => r.outcome === 'failed').length,
     skipped: results.filter((r) => r.outcome === 'skipped').length,
+    seerrChecked: current.seerrChecked,
+    warnings: current.warnings,
   };
 }
 

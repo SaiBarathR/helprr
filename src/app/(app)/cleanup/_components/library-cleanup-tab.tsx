@@ -272,11 +272,14 @@ export function LibraryCleanupTab({ onDirtyChange }: { onDirtyChange?: (dirty: b
         body: JSON.stringify({ previewToken: deletePreview.previewToken }),
       });
       if (!res.ok) throw new Error(await errorOf(res, 'Nothing was deleted'));
-      const result = await res.json() as { deleted: number; failed: number; skipped: number };
+      const result = await res.json() as { deleted: number; failed: number; skipped: number; seerrChecked?: boolean };
       const parts = [`${result.deleted} deleted`];
       if (result.failed) parts.push(`${result.failed} failed`);
       if (result.skipped) parts.push(`${result.skipped} skipped`);
-      (result.failed ? toast.error : toast.success)(parts.join(', '), { description: 'Each title is in Cleanup History and the operation audit.' });
+      const description = result.seerrChecked === false
+        ? "Seerr isn't connected, so requests made in Seerr were not checked. Each title is in Cleanup History and the operation audit."
+        : 'Each title is in Cleanup History and the operation audit.';
+      (result.failed || result.seerrChecked === false ? toast.warning : toast.success)(parts.join(', '), { description });
       setDeletePreview(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Nothing was deleted');

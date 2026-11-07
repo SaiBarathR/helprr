@@ -175,6 +175,8 @@ export interface ExportedAppSettings {
   notificationGroupingEnabled: boolean;
   animeAutoMapEnabled: boolean;
   animeAutoMapHour: number;
+  // Optional: absent in exports made before the update-check switch existed.
+  updateCheckEnabled?: boolean;
   anilistSectionsTtlMin: number;
   anilistBrowseTtlMin: number;
   anilistDetailTtlMin: number;
@@ -403,6 +405,12 @@ export interface ExportedYoutube {
 
 export interface ExportedUsers {
   accounts: ExportedUserAccount[];
+  /**
+   * Set by exports made since music.manageFiles existed. Without it (an older
+   * export) a music.delete override also sets music.manageFiles on import, since
+   * music.delete gated Lidarr renames then.
+   */
+  musicManageFiles?: true;
 }
 
 export interface SettingsExportPayload {

@@ -651,8 +651,7 @@ describe('mutating API route capability matrix', () => {
     for (const [route, capability] of [
       ['POST /api/sonarr/command', 'series.manageFiles'],
       ['POST /api/radarr/command', 'movies.manageFiles'],
-      // Music has no manageFiles; music.delete gates its track files.
-      ['POST /api/lidarr/command', 'music.delete'],
+      ['POST /api/lidarr/command', 'music.manageFiles'],
     ] as const) {
       expect(hasCapabilityGuard(handlers.get(route)!, capability), `${route} must require ${capability} to rename`).toBe(true);
     }

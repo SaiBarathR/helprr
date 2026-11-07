@@ -638,6 +638,23 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     expect(await prisma.calendarFeedToken.count({ where: { userId: 'member-1' } })).toBe(0);
   });
 
+  it("carries an older export's music.delete override over to music.manageFiles", async () => {
+    const doc = fullDocument();
+    doc.users.accounts[0].permissions = { 'music.delete': true } as never;
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    const user = await prisma.user.findUniqueOrThrow({ where: { username: 'member' } });
+    expect(user.permissions).toEqual({ 'music.delete': true, 'music.manageFiles': true });
+  });
+
+  it('leaves music.manageFiles at its default for a newer export that grants only music.delete', async () => {
+    const doc = fullDocument();
+    doc.users.accounts[0].permissions = { 'music.delete': true } as never;
+    (doc.users as { musicManageFiles?: true }).musicManageFiles = true;
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    const user = await prisma.user.findUniqueOrThrow({ where: { username: 'member' } });
+    expect(user.permissions).toEqual({ 'music.delete': true });
+  });
+
   it('imports as many user accounts as the document limits allow within the transaction timeout', async () => {
     const { validateSettingsImportComplexity } = await import('@/lib/settings-import-validation');
     const account = (i: number) => ({

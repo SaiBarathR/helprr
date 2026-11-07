@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { checkForUpdates } from '@/lib/update-check';
+import { getOrCreateAppSettings } from '@/lib/app-settings';
+import { checkForUpdates, type UpdateCheckResult } from '@/lib/update-check';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -11,7 +12,10 @@ async function getHandler(): Promise<NextResponse> {
   if (!admin.ok) return admin.response;
 
   const currentVersion = process.env.NEXT_PUBLIC_APP_VERSION || 'unknown';
-  const result = await checkForUpdates(currentVersion);
+  // Turned off: GitHub is not asked at all, not even from this page.
+  const result: UpdateCheckResult = (await getOrCreateAppSettings()).updateCheckEnabled
+    ? await checkForUpdates(currentVersion)
+    : { status: 'disabled', currentVersion, latestVersion: null, releaseUrl: null, publishedAt: null, checkedAt: null };
   return NextResponse.json(result, {
     headers: { 'Cache-Control': 'private, no-store' },
   });

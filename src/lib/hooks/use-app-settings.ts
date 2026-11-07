@@ -32,6 +32,7 @@ export interface AppSettingsState {
   notificationGroupingEnabled: boolean;
   animeAutoMapEnabled: boolean;
   animeAutoMapHour: number;
+  updateCheckEnabled: boolean;
   anilistSectionsTtlMin: number;
   anilistBrowseTtlMin: number;
   anilistDetailTtlMin: number;
@@ -91,6 +92,7 @@ function normalize(raw: Record<string, unknown>): AppSettingsState {
     notificationGroupingEnabled: raw.notificationGroupingEnabled !== false,
     animeAutoMapEnabled: raw.animeAutoMapEnabled !== false,
     animeAutoMapHour: numberOr(raw.animeAutoMapHour, 0),
+    updateCheckEnabled: raw.updateCheckEnabled !== false,
     anilistSectionsTtlMin: numberOr(raw.anilistSectionsTtlMin, 5),
     anilistBrowseTtlMin: numberOr(raw.anilistBrowseTtlMin, 10),
     anilistDetailTtlMin: numberOr(raw.anilistDetailTtlMin, 1440),

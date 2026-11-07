@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
@@ -87,6 +87,39 @@ describe('GET /api/admin/database-backup', () => {
 });
 
 describe('PUT /api/admin/database-backup', () => {
+  // A Sunday, 13:00 in Berlin: past the default 03:00 backup hour.
+  const NOW = new Date('2026-11-08T12:00:00.000Z');
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    mocks.upsert.mockResolvedValue(ROW);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('turned on after today\'s hour, waits for the next one instead of backing up at once', async () => {
+    mocks.findUnique.mockResolvedValue({ ...ROW, databaseBackupSchedule: 'off', databaseBackupScheduledAt: null });
+    expect((await put({ schedule: 'daily' })).status).toBe(200);
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: { databaseBackupSchedule: 'daily', databaseBackupScheduledAt: NOW },
+    }));
+  });
+
+  it('turned on before today\'s hour, backs up at that hour today', async () => {
+    mocks.findUnique.mockResolvedValue({ ...ROW, databaseBackupSchedule: 'off', databaseBackupScheduledAt: null });
+    await put({ schedule: 'daily', hour: 20 });
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: { databaseBackupSchedule: 'daily', databaseBackupHour: 20 },
+    }));
+  });
+
+  it('leaves a catch-up that was already due (the server was down at the hour)', async () => {
+    mocks.findUnique.mockResolvedValue({ ...ROW, databaseBackupScheduledAt: new Date('2026-11-07T02:00:00.000Z') });
+    await put({ hour: 4 });
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { databaseBackupHour: 4 } }));
+  });
+
   it('saves only the fields sent', async () => {
     mocks.upsert.mockResolvedValue({ ...ROW, databaseBackupSchedule: 'weekly', databaseBackupDayOfWeek: 5 });
     const res = await put({ schedule: 'weekly', dayOfWeek: 5 });

@@ -13,6 +13,8 @@ import {
   listBackups,
   startDatabaseBackup,
 } from '@/lib/database-backup';
+import { isScheduledBackupDue } from '@/lib/polling/database-backup';
+import { normalizeTimeZone } from '@/lib/timezone';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -92,7 +94,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Expected an object' }, { status: 400 });
   }
   const input = body as Record<string, unknown>;
-  const data: Record<string, string | number> = {};
+  const data: Record<string, string | number | Date> = {};
   const fields: Array<[string, string, number, number]> = [
     ['hour', 'databaseBackupHour', 0, 23],
     ['dayOfWeek', 'databaseBackupDayOfWeek', 0, 6],
@@ -115,6 +117,27 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
   }
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'Nothing to change' }, { status: 400 });
+  }
+  if ('databaseBackupSchedule' in data || 'databaseBackupHour' in data || 'databaseBackupDayOfWeek' in data) {
+    // A schedule turned on (or moved) after today's hour has passed waits for the
+    // next scheduled time instead of backing up at once: today's window counts as
+    // taken. One that was already due (the server was down at the hour) still runs.
+    const current = await prisma.appSettings.findUnique({
+      where: { id: 'singleton' },
+      select: { databaseBackupSchedule: true, databaseBackupHour: true, databaseBackupDayOfWeek: true, databaseBackupScheduledAt: true, timeZone: true },
+    });
+    const before = {
+      databaseBackupSchedule: current?.databaseBackupSchedule ?? 'off',
+      databaseBackupHour: current?.databaseBackupHour ?? 3,
+      databaseBackupDayOfWeek: current?.databaseBackupDayOfWeek ?? 0,
+      databaseBackupScheduledAt: current?.databaseBackupScheduledAt ?? null,
+    };
+    const after = { ...before, ...data } as typeof before;
+    const now = new Date();
+    const timeZone = normalizeTimeZone(current?.timeZone);
+    if (isScheduledBackupDue(after, now, timeZone) && !isScheduledBackupDue(before, now, timeZone)) {
+      data.databaseBackupScheduledAt = now;
+    }
   }
   const row = await prisma.appSettings.upsert({
     where: { id: 'singleton' },

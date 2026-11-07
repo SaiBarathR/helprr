@@ -3,7 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams('term=Show&tvdbId=1') }));
+const nav = vi.hoisted(() => ({ search: 'term=Show&tvdbId=1' }));
+vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(nav.search) }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn(), back: vi.fn() }) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/components/layout/page-header', () => ({
@@ -37,6 +38,7 @@ let instanceRoutes: Record<string, unknown>;
 let posts: Record<string, unknown>[];
 
 beforeEach(() => {
+  nav.search = 'term=Show&tvdbId=1';
   posts = [];
   routes = { ...baseRoutes };
   instanceRoutes = {};
@@ -171,6 +173,39 @@ describe("add series page with Seerr's default", () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add Series' }));
     await waitFor(() => expect(posts).toHaveLength(1));
     expect(posts[0]).toEqual(expect.objectContaining({ instanceId: 'son-2', qualityProfileId: 7, rootFolderPath: '/tv-kids' }));
+  });
+
+  it("opens an anime add (from /anime) on Seerr's anime profile and folder", async () => {
+    nav.search = 'term=Show&tvdbId=1&seriesType=anime';
+    instanceRoutes['son-2 /api/sonarr/seerr-defaults'] = { profileId: '4', rootFolder: '/tv', anime: { profileId: '7', rootFolder: '/tv-kids' } };
+    renderPage();
+    await screen.findByText('Monitor New Seasons');
+    await waitFor(() => expect(screen.getByDisplayValue('4k Max OTT Quality')).toBeTruthy());
+    expect(screen.getByDisplayValue('/tv-kids')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add Series' }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toEqual(expect.objectContaining({ seriesType: 'anime', qualityProfileId: 7, rootFolderPath: '/tv-kids' }));
+  });
+
+  it("moves Seerr's picks to the anime ones when the series type is switched to Anime, and leaves a chosen folder", async () => {
+    instanceRoutes['son-2 /api/sonarr/rootfolders'] = [{ id: 1, path: '/tv' }, { id: 2, path: '/tv-kids' }, { id: 3, path: '/anime' }];
+    instanceRoutes['son-2 /api/sonarr/seerr-defaults'] = { profileId: '4', rootFolder: '/tv', anime: { profileId: '7', rootFolder: '/anime' } };
+    renderPage();
+    await screen.findByText('Monitor New Seasons');
+    await waitFor(() => expect(screen.getByDisplayValue('HD')).toBeTruthy());
+    expect(screen.getByDisplayValue('/tv')).toBeTruthy();
+    const seriesTypeSelect = screen.getAllByRole('combobox').find((select) =>
+      Array.from((select as HTMLSelectElement).options, (o) => o.value).includes('anime')) as HTMLSelectElement;
+
+    fireEvent.change(seriesTypeSelect, { target: { value: 'anime' } });
+    await waitFor(() => expect(screen.getByDisplayValue('4k Max OTT Quality')).toBeTruthy());
+    expect(screen.getByDisplayValue('/anime')).toBeTruthy();
+
+    // A folder chosen by hand, then back to Standard: the profile follows Seerr, the folder stays.
+    fireEvent.change(screen.getByDisplayValue('/anime'), { target: { value: '/tv-kids' } });
+    fireEvent.change(seriesTypeSelect, { target: { value: 'standard' } });
+    await waitFor(() => expect(screen.getByDisplayValue('HD')).toBeTruthy());
+    expect(screen.getByDisplayValue('/tv-kids')).toBeTruthy();
   });
 
   it("keeps a remembered choice over Seerr's, and falls back to the first option when Seerr's is not offered", async () => {

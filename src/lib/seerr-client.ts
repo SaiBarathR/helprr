@@ -75,6 +75,9 @@ export interface SeerrArrServer {
   /** The quality profile and root folder Seerr requests with on this server. */
   activeProfileId?: number;
   activeDirectory?: string;
+  /** Sonarr only: the ones Seerr uses for anime, when set (else the two above). */
+  activeAnimeProfileId?: number;
+  activeAnimeDirectory?: string;
 }
 
 export class SeerrClient {

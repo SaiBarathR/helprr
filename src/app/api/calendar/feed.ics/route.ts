@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
+import { prisma } from '@/lib/db';
 import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
 import { fetchServiceCalendarEvents } from '@/lib/calendar-events';
 import { applyFeedFilters, parseFeedFilters } from '@/lib/calendar-feed/filters';
@@ -14,7 +15,7 @@ import {
   takeFeedRateLimit,
 } from '@/lib/calendar-feed/token';
 import { getClientIp } from '@/lib/login-rate-limit';
-import { startOfLocalDay, toZonedDate } from '@/lib/timezone';
+import { normalizeTimeZone, startOfLocalDay, toZonedDate } from '@/lib/timezone';
 import type { CalendarEvent } from '@/types';
 
 // The subscribable calendar (Calendar → Subscribe in Calendar). Public
@@ -74,8 +75,14 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   if (!filters) return textResponse('Invalid filter', 400);
 
   try {
-    // Whole local days, so the window (and its cache key) moves once a day.
-    const { timeZone } = await getOrCreateAppSettings();
+    // Release days (all-day movie and album dates) fall on the link owner's own
+    // time zone when they have one, else the server's. Whole local days, so the
+    // window (and its cache key) moves once a day.
+    const [appSettings, ownerSettings] = await Promise.all([
+      getOrCreateAppSettings(),
+      prisma.userSettings.findUnique({ where: { userId: link.user.id }, select: { timeZone: true } }),
+    ]);
+    const timeZone = normalizeTimeZone(ownerSettings?.timeZone, appSettings.timeZone);
     const today = startOfLocalDay(new Date(), timeZone);
     const startDate = toZonedDate(today, timeZone);
     startDate.setDate(startDate.getDate() - PAST_DAYS);

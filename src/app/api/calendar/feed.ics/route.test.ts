@@ -4,6 +4,7 @@ import type { CalendarEvent } from '@/types';
 
 const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
+  userSettings: vi.fn(async () => null as { timeZone: string | null } | null),
   timeZone: 'UTC',
   updateMany: vi.fn(),
   evalScript: vi.fn(),
@@ -16,7 +17,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/db', () => ({
-  prisma: { calendarFeedToken: { findUnique: mocks.findUnique, updateMany: mocks.updateMany } },
+  prisma: {
+    calendarFeedToken: { findUnique: mocks.findUnique, updateMany: mocks.updateMany },
+    userSettings: { findUnique: mocks.userSettings },
+  },
 }));
 vi.mock('@/lib/redis', () => ({ getRedisClient: mocks.getRedisClient }));
 vi.mock('@/lib/calendar-events', () => ({ fetchServiceCalendarEvents: mocks.fetchEvents }));
@@ -250,6 +254,27 @@ describe('GET /api/calendar/feed.ics', () => {
 
   it("dates a release on its local day in the app's time zone", async () => {
     mocks.timeZone = 'America/New_York';
+    try {
+      mocks.getCachedJson.mockResolvedValue([event({ id: 'radarr-hd-3-digital', type: 'movie', title: 'Film', releaseType: 'digital', date: '2026-12-31T00:00:00Z' })]);
+      const text = await (await get(`?token=${TOKEN}`)).text();
+      expect(text).toContain('DTSTART;VALUE=DATE:20261230');
+    } finally {
+      mocks.timeZone = 'UTC';
+    }
+  });
+
+  it("dates a release on the link owner's own time zone, over the app's", async () => {
+    mocks.timeZone = 'UTC';
+    mocks.userSettings.mockResolvedValueOnce({ timeZone: 'America/New_York' });
+    mocks.getCachedJson.mockResolvedValue([event({ id: 'radarr-hd-3-digital', type: 'movie', title: 'Film', releaseType: 'digital', date: '2026-12-31T00:00:00Z' })]);
+    const text = await (await get(`?token=${TOKEN}`)).text();
+    expect(mocks.userSettings).toHaveBeenCalledWith({ where: { userId: 'u1' }, select: { timeZone: true } });
+    expect(text).toContain('DTSTART;VALUE=DATE:20261230');
+  });
+
+  it("falls back to the app's time zone when the owner's is not a real one", async () => {
+    mocks.timeZone = 'America/New_York';
+    mocks.userSettings.mockResolvedValueOnce({ timeZone: 'Not/AZone' });
     try {
       mocks.getCachedJson.mockResolvedValue([event({ id: 'radarr-hd-3-digital', type: 'movie', title: 'Film', releaseType: 'digital', date: '2026-12-31T00:00:00Z' })]);
       const text = await (await get(`?token=${TOKEN}`)).text();

@@ -228,7 +228,7 @@ export function DatabaseBackupSection() {
       {settingsReady && (
         <GroupedSection
           title="Scheduled backups"
-          footer={`Keeps the newest backups Helprr made and removes older ones. Admins get a push when a scheduled backup fails, or when the last backup is older than the alert. Times are in ${data?.timeZone ?? 'UTC'}.`}
+          footer={`Keeps the newest backups Helprr made and removes older ones. Admins get a push when a scheduled backup fails, and, with or without a schedule, when the last backup (from Helprr or backup.sh) is older than the alert. Times are in ${data?.timeZone ?? 'UTC'}.`}
         >
           <SettingSelect
             label="Frequency"
@@ -262,18 +262,16 @@ export function DatabaseBackupSection() {
             onChange={(v) => void save({ keep: parseInt(v, 10) })}
             disabled={saving}
           />
-          {schedule !== 'off' && (
-            <SettingSelect
-              label="Alert when older than"
-              value={String(data?.alertDays ?? 7)}
-              options={withCurrent(ALERT_OPTIONS, data?.alertDays ?? 7).map((n) => ({
-                value: String(n),
-                label: n === 0 ? 'Never' : `${n} days`,
-              }))}
-              onChange={(v) => void save({ alertDays: parseInt(v, 10) })}
-              disabled={saving}
-            />
-          )}
+          <SettingSelect
+            label="Alert when older than"
+            value={String(data?.alertDays ?? 7)}
+            options={withCurrent(ALERT_OPTIONS, data?.alertDays ?? 7).map((n) => ({
+              value: String(n),
+              label: n === 0 ? 'Never' : `${n} days`,
+            }))}
+            onChange={(v) => void save({ alertDays: parseInt(v, 10) })}
+            disabled={saving}
+          />
         </GroupedSection>
       )}
 

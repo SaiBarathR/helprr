@@ -122,6 +122,12 @@ export async function applyUsersInTxn(
       );
     }
     const permissions = parsePermissions(acc.permissions);
+    // Exports from before music.manageFiles: Lidarr rename was music.delete's, so
+    // the override carries over, as the 20261108090000 migration does. A newer
+    // export's missing key is the template default and stays that way.
+    if (data.musicManageFiles !== true && permissions['music.delete'] !== undefined && permissions['music.manageFiles'] === undefined) {
+      permissions['music.manageFiles'] = permissions['music.delete'];
+    }
     const displayName =
       typeof acc.displayName === 'string' && acc.displayName.trim().length > 0
         ? acc.displayName.trim()

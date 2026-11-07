@@ -220,6 +220,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         notificationGroupingEnabled: settings.notificationGroupingEnabled,
         animeAutoMapEnabled: settings.animeAutoMapEnabled,
         animeAutoMapHour: settings.animeAutoMapHour,
+        updateCheckEnabled: settings.updateCheckEnabled,
         anilistSectionsTtlMin: settings.anilistSectionsTtlMin,
         anilistBrowseTtlMin: settings.anilistBrowseTtlMin,
         anilistDetailTtlMin: settings.anilistDetailTtlMin,
@@ -589,7 +590,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         })),
         notificationChannels: channelsByUser.get(u.id) ?? [],
       }));
-      payload.users = { accounts };
+      payload.users = { accounts, musicManageFiles: true };
     }
 
     return NextResponse.json(payload);

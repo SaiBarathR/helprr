@@ -148,6 +148,7 @@ export default function ArtistDetailPage() {
   const canChangePath = useCan('music.changePath');
   const canManageActivity = useCan('activity.manage');
   const canDeleteArtist = useCan('music.delete');
+  const canManageFiles = useCan('music.manageFiles');
   const canScheduleAlert = useCan('scheduledAlerts.edit');
   const [showScheduleAlert, setShowScheduleAlert] = useState(false);
   // An alert on the artist's next album: every album Lidarr learns of with a date ahead.
@@ -367,7 +368,7 @@ export default function ArtistDetailPage() {
       id: 'manage',
       actions: [
         ...(canEditArtist ? [{ id: 'edit', label: 'Edit', icon: <Pencil className="h-4 w-4" />, href: `/music/${artist.id}/edit${instance ? `?instance=${instance}` : ''}` }] : []),
-        ...(canManageActivity && canDeleteArtist ? [{ id: 'rename', label: 'Preview Rename', icon: <FileEdit className="h-4 w-4" />, onSelect: () => setShowRenamePreview(true) }] : []),
+        ...(canManageActivity && canManageFiles ? [{ id: 'rename', label: 'Preview Rename', icon: <FileEdit className="h-4 w-4" />, onSelect: () => setShowRenamePreview(true) }] : []),
         { id: 'files', label: 'Files & information', icon: <FileText className="h-4 w-4" />, href: `/music/${artist.id}/files${instance ? `?instance=${instance}` : ''}` },
       ],
     },
@@ -453,7 +454,7 @@ export default function ArtistDetailPage() {
                     Edit
                   </DropdownMenuItem>
                 )}
-                {canManageActivity && canDeleteArtist && (
+                {canManageActivity && canManageFiles && (
                   <DropdownMenuItem onClick={() => setShowRenamePreview(true)}>
                     <FileEdit className="h-4 w-4" />
                     Preview Rename
