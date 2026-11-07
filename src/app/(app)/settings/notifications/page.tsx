@@ -306,6 +306,16 @@ export default function NotificationsSettingsPage() {
             <ChevronRight className="h-4 w-4" />
           </div>
         </Link>
+        <Link
+          href="/settings/notifications/channels"
+          className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
+        >
+          <div className="text-sm font-medium">Other channels</div>
+          <div className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
+            <span>ntfy, webhook, email</span>
+            <ChevronRight className="h-4 w-4" />
+          </div>
+        </Link>
       </GroupedSection>
 
       {isSupported && isSubscribed && subscriptionEndpoint && (

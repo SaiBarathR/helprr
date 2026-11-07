@@ -53,6 +53,7 @@ model User {
   watchlistItems WatchlistItem[]
   watchlistTags  WatchlistTag[]
   pushSubscriptions PushSubscription[]
+  notificationChannels NotificationChannel[]
   notificationHistory NotificationHistory[]
   pendingRequests PendingRequest[]
   dashboardLayouts DashboardLayout[]
@@ -303,6 +304,32 @@ model PushSubscription {
   preferences         NotificationPreference[]
 
   @@index([userId])
+}
+
+// An outbound notification target a user added (ntfy, Gotify, Apprise, a JSON
+// webhook, email), beside their push devices. `config` holds the non-secret
+// settings; `secrets` holds the rest as one enc:v1: encrypted JSON object and
+// never leaves the server once saved. `events` is the user's own filter; the
+// capability and scope gates in notifyEvent still apply at send time. The
+// failure fields back off a dead endpoint the same way push does.
+model NotificationChannel {
+  id                  String    @id @default(cuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type                String // ntfy | gotify | webhook | apprise | email
+  name                String
+  enabled             Boolean   @default(true)
+  events              String[]  @default([])
+  config              Json      @default("{}")
+  secrets             String?
+  consecutiveFailures Int       @default(0)
+  lastFailedAt        DateTime?
+  lastSucceededAt     DateTime?
+  lastError           String? // a short reason (an HTTP status or error code); never a secret
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([userId, name])
 }
 
 model NotificationPreference {

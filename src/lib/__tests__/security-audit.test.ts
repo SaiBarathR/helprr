@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   upsert: vi.fn(),
   findUser: vi.fn(),
   clientIp: vi.fn<() => string | undefined>(),
+  newDevice: vi.fn(async () => {}),
+  burst: vi.fn(async () => {}),
+  twoStepOff: vi.fn(async () => {}),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -16,6 +19,12 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 vi.mock('@/lib/login-rate-limit', () => ({ getClientIp: mocks.clientIp }));
+vi.mock('@/lib/security-alerts', () => ({
+  alertOnNewDeviceSignIn: mocks.newDevice,
+  alertOnFailedSignInBurst: mocks.burst,
+  alertOnTwoStepDisabled: mocks.twoStepOff,
+  startSecurityAlert: (alert: () => Promise<void>) => { void alert(); },
+}));
 
 import {
   changedFieldNames,
@@ -335,5 +344,43 @@ describe('typedUsernameLabel', () => {
   it('removes format characters and separators, and names a label with nothing left', () => {
     expect(typedUsernameLabel('a\u00ADb\u061Cc\u2028d\u2029e\uFFF9f\u{E0041}g')).toBe('abcdefg');
     expect(typedUsernameLabel('\u200B\u202E')).toBe('(unprintable)');
+  });
+});
+
+describe('security alerts from the audit trail', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.JWT_SECRET = 'test-jwt-secret-that-is-long-enough-for-tests';
+    mocks.clientIp.mockReturnValue('203.0.113.77');
+    mocks.create.mockResolvedValue({});
+    mocks.upsert.mockResolvedValue({});
+  });
+
+  it('checks a successful sign-in for a new device, with its browser and network', async () => {
+    await recordSecurityEvent(request('Firefox/140'), {
+      actor: { id: 'u1', username: 'boss' }, action: 'LOGIN_SUCCEEDED', targetType: 'user', targetId: 'u1',
+    });
+    expect(mocks.newDevice).toHaveBeenCalledWith('u1', 'Firefox/140', '203.0.113.0/24');
+  });
+
+  it('raises the two-step alert when it is turned off', async () => {
+    await recordSecurityEvent(null, {
+      actor: { id: 'a1', username: 'boss' }, action: 'MFA_DISABLED', targetType: 'user', targetId: 'u2', targetLabel: 'kid',
+    });
+    expect(mocks.twoStepOff).toHaveBeenCalledWith('kid', 'boss');
+    expect(mocks.newDevice).not.toHaveBeenCalled();
+  });
+
+  it('checks for a burst after each failed sign-in', async () => {
+    await recordFailedSignIn(request(), { username: 'boss', method: 'password', user: null, nowMs: 1_000 });
+    expect(mocks.burst).toHaveBeenCalledWith(1_000);
+  });
+
+  it('raises nothing for other events, or when the audit write fails', async () => {
+    await recordSecurityEvent(null, { actor: null, action: 'USER_CREATED', targetType: 'user' });
+    mocks.create.mockRejectedValueOnce(new Error('db down'));
+    await recordSecurityEvent(null, { actor: { id: 'a1', username: 'boss' }, action: 'MFA_DISABLED', targetType: 'user' });
+    expect(mocks.newDevice).not.toHaveBeenCalled();
+    expect(mocks.twoStepOff).not.toHaveBeenCalled();
   });
 });

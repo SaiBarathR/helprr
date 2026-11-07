@@ -78,9 +78,11 @@ const EXACT_SENSITIVE_KEYS = new Set([
   'vapid', 'vapidsubject', 'vapidpublickey', 'vapidprivatekey',
   'client_secret', 'clientsecret', 'auth-token', 'auth_token', 'authtoken', 'browserauthtoken', 'cookies',
   'mfatoken', 'recoverycodes', 'currentpassword', 'newpassword', 'x-helprr-proxy-secret',
+  // Notification channel secrets: the encrypted blob, and each secret field by name.
+  'secrets', 'apptoken', 'x-gotify-key', 'headervalue', 'topic',
 ]);
 const SUBSTRING_SENSITIVE_PATTERN = /api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token/i;
-const SENSITIVE_VALUE_PATTERN = /(Bearer\s+)[^\s,;]+|(api[_-]?key=)[^&\s]+|(apikey=)[^&\s]+|(password=)[^&\s]+|(token=)[^&\s]+|(sid=)[^;&\s]+|(code=)[^&\s]+|(state=)[^&\s]+|((?:passkey|authkey|torrent_pass|rsskey)=)[^&\s]+|(client_secret=)[^&\s]+|(clientSecret=)[^&\s]+|(auth-token=)[^;&\s]+|(secret=)[^&\s]+|(hlp_)[A-Za-z0-9_-]+/gi;
+const SENSITIVE_VALUE_PATTERN = /(Bearer\s+|Basic\s+(?=[A-Za-z0-9+/]{12,}={0,2}(?:[\s,;]|$)))[^\s,;]+|(api[_-]?key=)[^&\s]+|(apikey=)[^&\s]+|(password=)[^&\s]+|(token=)[^&\s]+|(sid=)[^;&\s]+|(code=)[^&\s]+|(state=)[^&\s]+|((?:passkey|authkey|torrent_pass|rsskey)=)[^&\s]+|(client_secret=)[^&\s]+|(clientSecret=)[^&\s]+|(auth-token=)[^;&\s]+|(secret=)[^&\s]+|(hlp_)[A-Za-z0-9_-]+/gi;
 
 const originalConsole = {
   debug: console.debug.bind(console),

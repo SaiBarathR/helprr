@@ -29,7 +29,8 @@ phone's camera.
 ## 4. Turn on notifications
 
 In **Settings → Notifications**, turn notifications on for this device and allow them
-when asked. Choose which events you want there too.
+when asked. Choose which events you want there too. To get them in ntfy, Gotify,
+Apprise, a webhook or email as well, see [Notifications](/helprr/notifications/).
 
 ## When push is off
 

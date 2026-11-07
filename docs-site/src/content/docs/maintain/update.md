@@ -90,7 +90,9 @@ newer version has applied its migrations — restore the matching backup instead
 
 Admins see a notice on **Settings** and **Settings → Service status** when a newer
 stable Helprr release is available. The server checks Helprr's public GitHub latest-
-release endpoint on an admin visit and caches the result for six hours. It sends no
+release endpoint every six hours and on an admin visit, and caches the result for six
+hours; admins also get one [notification](/helprr/notifications/#admin-events) per new
+release. It sends no
 installation data and never pulls an image, changes a tag, restarts a container, or
 applies an update. Back up and follow the normal update procedure after reviewing the
 linked release notes.

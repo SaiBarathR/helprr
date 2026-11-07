@@ -975,6 +975,48 @@ subscribe route refuses any other address and logs its host, and the sender
 checks again before every push. A browser on another push service cannot
 subscribe until its host is added there.
 
+### Outbound notification channels
+
+`NotificationChannel` rows (ntfy, Gotify, Apprise, JSON webhook, SMTP email)
+belong to one user. `config` holds the non-secret fields; the secret fields are
+one enc:v1: encrypted JSON object (`src/lib/notification-channels/config.ts`,
+the TOTP/Twitch cipher) that the API never returns: it reports only which
+secret fields are set. An empty secret field keeps the saved value, null clears
+it, and keeping a secret while the channel's address changes is refused, the
+rule masked service-connection keys follow. Every user, admins included, reads
+and changes only their own channels; an admin also gets counts of everyone's.
+A settings export with secrets carries only the exporter's own channel secrets.
+
+`notifyEvent` claims the dedupe row, then selects the enabled channels that
+picked the event, filters them through the same `recipientAllowed` gate as push
+(capability, `ADMIN_ONLY_EVENT_TYPES`, targeted `userIds`), the owner's quiet
+hours and a per-channel backoff (5 minutes doubling to 6 hours), and starts
+delivery without awaiting it, so a slow endpoint never holds up a polling cycle.
+Grouping happens before `notifyEvent`, so channels get grouped messages.
+
+Every outbound address goes through `src/lib/outbound-url.ts`: http(s) only, no
+credentials in the URL, and link-local, cloud metadata and reserved addresses
+(also wrapped in NAT64, 6to4 or IPv4-compatible IPv6) refused both as typed and
+for every address a name resolves to at connect time (`createGuardedLookup`;
+SMTP connects to the address resolved through the same guard, with the name
+kept for TLS). LAN, loopback and Tailscale addresses are allowed for an admin's
+channel (the reach service connections have, which only admins manage) and
+refused for anyone else's, decided by the owner's current role at save and at
+send time. At most two guarded DNS lookups run at once. HTTP sends refuse
+redirects to another host, bypass any proxy, and stop at 10 seconds. Sends to
+one channel run one at a time in a process; after a failure the rest of a
+burst is dropped, and failures within a minute count once. A failure stores only a fixed short reason (`HTTP 401`, `Timed out`),
+never a response body or a secret; channel routes do not log bodies and the
+logger redacts the channel secret field names.
+
+`updateAvailable` (once per release: a Redis marker of the last announced
+version plus the dedupe key `updateAvailable:<version>`, from a six-hourly
+polling job using the update-check cache) and
+`securityAlert` (an admin's sign-in from a user agent family, versions
+stripped, not among their last 200 sign-ins; 10 failed sign-ins
+in 10 minutes, two-step sign-in turned off; raised from the security audit
+writes without being awaited) are admin-only events for push and channels.
+
 ## Persistence, Migrations, and Retention
 
 Prisma 6 and PostgreSQL are intentional. Prisma migrations are the only schema

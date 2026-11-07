@@ -109,6 +109,7 @@ const UNRELATED_SOURCES = [
   'pollManualDownloads',
   'pollServiceReachability',
   'sweepTasteProfiles',
+  'checkUpdateAvailable',
 ] as const;
 
 function stubCycle(service: PollingService) {

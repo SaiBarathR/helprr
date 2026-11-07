@@ -22,6 +22,7 @@ import {
   pickEnum,
 } from './shared';
 import { applyUserDashboardLayoutsInTxn } from './layouts';
+import { applyUserNotificationChannelsInTxn } from './notification-channels';
 import { applyPreparedWatchlist, prepareWatchlist, type PreparedWatchlist } from './watchlist';
 import { applyPreparedScheduledAlerts, prepareScheduledAlerts, type PreparedAlert } from './alerts';
 import { markTasteProfileStale } from '@/lib/recommendations/profile-store';
@@ -274,6 +275,9 @@ export async function applyUsersInTxn(
     }
     if (Array.isArray(acc.dashboardLayouts)) {
       await applyUserDashboardLayoutsInTxn(tx, acc.dashboardLayouts, skipped, userId, ownerLabel);
+    }
+    if (Array.isArray(acc.notificationChannels)) {
+      await applyUserNotificationChannelsInTxn(tx, acc.notificationChannels, userId, ownerLabel, skipped);
     }
 
     // Default-layout choices travel by name (ids are install-local). Resolve

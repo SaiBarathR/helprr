@@ -46,6 +46,7 @@ vi.mock('@/lib/db', () => {
     'userSettings', 'userAniListLink', 'twitchUserLink', 'watchlistItem', 'watchlistTag', 'scheduledAlert',
     'dashboardLayout', 'pushSubscription', 'notificationHistory', 'pendingRequest', 'session',
     'creatorSubscription', 'creatorPlaylistSubscription', 'recommendationEvent', 'userTasteProfile', 'creatorVideoState',
+    'notificationChannel',
   ];
   return { prisma: Object.fromEntries(names.map((n) => [n, model(n)])) };
 });
@@ -67,6 +68,7 @@ const SECRETS = [
   'push-auth-value',
   'session-id-current',
   'session-id-old',
+  'enc:v1:channel-secrets-value',
 ];
 
 const me = {
@@ -131,6 +133,10 @@ function rowsFor(userId: string, marker: string): Record<string, Row[]> {
       id: `${marker}-vs`, userId, videoId: 'v1', seenAt: new Date(), hidden: true,
       video: { platform: 'YOUTUBE', externalId: 'yt1', title: `${marker} video`, creatorId: 'c1' },
     }],
+    notificationChannel: [{
+      id: `${marker}-ch`, userId, type: 'ntfy', name: `${marker} ntfy`, enabled: true, events: ['imported'],
+      config: { serverUrl: 'https://ntfy.sh' }, secrets: 'enc:v1:channel-secrets-value',
+    }],
   };
 }
 
@@ -170,6 +176,9 @@ describe('GET /api/me/export', () => {
     expect(data.watchlist.tags).toEqual([{ name: 'mine-tag', color: null }]);
     expect(data.scheduledAlerts[0].title).toBe('mine alert');
     expect(data.dashboardLayouts[0].name).toBe('mine layout');
+    expect(data.notificationChannels).toEqual([
+      { type: 'ntfy', name: 'mine ntfy', enabled: true, events: ['imported'], config: { serverUrl: 'https://ntfy.sh' } },
+    ]);
     expect(data.notificationDevices).toEqual([
       expect.objectContaining({ deviceName: 'mine iPhone', preferences: [expect.objectContaining({ eventType: 'imported' })] }),
     ]);
@@ -224,6 +233,8 @@ describe('my-data export coverage', () => {
     'creatorSubscriptions', 'playlistSubscriptions', 'twitchLink',
     // Feedback events only; impressions, clicks and plays are left out.
     'recommendationEvents', 'tasteProfile', 'creatorVideoStates',
+    // Settings without the secrets column.
+    'notificationChannels',
   ];
   const EXCLUDED: Record<string, string> = {
     passwordLink: 'holds only a token hash',

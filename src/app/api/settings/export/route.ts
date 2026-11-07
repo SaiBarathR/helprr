@@ -6,6 +6,7 @@ import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { parseDiskThresholds } from '@/lib/disk-space';
 import { parseCustomHeaders } from '@/lib/service-connection-secrets';
 import { withApiLogging } from '@/lib/api-logger';
+import { decryptSecrets, toFieldMap } from '@/lib/notification-channels/config';
 import {
   type ExportedAnimeMapping,
   type ExportedAppSettings,
@@ -14,6 +15,7 @@ import {
   type ExportedYoutube,
   type ExportedDashboardLayout,
   type ExportedDashboardLayouts,
+  type ExportedNotificationChannel,
   type ExportedNotificationDevice,
   type ExportedNotificationRule,
   type ExportedScheduledAlert,
@@ -475,7 +477,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       // Per-account content: each user's watchlist, scheduled alerts, and
       // personal dashboard layouts, so a full-instance migration restores
       // every member — not just the exporting admin.
-      const [allItems, allTags, allLayouts, alertsByUser] = await Promise.all([
+      const [allItems, allTags, allLayouts, alertsByUser, allChannels] = await Promise.all([
         prisma.watchlistItem.findMany({
           include: { tags: { select: { name: true } } },
           orderBy: { addedAt: 'asc' },
@@ -483,7 +485,27 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         prisma.watchlistTag.findMany({ orderBy: { name: 'asc' } }),
         prisma.dashboardLayout.findMany({ orderBy: { createdAt: 'asc' } }),
         loadScheduledAlertsByUser(),
+        prisma.notificationChannel.findMany({ orderBy: { createdAt: 'asc' } }),
       ]);
+      // Channel secrets leave only with includeSecrets, in plain text like API
+      // keys (the stored form is encrypted with this install's secret), and
+      // only the exporter's own: a member's SMTP password or private topic is
+      // theirs, not the admin's to take. An import keeps the secrets already
+      // saved for the same address.
+      const channelsByUser = new Map<string, ExportedNotificationChannel[]>();
+      for (const channel of allChannels) {
+        const withSecrets = includeSecrets && channel.userId === exporter.id;
+        const list = channelsByUser.get(channel.userId) ?? [];
+        list.push({
+          type: channel.type,
+          name: channel.name,
+          enabled: channel.enabled,
+          events: channel.events,
+          config: toFieldMap(channel.config),
+          ...(withSecrets ? { secrets: decryptSecrets(channel.secrets) } : {}),
+        });
+        channelsByUser.set(channel.userId, list);
+      }
       const itemsByUser = new Map<string, WatchlistItemWithTags[]>();
       for (const item of allItems) {
         if (!item.userId) continue; // legacy owner-less rows can't be attributed
@@ -561,6 +583,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
           slug: null,
           widgets: Array.isArray(l.widgets) ? (l.widgets as unknown[]) : [],
         })),
+        notificationChannels: channelsByUser.get(u.id) ?? [],
       }));
       payload.users = { accounts };
     }

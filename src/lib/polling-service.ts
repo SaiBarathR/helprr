@@ -35,6 +35,7 @@ import { checkDiskSpace as checkDiskSpacePoller } from '@/lib/polling/disk-space
 import { checkUpcoming as checkUpcomingPoller } from '@/lib/polling/upcoming';
 import { checkActivityDigest as checkActivityDigestPoller } from '@/lib/polling/activity-digest';
 import { checkDatabaseBackup as checkDatabaseBackupPoller } from '@/lib/polling/database-backup';
+import { checkUpdateAvailable, UPDATE_CHECK_INTERVAL_MS, UPDATE_CHECK_RETRY_MS } from '@/lib/polling/update-available';
 
 // How long daily disk-usage snapshots are kept (the trend only needs ~7 days,
 // but a longer tail makes the growth-rate fit more stable + survives gaps).
@@ -176,6 +177,8 @@ export class PollingService {
   // Epoch ms of the last retention sweep. The poll loop runs every ~30s but
   // the sweep is throttled to once/day; 0 = run on first cycle.
   private lastRetentionPruneAt = 0;
+  // Epoch ms the next update check is due (0 = on the first cycle).
+  private nextUpdateCheckAt = 0;
   // Tracks the bandwidth-schedule rule (and limits) we last pushed to
   // qBittorrent so we only re-send on actual changes. Process-restart loses
   // this — the next cycle will re-apply once (idempotent).
@@ -308,6 +311,7 @@ export class PollingService {
         sourceTask('checkScheduledAlerts', () => checkScheduledAlerts()),
         sourceTask('checkActivityDigest', () => this.checkActivityDigest(context)),
         sourceTask('checkDatabaseBackup', () => this.checkDatabaseBackup(context)),
+        sourceTask('checkUpdateAvailable', () => this.checkUpdateAvailable(context)),
         sourceTask('applyBandwidthSchedule', () => this.applyBandwidthSchedule(context)),
         sourceTask('checkRetention', () => this.checkRetention(context)),
         sourceTask('checkAnimeAutoMap', () => this.checkAnimeAutoMap(context)),
@@ -852,6 +856,15 @@ export class PollingService {
 
   private checkUpcoming(context: CycleContext) {
     return checkUpcomingPoller(context);
+  }
+
+  // Every six hours; an hour after a check that could not reach GitHub.
+  private async checkUpdateAvailable(context: CycleContext): Promise<void> {
+    const now = context.startedAtMs;
+    if (now < this.nextUpdateCheckAt) { noteJobSkipped(); return; }
+    // Set first, so a slow or failing check is not retried every cycle.
+    this.nextUpdateCheckAt = now + UPDATE_CHECK_RETRY_MS;
+    if (await checkUpdateAvailable()) this.nextUpdateCheckAt = now + UPDATE_CHECK_INTERVAL_MS;
   }
 
   // Run bounded database and image-cache retention once/day. Database errors

@@ -7,6 +7,12 @@ import { getClientIp } from '@/lib/login-rate-limit';
 import { currentRequestContext } from '@/lib/request-context';
 import { findServiceByType } from '@/lib/settings/service-config';
 import { LOCAL_USERNAME_MAX_CODE_POINTS } from '@/lib/username-policy';
+import {
+  alertOnFailedSignInBurst,
+  alertOnNewDeviceSignIn,
+  alertOnTwoStepDisabled,
+  startSecurityAlert,
+} from '@/lib/security-alerts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Security and admin audit trail: account, permission, session, service
@@ -102,6 +108,7 @@ function logWriteFailure(error: unknown): void {
 /** Record one security event; request is null outside a request (at start-up, or a scheduled job). Never throws. */
 export async function recordSecurityEvent(request: NextRequest | null, input: SecurityAuditInput): Promise<void> {
   try {
+    const meta = request ? requestMeta(request) : { ip: null, userAgent: null };
     await prisma.securityAuditEvent.create({
       data: {
         actorUserId: input.actor?.id ?? null,
@@ -112,10 +119,17 @@ export async function recordSecurityEvent(request: NextRequest | null, input: Se
         targetLabel: input.targetLabel ?? null,
         fields: input.fields?.length ? (input.fields as Prisma.InputJsonValue) : Prisma.JsonNull,
         count: input.count ?? 1,
-        ...(request ? requestMeta(request) : { ip: null, userAgent: null }),
+        ...meta,
         requestId: currentRequestContext()?.requestId ?? null,
       },
     });
+    // Admin security alerts read the row just written.
+    const actorId = input.actor?.id;
+    if (input.action === 'LOGIN_SUCCEEDED' && actorId) {
+      startSecurityAlert(() => alertOnNewDeviceSignIn(actorId, meta.userAgent, meta.ip));
+    } else if (input.action === 'MFA_DISABLED') {
+      startSecurityAlert(() => alertOnTwoStepDisabled(input.targetLabel ?? null, input.actor?.username ?? null));
+    }
   } catch (error) {
     logWriteFailure(error);
   }
@@ -212,6 +226,7 @@ export async function recordFailedSignIn(request: NextRequest, input: FailedSign
         coalesceKey,
       },
     });
+    startSecurityAlert(() => alertOnFailedSignInBurst(input.nowMs));
   } catch (error) {
     logWriteFailure(error);
   }

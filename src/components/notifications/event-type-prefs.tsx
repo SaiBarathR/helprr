@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { EVENT_GROUPS, EVENT_META } from '@/lib/notification-events';
-import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
+import { ADMIN_ONLY_EVENT_TYPES, EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
 import { useMe, hasCapability } from '@/components/permission-provider';
 
 // Per-item download/import events are the only ones that carry quality + tag
@@ -248,6 +248,7 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
         // (a Member never sees Cleanup/Health). Hide a group that's fully gated.
         const visibleTypes = group.types.filter((t) =>
           hasCapability(me, EVENT_TYPE_TO_CAPABILITY[t])
+          && (!ADMIN_ONLY_EVENT_TYPES.has(t) || me?.role === 'admin')
         );
         if (visibleTypes.length === 0) return null;
         return (
