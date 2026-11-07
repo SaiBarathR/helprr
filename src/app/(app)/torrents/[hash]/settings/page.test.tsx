@@ -151,9 +151,10 @@ describe('torrent settings page', () => {
     await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Moving to the new location'));
 
     expect(posts).toEqual([{ hash: 'abc', action: 'setLocation', location: '/downloads/movies' }]);
-    expect(document.body.textContent).toContain('Save Path/downloads/movies');
+    // The toast can come before the page re-renders with the new path.
+    await waitFor(() => expect(document.body.textContent).toContain('Save Path/downloads/movies'));
     // qBittorrent turns automatic management off when it moves a torrent.
-    expect(option('Auto Torrent Management').getAttribute('aria-checked')).toBe('false');
+    await waitFor(() => expect(option('Auto Torrent Management').getAttribute('aria-checked')).toBe('false'));
   });
 
   it('removes a tag, adds a new one, and adds one qBittorrent already has', async () => {
