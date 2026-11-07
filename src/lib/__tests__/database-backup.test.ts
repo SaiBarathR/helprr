@@ -63,17 +63,17 @@ afterEach(() => {
 describe('pgConnectionFromUrl', () => {
   it('passes the password only through PGPASSWORD, never in the arguments', () => {
     const connection = backup.pgConnectionFromUrl(DATABASE_URL);
-    expect(connection.args).toEqual([
-      '--host', 'helprr-db', '--port', '5433', '--dbname', 'helprr', '--username', 'helprr user', '--no-password',
-    ]);
-    expect(connection.args.join(' ')).not.toContain('s3cret');
-    expect(connection.env).toEqual({ PGCONNECT_TIMEOUT: '10', PGPASSWORD: PASSWORD });
+    expect(connection.args).toEqual(['--no-password']);
+    expect(connection.env).toEqual({
+      PGHOST: 'helprr-db', PGPORT: '5433', PGDATABASE: 'helprr', PGUSER: 'helprr user', PGCONNECT_TIMEOUT: '10', PGPASSWORD: PASSWORD,
+    });
   });
 
-  it('keeps sslmode, a socket host and an IPv6 address', () => {
+  it('keeps sslmode, a socket host, an IPv6 address, and a name with = as a name', () => {
     expect(backup.pgConnectionFromUrl('postgres://u:p@[::1]/db?sslmode=require').env.PGSSLMODE).toBe('require');
-    expect(backup.pgConnectionFromUrl('postgres://u:p@[::1]/db').args.slice(0, 4)).toEqual(['--host', '::1', '--port', '5432']);
-    expect(backup.pgConnectionFromUrl('postgresql://u@localhost/db?host=/var/run/postgresql').args[1]).toBe('/var/run/postgresql');
+    expect(backup.pgConnectionFromUrl('postgres://u:p@[::1]/db').env).toMatchObject({ PGHOST: '::1', PGPORT: '5432' });
+    expect(backup.pgConnectionFromUrl('postgresql://u@localhost/db?host=/var/run/postgresql').env.PGHOST).toBe('/var/run/postgresql');
+    expect(backup.pgConnectionFromUrl('postgresql://u@localhost/a%3Db').env.PGDATABASE).toBe('a=b');
   });
 
   it('refuses a URL that is not PostgreSQL or names no database', () => {
@@ -101,7 +101,7 @@ describe('startDatabaseBackup', () => {
       expect(call.args.join(' ')).not.toContain('s3cret');
       expect(call.args.join(' ')).not.toContain('postgresql://');
     }
-    expect(Object.keys(dump.env).sort()).toEqual(['PATH', 'PGCONNECT_TIMEOUT', 'PGPASSWORD']);
+    expect(Object.keys(dump.env).sort()).toEqual(['PATH', 'PGCONNECT_TIMEOUT', 'PGDATABASE', 'PGHOST', 'PGPASSWORD', 'PGPORT', 'PGUSER']);
     expect(check.command).toBe('pg_restore');
     expect(check.args[0]).toBe('--list');
     expect(check.env.PGPASSWORD).toBeUndefined();
@@ -159,6 +159,32 @@ describe('startDatabaseBackup', () => {
     const result = await backup.startDatabaseBackup({ trigger: 'manual', actor: { id: 'a1', username: 'admin' } });
     expect(result).toMatchObject({ ok: false, reason: 'invalid' });
     expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it('saves on a share without hard links by renaming', async () => {
+    const { promises } = await import('node:fs');
+    const link = vi.spyOn(promises, 'link').mockRejectedValueOnce(Object.assign(new Error('not supported'), { code: 'EPERM' }));
+    const result = await backup.startDatabaseBackup({ trigger: 'manual', actor: { id: 'a1', username: 'admin' } });
+    link.mockRestore();
+    expect(result?.ok).toBe(true);
+    if (!result?.ok) return;
+    expect(readdirSync(dir)).toEqual([result.fileName]);
+    expect(statSync(path.join(dir, result.fileName)).mode & 0o777).toBe(0o600);
+  });
+
+  it('ends a run whose client never exits, so the lock is released', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      mocks.behave.pg_dump = () => ({ code: 0, hold: new Promise<void>(() => {}) });
+      const run = backup.startDatabaseBackup({ trigger: 'scheduled', actor: null });
+      while (mocks.calls.length === 0) await new Promise((resolve) => setImmediate(resolve));
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000 + 30 * 1000);
+      expect(await run).toMatchObject({ ok: false, reason: 'timeout' });
+      expect(backup.isBackupRunning()).toBe(false);
+      expect(readdirSync(dir)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('says so when the backup folder is missing, and runs nothing', async () => {

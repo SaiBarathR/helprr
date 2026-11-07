@@ -884,11 +884,13 @@ write is best effort and never fails the backup.
 
 Backups made in Helprr (`src/lib/database-backup.ts`) run `pg_dump` from the app image
 (`postgresql16-client`, the bundled server's major) into `BACKUP_DIR` (`/app/backups`,
-the `helprr-backups` volume; `helprr-dev-backups` for development). The password goes
-to the child in `PGPASSWORD`, never in argv, and the child's environment is only `PATH`
-and libpq settings. The dump is written to an exclusive 0600 partial file, checked with
-`pg_restore --list`, then hard-linked to `helprr-backup-<UTC stamp>.dump`, so nothing is
-overwritten. In the Docker image the folder must be a mount (read from
+the `helprr-backups` volume; `helprr-dev-backups` for development). The connection goes
+to the child only in libpq's variables (`PGHOST`, `PGUSER`, `PGPASSWORD`, ...), never in
+argv, and its environment is only those and `PATH`. The dump is written to an exclusive
+0600 partial file, checked with `pg_restore --list`, then hard-linked to
+`helprr-backup-<UTC stamp>.dump` (renamed after a free-name check where the folder has
+no hard links), so nothing is overwritten. A client past its timeout gets SIGTERM, then
+SIGKILL, and the run ends either way, so a hung mount cannot hold the lock. In the Docker image the folder must be a mount (read from
 `/proc/self/mountinfo`), or no backup is made: one in the container's own layer would be
 lost on the next update. One run at a time per process (a promise on `globalThis`), for
 **Back up now** (`POST /api/admin/database-backup`, 202, 409 while running) and the
@@ -896,14 +898,15 @@ schedule alike. Success records `lastDatabaseBackupAt` and prunes to the newest
 `databaseBackupKeep` of its own names; each success or failure writes a security audit
 row (`DATABASE_BACKUP_CREATED`/`_FAILED`, fields: trigger, size or reason code). The
 dumps are listed by name and size and never served. `helprr-init` gives an empty,
-root-owned backup folder to the app's user, for a host folder Docker made.
+root-owned backup folder changed in the last five minutes (a host folder Docker has just
+made) to the app's user.
 
 The poll source `checkDatabaseBackup` starts the scheduled backup (daily or weekly, on
 the first poll at or after `databaseBackupHour` in the app time zone, claimed in
 `databaseBackupScheduledAt` so a window is tried once) without waiting for it. While a
 schedule is on, it pushes admins (`databaseBackup`, `userIds` = active admins) when a
 scheduled run fails, and when `lastDatabaseBackupAt` is older than
-`databaseBackupAlertDays`, at most daily (`databaseBackupAlertedAt`). With the schedule
+`databaseBackupAlertDays` plus six hours' grace, at most daily (`databaseBackupAlertedAt`). With the schedule
 off it never pushes, so a `backup.sh`-only install is not reminded.
 
 The admin-only `/api/admin/database-backup` serves all of this to **Settings -> Backup &

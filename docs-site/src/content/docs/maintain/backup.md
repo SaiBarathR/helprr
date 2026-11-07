@@ -71,8 +71,8 @@ file, checked with `pg_restore --list` before it is kept, named
 `helprr-backup-YYYYMMDD-HHMMSS.dump` (UTC) with mode `0600`. They go to the
 `helprr-backups` volume (`/app/backups` in the container), which the page lists by name
 and size. Helprr never offers them for download: copy them off the server as below.
-**Keep** keeps the newest 7 of them (by default) and removes older ones; other files in
-the folder are left alone. Each backup, and each one that failed, is in **Settings →
+**Keep** keeps the newest 7 of them (by default) and removes older ones after each new
+backup; other files in the folder are left alone. Each backup, and each one that failed, is in **Settings →
 Operation audit → Security**.
 
 While a schedule is on, admins get a push (the **Database Backup** event, under
@@ -120,9 +120,10 @@ volumes:
 ```
 
 To keep the backups in a folder on the host instead, such as a mounted share, put its
-path in place of `helprr-backups` in both service lines. An empty folder that Docker
+path in place of `helprr-backups` in both service lines. A folder that Docker has just
 made is given to the app's user (`1001`) as Helprr starts; any other folder must be
-writable by that user, or the page says **Backup folder not writable**.
+writable by that user, or the page says **Backup folder not writable**. On a network
+share the mount options, not Helprr, decide the files' mode.
 
 ## Keep a copy off the host
 

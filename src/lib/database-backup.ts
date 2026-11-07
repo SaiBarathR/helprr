@@ -17,6 +17,8 @@ const PARTIAL_PATTERN = /^\.helprr-backup-.*\.partial$/;
 const STALE_PARTIAL_MS = 6 * 60 * 60 * 1000;
 const DUMP_TIMEOUT_MS = 60 * 60 * 1000;
 const VALIDATE_TIMEOUT_MS = 15 * 60 * 1000;
+/** After SIGTERM, how long a client has before SIGKILL; the run ends then even if it never exits. */
+const KILL_GRACE_MS = 30 * 1000;
 const STDERR_MAX = 4096;
 const MESSAGE_MAX = 300;
 const LIST_MAX = 100;
@@ -29,7 +31,6 @@ export type BackupTrigger = 'manual' | 'scheduled';
 export type BackupFolderProblem = 'missing' | 'not-mounted' | 'not-writable';
 export type BackupFailureReason =
   | BackupFolderProblem
-  | 'busy'
   | 'config'
   | 'no-client'
   | 'dump-failed'
@@ -95,12 +96,17 @@ export async function checkBackupDir(dir = getBackupDir()): Promise<{ ok: true }
 }
 
 export interface PgConnection {
-  /** Never holds the password. */
+  /** Never holds the password or the connection. */
   args: string[];
+  /** libpq's variables: the connection, with the password in PGPASSWORD. */
   env: Record<string, string>;
 }
 
-/** pg_dump connection options from DATABASE_URL: the password goes in PGPASSWORD, never in argv. */
+/**
+ * pg_dump's connection from DATABASE_URL, all in libpq's environment variables:
+ * nothing about it is in argv (so not in the process list), and a database name
+ * is never read as a connection string.
+ */
 export function pgConnectionFromUrl(databaseUrl: string): PgConnection {
   const url = new URL(databaseUrl);
   if (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') {
@@ -109,15 +115,13 @@ export function pgConnectionFromUrl(databaseUrl: string): PgConnection {
   const database = decodeURIComponent(url.pathname.replace(/^\//, ''));
   const host = url.searchParams.get('host') || url.hostname.replace(/^\[(.*)\]$/, '$1');
   if (!database || !host) throw new Error('DATABASE_URL has no host or database name');
-  const args = ['--host', host, '--port', url.port || '5432', '--dbname', database];
-  if (url.username) args.push('--username', decodeURIComponent(url.username));
-  // Never prompt: a missing password fails instead of hanging.
-  args.push('--no-password');
-  const env: Record<string, string> = { PGCONNECT_TIMEOUT: '10' };
+  const env: Record<string, string> = { PGHOST: host, PGPORT: url.port || '5432', PGDATABASE: database, PGCONNECT_TIMEOUT: '10' };
+  if (url.username) env.PGUSER = decodeURIComponent(url.username);
   if (url.password) env.PGPASSWORD = decodeURIComponent(url.password);
   const sslmode = url.searchParams.get('sslmode');
   if (sslmode) env.PGSSLMODE = sslmode;
-  return { args, env };
+  // Never prompt: a missing password fails instead of hanging.
+  return { args: ['--no-password'], env };
 }
 
 interface ChildResult {
@@ -137,9 +141,17 @@ function runClient(command: string, args: string[], env: Record<string, string>,
       env: { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', ...env } as unknown as NodeJS.ProcessEnv,
       stdio: ['ignore', stdout, 'pipe'],
     });
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGTERM');
+      // A client stuck on a hung mount may ignore both signals: the run still ends,
+      // so the lock is released and the failure is reported.
+      killTimer = setTimeout(() => {
+        child.kill('SIGKILL');
+        finish({ code: null, stderr, timedOut });
+      }, KILL_GRACE_MS);
+      killTimer.unref?.();
     }, timeoutMs);
     timer.unref?.();
     child.stderr?.on('data', (chunk: Buffer) => {
@@ -149,6 +161,7 @@ function runClient(command: string, args: string[], env: Record<string, string>,
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       resolve(result);
     };
     child.on('error', (error: NodeJS.ErrnoException) => finish({ code: null, stderr, timedOut, spawnError: error }));
@@ -275,8 +288,19 @@ async function createBackup(dir: string, now: Date): Promise<{ fileName: string;
     try {
       // A hard link never replaces an existing file.
       await fs.link(partialPath, finalPath);
-    } catch {
-      throw new BackupFailure('exists', `Could not save ${fileName}; a file with that name may already exist.`);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'EEXIST') throw new BackupFailure('exists', `Could not save ${fileName}: a file with that name already exists.`);
+      // A share or drive without hard links: rename, once the name is checked free
+      // (runs are one at a time, so nothing else takes it in between).
+      if (await fs.lstat(finalPath).then(() => true, () => false)) {
+        throw new BackupFailure('exists', `Could not save ${fileName}: a file with that name already exists.`);
+      }
+      try {
+        await fs.rename(partialPath, finalPath);
+      } catch (renameError) {
+        throw new BackupFailure('error', `Could not save ${fileName} in the backup folder (${(renameError as NodeJS.ErrnoException).code ?? 'error'}).`);
+      }
     }
     return { fileName, sizeBytes: size };
   } finally {

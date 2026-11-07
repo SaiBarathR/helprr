@@ -9,6 +9,11 @@ import { notifyAndLog, type CycleContext } from './shared';
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** While the last backup stays too old, remind admins at most this often. */
 const OVERDUE_REMINDER_MS = DAY_MS;
+/**
+ * Grace past the alert, so a backup that is due in a few hours (a week across a
+ * DST change is 7 days and an hour) or still running is not reported as overdue.
+ */
+const OVERDUE_SLACK_MS = 6 * 60 * 60 * 1000;
 
 interface ScheduleSettings {
   databaseBackupSchedule: string;
@@ -48,7 +53,7 @@ interface OverdueSettings {
 export function isBackupOverdue(settings: OverdueSettings, nowMs: number): boolean {
   if (settings.databaseBackupSchedule === 'off' || settings.databaseBackupAlertDays <= 0) return false;
   const last = settings.lastDatabaseBackupAt;
-  if (!last || nowMs - last.getTime() <= settings.databaseBackupAlertDays * DAY_MS) return false;
+  if (!last || nowMs - last.getTime() <= settings.databaseBackupAlertDays * DAY_MS + OVERDUE_SLACK_MS) return false;
   const alerted = settings.databaseBackupAlertedAt;
   return !alerted || nowMs - alerted.getTime() >= OVERDUE_REMINDER_MS;
 }

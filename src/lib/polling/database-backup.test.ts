@@ -70,6 +70,8 @@ describe('isBackupOverdue', () => {
     const old = new Date(now - 8 * DAY);
     expect(isBackupOverdue({ ...base, lastDatabaseBackupAt: old }, now)).toBe(true);
     expect(isBackupOverdue({ ...base, lastDatabaseBackupAt: new Date(now - 6 * DAY) }, now)).toBe(false);
+    // A weekly backup across a DST change, or one due in a few hours, is not overdue yet.
+    expect(isBackupOverdue({ ...base, lastDatabaseBackupAt: new Date(now - 7 * DAY - 60 * 60 * 1000) }, now)).toBe(false);
     // backup.sh alone (no schedule) is never nagged, and 0 turns it off.
     expect(isBackupOverdue({ ...base, databaseBackupSchedule: 'off', lastDatabaseBackupAt: old }, now)).toBe(false);
     expect(isBackupOverdue({ ...base, databaseBackupAlertDays: 0, lastDatabaseBackupAt: old }, now)).toBe(false);
