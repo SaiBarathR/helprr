@@ -1062,9 +1062,10 @@ Invariants:
 - `pollTwitch` spends nothing on a streamer with no subscribers. Subscribing again takes
   a new silent baseline, so a gap cannot arrive as a flood of pushes.
 - Polling and rules are per creator (and per playlist), not per follower: anyone still
-  following keeps it polled and its rule downloading. So an unfollow answers how many others
-  still follow and, to a `*.manage` holder only, whether a rule would still download
-  (`src/lib/archive/followers.ts`, before title or length conditions). The page then offers
+  following keeps it polled and its rule downloading, and so does a followed YouTube playlist
+  holding a channel's videos. So an unfollow answers how many others still follow and, to a
+  `*.manage` holder only, whether a rule would still download (`src/lib/archive/followers.ts`,
+  before title or length conditions). For a channel or streamer the page then offers
   **Turn off auto-download** through the normal policies route. Only `*.manage` holders get
   a creator's or playlist's follower count, and never names.
 - A user's own Twitch sign-in (`TwitchUserLink`, device code flow) has one scope,

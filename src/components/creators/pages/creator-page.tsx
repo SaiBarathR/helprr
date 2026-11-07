@@ -108,7 +108,7 @@ export function CreatorPage({ params }: { params: Promise<{ id: string }> }) {
           done: platform.unfollowedLabel,
           name: streamer.displayName,
           result,
-          turnOff: canManage ? () => turnOffAutoDownload(platform.id, streamer.id) : undefined,
+          turnOff: canManage ? () => turnOffAutoDownload(platform.id, streamer.id).then(refresh) : undefined,
         });
       }
     },

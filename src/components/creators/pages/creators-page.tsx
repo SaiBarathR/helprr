@@ -177,7 +177,7 @@ export function CreatorsPage() {
         done: platform.unfollowedLabel,
         name: creator.displayName,
         result,
-        turnOff: canManage ? () => turnOffAutoDownload(platform.id, creator.id) : undefined,
+        turnOff: canManage ? () => turnOffAutoDownload(platform.id, creator.id).then(refresh) : undefined,
       });
     },
     onError: (error) => toast.error(error.message),

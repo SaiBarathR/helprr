@@ -43,10 +43,13 @@ export function showUnfollowNotice({ done, name, result, turnOff }: {
   turnOff?: () => Promise<void>;
 }): void {
   const others = result?.othersFollowing ?? 0;
-  if (others <= 0) return;
-  const who = others === 1 ? '1 other person still follows' : `${others} other people still follow`;
-  const message = `${done}. ${who} ${name}${result?.autoDownload ? ', so new videos can still download.' : '.'}`;
-  if (!result?.autoDownload || !turnOff) {
+  const downloads = Boolean(result?.autoDownload);
+  if (others <= 0 && !downloads) return;
+  // With nobody else following, only a followed playlist can still bring its videos in.
+  const who = others <= 0 ? `A followed playlist still includes ${name}`
+    : `${others === 1 ? '1 other person still follows' : `${others} other people still follow`} ${name}`;
+  const message = `${done}. ${who}${downloads ? ', so new videos can still download.' : '.'}`;
+  if (!downloads || !turnOff) {
     toast(message);
     return;
   }

@@ -6,8 +6,8 @@ const mocks = vi.hoisted(() => ({
   subscription: { findFirst: vi.fn(), deleteMany: vi.fn(), count: vi.fn() },
   playlistSubscription: { findFirst: vi.fn(), deleteMany: vi.fn(), count: vi.fn() },
   creator: { findUnique: vi.fn() },
-  playlist: { findUnique: vi.fn() },
-  policy: { findUnique: vi.fn() },
+  playlist: { findUnique: vi.fn(), count: vi.fn() },
+  policy: { findUnique: vi.fn(), findMany: vi.fn() },
   videoGroups: vi.fn(async () => []),
   youtubeSettings: vi.fn(),
   twitchSettings: vi.fn(),
@@ -53,6 +53,8 @@ describe('unfollowing a creator others still follow', () => {
     mocks.playlistSubscription.count.mockResolvedValue(1);
     mocks.policy.findUnique.mockResolvedValue({ policy: { autoDownload: true }, typePolicies: {} });
     mocks.playlist.findUnique.mockResolvedValue({ policy: {} });
+    mocks.playlist.count.mockResolvedValue(0);
+    mocks.policy.findMany.mockResolvedValue([]);
     mocks.youtubeSettings.mockResolvedValue(settings());
     mocks.twitchSettings.mockResolvedValue(settings());
   });
@@ -95,6 +97,20 @@ describe('unfollowing a creator others still follow', () => {
     expect(mocks.policy.findUnique).not.toHaveBeenCalled();
   });
 
+  it('still warns the last follower when a followed playlist brings the channel in', async () => {
+    mocks.subscription.count.mockResolvedValue(0);
+    mocks.playlist.count.mockResolvedValue(1);
+    expect(await (await leaveChannel(req(), ctx('s1'))).json()).toEqual({ ok: true, othersFollowing: 0, autoDownload: true });
+    expect(mocks.playlist.count).toHaveBeenCalledWith({
+      where: { subscriptions: { some: {} }, videos: { some: { video: { creatorId: 'c1' } } } },
+    });
+
+    // Twitch has no playlists.
+    mocks.playlist.count.mockClear();
+    expect(await (await leaveStreamer(req(), ctx('s1'))).json()).toEqual({ ok: true, othersFollowing: 0, autoDownload: false });
+    expect(mocks.playlist.count).not.toHaveBeenCalled();
+  });
+
   it('still refuses a subscription that is not the caller\'s', async () => {
     mocks.subscription.findFirst.mockResolvedValue(null);
     expect((await leaveChannel(req(), ctx('s1'))).status).toBe(404);
@@ -117,6 +133,18 @@ describe('unfollowing a creator others still follow', () => {
 
     mocks.youtubeSettings.mockResolvedValue(settings({ defaultPolicy: { autoDownload: true } }));
     expect(await (await leavePlaylist(req(), ctx('ps1'))).json()).toMatchObject({ autoDownload: true });
+
+    // Off globally, on for one channel in the playlist: its videos there still download.
+    mocks.youtubeSettings.mockResolvedValue(settings());
+    mocks.policy.findMany.mockResolvedValue([{ policy: {}, typePolicies: {} }, { policy: { autoDownload: true }, typePolicies: {} }]);
+    expect(await (await leavePlaylist(req(), ctx('ps1'))).json()).toMatchObject({ autoDownload: true });
+    expect(mocks.policy.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { creator: { videos: { some: { playlists: { some: { playlistId: 'p1' } } } } } },
+    }));
+
+    // The playlist's own layer outranks the channel's.
+    mocks.playlist.findUnique.mockResolvedValue({ policy: { autoDownload: false } });
+    expect(await (await leavePlaylist(req(), ctx('ps1'))).json()).toMatchObject({ autoDownload: false });
 
     mocks.user = MEMBER;
     expect(await (await leavePlaylist(req(), ctx('ps1'))).json()).toEqual({ ok: true, othersFollowing: 1 });

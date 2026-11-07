@@ -9,34 +9,23 @@ const TYPES: Record<ArchivePlatform, VideoTypeKey[]> = {
   YOUTUBE: ['UPLOAD', 'ARCHIVE', 'SHORT'],
 };
 
-/** What the layers say, least specific first, before a video's title or length is known. */
-const isOn = (layers: Array<PolicyLayer | undefined>) =>
-  layers.reduce<boolean>((on, layer) => layer?.autoDownload ?? on, BUILT_IN_POLICY.autoDownload);
+type StoredPolicy = { policy: unknown; typePolicies: unknown } | null;
 
-/** Whether some new video of this creator would download by rule. */
-async function creatorAutoDownloads(platform: ArchivePlatform, creatorId: string): Promise<boolean> {
-  const [settings, stored] = await Promise.all([
-    platform === 'YOUTUBE' ? getYoutubeSettings() : getTwitchSettings(),
-    prisma.creatorPolicy.findUnique({ where: { creatorId } }),
-  ]);
+/**
+ * Whether some new video would download by rule, before its title or length is known.
+ * The layers are those of `decideForVideo` and `decideForYoutubeVideo`, least specific first.
+ */
+function rulesDownload(
+  platform: ArchivePlatform,
+  settings: { autoDownloadEnabled: boolean; defaultPolicy: unknown; typePolicies: unknown },
+  creator: StoredPolicy,
+  playlist?: PolicyLayer,
+): boolean {
   if (!settings.autoDownloadEnabled) return false;
   const types = layerMap(settings.typePolicies);
-  const own = layerMap(stored?.typePolicies);
-  return TYPES[platform].some((type) => isOn([
-    sanitizeLayer(settings.defaultPolicy), types[type], sanitizeLayer(stored?.policy), own[type],
-  ]));
-}
-
-/** A playlist's own layer over the global ones. A video's channel rule can still turn it on. */
-async function playlistAutoDownloads(playlistId: string): Promise<boolean> {
-  const [settings, list] = await Promise.all([
-    getYoutubeSettings(),
-    prisma.creatorPlaylist.findUnique({ where: { id: playlistId }, select: { policy: true } }),
-  ]);
-  if (!settings.autoDownloadEnabled) return false;
-  const types = layerMap(settings.typePolicies);
-  const own = sanitizeLayer(list?.policy);
-  return TYPES.YOUTUBE.some((type) => isOn([sanitizeLayer(settings.defaultPolicy), types[type], own]));
+  const own = layerMap(creator?.typePolicies);
+  const layers = (type: VideoTypeKey) => [sanitizeLayer(settings.defaultPolicy), types[type], sanitizeLayer(creator?.policy), own[type], playlist];
+  return TYPES[platform].some((type) => layers(type).reduce<boolean>((on, layer) => layer?.autoDownload ?? on, BUILT_IN_POLICY.autoDownload));
 }
 
 export interface FollowersLeft {
@@ -52,12 +41,33 @@ export interface FollowersLeft {
 export async function creatorFollowersLeft(platform: ArchivePlatform, creatorId: string, canManage: boolean): Promise<FollowersLeft> {
   const othersFollowing = await prisma.creatorSubscription.count({ where: { creatorId } });
   if (!canManage) return { othersFollowing };
-  // Nobody left means nothing polls it, so nothing can download.
-  return { othersFollowing, autoDownload: othersFollowing > 0 && await creatorAutoDownloads(platform, creatorId) };
+  // A followed YouTube playlist brings in this channel's videos under this channel's rule.
+  const stillFound = othersFollowing > 0 || (platform === 'YOUTUBE' && await prisma.creatorPlaylist.count({
+    where: { subscriptions: { some: {} }, videos: { some: { video: { creatorId } } } },
+  }) > 0);
+  if (!stillFound) return { othersFollowing, autoDownload: false };
+  const [settings, stored] = await Promise.all([
+    platform === 'YOUTUBE' ? getYoutubeSettings() : getTwitchSettings(),
+    prisma.creatorPolicy.findUnique({ where: { creatorId } }),
+  ]);
+  return { othersFollowing, autoDownload: rulesDownload(platform, settings, stored) };
 }
 
+/** Each video in a playlist is decided with its own channel's rules under the playlist's. */
 export async function playlistFollowersLeft(playlistId: string, canManage: boolean): Promise<FollowersLeft> {
   const othersFollowing = await prisma.creatorPlaylistSubscription.count({ where: { playlistId } });
   if (!canManage) return { othersFollowing };
-  return { othersFollowing, autoDownload: othersFollowing > 0 && await playlistAutoDownloads(playlistId) };
+  if (othersFollowing === 0) return { othersFollowing, autoDownload: false };
+  const [settings, list, channels] = await Promise.all([
+    getYoutubeSettings(),
+    prisma.creatorPlaylist.findUnique({ where: { id: playlistId }, select: { policy: true } }),
+    prisma.creatorPolicy.findMany({
+      where: { creator: { videos: { some: { playlists: { some: { playlistId } } } } } },
+      select: { policy: true, typePolicies: true },
+    }),
+  ]);
+  const own = sanitizeLayer(list?.policy);
+  // A channel with no rule of its own, including one not in the playlist yet.
+  const autoDownload = [null, ...channels].some((channel) => rulesDownload('YOUTUBE', settings, channel, own));
+  return { othersFollowing, autoDownload };
 }
