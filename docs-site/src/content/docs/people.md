@@ -71,7 +71,11 @@ open your account and **Turn off** two-step sign-in, which also signs you out ev
 or send you a new password-reset link, which turns it off when you use it. Either way you then
 sign in with your password alone and can turn it on again. The admin created from
 `APP_PASSWORD` can also be recovered with `HELPRR_ADMIN_PASSWORD_RESET`, which turns its
-two-step sign-in off too.
+two-step sign-in off too. An admin can also make a reset link for themselves in
+**Settings → Users**; while their two-step sign-in is on, that asks for their current
+password and a code or recovery code first. Using it sets a new password, signs them out
+everywhere and turns their two-step sign-in off. Without the phone and the recovery codes,
+ask another admin to make the link instead.
 
 ## Your data
 
@@ -99,4 +103,7 @@ any reset link made for them.
 
 The same page holds your **API tokens**, for reading Helprr from Shortcuts and
 dashboards: see [Status API and tokens](/helprr/status-api/). A password change, a
-reset or a disabled account ends them too.
+reset or a disabled account ends them too. Admins can make them; a member needs the
+**Make personal API tokens** permission (off by default), and their tokens stop working
+if it is turned off again. Admins see each person's tokens in **Settings → Users** and
+can **Turn off** any of them.

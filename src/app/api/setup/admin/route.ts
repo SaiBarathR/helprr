@@ -11,6 +11,7 @@ import {
 } from '@/lib/first-admin';
 import { enforceGlobalLoginBackstop, enforceLoginRateLimit, getClientIp } from '@/lib/login-rate-limit';
 import { isHttpsRequest } from '@/lib/request-utils';
+import { clearSignedOutMarker } from '@/lib/signed-out-marker';
 import { boundedBodyErrorResponse, readBoundedJson } from '@/lib/server/bounded-body';
 import { LOGIN_BODY_MAX_BYTES } from '@/lib/server/login-input';
 import { recordSecurityEvent } from '@/lib/security-audit';
@@ -69,7 +70,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     targetType: 'user',
     targetId: admin.id,
     targetLabel: admin.username,
-    fields: ['username', 'role', 'password'],
+    fields: ['username', `made ${admin.role}`, 'password'],
   });
 
   const token = await createSession({
@@ -87,6 +88,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     maxAge: SESSION_DURATION,
     path: '/',
   });
+  clearSignedOutMarker(response, request);
   return response;
 }
 

@@ -48,10 +48,10 @@ function legacyHash(plain: string, { N = 1024, r = 8, p = 1, keylen = 64, saltBy
   return ['scrypt', N, r, p, salt.toString('base64'), derived.toString('base64')].join('$');
 }
 
-function loginRequest(password: string) {
+function loginRequest(password: string, cookie?: string) {
   return new NextRequest('http://localhost/api/auth/login', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
     body: JSON.stringify({ username: 'member', password }),
   });
 }
@@ -98,6 +98,15 @@ describe('passwordHashNeedsUpgrade', () => {
 });
 
 describe('POST /api/auth/login password rehash', () => {
+  it('clears the signed-out marker on a successful sign-in, and sets none otherwise', async () => {
+    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: await hashPassword(TYPED), totpEnabledAt: null });
+
+    const cleared = (await login(loginRequest(TYPED, 'helprr-signed-out=1'))).headers.getSetCookie();
+    expect(cleared.some((c) => c.startsWith('helprr-signed-out=;') && c.includes('Max-Age=0'))).toBe(true);
+    const plain = (await login(loginRequest(TYPED))).headers.getSetCookie();
+    expect(plain.some((c) => c.startsWith('helprr-signed-out'))).toBe(false);
+  });
+
   it('does not rewrite a current-policy hash', async () => {
     mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: await hashPassword(TYPED), totpEnabledAt: null });
 

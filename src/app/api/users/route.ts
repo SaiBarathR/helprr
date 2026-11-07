@@ -117,7 +117,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       fields: [
         'username',
         'displayName',
-        'role',
+        // The role as given, like an edit's "made admin", so the log answers who gave whom admin.
+        `made ${created.role}`,
         ...(passwordHash ? ['password'] : []),
         ...(jellyfinUserId ? ['jellyfinUserId'] : []),
         ...(seerrUserId ? ['seerrUserId'] : []),

@@ -1,24 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
-import {
-  clearUsernameBackoff,
-  recordGlobalLoginFailure,
-  recordUsernameFailure,
-} from '@/lib/login-rate-limit';
 import { boundedBodyErrorResponse, readBoundedJson } from '@/lib/server/bounded-body';
-import { confirmCurrentPassword } from '@/lib/server/confirm-password';
+import { confirmPasswordAndSecondFactor } from '@/lib/server/confirm-password';
 import { withApiLogging } from '@/lib/api-logger';
-import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
-import { randomUUID } from 'crypto';
-import {
-  clearMfaAttempts,
-  consumeSecondFactor,
-  isTotpEnabled,
-  mfaLockedResponse,
-  secondFactorKind,
-  startMfaAttempt,
-} from '@/lib/totp';
+import { recordSecurityEvent } from '@/lib/security-audit';
+import { isTotpEnabled } from '@/lib/totp';
 
 const BODY_MAX_BYTES = 8 * 1024;
 
@@ -65,26 +52,9 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Two-step sign-in is already off' }, { status: 409 });
   }
 
-  const passwordError = await confirmCurrentPassword(request, user, currentPassword);
-  if (passwordError) return passwordError;
-
-  let gate: Awaited<ReturnType<typeof startMfaAttempt>>;
-  try {
-    gate = await startMfaAttempt(user.id, secondFactorKind(code));
-  } catch {
-    return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
-  }
-  if (!gate.ok) return mfaLockedResponse(gate.reason === 'locked' ? gate.retryMs : 60_000);
-
-  const factor = await consumeSecondFactor(user, code);
-  if (!factor) {
-    await recordUsernameFailure(user.username, randomUUID());
-    await recordGlobalLoginFailure();
-    await recordFailedSignIn(request, { username: user.username, method: 'totp', user, actor: user });
-    return NextResponse.json({ error: 'That code didn’t work. Try again.', field: 'code' }, { status: 403 });
-  }
-  await clearMfaAttempts(user.id);
-  await clearUsernameBackoff(user.username);
+  const confirmed = await confirmPasswordAndSecondFactor(request, user, currentPassword, code);
+  if (!confirmed.ok) return confirmed.response;
+  const { factor } = confirmed;
 
   await prisma.$transaction([
     prisma.user.updateMany({

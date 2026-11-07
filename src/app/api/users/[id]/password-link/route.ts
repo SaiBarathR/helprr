@@ -5,7 +5,15 @@ import { withApiLogging } from '@/lib/api-logger';
 import { issuePasswordLink, passwordLinkPurposeFor, revokePasswordLink } from '@/lib/password-links';
 import { recordSecurityEvent } from '@/lib/security-audit';
 import { boundedBodyErrorResponse, readBoundedJson } from '@/lib/server/bounded-body';
+import { confirmPasswordAndSecondFactor } from '@/lib/server/confirm-password';
+import { isTotpEnabled } from '@/lib/totp';
 import { configuredAppOrigin, INVALID_APP_ORIGIN_LINK_ERROR, isAppOriginInvalid } from '@/lib/request-utils';
+
+const SELF_LINK_NEEDS_FACTORS =
+  'To make a reset link for yourself while your two-step sign-in is on, enter your current password and a code from your authenticator app (or a recovery code).';
+const BODY_MAX_BYTES = 8 * 1024;
+
+class TwoStepTurnedOnError extends Error {}
 
 /**
  * Make a new invite link (pending user) or password-reset link (active local
@@ -13,6 +21,12 @@ import { configuredAppOrigin, INVALID_APP_ORIGIN_LINK_ERROR, isAppOriginInvalid 
  * database keeps its hash. `origin` is the configured APP_ORIGIN the link is
  * built on (null: unset, and the page uses its own address). A set but invalid
  * APP_ORIGIN makes no link rather than one on the wrong address.
+ *
+ * A reset link for your own account while your two-step sign-in is on needs
+ * your current password and a code (or a recovery code), checked as turning
+ * two-step sign-in off checks them: using the link turns it off, so a
+ * signed-in session alone must not be able to make one. Links for other
+ * people need neither.
  */
 async function postHandler(
   request: NextRequest,
@@ -20,9 +34,11 @@ async function postHandler(
 ): Promise<NextResponse> {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
-  // JSON only (the body itself is unused), so a same-site form cannot replace a link.
+  // JSON only, so a same-site form cannot replace a link. The body is read only
+  // for your own reset link (the password and code).
+  let body: unknown;
   try {
-    await readBoundedJson<unknown>(request, 1024);
+    body = await readBoundedJson<unknown>(request, BODY_MAX_BYTES);
   } catch (error) {
     const response = boundedBodyErrorResponse(error);
     if (!response) throw error;
@@ -52,7 +68,58 @@ async function postHandler(
     return NextResponse.json({ error: INVALID_APP_ORIGIN_LINK_ERROR }, { status: 500 });
   }
 
-  const link = await issuePasswordLink(prisma, { userId: user.id, purpose, createdById: admin.user.id });
+  const isSelf = purpose === 'reset' && user.id === admin.user.id;
+  let confirmedSecondFactor = false;
+  // admin.user is read from the database for this request; the link is then
+  // made under a lock that checks again (below).
+  if (isSelf && isTotpEnabled(admin.user)) {
+    const { currentPassword, code } = (body && typeof body === 'object' && !Array.isArray(body) ? body : {}) as {
+      currentPassword?: unknown;
+      code?: unknown;
+    };
+    if (
+      typeof currentPassword !== 'string' || currentPassword.length === 0
+      || typeof code !== 'string' || code.trim().length === 0 || code.length > 64
+    ) {
+      return NextResponse.json({ error: SELF_LINK_NEEDS_FACTORS, needsSecondFactor: true }, { status: 403 });
+    }
+    const confirmed = await confirmPasswordAndSecondFactor(request, admin.user, currentPassword, code);
+    if (!confirmed.ok) return confirmed.response;
+    confirmedSecondFactor = true;
+    if (confirmed.factor === 'recovery-code') {
+      await recordSecurityEvent(request, {
+        actor: admin.user,
+        action: 'MFA_RECOVERY_CODE_USED',
+        targetType: 'user',
+        targetId: admin.user.id,
+        targetLabel: admin.user.username,
+        fields: ['reset-link'],
+      });
+    }
+  }
+
+  let link: Awaited<ReturnType<typeof issuePasswordLink>>;
+  if (isSelf) {
+    // Holding your user row, as turning two-step sign-in on does: if it was
+    // turned on since this request read it, the link needs the password and
+    // code too; if it is turned on after, that ends the link (enable route).
+    try {
+      link = await prisma.$transaction(async (tx) => {
+        const [row] = await tx.$queryRaw<Array<{ totpEnabledAt: Date | null }>>`
+          SELECT "totpEnabledAt" FROM "User" WHERE "id" = ${user.id} FOR UPDATE`;
+        // Only the two-step sign-in the password and code were checked against:
+        // one turned off and on again meanwhile needs them again.
+        const confirmedFor = confirmedSecondFactor ? admin.user.totpEnabledAt?.getTime() : undefined;
+        if (row?.totpEnabledAt != null && row.totpEnabledAt.getTime() !== confirmedFor) throw new TwoStepTurnedOnError();
+        return issuePasswordLink(tx, { userId: user.id, purpose, createdById: admin.user.id });
+      });
+    } catch (error) {
+      if (!(error instanceof TwoStepTurnedOnError)) throw error;
+      return NextResponse.json({ error: SELF_LINK_NEEDS_FACTORS, needsSecondFactor: true }, { status: 403 });
+    }
+  } else {
+    link = await issuePasswordLink(prisma, { userId: user.id, purpose, createdById: admin.user.id });
+  }
   await recordSecurityEvent(request, {
     actor: admin.user,
     action: purpose === 'reset'

@@ -36,6 +36,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/settings/anime-mappings',
     'GET /api/setup-checklist',
     'GET /api/users/[id]/permissions',
+    'GET /api/users/[id]/api-tokens',
     'GET /api/users/[id]',
     'GET /api/users',
   ],
@@ -561,7 +562,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(285);
+    expect(handlers.size).toBe(286);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

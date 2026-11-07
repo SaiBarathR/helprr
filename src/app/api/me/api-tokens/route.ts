@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { currentSessionIsTrusted, requireUser } from '@/lib/auth';
+import { currentSessionIsTrusted, requireUser, requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { API_TOKEN_SCOPES, isApiTokenScope } from '@/lib/api-token-scopes';
 import {
@@ -10,6 +10,7 @@ import {
   MAX_API_TOKEN_EXPIRY_DAYS,
   MAX_API_TOKENS,
 } from '@/lib/api-tokens';
+import { can } from '@/lib/permissions';
 import { recordSecurityEvent } from '@/lib/security-audit';
 
 // The signed-in user's own personal API tokens for the read-only status API.
@@ -21,7 +22,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Each token's name, scopes (and which of them the owner still holds), expiry,
- * and when it was made and last used, plus the scopes a new token may have.
+ * and when it was made and last used, plus whether the owner may make and use
+ * tokens (api.tokens) and the scopes a new token may have.
  */
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUser();
@@ -43,6 +45,7 @@ async function getHandler(): Promise<NextResponse> {
       createdAt: row.createdAt.toISOString(),
       lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
     })),
+    allowed: can(user, 'api.tokens'),
     grantableScopes: grantableScopes(user, API_TOKEN_SCOPES.map((def) => def.scope)),
     max: MAX_API_TOKENS,
   });
@@ -64,7 +67,7 @@ class SessionEndedError extends Error {}
 
 /** Make a token ({ name, scopes: string[], expiresInDays: number | null }); the response holds it once. */
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('api.tokens');
   if (!auth.ok) return auth.response;
   const { user, session } = auth;
   // A token works straight against Helprr, so one made from a proxy sign-in

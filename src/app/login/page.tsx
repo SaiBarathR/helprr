@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -64,6 +64,8 @@ export default function LoginPage() {
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [useRecoveryCode, setUseRecoveryCode] = useState(false);
+  // Signed out with the sign-in proxy on: wait for a tap before trying it.
+  const [signedOut, setSignedOut] = useState(false);
   // When the server returns 429, hold the retry deadline (epoch ms) so the error
   // can count down live instead of showing a frozen "try again in N seconds".
   const [retryAt, setRetryAt] = useState<number | null>(null);
@@ -118,50 +120,72 @@ export default function LoginPage() {
     };
   }, []);
 
-  // Trusted-header sign-in: when the server says it is on, try it once. Through
-  // the sign-in proxy that signs the visitor straight in; any other way (such
-  // as Helprr's own port) gets a 401, and the form stays as it is.
+  // Trusted-header sign-in, one attempt. Through the sign-in proxy that signs
+  // the visitor straight in; any other way (such as Helprr's own port) gets a
+  // 401, and the form stays as it is. Resolves true when it signed in.
+  const tryTrustedSignIn = useCallback(async (isActive: () => boolean): Promise<boolean> => {
+    setPending('trusted');
+    setError('');
+    let signedIn = false;
+    try {
+      const res = await fetch('/api/auth/trusted', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      if (!isActive()) return false;
+      if (res.ok) {
+        storeMfaPending(null);
+        await completeBrowserSignIn();
+        router.replace(getPostLoginTarget());
+        router.refresh();
+        signedIn = true;
+        return true;
+      }
+      const retryAfter = res.status === 429 ? Number(res.headers.get('Retry-After')) : NaN;
+      if (Number.isFinite(retryAfter) && retryAfter > 0) {
+        setNowMs(Date.now());
+        setRetryAt(Date.now() + retryAfter * 1000);
+      } else if (res.status !== 401) {
+        const data = (await res.json().catch(() => ({}))) as { error?: unknown };
+        if (isActive() && typeof data.error === 'string') setError(data.error);
+      }
+    } catch (error) {
+      if (isActive()) setError(error instanceof Error ? error.message : 'Something went wrong');
+    } finally {
+      // Stays pending once signed in, so the button cannot sign in twice while the app loads.
+      if (isActive() && !signedIn) setPending((current) => (current === 'trusted' ? null : current));
+    }
+    return false;
+  }, [router]);
+
+  // When the server says trusted-header sign-in is on, try it once, unless this
+  // browser just signed out: then wait for a tap on Sign in, so signing out
+  // does not sign straight back in.
   useEffect(() => {
     let active = true;
     void (async () => {
-      const enabled = await fetch('/api/auth/trusted', { cache: 'no-store' })
+      const state = await fetch('/api/auth/trusted', { cache: 'no-store' })
         .then((res) => (res.ok ? res.json() : null))
-        .then((state: { enabled?: unknown } | null) => state?.enabled === true)
-        .catch(() => false);
-      if (!active || !enabled) return;
-      setPending('trusted');
-      try {
-        const res = await fetch('/api/auth/trusted', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-        });
-        if (!active) return;
-        if (res.ok) {
-          storeMfaPending(null);
-          await completeBrowserSignIn();
-          router.replace(getPostLoginTarget());
-          router.refresh();
-          return;
-        }
-        const retryAfter = res.status === 429 ? Number(res.headers.get('Retry-After')) : NaN;
-        if (Number.isFinite(retryAfter) && retryAfter > 0) {
-          setNowMs(Date.now());
-          setRetryAt(Date.now() + retryAfter * 1000);
-        } else if (res.status !== 401) {
-          const data = (await res.json().catch(() => ({}))) as { error?: unknown };
-          if (active && typeof data.error === 'string') setError(data.error);
-        }
-      } catch (error) {
-        if (active) setError(error instanceof Error ? error.message : 'Something went wrong');
-      } finally {
-        if (active) setPending((current) => (current === 'trusted' ? null : current));
+        .then((body: { enabled?: unknown; signedOut?: unknown } | null) => body)
+        .catch(() => null);
+      if (!active || state?.enabled !== true) return;
+      if (state.signedOut === true) {
+        setSignedOut(true);
+        return;
       }
+      await tryTrustedSignIn(() => active);
     })();
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [tryTrustedSignIn]);
+
+  async function signInAgain() {
+    if (pending) return;
+    // Not through the proxy (or it refused): the normal form, with any error.
+    if (!(await tryTrustedSignIn(() => true))) setSignedOut(false);
+  }
 
   // Tick once a second while a retry countdown is active; clear it when it hits 0.
   useEffect(() => {
@@ -269,7 +293,9 @@ export default function LoginPage() {
           </div>
           <CardTitle className="text-2xl font-bold">Helprr</CardTitle>
           <p className="text-sm text-muted-foreground">
-            {mfaToken ? 'Two-step sign-in' : pending === 'trusted' ? 'Signing you in…' : 'Sign in to continue'}
+            {mfaToken
+              ? 'Two-step sign-in'
+              : pending === 'trusted' ? 'Signing you in…' : signedOut ? 'Signed out' : 'Sign in to continue'}
           </p>
         </CardHeader>
         <CardContent>
@@ -330,6 +356,19 @@ export default function LoginPage() {
                 </button>
               </div>
             </form>
+          ) : signedOut ? (
+            <div className="space-y-4">
+              {errorText}
+              <Button
+                type="button"
+                className="w-full"
+                disabled={pending !== null || retrySeconds > 0}
+                onClick={() => void signInAgain()}
+              >
+                {pending === 'trusted' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Sign in
+              </Button>
+            </div>
           ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input

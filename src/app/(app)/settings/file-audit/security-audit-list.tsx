@@ -166,11 +166,15 @@ function summary(record: SecurityAuditRecord): string {
       else if (record.fields?.[0] === 'admin-password-reset') parts.push('HELPRR_ADMIN_PASSWORD_RESET at start-up');
       break;
     case 'MFA_RECOVERY_CODE_USED':
-      parts.push(record.fields?.[0] === 'turn-off' ? 'to turn off two-step sign-in' : 'to sign in');
+      parts.push(record.fields?.[0] === 'turn-off'
+        ? 'to turn off two-step sign-in'
+        : record.fields?.[0] === 'reset-link' ? 'to make a reset link for themselves' : 'to sign in');
       break;
     case 'API_TOKEN_REVOKED':
       // fields: 'password' or 'status' when a password reset or a disable ended the user's tokens.
-      if (record.fields?.[0] === 'admin-password-reset') parts.push(`${plural(record.count, 'token')} ended by HELPRR_ADMIN_PASSWORD_RESET at start-up`);
+      // fields: 'admin' and the token's name when an admin turned off someone's token.
+      if (record.fields?.[0] === 'admin') parts.push(record.fields[1] ? `“${record.fields[1]}” turned off by an admin` : 'turned off by an admin');
+      else if (record.fields?.[0] === 'admin-password-reset') parts.push(`${plural(record.count, 'token')} ended by HELPRR_ADMIN_PASSWORD_RESET at start-up`);
       else if (record.fields?.length) parts.push(`${plural(record.count, 'token')} ended by a ${record.fields[0]} change`);
       break;
     case 'INVITE_LINK_FAILED':

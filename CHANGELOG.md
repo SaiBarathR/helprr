@@ -12,7 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Sign in once, at the proxy**: behind Authelia, Authentik or another proxy that asks for
   its own sign-in, Helprr can sign in the matching existing account from a header the proxy
   sends, proven by a shared secret (`HELPRR_TRUSTED_AUTH_HEADER`,
-  `HELPRR_TRUSTED_AUTH_SECRET`). Off unless both are set. See the HTTPS guide.
+  `HELPRR_TRUSTED_AUTH_SECRET`). Off unless both are set. See the HTTPS guide. Signing out
+  of Helprr then shows *Signed out* and waits for a tap on **Sign in**, instead of signing
+  straight back in.
+- **Personal API tokens** and a read-only status API (`/api/v1/summary`, `/api/v1/queue`)
+  for iOS Shortcuts, Homepage and other dashboards: Settings → Sessions → API tokens.
+  Admins can make them; members only when an admin turns on **Make personal API tokens**
+  for them (their tokens stop working while it is off). Admins see each person's tokens
+  in Settings → Users and can turn any of them off.
+
+### Changed
+
+- An admin's own password-reset link turns their two-step sign-in off too, as it does for
+  everyone else (when the link was made after two-step sign-in was turned on). Making that
+  link while two-step sign-in is on asks for the admin's password and a code first.
+- Settings → Users shows *two-step off* as well as *two-step on* for accounts with a
+  Helprr password. The security log records the role a new user was given ("made
+  admin"), and names the admin who made the reset link that turned two-step sign-in off.
 
 ## [1.14.0] - 2026-11-06
 

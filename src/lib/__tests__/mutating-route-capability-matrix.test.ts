@@ -40,8 +40,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     // Turning off one's own calendar link needs no capability.
     'DELETE /api/calendar/feed-token/[id]',
     'POST /api/logs/client',
-    // One's own personal API tokens: their scopes are checked against the owner's capabilities.
-    'POST /api/me/api-tokens',
+    // Turning off one's own personal API token needs no capability.
     'DELETE /api/me/api-tokens/[id]',
     'DELETE /api/me',
     'POST /api/me/password',
@@ -89,7 +88,11 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/users/[id]/password-link',
     'DELETE /api/users/[id]/password-link',
     'DELETE /api/users/[id]/totp',
+    // Turning off someone else's personal API token.
+    'DELETE /api/users/[id]/api-tokens/[tokenId]',
   ],
+  // One's own personal API tokens: their scopes are checked against the owner's capabilities too.
+  'cap:api.tokens': ['POST /api/me/api-tokens'],
   'cap:activity.manage': [
     'POST /api/manual-downloads/[id]/cancel',
     'POST /api/manual-downloads/[id]/import',
@@ -601,7 +604,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(271);
+    expect(handlers.size).toBe(272);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

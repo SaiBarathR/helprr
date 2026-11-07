@@ -23,7 +23,9 @@ class AccountChangedError extends Error {}
  * returns them once; only their hashes are kept. Tries count toward the same
  * hourly cap as codes at sign-in, so a session alone cannot guess its way in.
  * With signOutOtherDevices: true, every other session of the user ends in the
- * same transaction; this one stays.
+ * same transaction; this one stays. A reset link the user made for themselves
+ * (an admin) ends too: made without the password and a code, it must not
+ * later turn off the two-step sign-in being turned on here.
  */
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUser();
@@ -71,6 +73,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   const recovery = generateRecoveryCodes();
   let revokedSessions = 0;
+  let endedOwnResetLink = false;
   try {
     revokedSessions = await prisma.$transaction(async (tx) => {
       // Only the secret this code was checked against, and only if setup was not finished meanwhile.
@@ -79,6 +82,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         data: { totpEnabledAt: new Date(), totpLastUsedStep: step },
       });
       if (updated.count === 0) throw new AccountChangedError();
+      // After the row update, which holds the row the self reset link route locks.
+      const ended = await tx.passwordLink.deleteMany({ where: { userId: user.id, purpose: 'reset', createdById: user.id } });
+      endedOwnResetLink = ended.count > 0;
       await tx.recoveryCode.deleteMany({ where: { userId: user.id } });
       await tx.recoveryCode.createMany({
         data: recovery.hashes.map((codeHash) => ({ userId: user.id, codeHash })),
@@ -106,6 +112,16 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     targetLabel: user.username,
     fields: ['totp'],
   });
+  if (endedOwnResetLink) {
+    await recordSecurityEvent(request, {
+      actor: user,
+      action: 'RESET_LINK_REVOKED',
+      targetType: 'user',
+      targetId: user.id,
+      targetLabel: user.username,
+      fields: ['totp'],
+    });
+  }
   if (revokedSessions > 0) {
     await recordSecurityEvent(request, {
       actor: user,

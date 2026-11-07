@@ -15,6 +15,7 @@ import {
 } from '@/lib/login-rate-limit';
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
+import { clearSignedOutMarker } from '@/lib/signed-out-marker';
 import { boundedBodyErrorResponse, readBoundedJson } from '@/lib/server/bounded-body';
 import { LOGIN_BODY_MAX_BYTES } from '@/lib/server/login-input';
 import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
@@ -168,6 +169,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     maxAge: SESSION_DURATION,
     path: '/',
   });
+  clearSignedOutMarker(response, request);
 
   return response;
 }

@@ -53,13 +53,17 @@ describe.skipIf(!url)('password links against PostgreSQL', () => {
     expect(await prisma.session.count({ where: { userId: 'u1', revokedAt: null } })).toBe(0);
   });
 
-  it("a reset link an admin made turns two-step sign-in off with the password, once; the user's own leaves it on", async () => {
+  it("a reset link made after two-step sign-in was on turns it off with the password, once, an admin's own link too", async () => {
     await user('u4', 'active', 'old-hash');
     await user('u5', 'active', 'old-hash');
+    await user('u6', 'active', 'old-hash');
+    await user('boss', 'active', 'old-hash');
     const on = { totpSecret: 'enc:v1:x', totpEnabledAt: new Date(Date.now() - 60_000), totpLastUsedStep: 3 };
-    await prisma.user.updateMany({ where: { id: { in: ['u4', 'u5'] } }, data: on });
-    await prisma.recoveryCode.createMany({ data: [{ userId: 'u4', codeHash: 'a' }, { userId: 'u4', codeHash: 'b' }, { userId: 'u5', codeHash: 'c' }] });
-    const admins = await links.issuePasswordLink(prisma, { userId: 'u4', purpose: 'reset', createdById: 'admin' });
+    await prisma.user.updateMany({ where: { id: { in: ['u4', 'u5', 'u6'] } }, data: on });
+    await prisma.recoveryCode.createMany({ data: [
+      { userId: 'u4', codeHash: 'a' }, { userId: 'u4', codeHash: 'b' }, { userId: 'u5', codeHash: 'c' }, { userId: 'u6', codeHash: 'd' },
+    ] });
+    const admins = await links.issuePasswordLink(prisma, { userId: 'u4', purpose: 'reset', createdById: 'boss' });
     const own = await links.issuePasswordLink(prisma, { userId: 'u5', purpose: 'reset', createdById: 'u5' });
 
     const results = await Promise.all([
@@ -68,19 +72,21 @@ describe.skipIf(!url)('password links against PostgreSQL', () => {
     ]);
     expect(results.filter((r) => r?.mfaDisabled === true)).toHaveLength(1);
     expect(results.filter((r) => r === null)).toHaveLength(1);
+    expect(results.find((r) => r !== null)?.linkCreator).toEqual({ id: 'boss', username: 'boss' });
     expect(await prisma.user.findUniqueOrThrow({ where: { id: 'u4' } }))
       .toMatchObject({ totpSecret: null, totpEnabledAt: null, totpLastUsedStep: null });
     expect(await prisma.recoveryCode.count({ where: { userId: 'u4' } })).toBe(0);
 
-    expect(await links.redeemPasswordLink(own.token, 'hash-c')).toMatchObject({ mfaEnabled: true, mfaDisabled: false });
-    expect(await prisma.user.findUniqueOrThrow({ where: { id: 'u5' } })).toMatchObject({ passwordHash: 'hash-c', totpSecret: 'enc:v1:x' });
-    expect(await prisma.recoveryCode.count({ where: { userId: 'u5' } })).toBe(1);
+    expect(await links.redeemPasswordLink(own.token, 'hash-c'))
+      .toMatchObject({ mfaEnabled: false, mfaDisabled: true, linkCreator: { id: 'u5', username: 'u5' } });
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: 'u5' } })).toMatchObject({ passwordHash: 'hash-c', totpSecret: null });
+    expect(await prisma.recoveryCode.count({ where: { userId: 'u5' } })).toBe(0);
 
     // A link made before two-step sign-in was turned on does not remove it.
-    const early = await links.issuePasswordLink(prisma, { userId: 'u5', purpose: 'reset', createdById: 'admin' });
-    await prisma.user.update({ where: { id: 'u5' }, data: { totpEnabledAt: new Date(Date.now() + 1_000) } });
+    const early = await links.issuePasswordLink(prisma, { userId: 'u6', purpose: 'reset', createdById: 'u4' });
+    await prisma.user.update({ where: { id: 'u6' }, data: { totpEnabledAt: new Date(Date.now() + 1_000) } });
     expect(await links.redeemPasswordLink(early.token, 'hash-d')).toMatchObject({ mfaEnabled: true, mfaDisabled: false });
-    expect(await prisma.recoveryCode.count({ where: { userId: 'u5' } })).toBe(1);
+    expect(await prisma.recoveryCode.count({ where: { userId: 'u6' } })).toBe(1);
   });
 
   it('activates an invited user once, and keeps only the hash', async () => {

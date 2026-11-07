@@ -6,8 +6,8 @@ import { prisma } from '@/lib/db';
  * Single-use links an admin hands to someone so they set their own local
  * password (Settings -> Users). An invite activates a pending user; a reset
  * replaces an active user's password, revokes every session of theirs and
- * turns off their two-step sign-in (the way back for a lost phone), when an
- * admin made the link after it was turned on.
+ * turns off their two-step sign-in (the way back for a lost phone), when the
+ * link was made after it was turned on (an admin's own link included).
  *
  * The token is 32 random bytes; only its SHA-256 is stored, so a database read
  * never yields a working link. Each user has at most one link: issuing another
@@ -135,6 +135,8 @@ export async function redeemPasswordLink(
   mfaEnabled: boolean;
   /** This reset turned two-step sign-in off. */
   mfaDisabled: boolean;
+  /** Who made the link, when that account still exists: the one who turned two-step sign-in off. */
+  linkCreator: { id: string; username: string } | null;
 } | null> {
   if (!isWellFormedPasswordLinkToken(token)) return null;
   const tokenHash = hashPasswordLinkToken(token);
@@ -155,13 +157,12 @@ export async function redeemPasswordLink(
       const mfa = await tx.user.findUnique({ where: { id: link.userId }, select: { totpEnabledAt: true } });
       const enabledAt = mfa ? mfa.totpEnabledAt : undefined;
       const mfaWasOn = enabledAt !== null;
-      // A reset an admin made after it was turned on is how someone who lost
-      // their phone gets back in. One the user made for themselves is not (a
-      // signed-in session alone must not remove its own second factor), and
-      // nor is an older link, which predates the second factor it would remove.
+      // A reset made after it was turned on is how someone who lost their
+      // phone gets back in, an admin with their own link too (it still takes
+      // the link and a new password, and signs out every session). An older
+      // link is not: it predates the second factor it would remove.
       const mfaDisabled = enabledAt instanceof Date
         && link.purpose === 'reset'
-        && link.createdById !== link.userId
         && link.createdAt.getTime() > enabledAt.getTime();
       if (mfaDisabled) {
         await tx.user.updateMany({
@@ -181,6 +182,9 @@ export async function redeemPasswordLink(
       // The calendar feed link is a credential too; a reset ends it with the sessions.
       const feed = await tx.calendarFeedToken.deleteMany({ where: { userId: link.userId } });
       const apiTokens = await tx.apiToken.deleteMany({ where: { userId: link.userId } });
+      const linkCreator = link.createdById
+        ? await tx.user.findUnique({ where: { id: link.createdById }, select: { id: true, username: true } })
+        : null;
       return {
         id: link.user.id,
         username: link.user.username,
@@ -191,6 +195,7 @@ export async function redeemPasswordLink(
         apiTokensRevoked: apiTokens.count,
         mfaEnabled: mfaWasOn && !mfaDisabled,
         mfaDisabled,
+        linkCreator,
       };
     });
   } catch (error) {

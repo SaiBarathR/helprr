@@ -260,7 +260,7 @@ describe('Jellyfin sign-in', () => {
 });
 
 describe('users', () => {
-  it('records a created user with the fields set, never the password', async () => {
+  it('records a created user with the fields set and the role given, never the password', async () => {
     mocks.db.user.create.mockImplementation(async ({ data }) => ({ ...member, ...data, id: 'user-2' }));
     const response = await createUser(req('/api/users', 'POST', {
       username: 'newbie', displayName: 'New', password: PASSWORD, role: 'admin',
@@ -268,9 +268,18 @@ describe('users', () => {
     expect(response.status).toBe(201);
     expect(events()).toEqual([expect.objectContaining({
       action: 'USER_CREATED', actorUserId: 'admin-1', actorUsername: 'admin', targetId: 'user-2', targetLabel: 'newbie',
-      fields: ['username', 'displayName', 'role', 'password'],
+      fields: ['username', 'displayName', 'made admin', 'password'],
     })]);
     expectNoSecrets();
+  });
+
+  it('records a member created without a password as made member', async () => {
+    mocks.db.user.create.mockImplementation(async ({ data }) => ({ ...member, ...data, id: 'user-3' }));
+    const response = await createUser(req('/api/users', 'POST', { username: 'kid', displayName: 'Kid', jellyfinUserId: 'jf-9' }));
+    expect(response.status).toBe(201);
+    expect(events()[0]).toEqual(expect.objectContaining({
+      action: 'USER_CREATED', fields: ['username', 'displayName', 'made member', 'jellyfinUserId'],
+    }));
   });
 
   it('records a role change and a password reset by name, with the sessions the reset signed out', async () => {

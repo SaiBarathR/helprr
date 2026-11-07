@@ -242,7 +242,8 @@ for anyone who reaches it some other way.
 - **Signing out at the proxy signs you out of Helprr** on your next tap, and so does
   someone else signing in to the proxy on the same browser: a session made this way lasts
   only while the proxy still names the same user. Signing out of Helprr alone does not
-  sign you out of the proxy, so Helprr's sign-in page signs you straight back in.
+  sign you out of the proxy: Helprr's sign-in page then says *Signed out* and waits, and
+  **Sign in** takes you back in through the proxy.
 - Sign-ins show in **Settings → Operation audit → Security** as *through the sign-in
   proxy*. A request with a wrong secret is recorded and counts toward the sign-in limits,
   like a wrong password: about 30 in 15 minutes pause every sign-in, password ones too.

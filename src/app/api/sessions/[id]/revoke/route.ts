@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { COOKIE_NAME, requireUser, revokeSession } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
+import { setSignedOutMarker } from '@/lib/signed-out-marker';
 import { recordSecurityEvent } from '@/lib/security-audit';
 
 async function postHandler(
@@ -48,6 +49,8 @@ async function postHandler(
         maxAge: 0,
         path: '/',
       });
+      // A sign-out like any other: the login page waits instead of signing back in through the proxy.
+      setSignedOutMarker(response, request);
     }
     return response;
   } catch (error) {

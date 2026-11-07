@@ -14,7 +14,8 @@ import { coarseIp, recordSecurityEvent } from '@/lib/security-audit';
 // (src/proxy.ts refuses one on any other path). Only the SHA-256 is stored (the
 // token has full entropy, so a fast hash is enough). Every request re-reads the
 // token and its owner: an expired token, or one whose owner is not active, is
-// refused, and only the scopes the owner still holds are used.
+// refused, and only the scopes the owner still holds are used. An owner who may
+// no longer make tokens (api.tokens) has every token refused.
 
 export const API_TOKEN_PREFIX = 'hlp_';
 const TOKEN_BYTES = 32;
@@ -117,8 +118,8 @@ export type ApiTokenAuthResult =
  * Authorize a status API request by its bearer token. Every refusal of the
  * token itself (missing, malformed, unknown, expired, owner not active) is the
  * same 401 and counts against the client IP, which past its cap gets 429
- * instead. A token none of whose scopes its owner still holds is a 403. Fails
- * closed (503) when Redis is down.
+ * instead. A token none of whose scopes its owner still holds, or whose owner
+ * no longer has api.tokens, is a 403. Fails closed (503) when Redis is down.
  */
 export async function authorizeApiTokenRequest(request: NextRequest, now: Date = new Date()): Promise<ApiTokenAuthResult> {
   const ip = getClientIp(request);
@@ -161,10 +162,11 @@ export async function authorizeApiTokenRequest(request: NextRequest, now: Date =
   }
   if (retryAfter > 0) return { ok: false, response: json({ error: 'Too many requests' }, 429, { 'Retry-After': String(retryAfter) }) };
 
-  await noteUse(request, row, ip, now);
-
+  // Refused before it counts as a use, so "last used" and new-network rows only follow working requests.
   const scopes = new Set(grantableScopes(row.user, row.scopes));
-  if (scopes.size === 0) return { ok: false, response: json({ error: 'Forbidden' }, 403) };
+  if (scopes.size === 0 || !can(row.user, 'api.tokens')) return { ok: false, response: json({ error: 'Forbidden' }, 403) };
+
+  await noteUse(request, row, ip, now);
   return { ok: true, user: row.user, tokenId: row.id, scopes };
 }
 

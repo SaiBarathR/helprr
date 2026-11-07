@@ -9,7 +9,9 @@ such as Scriptable. It can only read; it cannot add, remove or change anything.
 
 ## Make a token
 
-1. Open **Settings → Sessions → API tokens** and tap **New API token**.
+1. Open **Settings → Sessions → API tokens** and tap **New API token**. Admins can
+   always make tokens; a member needs an admin to turn on **Make personal API tokens**
+   for them in **Settings → Users** first.
 2. Give it a name you will recognise later, like *iPhone Shortcuts*.
 3. Tick what it may read. You can only tick what you can see in Helprr yourself.
 4. Choose when it expires (30 days, 90 days, a year, or never).
@@ -191,7 +193,9 @@ environment variable (`{{HOMEPAGE_VAR_HELPRR_TOKEN}}`) instead of in the file.
 - **One token per device or app**, with only what it needs ticked, and an expiry.
   Then turning one off affects only that one.
 - **Turn off** a token you no longer use in **Settings → Sessions → API tokens**.
-  It is refused from its next request.
+  It is refused from its next request. Admins can also turn off anyone's token in
+  **Settings → Users**, and a member's tokens stop working while **Make personal API
+  tokens** is off for them.
 - **Changing your password ends every token you have**, and so does an admin
   resetting your password, disabling your account or changing its Jellyfin link.
   **Revoke all other sessions** ends them too. Make new ones afterwards.

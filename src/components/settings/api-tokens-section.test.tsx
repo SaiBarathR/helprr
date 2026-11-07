@@ -26,6 +26,7 @@ const LIST = {
     createdAt: '2026-11-01T00:00:00Z',
     lastUsedAt: null,
   }],
+  allowed: true,
   grantableScopes: ['activity.view', 'calendar.view'],
   max: 10,
 };
@@ -53,7 +54,35 @@ afterEach(() => {
   fetchMock.mockReset();
 });
 
+function listing(body: object) {
+  fetchMock.mockImplementation(async () => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }));
+}
+
 describe('ApiTokensSection', () => {
+  it('does not say tokens are off while the list is still loading', async () => {
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+    render(<ApiTokensSection />, { wrapper });
+    expect(screen.getByText(/Read-only access for Shortcuts and dashboards/)).toBeTruthy();
+    expect(screen.queryByText(/not turned on for you/)).toBeNull();
+  });
+
+  it('without api.tokens offers no new token and says why', async () => {
+    listing({ ...LIST, tokens: [], allowed: false });
+    render(<ApiTokensSection />, { wrapper });
+    expect(await screen.findByText('Not turned on for you')).toBeTruthy();
+    expect(screen.queryByText('New API token')).toBeNull();
+    expect(screen.getByText(/Making API tokens is not turned on for you/)).toBeTruthy();
+  });
+
+  it('without api.tokens still lists old tokens, marked as not working, so they can be turned off', async () => {
+    listing({ ...LIST, allowed: false });
+    render(<ApiTokensSection />, { wrapper });
+    expect(await screen.findByText('Homepage')).toBeTruthy();
+    expect(screen.getByText('Not working: API tokens are turned off for you')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Turn off Homepage' })).toBeTruthy();
+    expect(screen.queryByText('New API token')).toBeNull();
+  });
+
   it('lists tokens, and says which scopes are not used now', async () => {
     render(<ApiTokensSection />, { wrapper });
     expect(await screen.findByText('Homepage')).toBeTruthy();

@@ -51,7 +51,7 @@ describe('session revocation routes', () => {
     mocks.updateMany.mockResolvedValue({ count: 2 });
   });
 
-  it('revokes the current session and clears its cookie', async () => {
+  it('revokes the current session, clears its cookie and leaves the signed-out marker', async () => {
     mocks.findUnique.mockResolvedValue({
       id: 'session-current',
       revokedAt: null,
@@ -67,6 +67,8 @@ describe('session revocation routes', () => {
     expect(mocks.revokeSession).toHaveBeenCalledWith('session-current');
     expect(response.headers.get('set-cookie')).toContain('helprr-session=');
     expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
+    // So proxy sign-in does not sign this browser straight back in.
+    expect(response.headers.getSetCookie().some((c) => c.startsWith('helprr-signed-out=1'))).toBe(true);
   });
 
   it('prevents a member from probing or revoking another user session', async () => {
@@ -98,6 +100,8 @@ describe('session revocation routes', () => {
 
     expect(response.status).toBe(200);
     expect(mocks.revokeSession).toHaveBeenCalledWith('other-session');
+    // Another browser's session: this one is not signed out.
+    expect(response.headers.getSetCookie()).toEqual([]);
   });
 
   it('revokes only the caller own non-current sessions in bulk', async () => {

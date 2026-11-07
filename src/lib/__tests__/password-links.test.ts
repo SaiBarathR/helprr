@@ -31,9 +31,10 @@ const db = vi.hoisted(() => {
       }),
     },
     user: {
-      findUnique: vi.fn(async ({ where }: { where: Row }) => {
+      findUnique: vi.fn(async ({ where, select }: { where: Row; select?: Row }) => {
         const row = state.users.find((u) => u.id === where.id);
-        return row ? { totpEnabledAt: row.totpEnabledAt } : null;
+        if (!row) return null;
+        return select?.username ? { id: row.id, username: row.username } : { totpEnabledAt: row.totpEnabledAt };
       }),
       updateMany: vi.fn(async ({ where, data }: { where: Row; data: Row }) => {
         const rows = state.users.filter((u) => matches(u, where));
@@ -196,25 +197,46 @@ describe('using a link', () => {
     db.state.codes.push({ id: `c-${userId}-1`, userId }, { id: `c-${userId}-2`, userId });
   }
 
-  it("a reset link an admin made turns two-step sign-in off with the new password", async () => {
+  it("a reset link an admin made turns two-step sign-in off with the new password, naming that admin", async () => {
     addUser('u1', 'active');
     addUser('u2', 'active');
+    addUser('admin', 'active');
     withTwoStep('u1');
     withTwoStep('u2');
     const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'reset', createdById: 'admin', now: NOW });
 
-    expect(await redeemPasswordLink(token, 'new-hash', NOW)).toMatchObject({ mfaEnabled: false, mfaDisabled: true });
+    expect(await redeemPasswordLink(token, 'new-hash', NOW)).toMatchObject({
+      mfaEnabled: false, mfaDisabled: true, linkCreator: { id: 'admin', username: 'admin' },
+    });
     expect(db.state.users[0]).toMatchObject({ passwordHash: 'new-hash', totpSecret: null, totpEnabledAt: null, totpLastUsedStep: null });
     expect(db.state.codes.map((c) => c.userId)).toEqual(['u2', 'u2']);
     expect(db.state.users[1].totpEnabledAt).toBe(BEFORE);
   });
 
-  it('a reset link the user made for themselves leaves two-step sign-in on', async () => {
+  it("an admin's own reset link turns their two-step sign-in off too", async () => {
     addUser('u1', 'active');
     withTwoStep('u1');
     const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'reset', createdById: 'u1', now: NOW });
+    expect(await redeemPasswordLink(token, 'new-hash', NOW)).toMatchObject({
+      mfaEnabled: false, mfaDisabled: true, linkCreator: { id: 'u1', username: 'u1' },
+    });
+    expect(db.state.users[0]).toMatchObject({ passwordHash: 'new-hash', totpSecret: null, totpEnabledAt: null });
+    expect(db.state.codes).toHaveLength(0);
+  });
+
+  it('names nobody when the admin who made the link is gone', async () => {
+    addUser('u1', 'active');
+    withTwoStep('u1');
+    const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'reset', createdById: 'deleted-admin', now: NOW });
+    expect(await redeemPasswordLink(token, 'new-hash', NOW)).toMatchObject({ mfaDisabled: true, linkCreator: null });
+  });
+
+  it("an admin's own reset link made before two-step sign-in was on leaves it on", async () => {
+    addUser('u1', 'active');
+    const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'reset', createdById: 'u1', now: BEFORE });
+    withTwoStep('u1');
+    db.state.users[0].totpEnabledAt = NOW;
     expect(await redeemPasswordLink(token, 'new-hash', NOW)).toMatchObject({ mfaEnabled: true, mfaDisabled: false });
-    expect(db.state.users[0]).toMatchObject({ passwordHash: 'new-hash', totpEnabledAt: BEFORE });
     expect(db.state.codes).toHaveLength(2);
   });
 

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   recoveryCreateMany: vi.fn(),
   transaction: vi.fn(),
   sessionUpdateMany: vi.fn(),
+  linkDeleteMany: vi.fn(),
   recordFailedSignIn: vi.fn(),
   recordSecurityEvent: vi.fn(),
   redisEval: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock('@/lib/db', () => {
     user: { updateMany: mocks.userUpdateMany },
     recoveryCode: { count: mocks.recoveryCount, deleteMany: mocks.recoveryDeleteMany, createMany: mocks.recoveryCreateMany },
     session: { updateMany: mocks.sessionUpdateMany },
+    passwordLink: { deleteMany: mocks.linkDeleteMany },
     $transaction: mocks.transaction,
   };
   return { prisma: db };
@@ -76,6 +78,7 @@ beforeEach(() => {
   mocks.recoveryCreateMany.mockResolvedValue({ count: 10 });
   mocks.recoveryCount.mockResolvedValue(10);
   mocks.sessionUpdateMany.mockResolvedValue({ count: 2 });
+  mocks.linkDeleteMany.mockResolvedValue({ count: 0 });
   mocks.redisEval.mockResolvedValue(['ok', '0']);
   mocks.redisDel.mockResolvedValue(1);
   mocks.transaction.mockImplementation(async (arg: unknown) =>
@@ -171,6 +174,12 @@ describe('setup and enable', () => {
     });
     const stored = mocks.recoveryCreateMany.mock.calls[0][0].data as Array<{ codeHash: string }>;
     expect(stored.map((row) => row.codeHash)).toEqual(recoveryCodes.map(hashRecoveryCode));
+    // A reset link this user made for themselves (an admin) ends, so it cannot turn this off later.
+    expect(mocks.linkDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1', purpose: 'reset', createdById: 'user-1' } });
+    // After the row update that holds the row the self reset link route locks.
+    expect(mocks.linkDeleteMany.mock.invocationCallOrder[0]).toBeGreaterThan(mocks.userUpdateMany.mock.invocationCallOrder[0]);
+    // Nothing ended, nothing recorded.
+    expect(mocks.recordSecurityEvent).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'RESET_LINK_REVOKED' }));
     expect(JSON.stringify(stored)).not.toContain(recoveryCodes[0]);
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'MFA_ENABLED' }));
   });
@@ -226,11 +235,21 @@ describe('setup and enable', () => {
     expect((await enablePost(req('POST', { code: code() }))).status).toBe(409);
   });
 
+  it('enable ends a reset link the user made for themselves, and records it', async () => {
+    user = { ...user, totpSecret: secret.encryptedSecret };
+    mocks.linkDeleteMany.mockResolvedValue({ count: 1 });
+    expect((await enablePost(req('POST', { code: code() }))).status).toBe(200);
+    expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      action: 'RESET_LINK_REVOKED', targetId: 'user-1', fields: ['totp'],
+    }));
+  });
+
   it('enable returns a conflict when the setup changed meanwhile', async () => {
     user = { ...user, totpSecret: secret.encryptedSecret };
     mocks.userUpdateMany.mockResolvedValue({ count: 0 });
     expect((await enablePost(req('POST', { code: code() }))).status).toBe(409);
     expect(mocks.recoveryCreateMany).not.toHaveBeenCalled();
+    expect(mocks.linkDeleteMany).not.toHaveBeenCalled();
     expect(mocks.recordSecurityEvent).not.toHaveBeenCalled();
   });
 });

@@ -21,6 +21,7 @@ import {
 } from '@/lib/login-rate-limit';
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
+import { clearSignedOutMarker } from '@/lib/signed-out-marker';
 import { readLoginCredentials } from '@/lib/server/login-input';
 import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
 import { createMfaPendingToken, isTotpEnabled } from '@/lib/totp';
@@ -144,6 +145,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     maxAge: SESSION_DURATION,
     path: '/',
   });
+  clearSignedOutMarker(response, request);
 
   return response;
 }

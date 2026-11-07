@@ -211,11 +211,11 @@ describe('Login page', () => {
   });
 
   describe('trusted-header sign-in', () => {
-    function answers(trusted: { enabled: boolean; post?: () => Response }) {
+    function answers(trusted: { enabled: boolean; signedOut?: boolean; post?: () => Response }) {
       const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
         if (url !== '/api/auth/trusted') return Response.json({ error: 'Unauthorized' }, { status: 401 });
         if (init?.method === 'POST') return trusted.post!();
-        return Response.json({ enabled: trusted.enabled });
+        return Response.json({ enabled: trusted.enabled, signedOut: trusted.signedOut ?? false });
       });
       vi.stubGlobal('fetch', fetchMock);
       return fetchMock;
@@ -248,6 +248,59 @@ describe('Login page', () => {
       expect(container.textContent).toContain('Sign in to continue');
       expect(container.textContent).not.toContain('not from the proxy');
       expect(container.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(false);
+    });
+
+    describe('after signing out', () => {
+      const signInButton = () =>
+        [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Sign in');
+
+      it('shows Signed out and waits for a tap instead of signing straight back in', async () => {
+        const fetchMock = answers({ enabled: true, signedOut: true, post: () => Response.json({ success: true }) });
+        await openLogin();
+        expect(posts(fetchMock)).toHaveLength(0);
+        expect(mocks.replace).not.toHaveBeenCalled();
+        expect(container.textContent).toContain('Signed out');
+        expect(container.querySelector('input[type="password"]')).toBeNull();
+
+        await act(async () => signInButton()!.click());
+        expect(posts(fetchMock)).toHaveLength(1);
+        expect(mocks.replace).toHaveBeenCalledWith('/');
+        // Still busy while the app loads, so a second tap cannot sign in twice.
+        expect(signInButton()?.hasAttribute('disabled')).toBe(true);
+      });
+
+      it('shows the normal form after the tap when not reached through the proxy', async () => {
+        const fetchMock = answers({
+          enabled: true,
+          signedOut: true,
+          post: () => Response.json({ error: 'not from the proxy' }, { status: 401 }),
+        });
+        await openLogin();
+        await act(async () => signInButton()!.click());
+        expect(posts(fetchMock)).toHaveLength(1);
+        expect(mocks.replace).not.toHaveBeenCalled();
+        expect(container.textContent).toContain('Sign in to continue');
+        expect(container.querySelector('input[type="password"]')).not.toBeNull();
+      });
+
+      it('keeps the error when the proxy named no Helprr account', async () => {
+        answers({
+          enabled: true,
+          signedOut: true,
+          post: () => Response.json({ error: 'Your sign-in proxy named no active Helprr account.' }, { status: 403 }),
+        });
+        await openLogin();
+        await act(async () => signInButton()!.click());
+        expect(container.textContent).toContain('Your sign-in proxy named no active Helprr account.');
+        expect(container.querySelector('input[type="password"]')).not.toBeNull();
+      });
+
+      it('ignores the marker when proxy sign-in is off', async () => {
+        const fetchMock = answers({ enabled: false, signedOut: true });
+        await openLogin();
+        expect(posts(fetchMock)).toHaveLength(0);
+        expect(container.textContent).toContain('Sign in to continue');
+      });
     });
 
     it('says why when the proxy named no Helprr account, and keeps the form', async () => {
