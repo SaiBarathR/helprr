@@ -74,6 +74,9 @@ interface DecodedToken {
 async function decodeToken(token: string): Promise<DecodedToken | null> {
   try {
     const { payload } = await measureServer('auth', () => jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] }));
+    // Session tokens never carry an audience; other signed tokens (the two-step
+    // pending token) do, and must never count as a session.
+    if (payload.aud !== undefined) return null;
     const sid = typeof payload.sid === 'string' ? payload.sid : null;
     return { sid };
   } catch {

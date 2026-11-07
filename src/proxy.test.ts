@@ -72,6 +72,13 @@ describe('proxy pass-through', () => {
     expect(jwtVerify).toHaveBeenCalledWith('valid-token', expect.anything(), { algorithms: ['HS256'] });
   });
 
+  it('refuses a token with an audience even if it names a session (e.g. a two-step pending token)', async () => {
+    jwtVerify.mockResolvedValue({ payload: { sid: 'session-1', aud: 'helprr:mfa-pending' } });
+    const api = new NextRequest('https://helprr.test/api/jellyfin/items');
+    api.cookies.set('helprr-session', 'token-with-aud');
+    expect((await proxy(api)).status).toBe(401);
+  });
+
   it('refuses a verified token without a session id', async () => {
     jwtVerify.mockResolvedValue({ payload: { sub: 'user-1' } });
     const api = new NextRequest('https://helprr.test/api/jellyfin/items');

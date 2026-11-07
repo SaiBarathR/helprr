@@ -34,6 +34,17 @@ describe('MFA pending token', () => {
     expect(mocks.sessionFindUnique).not.toHaveBeenCalled();
   });
 
+  it('a token with an audience is never a session, even with a session id', async () => {
+    const { SignJWT } = await import('jose');
+    const token = await new SignJWT({ sid: 'session-1', authenticated: true })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setAudience('helprr:mfa-pending')
+      .setExpirationTime('5m')
+      .sign(new TextEncoder().encode(process.env.JWT_SECRET));
+    expect(await verifySession(token)).toBe(false);
+    expect(mocks.sessionFindUnique).not.toHaveBeenCalled();
+  });
+
   it('carries nothing of the password hash', async () => {
     const token = await createMfaPendingToken(
       { id: 'user-1', passwordHash: 'scrypt$secret-hash', jellyfinUserId: null, totpEnabledAt: new Date() },
