@@ -22,6 +22,7 @@ import type {
   HealthCheck,
   Release,
   DownloadClient,
+  ManualImportItem,
 } from '@/types';
 
 interface SystemStatus {
@@ -232,6 +233,31 @@ export class LidarrClient {
   // Tracks & files
   async getTracks(albumId: number): Promise<LidarrTrack[]> {
     return this.get<LidarrTrack[]>('/api/v1/track', { albumId });
+  }
+
+  /** The tracks of one release of an album; a release's track ids are its own. */
+  async getReleaseTracks(albumReleaseId: number): Promise<LidarrTrack[]> {
+    return this.get<LidarrTrack[]>('/api/v1/track', { albumReleaseId });
+  }
+
+  // Manual import
+  async getManualImport(downloadId: string): Promise<ManualImportItem[]> {
+    return this.get<ManualImportItem[]>('/api/v1/manualimport', { downloadId });
+  }
+
+  // Re-runs the import decision for the files with the album the user chose:
+  // Lidarr answers with the release, tracks and rejections. No disk changes.
+  async reprocessManualImport(items: unknown[]): Promise<ManualImportItem[]> {
+    return this.post<ManualImportItem[]>('/api/v1/manualimport', items);
+  }
+
+  async submitManualImport(
+    files: unknown[],
+    importMode?: 'auto' | 'move' | 'copy'
+  ): Promise<CommandResponse> {
+    const payload: Record<string, unknown> = { name: 'ManualImport', files };
+    if (importMode) payload.importMode = importMode;
+    return this.post<CommandResponse>('/api/v1/command', payload);
   }
 
   async getTrackFiles(params: { artistId?: number; albumId?: number }): Promise<LidarrTrackFile[]> {

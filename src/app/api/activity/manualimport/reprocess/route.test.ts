@@ -2,11 +2,13 @@ import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  requireUserCapability: vi.fn(), getSonarrClient: vi.fn(), getRadarrClient: vi.fn(),
-  sonarrReprocess: vi.fn(), radarrReprocess: vi.fn(),
+  requireUserCapability: vi.fn(), getSonarrClient: vi.fn(), getRadarrClient: vi.fn(), getLidarrClient: vi.fn(),
+  sonarrReprocess: vi.fn(), radarrReprocess: vi.fn(), lidarrReprocess: vi.fn(),
 }));
 vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.requireUserCapability }));
-vi.mock('@/lib/service-helpers', () => ({ getSonarrClient: mocks.getSonarrClient, getRadarrClient: mocks.getRadarrClient }));
+vi.mock('@/lib/service-helpers', () => ({
+  getSonarrClient: mocks.getSonarrClient, getRadarrClient: mocks.getRadarrClient, getLidarrClient: mocks.getLidarrClient,
+}));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
 
 import { POST } from './route';
@@ -22,6 +24,8 @@ describe('POST /api/activity/manualimport/reprocess', () => {
     mocks.requireUserCapability.mockResolvedValue({ ok: true });
     mocks.getSonarrClient.mockResolvedValue({ reprocessManualImport: mocks.sonarrReprocess });
     mocks.getRadarrClient.mockResolvedValue({ reprocessManualImport: mocks.radarrReprocess });
+    mocks.getLidarrClient.mockResolvedValue({ reprocessManualImport: mocks.lidarrReprocess });
+    mocks.lidarrReprocess.mockResolvedValue([{ id: 1, albumReleaseId: 73 }]);
     mocks.sonarrReprocess.mockResolvedValue([{ id: 1, seasonNumber: 1 }]);
     mocks.radarrReprocess.mockResolvedValue([{ id: 1 }]);
   });
@@ -52,10 +56,20 @@ describe('POST /api/activity/manualimport/reprocess', () => {
     expect(mocks.radarrReprocess).toHaveBeenCalledWith(movieItems);
   });
 
+  it('routes Lidarr files to the chosen Lidarr instance', async () => {
+    const albumItems = [{ id: 1, path: '/downloads/album/01.flac', artistId: 8, albumId: 3, trackIds: [] }];
+    const res = await post({ source: 'lidarr', instanceId: 'lid-2', items: albumItems });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([{ id: 1, albumReleaseId: 73 }]);
+    expect(mocks.getLidarrClient).toHaveBeenCalledWith('lid-2');
+    expect(mocks.lidarrReprocess).toHaveBeenCalledWith(albumItems);
+    expect(mocks.getSonarrClient).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['a body that is not JSON', 'not json'],
     ['a body that is not an object', [items]],
-    ['an unknown source', { source: 'lidarr', items }],
+    ['an unknown source', { source: 'prowlarr', items }],
     ['no items', { source: 'sonarr', items: [] }],
     ['items that are not objects', { source: 'sonarr', items: ['/downloads/pack/a.mkv'] }],
     ['too many items', { source: 'sonarr', items: Array.from({ length: 1001 }, () => ({ id: 1 })) }],
@@ -64,5 +78,6 @@ describe('POST /api/activity/manualimport/reprocess', () => {
     expect(res.status).toBe(400);
     expect(mocks.getSonarrClient).not.toHaveBeenCalled();
     expect(mocks.getRadarrClient).not.toHaveBeenCalled();
+    expect(mocks.getLidarrClient).not.toHaveBeenCalled();
   });
 });

@@ -419,11 +419,16 @@ describe('Activity manual import from the queue', () => {
     expect(text().split(name)).toHaveLength(2);
   });
 
-  it("offers no Import for a Lidarr download, which the import page can't do", async () => {
+  it('offers Import for a Lidarr download, on its own instance', async () => {
     queueRecords = [...QUEUE, { ...BLOCKED, source: 'lidarr', instanceId: 'lid-1', title: 'Album.2026' }];
     await renderPage();
     await waitFor(() => expect(text()).toContain('Album.2026'));
-    expect(button('Import')).toBeUndefined();
+
+    await act(async () => button('Import')!.click());
+    const params = new URLSearchParams((mocks.push.mock.calls[0]?.[0] as string).split('?')[1]);
+    expect(params.get('source')).toBe('lidarr');
+    expect(params.get('instanceId')).toBe('lid-1');
+    expect(params.get('downloadId')).toBe('c');
   });
 
   it('shows an import in progress as importing until the queue drops it', async () => {

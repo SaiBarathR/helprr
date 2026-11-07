@@ -1,4 +1,4 @@
-import type { LidarrAlbum, LidarrArtist } from './lidarr';
+import type { LidarrAlbum, LidarrArtist, LidarrTrack } from './lidarr';
 import type { RadarrMovie } from './radarr';
 import type { SonarrEpisode, SonarrEpisodeFileMediaInfo, SonarrSeries } from './sonarr';
 
@@ -185,6 +185,12 @@ export interface ManualImportItem {
   episodeFileId?: number; // set when this scanned file is already imported (Sonarr)
   movie?: RadarrMovie;
   movieFileId?: number; // set when already imported (Radarr)
+  // Lidarr: the album, release and tracks the file was matched to.
+  artist?: LidarrArtist;
+  album?: LidarrAlbum;
+  albumReleaseId?: number;
+  tracks?: LidarrTrack[];
+  disableReleaseSwitching?: boolean;
   releaseGroup?: string;
   customFormatScore?: number;
   indexerFlags?: number;

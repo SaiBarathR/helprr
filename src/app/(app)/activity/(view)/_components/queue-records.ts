@@ -94,9 +94,9 @@ export function isPendingRelease(item: QueueItem): boolean {
   return item.status === 'delay' || item.status === 'downloadClientUnavailable';
 }
 
-/** Needs an import the import page can do: it handles Sonarr and Radarr only. */
+/** Needs an import the import page can do: it handles Sonarr, Radarr and Lidarr. */
 export function canManualImport(item: QueueItem & { source?: string }): boolean {
-  return (item.source === 'sonarr' || item.source === 'radarr') && needsManualImport(item);
+  return (item.source === 'sonarr' || item.source === 'radarr' || item.source === 'lidarr') && needsManualImport(item);
 }
 
 // --- Season-pack grouping ---

@@ -98,7 +98,7 @@ describe('queue record links', () => {
     const blocked = { trackedDownloadState: 'importBlocked' };
     expect(canManualImport(record(blocked))).toBe(true);
     expect(canManualImport(record({ ...blocked, source: 'radarr' }))).toBe(true);
-    expect(canManualImport(record({ ...blocked, source: 'lidarr' }))).toBe(false);
+    expect(canManualImport(record({ ...blocked, source: 'lidarr' }))).toBe(true);
     expect(canManualImport(record())).toBe(false);
   });
 });

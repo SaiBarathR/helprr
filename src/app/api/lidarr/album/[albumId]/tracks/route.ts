@@ -24,7 +24,15 @@ async function getHandler(
     const parsed = parsePositiveId(albumId);
     if ('error' in parsed) return parsed.error;
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    // ?albumReleaseId= lists that release's tracks instead of the album's chosen
+    // release: manual import picks tracks on the release Lidarr matched.
+    const releaseParam = request.nextUrl.searchParams.get('albumReleaseId');
     const client = await getLidarrClient(instanceId);
+    if (releaseParam !== null) {
+      const release = parsePositiveId(releaseParam);
+      if ('error' in release) return NextResponse.json({ error: 'Invalid release id' }, { status: 400 });
+      return NextResponse.json(await client.getReleaseTracks(release.value));
+    }
     const tracks = await client.getTracks(parsed.value);
     return NextResponse.json(tracks);
   } catch (error) {
