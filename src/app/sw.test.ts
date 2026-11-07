@@ -22,8 +22,10 @@ vi.mock('serwist', async (importOriginal) => ({
       return url === '/offline.html' ? new Response('Offline fallback') : undefined;
     }
   },
-  // Expiration's IndexedDB bookkeeping is unrelated to shell validation.
-  ExpirationPlugin: class {},
+  // Expiration's IndexedDB bookkeeping is unrelated to shell validation; keep only its options.
+  ExpirationPlugin: class {
+    constructor(readonly config: unknown) {}
+  },
   disableNavigationPreload: recorded.disableNavigationPreload,
 }));
 
@@ -247,6 +249,16 @@ describe('worker updates', () => {
   it('turns off navigation preload that earlier workers left on, whose cancelled wait holds the old worker on WebKit', () => {
     expect(recorded.disableNavigationPreload).toHaveBeenCalledTimes(1);
     expect(recorded.options).not.toHaveProperty('navigationPreload', true);
+  });
+});
+
+describe('static chunk cache', () => {
+  it('keeps enough hashed chunks for every route a user visits', () => {
+    const handler = recorded.options!.runtimeCaching.map((entry) => entry.handler)
+      .find((candidate) => candidate.cacheName === 'next-static-assets')!;
+    expect(handler.plugins).toContainEqual(expect.objectContaining({
+      config: expect.objectContaining({ maxEntries: 300, maxAgeFrom: 'last-used' }),
+    }));
   });
 });
 
