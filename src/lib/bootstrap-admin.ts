@@ -84,13 +84,13 @@ export async function ensureBootstrapAdmin(): Promise<void> {
   } else if (forceReset) {
     const passwordHash = await hashPassword(appPassword);
     // Recovery: whoever knew the old password may still hold a session, an
-    // unused reset link or the calendar feed link, so end them all with the new
+    // unused reset link, the calendar feed link or an API token, so end them all with the new
     // password, in one transaction. A lost authenticator is the other reason to
     // be here, so two-step sign-in goes too; the admin can turn it on again.
     // Owner-less sessions are revoked too: the attach below would otherwise
     // hand them to the admin.
     const now = new Date();
-    const [, links, sessions, feeds] = await prisma.$transaction([
+    const [, links, sessions, feeds, , apiTokens] = await prisma.$transaction([
       prisma.user.update({
         where: { id: BOOTSTRAP_ADMIN_ID },
         data: { passwordHash, totpSecret: null, totpEnabledAt: null, totpLastUsedStep: null },
@@ -102,10 +102,22 @@ export async function ensureBootstrapAdmin(): Promise<void> {
       }),
       prisma.calendarFeedToken.deleteMany({ where: { userId: BOOTSTRAP_ADMIN_ID } }),
       prisma.recoveryCode.deleteMany({ where: { userId: BOOTSTRAP_ADMIN_ID } }),
+      prisma.apiToken.deleteMany({ where: { userId: BOOTSTRAP_ADMIN_ID } }),
     ]);
     console.log(
-      `[Helprr] Bootstrap admin password reset from APP_PASSWORD (HELPRR_ADMIN_PASSWORD_RESET); signed out ${sessions.count} session(s), ended ${links.count} link(s) and ${feeds.count} calendar feed link(s), and turned off two-step sign-in. Remove HELPRR_ADMIN_PASSWORD_RESET now: while it is set, every start does this again.`
+      `[Helprr] Bootstrap admin password reset from APP_PASSWORD (HELPRR_ADMIN_PASSWORD_RESET); signed out ${sessions.count} session(s), ended ${links.count} link(s), ${feeds.count} calendar feed link(s) and ${apiTokens.count} API token(s), and turned off two-step sign-in. Remove HELPRR_ADMIN_PASSWORD_RESET now: while it is set, every start does this again.`
     );
+    if (apiTokens.count > 0) {
+      await recordSecurityEvent(null, {
+        actor: null,
+        action: 'API_TOKEN_REVOKED',
+        targetType: 'user',
+        targetId: BOOTSTRAP_ADMIN_ID,
+        targetLabel: existing.username,
+        fields: ['admin-password-reset'],
+        count: apiTokens.count,
+      });
+    }
     if (existing.totpEnabledAt) {
       // Nobody signed in did this: someone with shell access restarted with the flag.
       await recordSecurityEvent(null, {

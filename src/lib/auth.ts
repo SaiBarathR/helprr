@@ -173,6 +173,14 @@ export async function getCurrentSid(): Promise<string | null> {
   return decoded?.sid ?? null;
 }
 
+/** Whether this request's session came from trusted-header (proxy) sign-in. */
+export async function currentSessionIsTrusted(): Promise<boolean> {
+  const token = await readToken();
+  if (!token) return false;
+  const decoded = await decodeToken(token, false);
+  return decoded?.trustedUsername !== undefined;
+}
+
 export async function getCurrentSession(): Promise<SessionRow | null> {
   const token = await readToken();
   if (!token) return null;

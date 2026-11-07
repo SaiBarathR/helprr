@@ -179,8 +179,8 @@ export default function SettingsIndexPage() {
     {
       group: 'you',
       show: true,
-      keywords: ['devices', 'sign out', 'log out', 'logout', 'force logout', 'security'],
-      row: { href: '/settings/sessions', icon: Shield, iconBg: 'bg-orange-500/10', iconColor: 'text-orange-400', label: 'Sessions', subtitle: 'Active devices, force logout' },
+      keywords: ['devices', 'sign out', 'log out', 'logout', 'force logout', 'security', 'api', 'token', 'api token', 'homepage', 'home assistant'],
+      row: { href: '/settings/sessions', icon: Shield, iconBg: 'bg-orange-500/10', iconColor: 'text-orange-400', label: 'Sessions', subtitle: 'Active devices, force logout, API tokens' },
     },
     {
       group: 'you',

@@ -10,6 +10,7 @@ import { jsonFetcher, ApiError } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { ApiTokensSection } from '@/components/settings/api-tokens-section';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import {
   Dialog,
@@ -398,6 +399,8 @@ export default function SessionsPage() {
           </div>
         </GroupedSection>
       )}
+
+      <ApiTokensSection />
 
       <ConfirmDialog
         open={confirmTarget !== null}

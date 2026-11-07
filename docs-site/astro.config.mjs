@@ -25,7 +25,7 @@ export default defineConfig({
           label: 'Connect your apps',
           items: ['connect', 'connect/sonarr', 'connect/radarr', 'connect/lidarr', 'connect/qbittorrent', 'connect/prowlarr', 'connect/jellyfin', 'connect/seerr', 'connect/tmdb'],
         },
-        { label: 'Use it', items: ['phone-and-push', 'https', 'people', 'twitch', 'youtube'] },
+        { label: 'Use it', items: ['phone-and-push', 'https', 'people', 'status-api', 'twitch', 'youtube'] },
         { label: 'Look after it', items: ['maintain/update', 'maintain/backup', 'maintain/uninstall', 'troubleshooting'] },
         { label: 'Reference', items: ['reference/environment', 'reference/cache', 'reference/deleting-files', 'reference/privacy', 'reference/security'] },
         { label: 'Contributing', items: ['contributing'] },

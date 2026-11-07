@@ -129,6 +129,8 @@ export async function redeemPasswordLink(
   purpose: PasswordLinkPurpose;
   revokedSessions: number;
   feedRevoked: boolean;
+  /** Personal API tokens the reset ended. */
+  apiTokensRevoked: number;
   /** Two-step sign-in is still on: the new password alone must not sign in. */
   mfaEnabled: boolean;
   /** This reset turned two-step sign-in off. */
@@ -178,6 +180,7 @@ export async function redeemPasswordLink(
       });
       // The calendar feed link is a credential too; a reset ends it with the sessions.
       const feed = await tx.calendarFeedToken.deleteMany({ where: { userId: link.userId } });
+      const apiTokens = await tx.apiToken.deleteMany({ where: { userId: link.userId } });
       return {
         id: link.user.id,
         username: link.user.username,
@@ -185,6 +188,7 @@ export async function redeemPasswordLink(
         purpose: link.purpose,
         revokedSessions: revoked.count,
         feedRevoked: feed.count > 0,
+        apiTokensRevoked: apiTokens.count,
         mfaEnabled: mfaWasOn && !mfaDisabled,
         mfaDisabled,
       };

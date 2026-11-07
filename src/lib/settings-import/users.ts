@@ -192,6 +192,8 @@ export async function applyUsersInTxn(
       const resetsCredentials = (passwordHash && passwordHash !== target.passwordHash) || status !== target.status;
       if (resetsCredentials) {
         await tx.passwordLink.deleteMany({ where: { userId: target.id } });
+        // Personal API tokens too (they are never exported, so none are restored).
+        await tx.apiToken.deleteMany({ where: { userId: target.id } });
       }
       if (resetsCredentials || !can({ role: role as UserRole, template, permissions }, 'calendar.view')) {
         await tx.calendarFeedToken.deleteMany({ where: { userId: target.id } });

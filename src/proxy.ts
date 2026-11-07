@@ -26,6 +26,12 @@ const PUBLIC_EXACT_PATHS = [
   // Trusted-header sign-in: the route checks the proxy's secret header itself.
   '/api/auth/trusted',
 ];
+// The read-only status API: a personal API token (`Authorization: Bearer hlp_…`)
+// opens these exact GET paths and nothing else, and is never a session. The
+// route checks the token itself. A token sent anywhere else is refused here, so
+// it never reaches another route (or a page) to be honored or logged.
+const API_TOKEN_PATHS = ['/api/v1/summary', '/api/v1/queue'];
+const API_TOKEN_HEADER = /^\s*bearer\s+hlp_/i;
 const IS_DEV = process.env.NODE_ENV === 'development';
 
 const SECURITY_HEADERS: Record<string, string> = {
@@ -101,6 +107,16 @@ export async function proxy(request: NextRequest) {
       requestHeaders ? NextResponse.next({ request: { headers: requestHeaders } }) : NextResponse.next(),
       csp
     );
+
+  // Before every other rule, so no public path or session can carry a token elsewhere.
+  if (API_TOKEN_HEADER.test(request.headers.get('authorization') ?? '')) {
+    if (request.method === 'GET' && API_TOKEN_PATHS.includes(pathname)) return pass();
+    return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), csp);
+  }
+  // Without one, the status API is closed: a session cookie does not open it.
+  if (API_TOKEN_PATHS.includes(pathname)) {
+    return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), csp);
+  }
 
   // Allow public paths
   if (pathname === INVITE_PAGE_PATH) {

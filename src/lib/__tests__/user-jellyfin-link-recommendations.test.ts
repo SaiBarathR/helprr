@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
   userFindUnique: vi.fn(),
   txUserUpdate: vi.fn(),
+  txApiTokenDeleteMany: vi.fn(async () => ({ count: 0 })),
   refreshRecommendations: vi.fn(),
 }));
 
@@ -14,7 +15,7 @@ vi.mock('@/lib/recommendations/engine', () => ({ refreshRecommendationsAfterLink
 vi.mock('@/lib/db', () => ({
   prisma: {
     user: { findUnique: mocks.userFindUnique },
-    $transaction: async (callback: (tx: unknown) => unknown) => callback({ user: { update: mocks.txUserUpdate, count: vi.fn() } }),
+    $transaction: async (callback: (tx: unknown) => unknown) => callback({ user: { update: mocks.txUserUpdate, count: vi.fn() }, apiToken: { deleteMany: mocks.txApiTokenDeleteMany } }),
   },
 }));
 
@@ -46,6 +47,14 @@ describe("an admin changing a user's Jellyfin link", () => {
     mocks.refreshRecommendations.mockClear();
     expect((await patch({ jellyfinUserId: '' })).status).toBe(200);
     expect(mocks.refreshRecommendations).toHaveBeenCalledWith('user-1');
+  });
+
+  it("ends the user's API tokens when the Jellyfin link changes, and only then", async () => {
+    expect((await patch({ jellyfinUserId: 'jf-old' })).status).toBe(200);
+    expect((await patch({ displayName: 'Renamed' })).status).toBe(200);
+    expect(mocks.txApiTokenDeleteMany).not.toHaveBeenCalled();
+    expect((await patch({ jellyfinUserId: 'jf-new' })).status).toBe(200);
+    expect(mocks.txApiTokenDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
   });
 
   it("rebuilds them on next use when the role changes (an admin falls back to the operator's accounts)", async () => {

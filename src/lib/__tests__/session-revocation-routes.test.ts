@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   revokeSession: vi.fn(),
   findUnique: vi.fn(),
   updateMany: vi.fn(),
+  apiTokenDeleteMany: vi.fn(async () => ({ count: 1 })),
 }));
 
 vi.mock('@/lib/auth', () => ({
@@ -19,6 +20,8 @@ vi.mock('@/lib/db', () => ({
       findUnique: mocks.findUnique,
       updateMany: mocks.updateMany,
     },
+    apiToken: { deleteMany: mocks.apiTokenDeleteMany },
+    $transaction: (ops: Promise<unknown>[]) => Promise.all(ops),
   },
 }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
@@ -109,6 +112,7 @@ describe('session revocation routes', () => {
       },
       data: { revokedAt: expect.any(Date) },
     });
-    await expect(response.json()).resolves.toEqual({ revoked: 2 });
+    expect(mocks.apiTokenDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+    await expect(response.json()).resolves.toEqual({ revoked: 2, apiTokensRevoked: 1 });
   });
 });

@@ -67,6 +67,7 @@ model User {
   tasteProfile   UserTasteProfile?
   passwordLink   PasswordLink?
   calendarFeedTokens CalendarFeedToken[]
+  apiTokens      ApiToken[]
   recoveryCodes  RecoveryCode[]
 
   @@index([jellyfinUserId])
@@ -147,6 +148,27 @@ model CalendarFeedToken {
   tokenHash     String    @unique
   createdAt     DateTime  @default(now())
   lastUsedAt    DateTime?
+
+  @@index([userId])
+}
+
+// A personal API token for the read-only status API (/api/v1/summary and
+// /api/v1/queue), sent as `Authorization: Bearer hlp_…`. Only the SHA-256 of
+// the token is stored. Its scopes are capability names; each request uses only
+// those the owner still holds. A password change or reset, or disabling the
+// account, deletes the user's tokens.
+model ApiToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  tokenHash  String    @unique
+  scopes     String[]
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  // Coarse networks (IPv4 /24, IPv6 /64, or "unknown") it was used from, oldest first; a new one is audited.
+  usedFrom   String[]  @default([])
 
   @@index([userId])
 }
@@ -835,6 +857,9 @@ enum SecurityAuditAction {
   MFA_RECOVERY_CODE_USED // a recovery code stood in for the authenticator
   DATABASE_BACKUP_CREATED // an in-app database backup was made (fields: trigger, size)
   DATABASE_BACKUP_FAILED // an in-app database backup failed (fields: trigger, reason)
+  API_TOKEN_CREATED // a personal API token was made (fields: its scopes)
+  API_TOKEN_REVOKED // turned off by its owner, or ended by a password change or reset (count: tokens)
+  API_TOKEN_NEW_NETWORK // a token was used from a network it had not been used from before
 }
 
 // Who did what to accounts, sessions, service connections and settings, and

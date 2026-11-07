@@ -80,7 +80,7 @@ const EXACT_SENSITIVE_KEYS = new Set([
   'mfatoken', 'recoverycodes', 'currentpassword', 'newpassword', 'x-helprr-proxy-secret',
 ]);
 const SUBSTRING_SENSITIVE_PATTERN = /api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token/i;
-const SENSITIVE_VALUE_PATTERN = /(Bearer\s+)[^\s,;]+|(api[_-]?key=)[^&\s]+|(apikey=)[^&\s]+|(password=)[^&\s]+|(token=)[^&\s]+|(sid=)[^;&\s]+|(code=)[^&\s]+|(state=)[^&\s]+|((?:passkey|authkey|torrent_pass|rsskey)=)[^&\s]+|(client_secret=)[^&\s]+|(clientSecret=)[^&\s]+|(auth-token=)[^;&\s]+|(secret=)[^&\s]+/gi;
+const SENSITIVE_VALUE_PATTERN = /(Bearer\s+)[^\s,;]+|(api[_-]?key=)[^&\s]+|(apikey=)[^&\s]+|(password=)[^&\s]+|(token=)[^&\s]+|(sid=)[^;&\s]+|(code=)[^&\s]+|(state=)[^&\s]+|((?:passkey|authkey|torrent_pass|rsskey)=)[^&\s]+|(client_secret=)[^&\s]+|(clientSecret=)[^&\s]+|(auth-token=)[^;&\s]+|(secret=)[^&\s]+|(hlp_)[A-Za-z0-9_-]+/gi;
 
 const originalConsole = {
   debug: console.debug.bind(console),
@@ -200,9 +200,9 @@ function redactString(value: string): string {
   if (proxySecret && proxySecret.length >= TRUSTED_AUTH_SECRET_MIN_LENGTH && value.includes(proxySecret)) {
     value = value.replaceAll(proxySecret, '[REDACTED]');
   }
-  return value.replace(SENSITIVE_VALUE_PATTERN, (_match, bearer, apiKey, apikey, password, token, sid, code, state, trackerKey, clientSecretSnake, clientSecretCamel, authToken, otpSecret) => {
+  return value.replace(SENSITIVE_VALUE_PATTERN, (_match, bearer, apiKey, apikey, password, token, sid, code, state, trackerKey, clientSecretSnake, clientSecretCamel, authToken, otpSecret, apiToken) => {
     const prefix = bearer || apiKey || apikey || password || token || sid || code || state || trackerKey
-      || clientSecretSnake || clientSecretCamel || authToken || otpSecret || '';
+      || clientSecretSnake || clientSecretCamel || authToken || otpSecret || apiToken || '';
     return `${prefix}[REDACTED]`;
   });
 }

@@ -47,3 +47,8 @@ the iOS share sheet once Helprr is installed.
 These shortcuts **open the app** to perform the action (foreground). They are **not** background
 Siri intents. True hands-free / App-Intent automation would require a native app wrapper, which is a
 separate decision from this PWA.
+
+The one exception is reading: a Shortcut can ask the read-only status API (`/api/v1/summary`,
+`/api/v1/queue`) with a personal API token from Settings → Sessions → API tokens, without opening
+the app. The "What's downloading?" recipe and the JSON shapes are in the guides
+(`docs-site/src/content/docs/status-api.md`).

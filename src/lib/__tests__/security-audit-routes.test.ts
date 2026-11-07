@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => {
     },
     session: { findUnique: vi.fn(), updateMany: vi.fn() },
     calendarFeedToken: { deleteMany: vi.fn() },
+    apiToken: { deleteMany: vi.fn() },
     serviceConnection: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
@@ -43,7 +44,10 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('@/lib/db', () => ({
-  prisma: { ...mocks.db, $transaction: (fn: (tx: typeof mocks.db) => unknown) => fn(mocks.db) },
+  prisma: {
+    ...mocks.db,
+    $transaction: (arg: ((tx: typeof mocks.db) => unknown) | Promise<unknown>[]) => (Array.isArray(arg) ? Promise.all(arg) : arg(mocks.db)),
+  },
 }));
 vi.mock('@/lib/auth', () => ({
   COOKIE_NAME: 'helprr-session',
@@ -179,6 +183,7 @@ beforeEach(() => {
   mocks.db.user.findUnique.mockResolvedValue(member);
   mocks.db.user.count.mockResolvedValue(1);
   mocks.db.calendarFeedToken.deleteMany.mockResolvedValue({ count: 0 });
+  mocks.db.apiToken.deleteMany.mockResolvedValue({ count: 0 });
   vi.spyOn(JellyfinClient, 'authenticateByName').mockImplementation(mocks.authenticateByName);
 });
 
@@ -285,6 +290,19 @@ describe('users', () => {
     const response = await updateUser(req('/api/users/user-1', 'PATCH', { role: 'member' }), params('user-1'));
     expect(response.status).toBe(200);
     expect(events()).toEqual([expect.objectContaining({ action: 'USER_UPDATED', fields: ['made member', 'template'] })]);
+  });
+
+  it('records the API tokens a password reset ended', async () => {
+    mocks.db.user.update.mockImplementation(async ({ data }) => ({ ...member, ...data }));
+    mocks.db.session.updateMany.mockResolvedValue({ count: 0 });
+    mocks.db.apiToken.deleteMany.mockResolvedValue({ count: 2 });
+    expect((await updateUser(req('/api/users/user-1', 'PATCH', { password: PASSWORD }), params('user-1'))).status).toBe(200);
+    expect(mocks.db.apiToken.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+    expect(events()).toEqual([
+      expect.objectContaining({ action: 'USER_UPDATED', fields: ['password'] }),
+      expect.objectContaining({ action: 'API_TOKEN_REVOKED', targetId: 'user-1', fields: ['password'], count: 2 }),
+    ]);
+    expectNoSecrets();
   });
 
   it('records the calendar feed link a password reset ended', async () => {

@@ -37,7 +37,10 @@ type SecurityAction =
   | 'MFA_DISABLED'
   | 'MFA_RECOVERY_CODE_USED'
   | 'DATABASE_BACKUP_CREATED'
-  | 'DATABASE_BACKUP_FAILED';
+  | 'DATABASE_BACKUP_FAILED'
+  | 'API_TOKEN_CREATED'
+  | 'API_TOKEN_REVOKED'
+  | 'API_TOKEN_NEW_NETWORK';
 
 export interface SecurityAuditRecord {
   id: string;
@@ -83,6 +86,9 @@ const ACTION_BADGE: Record<SecurityAction, { label: string; variant: 'default' |
   MFA_RECOVERY_CODE_USED: { label: 'RECOVERY CODE', variant: 'secondary' },
   DATABASE_BACKUP_CREATED: { label: 'DATABASE BACKUP', variant: 'default' },
   DATABASE_BACKUP_FAILED: { label: 'BACKUP FAILED', variant: 'destructive' },
+  API_TOKEN_CREATED: { label: 'API TOKEN', variant: 'default' },
+  API_TOKEN_REVOKED: { label: 'API TOKEN OFF', variant: 'secondary' },
+  API_TOKEN_NEW_NETWORK: { label: 'API TOKEN NEW NETWORK', variant: 'secondary' },
 };
 
 const SIGN_IN_METHOD: Record<string, string> = {
@@ -161,6 +167,11 @@ function summary(record: SecurityAuditRecord): string {
       break;
     case 'MFA_RECOVERY_CODE_USED':
       parts.push(record.fields?.[0] === 'turn-off' ? 'to turn off two-step sign-in' : 'to sign in');
+      break;
+    case 'API_TOKEN_REVOKED':
+      // fields: 'password' or 'status' when a password reset or a disable ended the user's tokens.
+      if (record.fields?.[0] === 'admin-password-reset') parts.push(`${plural(record.count, 'token')} ended by HELPRR_ADMIN_PASSWORD_RESET at start-up`);
+      else if (record.fields?.length) parts.push(`${plural(record.count, 'token')} ended by a ${record.fields[0]} change`);
       break;
     case 'INVITE_LINK_FAILED':
       parts.push(`${plural(record.count, 'attempt')} with a link that does not work`);

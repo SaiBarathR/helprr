@@ -158,12 +158,19 @@ async function patchHandler(
       }
       // A reset or a disable also ends the calendar feed link, so re-enabling
       // the account does not bring an old link back.
+      // Personal API tokens end the same way.
       let feedRevoked = false;
-      if (data.passwordHash !== undefined || (data.status && data.status !== 'active')) {
+      let apiTokensRevoked = 0;
+      const credentialsReset = data.passwordHash !== undefined || (data.status && data.status !== 'active');
+      if (credentialsReset) {
         const feed = await tx.calendarFeedToken.deleteMany({ where: { userId: id } });
         feedRevoked = feed.count > 0;
       }
-      return { ok: true as const, updated, revokedSessions, endedLink, feedRevoked };
+      // A Jellyfin relink is a password change for a Jellyfin-only account.
+      if (credentialsReset || (data.jellyfinUserId !== undefined && data.jellyfinUserId !== existing.jellyfinUserId)) {
+        apiTokensRevoked = (await tx.apiToken.deleteMany({ where: { userId: id } })).count;
+      }
+      return { ok: true as const, updated, revokedSessions, endedLink, feedRevoked, apiTokensRevoked };
     });
     if (!result.ok) {
       return NextResponse.json(
@@ -206,6 +213,17 @@ async function patchHandler(
         targetId: id,
         targetLabel: result.updated.username,
         fields: data.passwordHash !== undefined ? ['password'] : ['status'],
+      });
+    }
+    if (result.apiTokensRevoked > 0) {
+      await recordSecurityEvent(request, {
+        actor: admin.user,
+        action: 'API_TOKEN_REVOKED',
+        targetType: 'user',
+        targetId: id,
+        targetLabel: result.updated.username,
+        fields: data.passwordHash !== undefined ? ['password'] : ['status'],
+        count: result.apiTokensRevoked,
       });
     }
     return NextResponse.json(toSafeUser(result.updated));

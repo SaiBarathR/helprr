@@ -111,7 +111,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       await tx.passwordLink.deleteMany({ where: { userId: user.id } });
       // The calendar feed link is a credential too; recovery ends it with the sessions.
       const feed = await tx.calendarFeedToken.deleteMany({ where: { userId: user.id } });
-      return { ok: true as const, revoked: revoked.count, feedRevoked: feed.count > 0 };
+      // So are personal API tokens: one made before the change must not outlive it.
+      const apiTokens = await tx.apiToken.deleteMany({ where: { userId: user.id } });
+      return { ok: true as const, revoked: revoked.count, feedRevoked: feed.count > 0, apiTokensRevoked: apiTokens.count };
     });
     if (!result.ok) {
       return NextResponse.json(
@@ -137,6 +139,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         targetId: user.id,
         targetLabel: user.username,
         fields: ['password'],
+      });
+    }
+    if (result.apiTokensRevoked > 0) {
+      await recordSecurityEvent(request, {
+        actor: user,
+        action: 'API_TOKEN_REVOKED',
+        targetType: 'user',
+        targetId: user.id,
+        targetLabel: user.username,
+        fields: ['password'],
+        count: result.apiTokensRevoked,
       });
     }
     return NextResponse.json({ revokedSessions: result.revoked });

@@ -42,7 +42,8 @@ export async function bumpQueueCacheVersion(): Promise<void> {
   }
 }
 
-export type QueueResult = { records: QueueItem[]; totalRecords: number };
+/** partial: an instance (or the connection list) did not answer; never cached. */
+export type QueueResult = { records: QueueItem[]; totalRecords: number; partial?: true };
 const inflightQueue = new Map<string, Promise<QueueResult>>();
 
 // An instance that just failed is skipped for a while. The Activity page reads
@@ -189,7 +190,7 @@ async function getQueueCachedBy(view: string, read: QueueRead): Promise<QueueRes
     // uncached so a recovered instance reappears on the next request instead of
     // being masked by a stale partial aggregate for the whole TTL.
     if (complete) await setCachedJson(QUEUE_CACHE_SCOPE, seed, result, QUEUE_CACHE_TTL_SECONDS);
-    return result;
+    return complete ? result : { ...result, partial: true as const };
   })().finally(() => inflightQueue.delete(seed));
   inflightQueue.set(seed, promise);
   return promise;

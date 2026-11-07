@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // transaction restores the snapshot when its callback throws, as PostgreSQL does.
 const db = vi.hoisted(() => {
   type Row = Record<string, unknown>;
-  const state = { users: [] as Row[], links: [] as Row[], sessions: [] as Row[], feeds: [] as Row[], codes: [] as Row[] };
+  const state = { users: [] as Row[], links: [] as Row[], sessions: [] as Row[], feeds: [] as Row[], codes: [] as Row[], apiTokens: [] as Row[] };
   const matches = (row: Row, where: Row) => Object.entries(where).every(([k, v]) => row[k] === v);
   const client = {
     passwordLink: {
@@ -62,8 +62,15 @@ const db = vi.hoisted(() => {
         return { count: before - state.codes.length };
       }),
     },
+    apiToken: {
+      deleteMany: vi.fn(async ({ where }: { where: Row }) => {
+        const before = state.apiTokens.length;
+        state.apiTokens = state.apiTokens.filter((t) => !matches(t, where));
+        return { count: before - state.apiTokens.length };
+      }),
+    },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => {
-      const snapshot = structuredClone({ users: state.users, links: state.links, sessions: state.sessions, feeds: state.feeds, codes: state.codes });
+      const snapshot = structuredClone({ users: state.users, links: state.links, sessions: state.sessions, feeds: state.feeds, codes: state.codes, apiTokens: state.apiTokens });
       try {
         return await fn(client);
       } catch (error) {
@@ -104,6 +111,7 @@ beforeEach(() => {
   db.state.sessions = [];
   db.state.feeds = [];
   db.state.codes = [];
+  db.state.apiTokens = [];
 });
 
 describe('issuing a link', () => {
@@ -171,9 +179,12 @@ describe('using a link', () => {
     const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'reset', createdById: 'admin', now: NOW });
 
     db.state.feeds.push({ id: 'f1', userId: 'u1' }, { id: 'f2', userId: 'someone-else' });
+    db.state.apiTokens.push({ id: 't1', userId: 'u1' }, { id: 't2', userId: 'u1' }, { id: 't3', userId: 'someone-else' });
 
     const used = await redeemPasswordLink(token, 'new-hash', NOW);
-    expect(used).toMatchObject({ purpose: 'reset', revokedSessions: 2, feedRevoked: true, mfaEnabled: false, mfaDisabled: false });
+    expect(used).toMatchObject({ purpose: 'reset', revokedSessions: 2, feedRevoked: true, apiTokensRevoked: 2, mfaEnabled: false, mfaDisabled: false });
+    // So do the user's personal API tokens.
+    expect(db.state.apiTokens.map((t) => t.id)).toEqual(['t3']);
     expect(db.state.users[0].passwordHash).toBe('new-hash');
     expect(db.state.sessions.filter((s) => s.revokedAt !== null).map((s) => s.id)).toEqual(['s1', 's2']);
     // The calendar feed link ends with the sessions.

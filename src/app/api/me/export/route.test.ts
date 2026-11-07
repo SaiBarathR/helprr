@@ -229,6 +229,7 @@ describe('my-data export coverage', () => {
     passwordLink: 'holds only a token hash',
     calendarFeedTokens: 'feed links: token hashes, with the names and filters shown in Calendar',
     recoveryCodes: 'two-step sign-in recovery codes; holds only code hashes',
+    apiTokens: 'personal API tokens: token hashes, with the names and scopes shown in Sessions',
   };
 
   it('exports or explicitly excludes every relation of User', async () => {

@@ -50,6 +50,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/image',
     'GET /api/lidarr/rootfolders',
     'GET /api/me',
+    'GET /api/me/api-tokens',
     'GET /api/me/export',
     'GET /api/me/settings',
     'GET /api/me/totp',
@@ -405,6 +406,13 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'feed-token:calendar.view': [
     'GET /api/calendar/feed.ics',
   ],
+  // The read-only status API: only a personal API token opens it (never a
+  // session), and authorizeApiTokenRequest re-checks the token, its owner's
+  // status and which of its scopes the owner still holds.
+  'api-token': [
+    'GET /api/v1/queue',
+    'GET /api/v1/summary',
+  ],
   'all:torrents.view|activity.view': [
     'GET /api/manual-downloads',
     'GET /api/manual-downloads/[id]',
@@ -544,7 +552,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(277);
+    expect(handlers.size).toBe(280);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
@@ -624,6 +632,11 @@ describe('GET API route capability matrix', () => {
       const evidence = handlers.get(route)!;
       expect(evidence.handlerText, route).toContain('authorizeFeedToken(');
       expect(evidence.handlerText, route).toContain('takeFeedRateLimit(');
+    }
+    for (const route of POLICY_GROUPS['api-token']) {
+      const evidence = handlers.get(route)!;
+      expect(evidence.calls, `${route} must not accept a session`).toEqual([]);
+      expect(evidence.handlerText, route).toContain('authorizeApiTokenRequest(');
     }
   });
 

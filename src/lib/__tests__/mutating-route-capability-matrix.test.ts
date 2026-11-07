@@ -40,6 +40,9 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     // Turning off one's own calendar link needs no capability.
     'DELETE /api/calendar/feed-token/[id]',
     'POST /api/logs/client',
+    // One's own personal API tokens: their scopes are checked against the owner's capabilities.
+    'POST /api/me/api-tokens',
+    'DELETE /api/me/api-tokens/[id]',
     'DELETE /api/me',
     'POST /api/me/password',
     'DELETE /api/me/totp',
@@ -575,7 +578,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(255);
+    expect(handlers.size).toBe(257);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
