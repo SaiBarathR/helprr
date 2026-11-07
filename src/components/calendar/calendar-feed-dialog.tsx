@@ -7,6 +7,9 @@ import { toast } from 'sonner';
 import { CalendarPlus, Copy, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Dialog,
@@ -16,18 +19,27 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { jsonFetcher } from '@/lib/query-fetch';
-import { feedQuery, type FeedFilters } from '@/lib/calendar-feed/filters';
+import type { FeedEventType, FeedFilters } from '@/lib/calendar-feed/filters';
 
-interface FeedStatus {
-  active: boolean;
-  createdAt: string | null;
+interface FeedLink {
+  id: string;
+  name: string;
+  /** Null when the stored filters are unreadable; such a link serves nothing. */
+  filters: FeedFilters | null;
+  createdAt: string;
   lastUsedAt: string | null;
+}
+
+interface FeedLinks {
+  links: FeedLink[];
+  max: number;
   /** The configured APP_ORIGIN, or null to use the address this page is on. */
   origin?: string | null;
 }
 
-const STATUS_KEY = ['calendar-feed-token'] as const;
-const TYPE_LABEL = { episode: 'Episodes', movie: 'Movies', album: 'Music' } as const;
+const LINKS_KEY = ['calendar-feed-token'] as const;
+const TYPE_LABEL: Record<FeedEventType, string> = { episode: 'Episodes', movie: 'Movies', album: 'Music' };
+const ALL = 'all';
 
 function ago(iso: string | null): string | null {
   if (!iso) return null;
@@ -37,79 +49,87 @@ function ago(iso: string | null): string | null {
 
 /**
  * The feed URL for this origin, and its webcal:// twin. The https link is the
- * one to share: some calendar apps fetch a webcal:// link over plain http.
+ * one to share: some calendar apps fetch a webcal:// link over plain http. A
+ * link's filters are stored with it, so the URL carries only the token.
  */
-export function feedUrls(origin: string, token: string, filters: FeedFilters): { https: string; webcal: string } {
-  const https = `${origin}/api/calendar/feed.ics?${feedQuery(token, filters)}`;
+export function feedUrls(origin: string, token: string): { https: string; webcal: string } {
+  const https = `${origin}/api/calendar/feed.ics?${new URLSearchParams({ token })}`;
   return { https, webcal: https.replace(/^https?:/, 'webcal:') };
 }
 
 /**
- * Make, renew or turn off the person's calendar subscription link. The link
- * carries the Calendar page's current filters. Helprr keeps only a hash of the
- * token, so the link is shown once, right after it is made.
+ * The person's calendar subscription links: several, each with a name and its own
+ * filters (the new-link form starts from the Calendar page's). Helprr keeps only a
+ * hash of each token, so a link is shown once, right after it is made.
  */
 export function CalendarFeedDialog({
   open,
   onOpenChange,
   filters,
-  instanceLabel,
+  instances,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   filters: FeedFilters;
-  instanceLabel?: string;
+  instances: Array<{ id: string; label: string }>;
 }) {
   const queryClient = useQueryClient();
   const status = useQuery({
-    queryKey: STATUS_KEY,
-    queryFn: jsonFetcher<FeedStatus>('/api/calendar/feed-token'),
+    queryKey: LINKS_KEY,
+    queryFn: jsonFetcher<FeedLinks>('/api/calendar/feed-token'),
     enabled: open,
   });
   // The token, held only while the dialog is mounted (the page mounts it only while open).
-  const [token, setToken] = useState<string | null>(null);
+  const [made, setMade] = useState<{ name: string; token: string } | null>(null);
+  const [name, setName] = useState(filters.type ? TYPE_LABEL[filters.type] : 'Calendar');
+  const [draft, setDraft] = useState<FeedFilters>(filters);
   const [busy, setBusy] = useState(false);
-  const [confirm, setConfirm] = useState<'renew' | 'off' | null>(null);
+  const [turningOff, setTurningOff] = useState<FeedLink | null>(null);
 
-  const active = status.data?.active ?? false;
+  const links = status.data?.links ?? [];
+  const full = links.length >= (status.data?.max ?? Infinity);
   // The configured public origin when there is one, so a link made on a LAN
   // http address does not hand calendar apps an http link.
-  const urls = token ? feedUrls(status.data?.origin || window.location.origin, token, filters) : null;
-  const shows = [
-    filters.type ? TYPE_LABEL[filters.type] : 'Episodes, movies and music',
-    filters.instanceId ? (instanceLabel ?? 'One instance') : null,
-    filters.monitoredOnly ? 'Monitored only' : null,
-  ].filter(Boolean).join(' · ');
+  const urls = made ? feedUrls(status.data?.origin || window.location.origin, made.token) : null;
+
+  const describe = (shown: FeedFilters | null) => (!shown ? 'Shows nothing: its filters could not be read' : [
+    shown.type ? TYPE_LABEL[shown.type] : 'Episodes, movies and music',
+    shown.instanceId ? (instances.find((i) => i.id === shown.instanceId)?.label ?? 'One instance') : null,
+    shown.monitoredOnly ? 'Monitored only' : null,
+  ].filter(Boolean).join(' · '));
 
   async function makeLink() {
     setBusy(true);
     try {
-      const res = await fetch('/api/calendar/feed-token', { method: 'POST' });
-      if (!res.ok) throw new Error(String(res.status));
-      const body = (await res.json()) as { token: string };
-      setToken(body.token);
-      await queryClient.invalidateQueries({ queryKey: STATUS_KEY });
-    } catch {
-      toast.error('Failed to make the calendar link');
+      const res = await fetch('/api/calendar/feed-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), filters: draft }),
+      });
+      const body = (await res.json().catch(() => null)) as { token?: string; name?: string; error?: string } | null;
+      if (!res.ok || !body?.token) throw new Error(body?.error ?? 'Failed to make the calendar link');
+      setMade({ name: body.name ?? name.trim(), token: body.token });
+      await queryClient.invalidateQueries({ queryKey: LINKS_KEY });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to make the calendar link');
     } finally {
       setBusy(false);
-      setConfirm(null);
     }
   }
 
-  async function turnOff() {
+  async function turnOff(link: FeedLink) {
     setBusy(true);
     try {
-      const res = await fetch('/api/calendar/feed-token', { method: 'DELETE' });
-      if (!res.ok) throw new Error(String(res.status));
-      setToken(null);
-      toast.success('Calendar link turned off');
-      await queryClient.invalidateQueries({ queryKey: STATUS_KEY });
+      const res = await fetch(`/api/calendar/feed-token/${encodeURIComponent(link.id)}`, { method: 'DELETE' });
+      // Already gone (turned off on another device) is what was asked for.
+      if (!res.ok && res.status !== 404) throw new Error(String(res.status));
+      toast.success(`“${link.name}” turned off`);
+      await queryClient.invalidateQueries({ queryKey: LINKS_KEY });
     } catch {
       toast.error('Failed to turn off the calendar link');
     } finally {
       setBusy(false);
-      setConfirm(null);
+      setTurningOff(null);
     }
   }
 
@@ -123,34 +143,21 @@ export function CalendarFeedDialog({
     }
   }
 
-  const made = ago(status.data?.createdAt ?? null);
-  const used = ago(status.data?.lastUsedAt ?? null);
-
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Subscribe in Calendar</DialogTitle>
             <DialogDescription>
               See your releases in Apple Calendar, Google Calendar or Outlook: the last 30 days and the next
-              6 months, kept up to date.
+              6 months, kept up to date. Make one link per calendar, each showing what you pick.
             </DialogDescription>
           </DialogHeader>
 
-          <p className="text-sm">
-            <span className="text-muted-foreground">Shows: </span>
-            {shows}
-          </p>
-
-          {status.isPending ? (
-            <div className="flex justify-center py-2">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : status.isError ? (
-            <p className="text-sm text-destructive">Couldn&apos;t load your calendar link.</p>
-          ) : urls ? (
+          {urls && made ? (
             <div className="space-y-3">
+              <p className="text-sm font-medium">Your “{made.name}” link</p>
               <Input
                 readOnly
                 value={urls.https}
@@ -176,53 +183,134 @@ export function CalendarFeedDialog({
                 Calendar app” uses a webcal:// link, which some apps fetch over plain http; if yours does, use the
                 copied link instead.
               </p>
+              <div className="flex justify-end">
+                <Button type="button" variant="outline" onClick={() => setMade(null)}>Done</Button>
+              </div>
             </div>
-          ) : active ? (
-            <p className="text-sm text-muted-foreground">
-              Your calendar link is on{made ? `, made ${made}` : ''}{used ? `, last used ${used}` : ', not used yet'}.
-              Helprr doesn&apos;t keep the link itself, so to see it again make a new one; the old one then stops
-              working.
-            </p>
+          ) : status.isPending ? (
+            <div className="flex justify-center py-2">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : status.isError ? (
+            <p className="text-sm text-destructive">Couldn&apos;t load your calendar links.</p>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              Make a private link that your calendar app checks for new releases.
-            </p>
-          )}
-
-          {!status.isPending && !status.isError && (
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              {active && (
-                <Button type="button" variant="outline" disabled={busy} onClick={() => setConfirm('off')}>
-                  Turn off
-                </Button>
+            <div className="space-y-5">
+              {links.length > 0 && (
+                <section aria-label="Your links" className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Your links</p>
+                  <ul className="divide-y divide-border/60 rounded-lg border border-border/60">
+                    {links.map((link) => {
+                      const madeAgo = ago(link.createdAt);
+                      const used = ago(link.lastUsedAt);
+                      return (
+                        <li key={link.id} className="flex items-center gap-3 px-3 py-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{link.name}</p>
+                            <p className="text-xs text-muted-foreground">{describe(link.filters)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {madeAgo ? `Made ${madeAgo}` : 'Made'}{used ? `, last used ${used}` : ', not used yet'}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            aria-label={`Turn off ${link.name}`}
+                            onClick={() => setTurningOff(link)}
+                          >
+                            Turn off
+                          </Button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="text-xs text-muted-foreground">
+                    Helprr doesn&apos;t keep the links themselves. To see one again, make a new one and turn the old
+                    one off.
+                  </p>
+                </section>
               )}
-              <Button
-                type="button"
-                variant={urls ? 'outline' : 'default'}
-                disabled={busy}
-                onClick={() => (active ? setConfirm('renew') : void makeLink())}
-              >
-                {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {active ? 'Make new link' : 'Make link'}
-              </Button>
+
+              <section aria-label="New link" className="space-y-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">New link</p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="calendar-feed-name">Name</Label>
+                  <Input
+                    id="calendar-feed-name"
+                    value={name}
+                    maxLength={60}
+                    onChange={(event) => setName(event.target.value)}
+                  />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Shows</Label>
+                    <Select
+                      value={draft.type ?? ALL}
+                      onValueChange={(value) => setDraft({ ...draft, type: value === ALL ? null : (value as FeedEventType) })}
+                    >
+                      <SelectTrigger aria-label="Shows" className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL}>Episodes, movies and music</SelectItem>
+                        {(Object.keys(TYPE_LABEL) as FeedEventType[]).map((type) => (
+                          <SelectItem key={type} value={type}>{TYPE_LABEL[type]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {(instances.length > 1 || draft.instanceId) && (
+                    <div className="space-y-1.5">
+                      <Label>Instance</Label>
+                      <Select
+                        value={draft.instanceId ?? ALL}
+                        onValueChange={(value) => setDraft({ ...draft, instanceId: value === ALL ? null : value })}
+                      >
+                        <SelectTrigger aria-label="Instance" className="w-full"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={ALL}>All instances</SelectItem>
+                          {instances.map((instance) => (
+                            <SelectItem key={instance.id} value={instance.id}>{instance.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+                <label className="flex items-center justify-between gap-3 text-sm">
+                  Monitored only
+                  <Switch
+                    aria-label="Monitored only"
+                    checked={draft.monitoredOnly}
+                    onCheckedChange={(monitoredOnly) => setDraft({ ...draft, monitoredOnly })}
+                  />
+                </label>
+                {full && (
+                  <p className="text-xs text-muted-foreground">
+                    You have {links.length} links, the most there can be. Turn one off to make another.
+                  </p>
+                )}
+                <div className="flex justify-end">
+                  <Button type="button" disabled={busy || full || !name.trim()} onClick={() => void makeLink()}>
+                    {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Make link
+                  </Button>
+                </div>
+              </section>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
       <ConfirmDialog
-        open={confirm !== null}
-        onOpenChange={(next) => !next && setConfirm(null)}
-        title={confirm === 'off' ? 'Turn off the calendar link?' : 'Make a new calendar link?'}
-        description={
-          confirm === 'off'
-            ? 'Calendars subscribed to it stop updating.'
-            : 'The current link stops working, so calendars subscribed to it stop updating until you subscribe again.'
-        }
-        confirmLabel={confirm === 'off' ? 'Turn off' : 'Make new link'}
-        destructive={confirm === 'off'}
+        open={turningOff !== null}
+        onOpenChange={(next) => !next && setTurningOff(null)}
+        title={`Turn off “${turningOff?.name ?? ''}”?`}
+        description="Calendars subscribed to this link stop updating. Your other links keep working."
+        confirmLabel="Turn off"
+        destructive
         busy={busy}
-        onConfirm={confirm === 'off' ? turnOff : makeLink}
+        onConfirm={() => (turningOff ? turnOff(turningOff) : undefined)}
       />
     </>
   );

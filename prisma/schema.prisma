@@ -66,7 +66,7 @@ model User {
   twitchLink TwitchUserLink?
   tasteProfile   UserTasteProfile?
   passwordLink   PasswordLink?
-  calendarFeedToken CalendarFeedToken?
+  calendarFeedTokens CalendarFeedToken[]
   recoveryCodes  RecoveryCode[]
 
   @@index([jellyfinUserId])
@@ -134,13 +134,21 @@ model ServiceConnection {
 // shown once, when it is made. One per user: making a new one replaces the
 // hash, so the old link stops working. Deleted to turn the feed off, and with
 // the user.
+// A named calendar feed link; a user may have several, each with its own filters.
 model CalendarFeedToken {
-  id         String    @id @default(cuid())
-  userId     String    @unique
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash  String    @unique
-  createdAt  DateTime  @default(now())
-  lastUsedAt DateTime?
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  // The link's own filters (null/false = everything); ?type=&instance=&monitored= on the URL narrow further.
+  type          String?   // 'episode' | 'movie' | 'album'
+  instanceId    String?
+  monitoredOnly Boolean   @default(false)
+  tokenHash     String    @unique
+  createdAt     DateTime  @default(now())
+  lastUsedAt    DateTime?
+
+  @@index([userId])
 }
 
 model Session {

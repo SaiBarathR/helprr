@@ -1,7 +1,8 @@
 import type { CalendarEvent } from '@/types';
 
-// The Calendar page's filters, carried in the feed URL so one link can follow
-// what the person picked. They only narrow what calendar.view already shows.
+// The Calendar page's filters. Each feed link stores its own (chosen when it is
+// made); a link from before named links carries them in its URL instead, and the
+// URL's still narrow a link's own. They only narrow what calendar.view shows.
 
 export type FeedEventType = CalendarEvent['type'];
 
@@ -29,13 +30,31 @@ export function parseFeedFilters(params: URLSearchParams): FeedFilters | null {
   };
 }
 
-/** The query string for a token and filters, in the shape parseFeedFilters reads. */
-export function feedQuery(token: string, filters: FeedFilters): string {
-  const params = new URLSearchParams({ token });
-  if (filters.type) params.set('type', filters.type);
-  if (filters.instanceId) params.set('instance', filters.instanceId);
-  if (filters.monitoredOnly) params.set('monitored', '1');
-  return params.toString();
+export const NO_FEED_FILTERS: FeedFilters = { type: null, instanceId: null, monitoredOnly: false };
+
+/**
+ * A link's stored filters, as the table holds them. Null when one is not readable,
+ * so the link fails closed (it serves nothing) instead of showing everything.
+ */
+export function storedFeedFilters(row: { type: string | null; instanceId: string | null; monitoredOnly: boolean }): FeedFilters | null {
+  if (row.type !== null && !FEED_TYPES.has(row.type)) return null;
+  if (row.instanceId !== null && !INSTANCE_PATTERN.test(row.instanceId)) return null;
+  return { type: row.type as FeedEventType | null, instanceId: row.instanceId, monitoredOnly: row.monitoredOnly === true };
+}
+
+/** Filters sent to make a link ({ type, instanceId, monitoredOnly }, each optional); null when one is malformed. */
+export function parseFeedFiltersInput(value: unknown): FeedFilters | null {
+  if (value === undefined || value === null) return NO_FEED_FILTERS;
+  if (typeof value !== 'object' || Array.isArray(value)) return null;
+  const { type, instanceId, monitoredOnly } = value as Record<string, unknown>;
+  if (type !== undefined && type !== null && !(typeof type === 'string' && FEED_TYPES.has(type))) return null;
+  if (instanceId !== undefined && instanceId !== null && !(typeof instanceId === 'string' && INSTANCE_PATTERN.test(instanceId))) return null;
+  if (monitoredOnly !== undefined && typeof monitoredOnly !== 'boolean') return null;
+  return {
+    type: typeof type === 'string' ? (type as FeedEventType) : null,
+    instanceId: typeof instanceId === 'string' ? instanceId : null,
+    monitoredOnly: monitoredOnly === true,
+  };
 }
 
 export function applyFeedFilters(events: readonly CalendarEvent[], filters: FeedFilters): CalendarEvent[] {

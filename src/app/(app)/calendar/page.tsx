@@ -1607,7 +1607,8 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Mounted only while open, so the one-time link leaves memory on close. */}
+      {/* Mounted only while open, so the one-time link leaves memory on close, and
+          the new-link form starts from the page's current filters. */}
       {subscribeOpen && (
         <CalendarFeedDialog
           open
@@ -1617,7 +1618,7 @@ export default function CalendarPage() {
             instanceId: instanceFilter === 'all' ? null : instanceFilter,
             monitoredOnly,
           }}
-          instanceLabel={instances.find((i) => i.id === instanceFilter)?.label}
+          instances={instances}
         />
       )}
 

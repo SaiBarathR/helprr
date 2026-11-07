@@ -19,8 +19,9 @@ import type { CalendarEvent } from '@/types';
 
 // The subscribable calendar (Calendar → Subscribe in Calendar). Public
 // in the proxy by exact path: calendar apps send no session, so the per-user
-// feed token in ?token= is the credential. It is checked on every fetch, along
-// with the owner's status and calendar.view, and every refusal is the same 404.
+// feed token in ?token= is the credential (one per named link). It is checked on
+// every fetch, along with the owner's status and calendar.view, and every
+// refusal is the same 404.
 // A client IP (trusted proxy only) with too many refused tokens gets 429 for
 // any token until its window ends. The token is redacted from the request log.
 
@@ -54,8 +55,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     if (missWait > 0) return textResponse('Too many requests', 429, { 'Retry-After': String(missWait) });
   }
 
-  const user = await authorizeFeedToken(tokenHash);
-  if (!user) {
+  const link = await authorizeFeedToken(tokenHash);
+  if (!link) {
     if (ip !== undefined) await recordFeedMiss(ip);
     return notFound();
   }
@@ -94,7 +95,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       await setCachedJson('calendar', cacheKeySeed, events, EVENTS_CACHE_SECONDS);
     }
 
-    return new NextResponse(buildCalendarFeed(applyFeedFilters(events, filters)), {
+    // The link's own filters, then any a pre-named-links URL carries.
+    const shown = applyFeedFilters(applyFeedFilters(events, link.filters), filters);
+    return new NextResponse(buildCalendarFeed(shown, { timeZone, name: link.name }), {
       headers: {
         'Content-Type': 'text/calendar; charset=utf-8',
         'Content-Disposition': 'inline; filename="helprr.ics"',

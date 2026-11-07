@@ -4,6 +4,7 @@ import type { CalendarEvent } from '@/types';
 
 const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
+  timeZone: 'UTC',
   updateMany: vi.fn(),
   evalScript: vi.fn(),
   redisGet: vi.fn(),
@@ -20,7 +21,7 @@ vi.mock('@/lib/db', () => ({
 vi.mock('@/lib/redis', () => ({ getRedisClient: mocks.getRedisClient }));
 vi.mock('@/lib/calendar-events', () => ({ fetchServiceCalendarEvents: mocks.fetchEvents }));
 vi.mock('@/lib/cache/json-cache', () => ({ getCachedJson: mocks.getCachedJson, setCachedJson: mocks.setCachedJson }));
-vi.mock('@/lib/app-settings', () => ({ getOrCreateAppSettings: async () => ({ timeZone: 'UTC' }) }));
+vi.mock('@/lib/app-settings', () => ({ getOrCreateAppSettings: async () => ({ timeZone: mocks.timeZone }) }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (fn: unknown) => fn }));
 
 import { GET } from './route';
@@ -55,6 +56,10 @@ function feedRow(user: Record<string, unknown> = {}) {
   return {
     id: 'feed-1',
     tokenHash: hashFeedToken(TOKEN),
+    name: 'Calendar',
+    type: null as string | null,
+    instanceId: null as string | null,
+    monitoredOnly: false,
     lastUsedAt: null,
     user: { id: 'u1', username: 'member', role: 'member', template: 'member', permissions: {}, status: 'active', ...user },
   };
@@ -228,6 +233,31 @@ describe('GET /api/calendar/feed.ics', () => {
       expect(mocks.fetchEvents).not.toHaveBeenCalled();
     },
   );
+
+  it("applies the link's own filters, and a URL's filters narrow them further", async () => {
+    mocks.findUnique.mockResolvedValue({ ...feedRow(), name: 'HD', instanceId: 'hd' });
+    let res = await get(`?token=${TOKEN}`);
+    const text = await res.text();
+    expect(uids(text)).toEqual(['sonarr-hd-1@helprr', 'radarr-hd-3-digital@helprr']);
+    expect(text).toContain('X-WR-CALNAME:Helprr · HD');
+
+    res = await get(`?token=${TOKEN}&type=movie`);
+    expect(uids(await res.text())).toEqual(['radarr-hd-3-digital@helprr']);
+    // A URL cannot widen a link: another instance shows nothing.
+    res = await get(`?token=${TOKEN}&instance=4k`);
+    expect(uids(await res.text())).toEqual([]);
+  });
+
+  it("dates a release on its local day in the app's time zone", async () => {
+    mocks.timeZone = 'America/New_York';
+    try {
+      mocks.getCachedJson.mockResolvedValue([event({ id: 'radarr-hd-3-digital', type: 'movie', title: 'Film', releaseType: 'digital', date: '2026-12-31T00:00:00Z' })]);
+      const text = await (await get(`?token=${TOKEN}`)).text();
+      expect(text).toContain('DTSTART;VALUE=DATE:20261230');
+    } finally {
+      mocks.timeZone = 'UTC';
+    }
+  });
 
   it('rejects a malformed filter only after the token checks', async () => {
     mocks.findUnique.mockResolvedValue(null);

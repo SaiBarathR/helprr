@@ -227,7 +227,7 @@ describe('my-data export coverage', () => {
   ];
   const EXCLUDED: Record<string, string> = {
     passwordLink: 'holds only a token hash',
-    calendarFeedToken: 'holds only a token hash',
+    calendarFeedTokens: 'feed links: token hashes, with the names and filters shown in Calendar',
     recoveryCodes: 'two-step sign-in recovery codes; holds only code hashes',
   };
 

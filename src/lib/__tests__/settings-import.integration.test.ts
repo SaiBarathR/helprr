@@ -519,12 +519,15 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     expect(outcome.followUps.recommendationUserIds).toEqual(['member-1']);
   });
 
-  it("ends an existing user's calendar feed link when the import changes their status, and keeps it otherwise", async () => {
+  it("ends every calendar feed link of an existing user when the import changes their status, and keeps them otherwise", async () => {
     await prisma.user.create({ data: { id: 'member-1', username: 'member', displayName: 'Member', role: 'member', template: 'member' } });
-    await prisma.calendarFeedToken.create({ data: { userId: 'member-1', tokenHash: 'a'.repeat(64) } });
+    await prisma.calendarFeedToken.createMany({ data: [
+      { userId: 'member-1', name: 'Calendar', tokenHash: 'a'.repeat(64) },
+      { userId: 'member-1', name: 'Movies', type: 'movie', tokenHash: 'b'.repeat(64) },
+    ] });
 
     await runImport.applySettingsImport(fullDocument() as never, IMPORTER_ID);
-    expect(await prisma.calendarFeedToken.count({ where: { userId: 'member-1' } })).toBe(1);
+    expect(await prisma.calendarFeedToken.count({ where: { userId: 'member-1' } })).toBe(2);
 
     const doc = fullDocument();
     doc.users.accounts[0].status = 'disabled';
@@ -534,7 +537,7 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
 
   it("ends an existing user's calendar feed link when the import takes calendar.view away", async () => {
     await prisma.user.create({ data: { id: 'member-1', username: 'member', displayName: 'Member', role: 'member', template: 'member' } });
-    await prisma.calendarFeedToken.create({ data: { userId: 'member-1', tokenHash: 'a'.repeat(64) } });
+    await prisma.calendarFeedToken.create({ data: { userId: 'member-1', name: 'Calendar', tokenHash: 'a'.repeat(64) } });
 
     const doc = fullDocument();
     doc.users.accounts[0].permissions = { 'calendar.view': false } as never;

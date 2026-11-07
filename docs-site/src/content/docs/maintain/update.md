@@ -98,7 +98,8 @@ linked release notes.
 After an update, everyone sees a **What's new** card once, the first time they open
 Helprr, with the notes for each release since the version they last saw. Closing it
 hides it on every device. A new account, and builds that are not a release (such as
-`edge`), skip it. The notes come from the changelog inside the image, not from GitHub.
+`edge`), skip it. Accounts that existed before the first release after 1.14.0 count as
+having seen 1.14.0, so they get the notes from that release on. The notes come from the changelog inside the image, not from GitHub.
 **Settings → About → What's new** shows the running release's notes at any time.
 
 **Settings → Service status → Support bundle** downloads bounded JSON diagnostics:

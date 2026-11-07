@@ -1,14 +1,18 @@
 import type { CalendarEvent, MovieReleaseType } from '@/types';
+import { getLocalDateParts } from '@/lib/timezone';
 
 // RFC 5545 output for the subscribable calendar feed. Lines end in CRLF and are
 // folded at 75 octets; text values are escaped. Episodes are timed (UTC, their
-// series runtime long); movie and album releases are dates upstream, so they
-// are all-day events on that date.
+// series runtime long); movie and album releases are all-day events on the
+// local date of the upstream instant in the app's time zone (Settings →
+// Preferences → Timezone), not the instant's UTC date.
 
 const CRLF = '\r\n';
 const MAX_LINE_OCTETS = 75;
 const DEFAULT_EPISODE_MINUTES = 30;
 const UID_DOMAIN = 'helprr';
+// The name the one link from before named links was given.
+const DEFAULT_LINK_NAME = 'Calendar';
 
 const APP_NAME: Record<CalendarEvent['type'], string> = { episode: 'Sonarr', movie: 'Radarr', album: 'Lidarr' };
 const RELEASE_LABEL: Record<MovieReleaseType, string> = {
@@ -68,7 +72,7 @@ function formatUtcDateTime(date: Date): string {
   return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}T${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}Z`;
 }
 
-/** 20261107: Radarr and Lidarr keep release dates as UTC midnight. */
+/** 20261107, from a date's UTC fields. */
 function formatUtcDate(date: Date): string {
   return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}`;
 }
@@ -93,7 +97,7 @@ function descriptionOf(event: CalendarEvent): string {
   return lines.join('\n');
 }
 
-function eventLines(event: CalendarEvent, stamp: string): string[] | null {
+function eventLines(event: CalendarEvent, stamp: string, timeZone: string): string[] | null {
   const start = new Date(event.date);
   if (!Number.isFinite(start.getTime())) return null;
 
@@ -105,8 +109,12 @@ function eventLines(event: CalendarEvent, stamp: string): string[] | null {
       `DTEND:${formatUtcDateTime(new Date(start.getTime() + minutes * 60_000))}`,
     );
   } else {
-    const nextDay = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 1));
-    lines.push(`DTSTART;VALUE=DATE:${formatUtcDate(start)}`, `DTEND;VALUE=DATE:${formatUtcDate(nextDay)}`);
+    // Radarr and Lidarr give an instant (often UTC midnight); the day is the local one.
+    const local = getLocalDateParts(start, timeZone);
+    if (!local) return null;
+    const day = new Date(Date.UTC(local.year, local.month - 1, local.day));
+    const nextDay = new Date(Date.UTC(local.year, local.month - 1, local.day + 1));
+    lines.push(`DTSTART;VALUE=DATE:${formatUtcDate(day)}`, `DTEND;VALUE=DATE:${formatUtcDate(nextDay)}`);
   }
   lines.push(
     `SUMMARY:${escapeIcsText(summaryOf(event))}`,
@@ -119,21 +127,28 @@ function eventLines(event: CalendarEvent, stamp: string): string[] | null {
   return lines;
 }
 
-/** A whole VCALENDAR document, CRLF-terminated. */
-export function buildCalendarFeed(events: readonly CalendarEvent[], now: Date = new Date()): string {
+/**
+ * A whole VCALENDAR document, CRLF-terminated. `timeZone` decides the day of an
+ * all-day release; `name` is the link's, shown by calendar apps after "Helprr".
+ */
+export function buildCalendarFeed(
+  events: readonly CalendarEvent[],
+  { timeZone, name, now = new Date() }: { timeZone: string; name?: string; now?: Date },
+): string {
   const stamp = formatUtcDateTime(now);
+  const calendarName = name && name !== DEFAULT_LINK_NAME ? `Helprr · ${name}` : 'Helprr';
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Helprr//Calendar feed//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    'X-WR-CALNAME:Helprr',
+    `X-WR-CALNAME:${escapeIcsText(calendarName)}`,
     'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
     'X-PUBLISHED-TTL:PT1H',
   ];
   for (const event of events) {
-    const vevent = eventLines(event, stamp);
+    const vevent = eventLines(event, stamp, timeZone);
     if (vevent) lines.push(...vevent);
   }
   lines.push('END:VCALENDAR');

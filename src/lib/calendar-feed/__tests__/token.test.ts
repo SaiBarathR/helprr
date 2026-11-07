@@ -30,6 +30,10 @@ function row(user: Record<string, unknown> = {}, lastUsedAt: Date | null = null)
   return {
     id: 'feed-1',
     tokenHash: 'h',
+    name: 'Calendar',
+    type: null,
+    instanceId: null,
+    monitoredOnly: false,
     lastUsedAt,
     user: { id: 'u1', username: 'member', role: 'member', template: 'member', permissions: {}, status: 'active', ...user },
   };
@@ -83,12 +87,24 @@ describe('authorizeFeedToken', () => {
 
   it('lets an admin whose overrides deny it through, as can() does', async () => {
     mocks.findUnique.mockResolvedValue(row({ role: 'admin', template: 'admin', permissions: { 'calendar.view': false } }));
-    await expect(authorizeFeedToken('h', NOW)).resolves.toMatchObject({ id: 'u1' });
+    await expect(authorizeFeedToken('h', NOW)).resolves.toMatchObject({ user: { id: 'u1' } });
+  });
+
+  it('returns the link name and its own filters, and refuses a link whose filters are unreadable', async () => {
+    mocks.findUnique.mockResolvedValue({ ...row(), name: 'Kids', type: 'movie', instanceId: 'rad-1', monitoredOnly: true });
+    await expect(authorizeFeedToken('h', NOW)).resolves.toMatchObject({
+      name: 'Kids',
+      filters: { type: 'movie', instanceId: 'rad-1', monitoredOnly: true },
+    });
+    mocks.findUnique.mockResolvedValue({ ...row(), type: 'podcast' });
+    await expect(authorizeFeedToken('h', NOW)).resolves.toBeNull();
+    mocks.findUnique.mockResolvedValue({ ...row(), instanceId: 'bad id!' });
+    await expect(authorizeFeedToken('h', NOW)).resolves.toBeNull();
   });
 
   it('returns an active capable owner and records the use, at most every few minutes', async () => {
     mocks.findUnique.mockResolvedValue(row());
-    await expect(authorizeFeedToken('h', NOW)).resolves.toMatchObject({ id: 'u1' });
+    await expect(authorizeFeedToken('h', NOW)).resolves.toMatchObject({ user: { id: 'u1' } });
     expect(mocks.updateMany).toHaveBeenCalledWith({ where: { id: 'feed-1', tokenHash: 'h' }, data: { lastUsedAt: NOW } });
 
     mocks.updateMany.mockClear();

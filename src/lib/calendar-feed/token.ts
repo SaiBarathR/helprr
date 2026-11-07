@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'crypto';
 import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { storedFeedFilters, type FeedFilters } from '@/lib/calendar-feed/filters';
 import { can } from '@/lib/permissions';
 import { getRedisClient } from '@/lib/redis';
 
@@ -11,6 +12,8 @@ import { getRedisClient } from '@/lib/redis';
 // capabilities are re-read on every fetch.
 
 const TOKEN_BYTES = 32;
+// Named links per user (one per calendar app or filter set is plenty).
+export const MAX_FEED_LINKS = 10;
 // base64url of 32 bytes, no padding.
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
@@ -91,25 +94,30 @@ export async function recordFeedMiss(ip: string): Promise<void> {
 }
 
 /**
- * The user a feed token belongs to, when the token is current (not rotated or
- * revoked) and its owner is active and may still view the calendar; null
- * otherwise. Callers answer every null the same way, so a response never says
- * which check failed.
+ * The user a feed token belongs to and the link's own filters, when the token is
+ * current (not revoked) and its owner is active and may still view the calendar;
+ * null otherwise. Callers answer every null the same way, so a response never
+ * says which check failed.
  */
-export async function authorizeFeedToken(tokenHash: string, now: Date = new Date()): Promise<User | null> {
+export async function authorizeFeedToken(
+  tokenHash: string,
+  now: Date = new Date(),
+): Promise<{ user: User; name: string; filters: FeedFilters } | null> {
   const row = await prisma.calendarFeedToken.findUnique({
     where: { tokenHash },
     include: { user: true },
   });
   if (!row || row.user.status !== 'active' || !can(row.user, 'calendar.view')) return null;
+  const filters = storedFeedFilters(row);
+  if (!filters) return null;
 
   if (!row.lastUsedAt || now.getTime() - row.lastUsedAt.getTime() > LAST_USED_DEBOUNCE_MS) {
-    // Keyed on the hash too, so a fetch racing a rotation never touches the new link.
+    // Keyed on the hash too, so a fetch never touches another link.
     prisma.calendarFeedToken
       .updateMany({ where: { id: row.id, tokenHash }, data: { lastUsedAt: now } })
       .catch((error: unknown) => {
         console.error(`[CalendarFeed] Failed to record last use: ${error instanceof Error ? error.name : 'unknown error'}`);
       });
   }
-  return row.user;
+  return { user: row.user, name: row.name, filters };
 }
