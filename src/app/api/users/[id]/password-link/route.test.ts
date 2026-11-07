@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   userUpdateMany: vi.fn(),
   recoveryDeleteMany: vi.fn(),
   linkUpsert: vi.fn(),
+  txLinkUpsert: vi.fn(),
+  queryRaw: vi.fn(),
   lockedTwoStep: vi.fn(),
   recordFailedSignIn: vi.fn(),
   recordSecurityEvent: vi.fn(),
@@ -30,13 +32,20 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/db', () => {
+  // The transaction client is its own object, so a link made outside it shows.
+  const tx = {
+    // The row lock on your own account: answers its two-step state as it is now.
+    $queryRaw: async (sql: TemplateStringsArray, ...values: unknown[]) => {
+      mocks.queryRaw(sql.join('?'), values);
+      return [{ totpEnabledAt: mocks.lockedTwoStep() }];
+    },
+    passwordLink: { upsert: mocks.txLinkUpsert },
+  };
   const prisma = {
     user: { findUnique: mocks.userFindUnique, updateMany: mocks.userUpdateMany },
     recoveryCode: { deleteMany: mocks.recoveryDeleteMany },
     passwordLink: { upsert: mocks.linkUpsert },
-    // The row lock on your own account: answers its two-step state as it is now.
-    $queryRaw: async () => [{ totpEnabledAt: mocks.lockedTwoStep() }],
-    $transaction: async (fn: (tx: unknown) => unknown) => fn(prisma),
+    $transaction: async (fn: (client: unknown) => unknown) => fn(tx),
   };
   return { prisma };
 });
@@ -86,6 +95,7 @@ beforeEach(() => {
   mocks.userUpdateMany.mockResolvedValue({ count: 1 });
   mocks.recoveryDeleteMany.mockResolvedValue({ count: 1 });
   mocks.linkUpsert.mockResolvedValue({});
+  mocks.txLinkUpsert.mockResolvedValue({});
   mocks.redisEval.mockResolvedValue(['ok', '0']);
   mocks.redisDel.mockResolvedValue(1);
   secret = createTotpSetup('boss');
@@ -105,6 +115,11 @@ beforeEach(() => {
   mocks.userFindUnique.mockImplementation(async ({ where }: { where: { id: string } }) => account(where.id));
 });
 
+function expectNoLink() {
+  expect(mocks.linkUpsert).not.toHaveBeenCalled();
+  expect(mocks.txLinkUpsert).not.toHaveBeenCalled();
+}
+
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllEnvs();
@@ -121,7 +136,7 @@ describe('POST /api/users/[id]/password-link for your own account, two-step sign
     const data = await response.json();
     expect(data.needsSecondFactor).toBe(true);
     expect(data.error).toMatch(/current password and a code/);
-    expect(mocks.linkUpsert).not.toHaveBeenCalled();
+    expectNoLink();
     expect(mocks.verifyUserPassword).not.toHaveBeenCalled();
   });
 
@@ -132,7 +147,7 @@ describe('POST /api/users/[id]/password-link for your own account, two-step sign
     expect(mocks.limits.recordUsernameFailure).toHaveBeenCalledWith('boss', 'not it');
     expect(mocks.limits.recordGlobalLoginFailure).toHaveBeenCalled();
     expect(mocks.recordFailedSignIn).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ method: 'password' }));
-    expect(mocks.linkUpsert).not.toHaveBeenCalled();
+    expectNoLink();
   });
 
   it('refuses a wrong code with 403, counted against the code cap and as a failed sign-in', async () => {
@@ -147,27 +162,29 @@ describe('POST /api/users/[id]/password-link for your own account, two-step sign
     expect(mocks.limits.recordGlobalLoginFailure).toHaveBeenCalled();
     expect(mocks.recordFailedSignIn).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ method: 'totp' }));
     expect(mocks.redisDel).not.toHaveBeenCalled();
-    expect(mocks.linkUpsert).not.toHaveBeenCalled();
+    expectNoLink();
   });
 
   it('honors the hourly code cap', async () => {
     mocks.redisEval.mockResolvedValue(['locked', '600000']);
     const response = await issue('admin-1', { currentPassword: PASSWORD, code: code() });
     expect(response.status).toBe(429);
-    expect(mocks.linkUpsert).not.toHaveBeenCalled();
+    expectNoLink();
   });
 
   it('fails closed when Redis is down', async () => {
     mocks.redisEval.mockRejectedValue(new Error('down'));
     expect((await issue('admin-1', { currentPassword: PASSWORD, code: code() })).status).toBe(503);
-    expect(mocks.linkUpsert).not.toHaveBeenCalled();
+    expectNoLink();
   });
 
-  it('makes the link with the right password and code, and clears the counts', async () => {
+  it('makes the link with the right password and code, holding your user row, and clears the counts', async () => {
     const response = await issue('admin-1', { currentPassword: PASSWORD, code: code() });
     expect(response.status).toBe(201);
     expect((await response.json()).token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(mocks.linkUpsert).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.queryRaw).toHaveBeenCalledWith(expect.stringMatching(/FROM "User" WHERE "id" = \? FOR UPDATE/), ['admin-1']);
+    expect(mocks.linkUpsert).not.toHaveBeenCalled();
+    expect(mocks.txLinkUpsert).toHaveBeenCalledWith(expect.objectContaining({
       create: expect.objectContaining({ userId: 'admin-1', purpose: 'reset', createdById: 'admin-1' }),
     }));
     expect(mocks.redisDel).toHaveBeenCalled();
@@ -199,12 +216,22 @@ describe('POST /api/users/[id]/password-link, unchanged cases', () => {
     const response = await issue('admin-1');
     expect(response.status).toBe(403);
     expect((await response.json()).needsSecondFactor).toBe(true);
-    expect(mocks.linkUpsert).not.toHaveBeenCalled();
+    expectNoLink();
+  });
+
+  it('refuses, under the lock, when two-step sign-in was turned off and on again after the code was checked', async () => {
+    mocks.lockedTwoStep.mockReturnValue(new Date(NOW));
+    const response = await issue('admin-1', { currentPassword: PASSWORD, code: code() });
+    expect(response.status).toBe(403);
+    expect((await response.json()).needsSecondFactor).toBe(true);
+    expectNoLink();
   });
 
   it("makes someone else's link with no password or code, even with the admin's two-step sign-in on", async () => {
     const response = await issue('u2');
     expect(response.status).toBe(201);
+    expect(mocks.queryRaw).not.toHaveBeenCalled();
+    expect(mocks.txLinkUpsert).not.toHaveBeenCalled();
     expect(mocks.linkUpsert).toHaveBeenCalledWith(expect.objectContaining({
       create: expect.objectContaining({ userId: 'u2', createdById: 'admin-1' }),
     }));

@@ -107,7 +107,10 @@ async function postHandler(
       link = await prisma.$transaction(async (tx) => {
         const [row] = await tx.$queryRaw<Array<{ totpEnabledAt: Date | null }>>`
           SELECT "totpEnabledAt" FROM "User" WHERE "id" = ${user.id} FOR UPDATE`;
-        if (row?.totpEnabledAt != null && !confirmedSecondFactor) throw new TwoStepTurnedOnError();
+        // Only the two-step sign-in the password and code were checked against:
+        // one turned off and on again meanwhile needs them again.
+        const confirmedFor = confirmedSecondFactor ? admin.user.totpEnabledAt?.getTime() : undefined;
+        if (row?.totpEnabledAt != null && row.totpEnabledAt.getTime() !== confirmedFor) throw new TwoStepTurnedOnError();
         return issuePasswordLink(tx, { userId: user.id, purpose, createdById: admin.user.id });
       });
     } catch (error) {
