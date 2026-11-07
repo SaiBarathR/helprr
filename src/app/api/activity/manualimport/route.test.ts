@@ -245,6 +245,23 @@ describe('Lidarr manual import', () => {
     expect(mocks.submit).not.toHaveBeenCalled();
   });
 
+  it('refuses an answer for another album than the one asked for', async () => {
+    mocks.getAlbum.mockResolvedValue({});
+    const res = await post({ source: 'lidarr', files: [track('/downloads/album/01.flac', { artistId: 9 })] });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Lidarr answered album 3 with another album' });
+    expect(mocks.submit).not.toHaveBeenCalled();
+  });
+
+  it('refuses the same file twice, so it cannot land in two albums', async () => {
+    const files = [track('/downloads/album/01.flac'), track('/downloads/album/01.flac', { albumId: 4, albumReleaseId: 74, trackIds: [741] })];
+    const res = await post({ source: 'lidarr', files });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Each file can be imported once' });
+    expect(mocks.getLidarrClient).not.toHaveBeenCalled();
+    expect(mocks.submit).not.toHaveBeenCalled();
+  });
+
   it('refuses an album Lidarr no longer has, saying so', async () => {
     mocks.getAlbum.mockRejectedValue(Object.assign(new Error('Not Found'), { isAxiosError: true, response: { status: 404 } }));
     const res = await post({ source: 'lidarr', files: [track('/downloads/album/01.flac')] });

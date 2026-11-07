@@ -65,12 +65,15 @@ async function lidarrOwnershipError(client: LidarrClient, files: LidarrImportFil
   const albumIds = [...new Set(files.map((file) => file.albumId))];
   // A few albums at a time, so a discography doesn't fire every read at once.
   for (let i = 0; i < albumIds.length; i += 5) {
-    const albums = await Promise.all(albumIds.slice(i, i + 5).map((id) => client.getAlbumById(id).catch((error) => {
+    const batch = albumIds.slice(i, i + 5);
+    const albums = await Promise.all(batch.map((id) => client.getAlbumById(id).catch((error) => {
       if (isAxiosError(error) && error.response?.status === 404) return id;
       throw error;
     })));
-    for (const album of albums) {
+    for (const [index, album] of albums.entries()) {
       if (typeof album === 'number') return `Lidarr no longer has album ${album}`;
+      // Files are matched on album.id below; another album's answer would skip their checks.
+      if (album.id !== batch[index]) return `Lidarr answered album ${batch[index]} with another album`;
       const albumFiles = files.filter((file) => file.albumId === album.id);
       if (albumFiles.some((file) => file.artistId !== album.artistId)) {
         return `Album ${album.id} is not by the artist given for its files`;
@@ -188,6 +191,9 @@ async function postHandler(request: NextRequest) {
     const downloadId = files[0].downloadId;
     if (files.some((file) => file.downloadId !== downloadId)) {
       return NextResponse.json({ error: 'files must belong to one download' }, { status: 400 });
+    }
+    if (new Set(files.map((file) => file.path)).size !== files.length) {
+      return NextResponse.json({ error: 'Each file can be imported once' }, { status: 400 });
     }
 
     const isSonarr = source === 'sonarr';
