@@ -49,6 +49,17 @@ describe('/invite', () => {
     expect(mocks.replace).toHaveBeenCalledWith('/');
   });
 
+  it('sends someone with two-step sign-in to sign in with a code instead of signing them in', async () => {
+    accept = () => Promise.resolve(Response.json({ success: true, signInWithCode: true }));
+    await open();
+    await submit(PASSWORD);
+
+    expect(screen.getByRole('status').textContent).toBe('Your password is set. Sign in with it and a code from your authenticator app.');
+    expect(screen.getByRole('link', { name: 'Go to sign in' }).getAttribute('href')).toBe('/login');
+    expect(mocks.complete).not.toHaveBeenCalled();
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
   it('reads the token from the fragment once and drops it from the address bar', async () => {
     await open();
     await waitFor(() => expect(window.location.hash).toBe(''));

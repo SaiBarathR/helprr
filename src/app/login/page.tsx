@@ -16,6 +16,33 @@ import { SIGN_IN_HELP_URL } from '@/lib/docs-links';
 // rejecting protocol-relative (//) and absolute URLs to avoid open redirects.
 // Backslashes are rejected too: the WHATWG URL parser treats "\" as "/", so a
 // value like "/\evil.com" would normalize to "//evil.com" and redirect offsite.
+// The code step's pending token, kept for this tab while it is valid: iOS often
+// reloads a home-screen app after a switch to the authenticator. It is not a
+// session; it only lets /api/auth/login/totp make one, with a code.
+const MFA_PENDING_KEY = 'helprr-mfa-pending';
+// A little under the server's five minutes.
+const MFA_PENDING_KEEP_MS = 4.5 * 60_000;
+
+function storeMfaPending(token: string | null): void {
+  try {
+    if (token) sessionStorage.setItem(MFA_PENDING_KEY, JSON.stringify({ token, until: Date.now() + MFA_PENDING_KEEP_MS }));
+    else sessionStorage.removeItem(MFA_PENDING_KEY);
+  } catch {
+    // Private mode or storage off: the code step just won't survive a reload.
+  }
+}
+
+function readMfaPending(): string | null {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(MFA_PENDING_KEY) ?? 'null') as { token?: unknown; until?: unknown } | null;
+    if (saved && typeof saved.token === 'string' && typeof saved.until === 'number' && saved.until > Date.now()) return saved.token;
+    sessionStorage.removeItem(MFA_PENDING_KEY);
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 function getPostLoginTarget(): string {
   if (typeof window === 'undefined') return '/';
   const next = new URLSearchParams(window.location.search).get('next');
@@ -31,7 +58,12 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   // 'local' | 'jellyfin' | null — tracks which button is mid-flight so only the
   // pressed one shows a spinner.
-  const [pending, setPending] = useState<'local' | 'jellyfin' | null>(null);
+  const [pending, setPending] = useState<'local' | 'jellyfin' | 'code' | null>(null);
+  // Two-step sign-in: the password was right and the server wants a code. The
+  // token is not a session; it only lets /api/auth/login/totp make one.
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
   // When the server returns 429, hold the retry deadline (epoch ms) so the error
   // can count down live instead of showing a frozen "try again in N seconds".
   const [retryAt, setRetryAt] = useState<number | null>(null);
@@ -46,6 +78,13 @@ export default function LoginPage() {
   // desktop-then-mobile reload thrash for iPhone users.
   useEffect(() => {
     setDeviceCookieFromMatchMedia();
+  }, []);
+
+  // Back to the code step after a reload, while its token is still good.
+  useEffect(() => {
+    const saved = readMfaPending();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage is read after mount so the server render matches
+    if (saved) setMfaToken(saved);
   }, []);
 
   // A brand-new install with no APP_PASSWORD has nobody to sign in as yet.
@@ -90,7 +129,7 @@ export default function LoginPage() {
     return () => clearInterval(id);
   }, [retryAt]);
 
-  async function submit(endpoint: string, mode: 'local' | 'jellyfin') {
+  async function submit(endpoint: string, mode: 'local' | 'jellyfin' | 'code') {
     if (pending) return;
     if (retryAt !== null && retryAt > Date.now()) return; // still in cooldown
     setPending(mode);
@@ -101,10 +140,19 @@ export default function LoginPage() {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(mode === 'code' ? { mfaToken, code } : { username, password }),
       });
 
       if (res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { mfaRequired?: unknown; mfaToken?: unknown };
+        if (data.mfaRequired === true && typeof data.mfaToken === 'string') {
+          storeMfaPending(data.mfaToken);
+          setMfaToken(data.mfaToken);
+          setCode('');
+          setUseRecoveryCode(false);
+          return;
+        }
+        storeMfaPending(null);
         await completeBrowserSignIn();
         router.replace(getPostLoginTarget());
         router.refresh();
@@ -122,12 +170,16 @@ export default function LoginPage() {
       }
 
       let message = 'Sign in failed';
+      let mfaExpired = false;
       try {
-        const data = (await res.json()) as { error?: unknown };
+        const data = (await res.json()) as { error?: unknown; mfaExpired?: unknown };
         if (typeof data?.error === 'string') message = data.error;
+        mfaExpired = data?.mfaExpired === true;
       } catch {
         // keep the generic fallback
       }
+      // The code step timed out or the account changed: start again from the password.
+      if (mfaExpired) leaveCodeStep();
       setError(message);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Something went wrong');
@@ -141,6 +193,26 @@ export default function LoginPage() {
     submit('/api/auth/login', 'local');
   }
 
+  function handleCodeSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submit('/api/auth/login/totp', 'code');
+  }
+
+  function leaveCodeStep() {
+    storeMfaPending(null);
+    setMfaToken(null);
+    setCode('');
+    setPassword('');
+  }
+
+  const errorText = retrySeconds > 0 ? (
+    <p className="text-sm text-destructive text-center">
+      Too many login attempts. Try again in {retrySeconds}s.
+    </p>
+  ) : error ? (
+    <p className="text-sm text-destructive text-center">{error}</p>
+  ) : null;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
@@ -152,10 +224,68 @@ export default function LoginPage() {
           </div>
           <CardTitle className="text-2xl font-bold">Helprr</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Sign in to continue
+            {mfaToken ? 'Two-step sign-in' : 'Sign in to continue'}
           </p>
         </CardHeader>
         <CardContent>
+          {mfaToken ? (
+            <form onSubmit={handleCodeSubmit} className="space-y-4">
+              <p className="text-sm text-muted-foreground text-center">
+                {useRecoveryCode
+                  ? 'Enter one of the recovery codes you saved. Each one works once.'
+                  : 'Enter the 6-digit code from your authenticator app.'}
+              </p>
+              <Input
+                key={useRecoveryCode ? 'recovery' : 'totp'}
+                type="text"
+                aria-label={useRecoveryCode ? 'Recovery code' : 'Authenticator code'}
+                placeholder={useRecoveryCode ? 'XXXX-XXXX-XXXX-XXXX' : '123456'}
+                inputMode={useRecoveryCode ? 'text' : 'numeric'}
+                autoComplete={useRecoveryCode ? 'off' : 'one-time-code'}
+                autoCapitalize={useRecoveryCode ? 'characters' : 'off'}
+                autoCorrect="off"
+                spellCheck={false}
+                maxLength={useRecoveryCode ? 24 : 8}
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                autoFocus
+                required
+              />
+              {errorText}
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={pending !== null || retrySeconds > 0 || code.trim().length === 0}
+              >
+                {pending === 'code' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Verify
+              </Button>
+              <div className="flex items-center justify-between text-sm">
+                <button
+                  type="button"
+                  className="min-h-[44px] text-muted-foreground underline-offset-2 hover:underline"
+                  onClick={() => {
+                    setUseRecoveryCode((v) => !v);
+                    setCode('');
+                    setError('');
+                  }}
+                >
+                  {useRecoveryCode ? 'Use the authenticator app' : 'Use a recovery code'}
+                </button>
+                <button
+                  type="button"
+                  className="min-h-[44px] text-muted-foreground underline-offset-2 hover:underline"
+                  disabled={pending !== null}
+                  onClick={() => {
+                    leaveCodeStep();
+                    setError('');
+                  }}
+                >
+                  Back
+                </button>
+              </div>
+            </form>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
               type="text"
@@ -174,13 +304,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
             />
-            {retrySeconds > 0 ? (
-              <p className="text-sm text-destructive text-center">
-                Too many login attempts. Try again in {retrySeconds}s.
-              </p>
-            ) : error ? (
-              <p className="text-sm text-destructive text-center">{error}</p>
-            ) : null}
+            {errorText}
             <Button
               type="submit"
               className="w-full"
@@ -223,6 +347,7 @@ export default function LoginPage() {
               Sign in with Jellyfin
             </Button>
           </form>
+          )}
         </CardContent>
       </Card>
     </div>

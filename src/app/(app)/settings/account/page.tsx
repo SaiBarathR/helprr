@@ -8,6 +8,7 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { JellyfinConnection } from '@/components/settings/jellyfin-connection';
 import { ChangePasswordDrawer } from '@/components/settings/change-password-drawer';
 import { DeleteAccountDrawer } from '@/components/settings/delete-account-drawer';
+import { TwoFactorSection } from '@/components/settings/two-factor-section';
 import { useMe } from '@/components/permission-provider';
 import { endSessionInThisBrowser, requestSessionLogout } from '@/lib/client-cache';
 import { saveFile } from '@/lib/save-file';
@@ -102,6 +103,8 @@ export default function AccountSettingsPage() {
           username={me.username ?? ''}
         />
       )}
+
+      {me?.hasLocalPassword && <TwoFactorSection />}
 
       <JellyfinConnection />
 

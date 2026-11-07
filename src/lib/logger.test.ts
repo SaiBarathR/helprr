@@ -255,3 +255,16 @@ describe('Twitch secret redaction', () => {
     expect(redact('Cookie: auth-token=abc123; login=x')).toBe('Cookie: auth-token=[REDACTED]; login=x');
   });
 });
+
+describe('two-step sign-in redaction', () => {
+  it('redacts the pending token, recovery codes and passwords by key, and an otpauth secret in strings', () => {
+    expect(redact({ mfaToken: 'a', recoveryCodes: ['b'], currentPassword: 'c', newPassword: 'd' })).toEqual({
+      mfaToken: '[REDACTED]',
+      recoveryCodes: '[REDACTED]',
+      currentPassword: '[REDACTED]',
+      newPassword: '[REDACTED]',
+    });
+    expect(redact('otpauth://totp/Helprr:a?issuer=Helprr&secret=JBSWY3DPEHPK3PXP&algorithm=SHA1'))
+      .toBe('otpauth://totp/Helprr:a?issuer=Helprr&secret=[REDACTED]&algorithm=SHA1');
+  });
+});

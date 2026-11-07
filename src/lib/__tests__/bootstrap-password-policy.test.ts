@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   sessionUpdateMany: vi.fn(),
   linkDeleteMany: vi.fn(),
   feedDeleteMany: vi.fn(),
+  recoveryCodeDeleteMany: vi.fn(),
   watchlistUpdateMany: vi.fn(),
   subscriptionUpdateMany: vi.fn(),
   transaction: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock('@/lib/db', () => ({
     session: { updateMany: mocks.sessionUpdateMany },
     passwordLink: { deleteMany: mocks.linkDeleteMany },
     calendarFeedToken: { deleteMany: mocks.feedDeleteMany },
+    recoveryCode: { deleteMany: mocks.recoveryCodeDeleteMany },
     watchlistItem: { updateMany: mocks.watchlistUpdateMany },
     pushSubscription: { updateMany: mocks.subscriptionUpdateMany },
     $transaction: mocks.transaction,
@@ -109,7 +111,7 @@ describe('bootstrap local-password policy', () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  it('a forced reset also ends the admin\'s sessions, password link and calendar feed link, in one transaction', async () => {
+  it('a forced reset also ends the admin\'s sessions, password link, calendar feed link and two-step sign-in, in one transaction', async () => {
     process.env.HELPRR_ADMIN_PASSWORD_RESET = 'true';
     process.env.APP_PASSWORD = 'a-long-bootstrap-password-1';
     mocks.findUnique.mockResolvedValue({ id: 'user-bootstrap-admin', username: 'admin', passwordHash: 'existing-hash' });
@@ -117,14 +119,19 @@ describe('bootstrap local-password policy', () => {
     mocks.linkDeleteMany.mockReturnValue('link-op');
     mocks.sessionUpdateMany.mockReturnValueOnce('session-op');
     mocks.feedDeleteMany.mockReturnValue('feed-op');
-    mocks.transaction.mockResolvedValueOnce([{}, { count: 1 }, { count: 2 }, { count: 1 }]);
+    mocks.recoveryCodeDeleteMany.mockReturnValue('recovery-op');
+    mocks.transaction.mockResolvedValueOnce([{}, { count: 1 }, { count: 2 }, { count: 1 }, { count: 10 }]);
 
     await ensureBootstrapAdmin();
 
-    expect(mocks.transaction).toHaveBeenNthCalledWith(1, ['update-op', 'link-op', 'session-op', 'feed-op']);
+    expect(mocks.transaction).toHaveBeenNthCalledWith(1, ['update-op', 'link-op', 'session-op', 'feed-op', 'recovery-op']);
     expect(mocks.feedDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-bootstrap-admin' } });
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('ended 1 link(s) and 1 calendar feed link(s)'));
-    expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'user-bootstrap-admin' }, data: { passwordHash: 'new-hash' } });
+    expect(mocks.recoveryCodeDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-bootstrap-admin' } });
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('ended 1 link(s) and 1 calendar feed link(s), and turned off two-step sign-in'));
+    expect(mocks.update).toHaveBeenCalledWith({
+      where: { id: 'user-bootstrap-admin' },
+      data: { passwordHash: 'new-hash', totpSecret: null, totpEnabledAt: null, totpLastUsedStep: null },
+    });
     expect(mocks.linkDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-bootstrap-admin' } });
     // Owner-less sessions too, before the attach hands them to the admin.
     expect(mocks.sessionUpdateMany).toHaveBeenNthCalledWith(1, {
@@ -142,6 +149,7 @@ describe('bootstrap local-password policy', () => {
     expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'user-bootstrap-admin' }, data: { passwordHash: 'new-hash' } });
     expect(mocks.linkDeleteMany).not.toHaveBeenCalled();
     expect(mocks.feedDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.recoveryCodeDeleteMany).not.toHaveBeenCalled();
     expect(mocks.sessionUpdateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: { revokedAt: expect.any(Date) } }));
   });
 

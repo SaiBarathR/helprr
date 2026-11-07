@@ -52,6 +52,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  sessionStorage.clear();
   if (mounted) act(() => root.unmount());
   container.remove();
   vi.unstubAllGlobals();
@@ -119,6 +120,94 @@ describe('Login page', () => {
     expect(link.textContent).toBe('Recover the admin account');
     expect(link.getAttribute('href')).toBe('https://saibarathr.github.io/helprr/troubleshooting/#signing-in');
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  describe('two-step sign-in', () => {
+    function type(input: HTMLInputElement, value: string) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      act(() => {
+        setter.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    }
+
+    function answers(routes: Record<string, () => Response>) {
+      const fetchMock = vi.fn(async (url: string) => routes[url]?.() ?? Response.json({ error: 'Unauthorized' }, { status: 401 }));
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    }
+
+    async function signInWithPassword() {
+      await openLogin();
+      const [username, password] = [...container.querySelectorAll('input')] as HTMLInputElement[];
+      type(username, 'member');
+      type(password, 'correct horse battery');
+      await act(async () => container.querySelector('form')!.requestSubmit());
+    }
+
+    it('asks for the code after a right password, and signs in with it', async () => {
+      const fetchMock = answers({
+        '/api/auth/login': () => Response.json({ mfaRequired: true, mfaToken: 'pending-token' }),
+        '/api/auth/login/totp': () => Response.json({ success: true }),
+      });
+      await signInWithPassword();
+
+      expect(mocks.replace).not.toHaveBeenCalled();
+      const code = container.querySelector('input[autocomplete="one-time-code"]') as HTMLInputElement;
+      expect(code).not.toBeNull();
+      expect(container.textContent).toContain('Enter the 6-digit code from your authenticator app.');
+      type(code, '123456');
+      await act(async () => container.querySelector('form')!.requestSubmit());
+
+      const call = fetchMock.mock.calls.find(([url]) => url === '/api/auth/login/totp') as unknown as [string, RequestInit];
+      expect(JSON.parse(String(call[1].body))).toEqual({ mfaToken: 'pending-token', code: '123456' });
+      expect(mocks.replace).toHaveBeenCalledWith('/');
+    });
+
+    it('comes back to the code step after a reload while the token is good, and not after', async () => {
+      answers({
+        '/api/auth/login': () => Response.json({ mfaRequired: true, mfaToken: 'pending-token' }),
+      });
+      await signInWithPassword();
+      act(() => root.unmount());
+      root = createRoot(container);
+      await openLogin();
+      expect(container.querySelector('input[autocomplete="one-time-code"]')).not.toBeNull();
+
+      act(() => root.unmount());
+      sessionStorage.setItem('helprr-mfa-pending', JSON.stringify({ token: 'old', until: Date.now() - 1 }));
+      root = createRoot(container);
+      await openLogin();
+      expect(container.querySelector('input[autocomplete="one-time-code"]')).toBeNull();
+      expect(sessionStorage.getItem('helprr-mfa-pending')).toBeNull();
+    });
+
+    it('goes back to the password when the code step timed out', async () => {
+      answers({
+        '/api/auth/login': () => Response.json({ mfaRequired: true, mfaToken: 'pending-token' }),
+        '/api/auth/login/totp': () => Response.json({ error: 'Your sign-in timed out. Enter your password again.', mfaExpired: true }, { status: 401 }),
+      });
+      await signInWithPassword();
+      type(container.querySelector('input[autocomplete="one-time-code"]') as HTMLInputElement, '123456');
+      await act(async () => container.querySelector('form')!.requestSubmit());
+
+      expect(container.querySelector('input[type="password"]')).not.toBeNull();
+      expect(container.textContent).toContain('Your sign-in timed out. Enter your password again.');
+      expect(mocks.replace).not.toHaveBeenCalled();
+    });
+
+    it('a wrong code keeps the code step with the error', async () => {
+      answers({
+        '/api/auth/login': () => Response.json({ mfaRequired: true, mfaToken: 'pending-token' }),
+        '/api/auth/login/totp': () => Response.json({ error: 'That code didn’t work. Try again.' }, { status: 401 }),
+      });
+      await signInWithPassword();
+      type(container.querySelector('input[autocomplete="one-time-code"]') as HTMLInputElement, '000000');
+      await act(async () => container.querySelector('form')!.requestSubmit());
+
+      expect(container.querySelector('input[autocomplete="one-time-code"]')).not.toBeNull();
+      expect(container.textContent).toContain('That code didn’t work. Try again.');
+    });
   });
 
   describe('a brand-new install', () => {

@@ -145,7 +145,8 @@ export async function proxy(request: NextRequest) {
 
   try {
     const { payload } = await jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] });
-    if (typeof payload.sid !== 'string' || !payload.sid) {
+    // Session tokens never carry an audience (the two-step pending token does).
+    if (typeof payload.sid !== 'string' || !payload.sid || payload.aud !== undefined) {
       if (pathname.startsWith('/api/')) {
         return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), csp);
       }

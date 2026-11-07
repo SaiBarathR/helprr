@@ -19,6 +19,7 @@ import { isHttpsRequest } from '@/lib/request-utils';
 import { readLoginCredentials } from '@/lib/server/login-input';
 import { storeJellyfinToken } from '@/lib/jellyfin-token';
 import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
+import { createMfaPendingToken, isTotpEnabled } from '@/lib/totp';
 
 const INVALID_CREDENTIALS = 'Invalid Jellyfin username or password';
 // Distinct steering message: Jellyfin is unreachable/changed, so the user
@@ -74,7 +75,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   // has pre-created a Helprr account linked to this Jellyfin user. No auto-provision.
   const user = await prisma.user.findFirst({
     where: { jellyfinUserId: auth.userId, status: 'active' },
-    select: { id: true, username: true, role: true },
+    select: { id: true, username: true, role: true, passwordHash: true, jellyfinUserId: true, totpEnabledAt: true },
   });
   if (!user) {
     // A real Jellyfin login Helprr refused: not a guess, so no backoff, but still an attempt.
@@ -83,6 +84,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       { error: 'This Jellyfin account is not linked to a Helprr profile. Ask your admin to add you.' },
       { status: 403 }
     );
+  }
+
+  if (isTotpEnabled(user)) {
+    // Two-step sign-in applies here too. The throttles stay until the code
+    // passes. The Jellyfin token is still kept: it is the member's own Jellyfin
+    // credential, minted just now with their Jellyfin password, and never signs
+    // anyone in to Helprr (see below).
+    storeJellyfinToken(user.id, auth.accessToken)
+      .catch((err) => console.error('[Auth] Failed to cache Jellyfin token:', err));
+    const mfaToken = await createMfaPendingToken(user, 'jellyfin', username);
+    return NextResponse.json({ mfaRequired: true, mfaToken }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   await clearUsernameBackoff(username);

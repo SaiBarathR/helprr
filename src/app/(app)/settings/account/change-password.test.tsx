@@ -17,6 +17,7 @@ vi.mock('@/components/ui/app-link', () => ({
   default: ({ children, href }: { children: ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
 vi.mock('@/components/settings/jellyfin-connection', () => ({ JellyfinConnection: () => null }));
+vi.mock('@/components/settings/two-factor-section', () => ({ TwoFactorSection: () => null }));
 vi.mock('@/lib/client-cache', () => ({ endSessionInThisBrowser: vi.fn(), requestSessionLogout: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/components/ui/drawer', () => {

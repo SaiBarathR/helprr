@@ -40,6 +40,29 @@ with a Helprr password connects it in **Settings → Account**. Until they do, H
 them to sign in to Jellyfin when they press play. **Settings → Users** shows who is not
 connected yet.
 
+## Two-step sign-in
+
+Anyone with a Helprr password can make sign-in also ask for a code from an
+authenticator app (1Password, Google Authenticator, Authy, or any app that reads a
+TOTP QR code). In **Settings → Account → Two-step sign-in**, confirm your password,
+scan the QR code (or type the key into the app), and enter the 6-digit code it shows.
+Helprr then shows ten **recovery codes** once: save them somewhere safe. Each one
+signs you in once instead of a code, if you lose your phone.
+
+From then on, every sign-in asks for a code after the password, including **Sign in
+with Jellyfin** and a password-reset link. A code works once, and wrong codes count
+toward the same sign-in limits as wrong passwords; after 10 wrong codes in an hour the
+account waits for the rest of that hour. To turn it off, enter your password and a code (or a
+recovery code). An account that signs in only with Jellyfin has no Helprr password and
+cannot turn it on.
+
+If whoever runs Helprr changes its `JWT_SECRET`, authenticator codes stop working:
+sign in with a recovery code, then turn two-step sign-in off and on again.
+
+Lost the phone and the recovery codes? The admin created from `APP_PASSWORD` can be
+recovered with `HELPRR_ADMIN_PASSWORD_RESET`, which also turns its two-step sign-in
+off. For other accounts there is no in-app reset yet: ask whoever runs Helprr.
+
 ## Your data
 
 In **Settings → Account**, anyone can **Download my data**: one JSON file with their

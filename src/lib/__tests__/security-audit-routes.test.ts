@@ -186,7 +186,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe('sign-in', () => {
   it('records a success with the method, and a failure by account or masked when no account matches', async () => {
-    mocks.db.user.findFirst.mockResolvedValue({ id: 'user-1', username: 'member', role: 'member', passwordHash: 'h' });
+    mocks.db.user.findFirst.mockResolvedValue({ id: 'user-1', username: 'member', role: 'member', passwordHash: 'h', totpEnabledAt: null });
     mocks.verifyUserPassword.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
     expect((await login(req('/api/auth/login', 'POST', { username: 'member', password: PASSWORD }))).status).toBe(200);
@@ -214,7 +214,7 @@ describe('sign-in', () => {
   it('still signs in when the audit write fails', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     mocks.db.securityAuditEvent.create.mockRejectedValue(new Error('table missing'));
-    mocks.db.user.findFirst.mockResolvedValue({ id: 'user-1', username: 'member', role: 'member', passwordHash: 'h' });
+    mocks.db.user.findFirst.mockResolvedValue({ id: 'user-1', username: 'member', role: 'member', passwordHash: 'h', totpEnabledAt: null });
     mocks.verifyUserPassword.mockResolvedValue(true);
 
     const response = await login(req('/api/auth/login', 'POST', { username: 'member', password: PASSWORD }));
@@ -230,7 +230,7 @@ describe('Jellyfin sign-in', () => {
       .mockResolvedValueOnce({ ok: true, userId: 'jf-1', accessToken: 'jf-token' })
       .mockResolvedValueOnce({ ok: false, reason: 'invalid_credentials' })
       .mockResolvedValueOnce({ ok: true, userId: 'jf-2', accessToken: 'jf-token' });
-    const linked = { id: 'user-1', username: 'member', role: 'member' };
+    const linked = { id: 'user-1', username: 'member', role: 'member', totpEnabledAt: null };
     mocks.db.user.findFirst
       .mockResolvedValueOnce(linked) // the Jellyfin user's profile
       .mockResolvedValueOnce(linked) // the wrong password's typed name

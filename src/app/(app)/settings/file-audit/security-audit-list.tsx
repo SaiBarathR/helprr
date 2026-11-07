@@ -32,7 +32,10 @@ type SecurityAction =
   | 'INVITE_LINK_FAILED'
   | 'CALENDAR_FEED_CREATED'
   | 'CALENDAR_FEED_ROTATED'
-  | 'CALENDAR_FEED_REVOKED';
+  | 'CALENDAR_FEED_REVOKED'
+  | 'MFA_ENABLED'
+  | 'MFA_DISABLED'
+  | 'MFA_RECOVERY_CODE_USED';
 
 export interface SecurityAuditRecord {
   id: string;
@@ -73,6 +76,9 @@ const ACTION_BADGE: Record<SecurityAction, { label: string; variant: 'default' |
   CALENDAR_FEED_CREATED: { label: 'CALENDAR LINK', variant: 'default' },
   CALENDAR_FEED_ROTATED: { label: 'CALENDAR LINK RENEWED', variant: 'secondary' },
   CALENDAR_FEED_REVOKED: { label: 'CALENDAR LINK OFF', variant: 'secondary' },
+  MFA_ENABLED: { label: '2FA ON', variant: 'default' },
+  MFA_DISABLED: { label: '2FA OFF', variant: 'destructive' },
+  MFA_RECOVERY_CODE_USED: { label: 'RECOVERY CODE', variant: 'secondary' },
 };
 
 const SIGN_IN_METHOD: Record<string, string> = {
@@ -80,6 +86,13 @@ const SIGN_IN_METHOD: Record<string, string> = {
   jellyfin: 'with Jellyfin',
   'jellyfin-unlinked': 'with Jellyfin, no Helprr profile linked',
   'jellyfin-wrong-account': 'with Jellyfin, not the account linked to the profile',
+  totp: 'with a wrong two-step code',
+};
+
+// The second factor a sign-in passed, after the method (fields[1]).
+const SECOND_FACTOR: Record<string, string> = {
+  totp: 'and an authenticator code',
+  'recovery-code': 'and a recovery code',
 };
 
 // Methods whose name Jellyfin accepted: kept as typed, with no Helprr account.
@@ -111,7 +124,7 @@ function summary(record: SecurityAuditRecord): string {
   const method = SIGN_IN_METHOD[record.fields?.[0] ?? ''] ?? 'with password';
   switch (record.action) {
     case 'LOGIN_SUCCEEDED':
-      parts.push(method);
+      parts.push(SECOND_FACTOR[record.fields?.[1] ?? ''] ? `${method} ${SECOND_FACTOR[record.fields![1]]}` : method);
       break;
     case 'LOGIN_FAILED':
       parts.push(method, plural(record.count, 'attempt'));
@@ -126,6 +139,12 @@ function summary(record: SecurityAuditRecord): string {
       break;
     case 'RESET_LINK_USED':
       parts.push(`${plural(record.count, 'session')} signed out`);
+      break;
+    case 'MFA_ENABLED':
+    case 'MFA_DISABLED':
+      break;
+    case 'MFA_RECOVERY_CODE_USED':
+      parts.push(record.fields?.[0] === 'turn-off' ? 'to turn off two-step sign-in' : 'to sign in');
       break;
     case 'INVITE_LINK_FAILED':
       parts.push(`${plural(record.count, 'attempt')} with a link that does not work`);
