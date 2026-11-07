@@ -50,6 +50,12 @@ interface Props {
   onDirtyChange?: (dirty: boolean) => void;
 }
 
+const APP_SWITCHES = [
+  { key: 'includeSonarr', label: 'Sonarr' },
+  { key: 'includeRadarr', label: 'Radarr' },
+  { key: 'includeLidarr', label: 'Lidarr' },
+] as const;
+
 export function QueueCleanerTab({ onDirtyChange }: Props) {
   const [cfg, setCfg] = useState<QueueCleanerConfigShape | null>(null);
   const [stallRules, setStallRules] = useState<StallRuleShape[]>([]);
@@ -338,6 +344,23 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
                 <p className="text-xs text-muted-foreground mt-0.5">Master toggle for the Queue Cleaner.</p>
               </div>
               <Switch aria-label="Queue Cleaner enabled" checked={cfg.enabled} onCheckedChange={(v) => setCfg({ ...cfg, enabled: v })} />
+            </div>
+
+            <div className="grouped-row grouped-row-stacked gap-2">
+              <Label>Apps</Label>
+              <p className="text-xs text-muted-foreground -mt-1">
+                An app turned off is skipped: its queue isn&apos;t read, so the cleaner still runs while it&apos;s offline. Its
+                torrents are still checked by the rules below as unlinked downloads: that app isn&apos;t told (no
+                blocklist or re-search), and change-category rules leave them alone.
+              </p>
+              <div className="flex flex-wrap gap-x-6 gap-y-2">
+                {APP_SWITCHES.map(({ key, label }) => (
+                  <label key={key} className="flex items-center gap-2 text-sm">
+                    <Switch aria-label={`Use ${label}`} checked={cfg[key]} onCheckedChange={(v) => setCfg({ ...cfg, [key]: v })} />
+                    {label}
+                  </label>
+                ))}
+              </div>
             </div>
 
             <div className="grouped-row grouped-row-stack-mobile gap-2">

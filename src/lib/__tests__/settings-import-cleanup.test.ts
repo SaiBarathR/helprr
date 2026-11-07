@@ -31,3 +31,18 @@ describe('settings import: cleaner auto-run mode', () => {
     expect(await importCleaners(undefined, 'auto')).toEqual(['disabled', 'disabled']);
   });
 });
+
+describe('settings import: Queue Cleaner app switches', () => {
+  it('keeps an app turned off, and turns on apps an older export does not name', async () => {
+    const tx = { queueCleanerConfig: { upsert: vi.fn() }, downloadCleanerConfig: { upsert: vi.fn() } };
+    const data = {
+      queueConfig: { enabled: true, intervalMinutes: 30, includeSonarr: false, includeRadarr: true },
+      downloadConfig: { enabled: true, intervalMinutes: 60 },
+    } as unknown as ExportedCleanup;
+    await applyCleanupInTxn(tx as unknown as Prisma.TransactionClient, data, []);
+    const { create, update } = tx.queueCleanerConfig.upsert.mock.calls[0][0];
+    for (const stored of [create, update]) {
+      expect(stored).toMatchObject({ includeSonarr: false, includeRadarr: true, includeLidarr: true });
+    }
+  });
+});

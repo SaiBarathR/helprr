@@ -1,11 +1,18 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { setupProgress, type SetupChecklistState, type SetupStep } from '@/lib/setup-checklist-steps';
+import {
+  OPTIONAL_SETUP_STEPS,
+  SETUP_STEPS,
+  setupProgress,
+  type SetupChecklistState,
+  type SetupStep,
+} from '@/lib/setup-checklist-steps';
 
 /**
  * The admin's setup checklist on the dashboard: each step's state comes from the
  * server's own data where it can; the rest are marked done by the admin (the backup
- * also by scripts/backup.sh, which records each database backup it makes).
+ * also by scripts/backup.sh, which records each database backup it makes), or, for
+ * an optional step, skipped.
  */
 export * from '@/lib/setup-checklist-steps';
 
@@ -23,14 +30,16 @@ export async function getSetupChecklist(userId: string): Promise<SetupChecklistS
   const marked = new Set(settings?.setupStepsDone ?? []);
   const done: Record<SetupStep, boolean> = {
     service: services > 0,
-    people: people > 1 || marked.has('people'),
+    people: people > 1,
     push: pushDevices > 0,
     // The server cannot tell a phone from a Mac (Safari on macOS uses Apple's push
     // service too): opening Helprr as an installed app on a phone marks it instead.
     install: marked.has('install'),
     backup: marked.has('backup') || Boolean(appSettings?.lastDatabaseBackupAt),
   };
-  return { hidden: Boolean(settings?.setupChecklistDismissedAt) || setupProgress(done).complete, done };
+  // An optional step marked by hand was skipped ("Skip"), not done.
+  const skipped = SETUP_STEPS.filter((step) => OPTIONAL_SETUP_STEPS.has(step) && !done[step] && marked.has(step));
+  return { hidden: Boolean(settings?.setupChecklistDismissedAt) || setupProgress(done).complete, done, skipped };
 }
 
 // Two first writes for a user race on the unique userId: the loser updates instead.

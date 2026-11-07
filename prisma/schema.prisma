@@ -589,6 +589,10 @@ model QueueCleanerConfig {
   reSearchAfterRemoval          Boolean  @default(true)
   // "disabled" (default — no auto cycles), "dryRun" (auto cycles, log only), "enabled" (auto delete)
   autoRunMode                   String   @default("disabled")
+  // Per-app opt-out: an app turned off has its queue skipped (never read, never aborts a cycle)
+  includeSonarr                 Boolean  @default(true)
+  includeRadarr                 Boolean  @default(true)
+  includeLidarr                 Boolean  @default(true)
   updatedAt                     DateTime @updatedAt
 }
 

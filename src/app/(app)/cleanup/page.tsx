@@ -5,6 +5,7 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CleanupDashboardTab } from './_components/cleanup-dashboard-tab';
 import { QueueCleanerTab } from './_components/queue-cleaner-tab';
@@ -19,8 +20,10 @@ export default function CleanupPage() {
   const canManage = useCan('cleanup.manage');
   const activeTab = !canManage && (tab === 'queue' || tab === 'download') ? 'dashboard' : tab;
   const queryClient = useQueryClient();
-  // A refetch re-seeds the cleaner forms, so a tab with unsaved edits keeps them.
+  // A refetch can re-seed the cleaner forms, so a pull over unsaved edits asks first.
   const editingUnsaved = (activeTab === 'queue' && dirty.queue) || (activeTab === 'download' && dirty.download);
+  const [confirmRefresh, setConfirmRefresh] = useState(false);
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['cleanup'] });
 
   // Stable callbacks so the child tabs don't see a new prop identity on every
   // parent render. Without useCallback, the child useEffect that depends on
@@ -34,9 +37,17 @@ export default function CleanupPage() {
 
   return (
     <div className="pb-6 max-w-screen-2xl mx-auto animate-content-in">
-      <PullToRefresh
-        onRefresh={() => queryClient.invalidateQueries({ queryKey: ['cleanup'] })}
-        disabled={editingUnsaved}
+      <PullToRefresh onRefresh={() => (editingUnsaved ? setConfirmRefresh(true) : refresh())} />
+      <ConfirmDialog
+        open={confirmRefresh}
+        onOpenChange={setConfirmRefresh}
+        title="Refresh with unsaved changes?"
+        description="Refreshing can replace your unsaved cleaner changes with the saved settings."
+        confirmLabel="Refresh"
+        onConfirm={() => {
+          setConfirmRefresh(false);
+          void refresh();
+        }}
       />
       <PageTitle>Cleanup</PageTitle>
       <Tabs value={activeTab} onValueChange={(v) => setTab(v as typeof tab)}>

@@ -340,9 +340,11 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   ],
   'cap:series.add': [
     'GET /api/sonarr/lookup',
+    'GET /api/sonarr/seerr-defaults',
   ],
   'cap:movies.add': [
     'GET /api/radarr/lookup',
+    'GET /api/radarr/seerr-defaults',
   ],
   'cap:music.add': [
     'GET /api/lidarr/lookup',
@@ -540,7 +542,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(274);
+    expect(handlers.size).toBe(276);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

@@ -19,6 +19,16 @@ export function toAutoRunMode(value: unknown): AutoRunMode {
   return (AUTO_RUN_MODES as unknown[]).includes(value) ? value as AutoRunMode : 'disabled';
 }
 
+/**
+ * A stored, sent or imported per-app switch. Anything but a boolean (an older export,
+ * or a form from an older cached app) keeps `fallback`: on, or the stored value.
+ */
+export function toIncludeApp(value: unknown, fallback = true): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+export type QueueCleanerApps = Pick<QueueCleanerConfigShape, 'includeSonarr' | 'includeRadarr' | 'includeLidarr'>;
+
 // How a cycle was started, carried into every Cleanup History and
 // operation-audit row it writes.
 export interface CleanupRunContext {
@@ -61,6 +71,11 @@ export interface QueueCleanerConfigShape {
   failedImport: FailedImportConfig;
   reSearchAfterRemoval: boolean;
   autoRunMode: AutoRunMode;
+  // Which Arr queues the cleaner reads. An app turned off is skipped: its
+  // torrents look unlinked, and its being unreachable no longer aborts a cycle.
+  includeSonarr: boolean;
+  includeRadarr: boolean;
+  includeLidarr: boolean;
 }
 
 export interface StallRuleShape {

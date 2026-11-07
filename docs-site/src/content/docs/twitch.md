@@ -49,8 +49,8 @@ turn on the switch and write rules. Sub-only VODs and 1440p need your browser's
 password or signing out everywhere revokes it, and logging out does not.
 
 A streamer's rule belongs to the streamer, not to whoever set it: while anyone is still
-subscribed, it keeps downloading. Unsubscribing tells you how many others still are, and
-offers an admin **Turn off auto-download**.
+subscribed, it keeps downloading. Unsubscribing tells you that someone else still is (an
+admin sees how many), and offers an admin **Turn off auto-download**.
 
 **Twitch → Library** lists every saved video with its size, codec and whether it was
 re-encoded, how much space that saved, and whether the original is still kept. From there

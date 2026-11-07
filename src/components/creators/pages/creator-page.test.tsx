@@ -111,17 +111,17 @@ describe('leaving a channel others still follow', () => {
     });
   });
 
-  it('tells a member who else follows, with no rule controls', async () => {
+  it('tells a member only that someone else follows, with no count and no rule controls', async () => {
     mocks.canManage = false;
     respond({
       'GET /api/youtube/channels/c1': channel(),
-      'DELETE /api/youtube/subscriptions/s1': { ok: true, othersFollowing: 1 },
+      'DELETE /api/youtube/subscriptions/s1': { ok: true, othersFollow: true },
     });
     await renderPage();
     expect(screen.queryByText(/Followed by/)).toBeNull();
     expect((await unfollow()).rules).toBe(false);
 
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('Unfollowed. 1 other person still follows Trash Taste.'));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('Unfollowed. Someone else still follows Trash Taste.'));
     expect(mocks.toast.mock.calls[0]).toHaveLength(1);
   });
 

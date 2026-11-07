@@ -72,6 +72,9 @@ export interface SeerrArrServer {
   apiKey: string;
   is4k: boolean;
   isDefault: boolean;
+  /** The quality profile and root folder Seerr requests with on this server. */
+  activeProfileId?: number;
+  activeDirectory?: string;
 }
 
 export class SeerrClient {
@@ -97,8 +100,8 @@ export class SeerrClient {
     return this.baseUrl;
   }
 
-  private async get<T>(endpoint: string, params?: Record<string, unknown>): Promise<T> {
-    const response = await this.client.get<T>(endpoint, { params });
+  private async get<T>(endpoint: string, params?: Record<string, unknown>, timeout?: number): Promise<T> {
+    const response = await this.client.get<T>(endpoint, { params, timeout });
     return response.data;
   }
 
@@ -122,8 +125,8 @@ export class SeerrClient {
   }
 
   /** The Sonarr or Radarr servers Seerr sends requests to; each carries its API key. */
-  async getArrServers(kind: 'sonarr' | 'radarr'): Promise<SeerrArrServer[]> {
-    return this.get<SeerrArrServer[]>(`/settings/${kind}`);
+  async getArrServers(kind: 'sonarr' | 'radarr', timeout?: number): Promise<SeerrArrServer[]> {
+    return this.get<SeerrArrServer[]>(`/settings/${kind}`, undefined, timeout);
   }
 
   async getStatus(): Promise<SeerrStatus> {

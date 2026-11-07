@@ -55,9 +55,11 @@ import {
 import {
   AutoRunMode,
   AUTO_RUN_MODES,
+  toIncludeApp,
   DEFAULT_FAILED_IMPORT,
   FailedImportConfig,
   LinkedArr,
+  QueueCleanerApps,
   QueueCleanerConfigShape,
   QueueDecision,
   QueueEvaluationResult,
@@ -101,6 +103,9 @@ export async function loadQueueCleanerConfig(): Promise<QueueCleanerConfigShape>
     autoRunMode: (AUTO_RUN_MODES as string[]).includes(row.autoRunMode)
       ? (row.autoRunMode as AutoRunMode)
       : 'disabled',
+    includeSonarr: toIncludeApp(row.includeSonarr),
+    includeRadarr: toIncludeApp(row.includeRadarr),
+    includeLidarr: toIncludeApp(row.includeLidarr),
   };
 }
 
@@ -117,6 +122,9 @@ export async function saveQueueCleanerConfig(input: QueueCleanerConfigShape): Pr
       failedImport: input.failedImport as unknown as object,
       reSearchAfterRemoval: input.reSearchAfterRemoval,
       autoRunMode: input.autoRunMode,
+      includeSonarr: input.includeSonarr,
+      includeRadarr: input.includeRadarr,
+      includeLidarr: input.includeLidarr,
     },
     update: {
       enabled: input.enabled,
@@ -127,6 +135,9 @@ export async function saveQueueCleanerConfig(input: QueueCleanerConfigShape): Pr
       failedImport: input.failedImport as unknown as object,
       reSearchAfterRemoval: input.reSearchAfterRemoval,
       autoRunMode: input.autoRunMode,
+      includeSonarr: input.includeSonarr,
+      includeRadarr: input.includeRadarr,
+      includeLidarr: input.includeLidarr,
     },
   });
 }
@@ -173,15 +184,18 @@ export async function loadSlowRules(): Promise<SlowRuleShape[]> {
 
 type ArrQueueInstance = { instanceId: string; instanceLabel: string; queue: QueueItem[] };
 
-async function loadArrQueues(): Promise<{
+// An app turned off in the config is not read at all, so it never aborts a cycle.
+const SKIPPED_APP = { instances: [] as ArrQueueInstance[], complete: true };
+
+async function loadArrQueues(apps: QueueCleanerApps): Promise<{
   sonarr: ArrQueueInstance[];
   radarr: ArrQueueInstance[];
   lidarr: ArrQueueInstance[];
   complete: boolean;
 }> {
-  const sonarr = await loadSourceQueues('sonarr', 'Sonarr', await getSonarrClients());
-  const radarr = await loadSourceQueues('radarr', 'Radarr', await getRadarrClients());
-  const lidarr = await loadSourceQueues('lidarr', 'Lidarr', await getLidarrClients());
+  const sonarr = apps.includeSonarr ? await loadSourceQueues('sonarr', 'Sonarr', await getSonarrClients()) : SKIPPED_APP;
+  const radarr = apps.includeRadarr ? await loadSourceQueues('radarr', 'Radarr', await getRadarrClients()) : SKIPPED_APP;
+  const lidarr = apps.includeLidarr ? await loadSourceQueues('lidarr', 'Lidarr', await getLidarrClients()) : SKIPPED_APP;
   return {
     sonarr: sonarr.instances,
     radarr: radarr.instances,
@@ -284,7 +298,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
   }
 
   const [{ sonarr: sonarrInstances, radarr: radarrInstances, lidarr: lidarrInstances, complete: arrQueuesComplete }, loadedStrikes] = await Promise.all([
-    loadArrQueues(),
+    loadArrQueues(cfg),
     loadActiveStrikes(),
   ]);
   const prevStrikes = strikesForCurrentTorrents(loadedStrikes, torrents);
@@ -868,7 +882,7 @@ async function revalidateQueueDecision(
       return { ok: false, status: 'stale', message: 'Torrent is now ignored by cleanup policy', errorMessage: 'Ignored-download scope changed after preview' };
     }
 
-    const queues = await loadArrQueues();
+    const queues = await loadArrQueues(config);
     if (!queues.complete) {
       return { ok: false, status: 'failed', message: 'Could not revalidate all configured Arr queues', errorMessage: 'At least one Arr queue was unavailable' };
     }
@@ -1277,6 +1291,24 @@ export async function executeQueueCleanerRemoval(
       reSearched: false,
       message: 'Private torrent skipped because deletePrivate is disabled',
       errorMessage: 'No linked Arr queue item could be removed without deleting the private torrent',
+      targets: [{ target: 'qbittorrent', attempted: false, before: 'present', after: 'present' }],
+    };
+    await writeQueueHistory(d, outcome, run);
+    return outcome;
+  }
+
+  // "Change category" asks an Arr to recategorize: with no queue item to ask (a torrent
+  // no Arr queued, or one of an app the cleaner skips) it must never fall through to
+  // deleting the torrent and its files.
+  if (links.length === 0 && d.options.changeCategory) {
+    const outcome: QueueRemovalOutcome = {
+      kind: 'failure',
+      status: 'skipped',
+      action: 'skipped',
+      filesDeleted: false,
+      reSearched: false,
+      message: 'Change category skipped: no linked Sonarr/Radarr/Lidarr queue item',
+      errorMessage: 'Change category needs a linked Arr queue item; the torrent was left alone',
       targets: [{ target: 'qbittorrent', attempted: false, before: 'present', after: 'present' }],
     };
     await writeQueueHistory(d, outcome, run);

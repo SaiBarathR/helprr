@@ -15,7 +15,9 @@ import {
   AutoRunMode,
   DEFAULT_FAILED_IMPORT,
   FailedImportConfig,
+  QueueCleanerApps,
   QueueCleanerConfigShape,
+  toIncludeApp,
   SlowRuleShape,
   StallRuleShape,
 } from '@/lib/cleanup/types';
@@ -30,7 +32,8 @@ interface FieldError {
   message: string;
 }
 
-function validateConfig(b: Record<string, unknown>): { ok: true; value: QueueCleanerConfigShape } | { ok: false; error: string } {
+// `stored` keeps an app switch the body leaves out (a form from an older cached app).
+function validateConfig(b: Record<string, unknown>, stored: QueueCleanerApps): { ok: true; value: QueueCleanerConfigShape } | { ok: false; error: string } {
   const enabled = Boolean(b.enabled);
   const intervalMinutes = Number(b.intervalMinutes);
   // Upper bound keeps the scheduler delay far below the 32-bit setInterval
@@ -85,6 +88,9 @@ function validateConfig(b: Record<string, unknown>): { ok: true; value: QueueCle
       failedImport: fi,
       reSearchAfterRemoval,
       autoRunMode,
+      includeSonarr: toIncludeApp(b.includeSonarr, stored.includeSonarr),
+      includeRadarr: toIncludeApp(b.includeRadarr, stored.includeRadarr),
+      includeLidarr: toIncludeApp(b.includeLidarr, stored.includeLidarr),
     },
   };
 }
@@ -97,7 +103,7 @@ async function postHandler(req: NextRequest) {
 
   const errors: FieldError[] = [];
 
-  const cfgResult = validateConfig((body.config ?? {}) as Record<string, unknown>);
+  const cfgResult = validateConfig((body.config ?? {}) as Record<string, unknown>, await loadQueueCleanerConfig());
   if (!cfgResult.ok) errors.push({ scope: 'config', message: cfgResult.error });
 
   const stallRulesRaw = Array.isArray(body.stallRules) ? (body.stallRules as Record<string, unknown>[]) : [];

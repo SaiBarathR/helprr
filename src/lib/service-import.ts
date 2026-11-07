@@ -59,7 +59,7 @@ function cleanUrl(url: string): string {
 }
 
 /** scheme://host:port/path, so http://Sonarr:8989/ and http://sonarr:8989 are one address. */
-function endpoint(url: string): string | null {
+export function endpoint(url: string): string | null {
   try {
     const parsed = new URL(url);
     const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
@@ -113,7 +113,7 @@ async function reachableUrl(url: string, prowlarrUrl: string): Promise<{ url: st
   return { url, reachable: false };
 }
 
-function seerrServerUrl(server: SeerrArrServer): string {
+export function seerrServerUrl(server: SeerrArrServer): string {
   const path = (server.baseUrl ?? '').replace(/^\/*/, '/').replace(/\/+$/, '');
   return `${server.useSsl ? 'https' : 'http'}://${server.hostname}:${server.port}${path === '/' ? '' : path}`;
 }

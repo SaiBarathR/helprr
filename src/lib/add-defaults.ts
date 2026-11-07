@@ -1,7 +1,8 @@
 /**
  * The last options used to add a title, remembered per service and per
  * instance on this device, so the add pages and the Seerr request dialog open
- * on the user's usual quality profile and root folder instead of the first one.
+ * on the user's usual quality profile and root folder instead of the first one
+ * (Add Series/Movie fall back to Seerr's default for that instance, then the first).
  * Ids are instance-local, so a value is only ever applied to the instance (or
  * Seerr server) it was saved for, and only while that instance still lists it.
  */
@@ -47,7 +48,10 @@ export function saveAddDefaults(scope: AddDefaultsScope, instanceId: string | nu
   }
 }
 
-/** The remembered value while `options` still contains it, else the first option. */
-export function pickRememberedOption(options: string[], remembered: string | undefined): string | undefined {
-  return remembered !== undefined && options.includes(remembered) ? remembered : options[0];
+/**
+ * The first preferred value `options` still contains (the remembered one, then any
+ * fallback such as Seerr's default), else the first option.
+ */
+export function pickRememberedOption(options: string[], ...preferred: Array<string | null | undefined>): string | undefined {
+  return preferred.find((value): value is string => typeof value === 'string' && options.includes(value)) ?? options[0];
 }

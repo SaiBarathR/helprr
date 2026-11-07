@@ -665,7 +665,11 @@ configured Sonarr, Radarr and Lidarr instance; a removal goes through each
 instance that queued it, with that instance's id, and a re-search asks Sonarr
 for the episodes or seasons, Radarr for the movie and Lidarr for the albums.
 A queue that cannot be read completely aborts the cycle, and a check before
-removal refuses the item.
+removal refuses the item. Each app can be turned off in the Queue Cleaner's
+settings (`includeSonarr`/`includeRadarr`/`includeLidarr`): its queues are then
+never read, so they cannot abort a cycle, and its torrents are evaluated as
+unlinked (qBittorrent-side rules only; no blocklist, re-search or failed-import
+strikes for that app).
 
 Cleanup evaluation fails closed on missing upstream data: a torrent whose
 tracker lookup failed is skipped whenever the ignore list or a tracker-scoped
@@ -1149,11 +1153,13 @@ Invariants:
   a new silent baseline, so a gap cannot arrive as a flood of pushes.
 - Polling and rules are per creator (and per playlist), not per follower: anyone still
   following keeps it polled and its rule downloading, and so does a followed YouTube playlist
-  holding a channel's videos. So an unfollow answers how many others still follow and, to a
-  `*.manage` holder only, whether a rule would still download (`src/lib/archive/followers.ts`,
-  before title or length conditions). For a channel or streamer the page then offers
-  **Turn off auto-download** through the normal policies route. Only `*.manage` holders get
-  a creator's or playlist's follower count, and never names.
+  holding a channel's videos. So an unfollow answers whether anyone else still follows and,
+  to a `*.manage` holder only, how many and whether a rule would still download
+  (`src/lib/archive/followers.ts`, before title or length conditions). For a channel or
+  streamer the page then offers **Turn off auto-download** through the normal policies
+  route; for a playlist it links to the rules of up to three of its channels whose rules
+  still download. Only `*.manage` holders get a creator's or playlist's follower count, and
+  never names.
 - A user's own Twitch sign-in (`TwitchUserLink`, device code flow) has one scope,
   `user:read:follows`, and importing follows only ever adds subscriptions.
 - A video's category comes from the live stream or its chapters, because Helix has none,

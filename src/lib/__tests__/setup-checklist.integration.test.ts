@@ -37,6 +37,7 @@ describe.skipIf(!url)('setup checklist against PostgreSQL', () => {
     expect(await checklist.getSetupChecklist(adminId)).toEqual({
       hidden: false,
       done: { service: false, people: false, push: false, install: false, backup: false },
+      skipped: [],
     });
   });
 
@@ -65,7 +66,11 @@ describe.skipIf(!url)('setup checklist against PostgreSQL', () => {
     ]);
     const stored = await prisma.userSettings.findUniqueOrThrow({ where: { userId: adminId } });
     expect([...new Set(stored.setupStepsDone)].sort()).toEqual(['backup', 'install', 'people']);
-    expect((await checklist.getSetupChecklist(adminId)).done).toMatchObject({ people: true, install: true, backup: true });
+    // Marking the optional people step by hand is a skip, not a tick.
+    expect(await checklist.getSetupChecklist(adminId)).toMatchObject({
+      done: { people: false, install: true, backup: true },
+      skipped: ['people'],
+    });
 
     await checklist.markSetupStepDone(adminId, 'backup');
     const again = await prisma.userSettings.findUniqueOrThrow({ where: { userId: adminId } });

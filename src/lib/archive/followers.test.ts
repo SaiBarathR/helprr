@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   user: { id: 'u1', role: 'admin', template: 'admin', permissions: {} } as Record<string, unknown>,
   subscription: { findFirst: vi.fn(), deleteMany: vi.fn(), count: vi.fn() },
   playlistSubscription: { findFirst: vi.fn(), deleteMany: vi.fn(), count: vi.fn() },
-  creator: { findUnique: vi.fn() },
+  creator: { findUnique: vi.fn(), findMany: vi.fn() },
   playlist: { findUnique: vi.fn(), count: vi.fn() },
   policy: { findUnique: vi.fn(), findMany: vi.fn() },
   videoGroups: vi.fn(async () => []),
@@ -54,24 +54,27 @@ describe('unfollowing a creator others still follow', () => {
     mocks.policy.findUnique.mockResolvedValue({ policy: { autoDownload: true }, typePolicies: {} });
     mocks.playlist.findUnique.mockResolvedValue({ policy: {} });
     mocks.playlist.count.mockResolvedValue(0);
-    mocks.policy.findMany.mockResolvedValue([]);
+    mocks.creator.findMany.mockResolvedValue([]);
     mocks.youtubeSettings.mockResolvedValue(settings());
     mocks.twitchSettings.mockResolvedValue(settings());
   });
 
   it('tells an admin who else follows and that the channel rule still downloads', async () => {
     const response = await leaveChannel(req(), ctx('s1'));
-    expect(await response.json()).toEqual({ ok: true, othersFollowing: 2, autoDownload: true });
+    expect(await response.json()).toEqual({ ok: true, othersFollow: true, othersFollowing: 2, autoDownload: true });
     // Only the caller's own subscription, on this platform.
     expect(mocks.subscription.deleteMany).toHaveBeenCalledWith({ where: { id: 's1', userId: 'u1', creator: { platform: 'YOUTUBE' } } });
     expect(mocks.subscription.count).toHaveBeenCalledWith({ where: { creatorId: 'c1' } });
   });
 
-  it('gives a member the count, never the rule', async () => {
+  it('tells a member only that someone else follows: never the count or the rule', async () => {
     mocks.user = MEMBER;
     const response = await leaveChannel(req(), ctx('s1'));
-    expect(await response.json()).toEqual({ ok: true, othersFollowing: 2 });
+    expect(await response.json()).toEqual({ ok: true, othersFollow: true });
     expect(mocks.policy.findUnique).not.toHaveBeenCalled();
+
+    mocks.subscription.count.mockResolvedValue(0);
+    expect(await (await leaveChannel(req(), ctx('s1'))).json()).toEqual({ ok: true, othersFollow: false });
   });
 
   it('reads a rule as off when a video type or the master switch turns it off', async () => {
@@ -93,21 +96,21 @@ describe('unfollowing a creator others still follow', () => {
 
   it('says nothing downloads when nobody else follows', async () => {
     mocks.subscription.count.mockResolvedValue(0);
-    expect(await (await leaveChannel(req(), ctx('s1'))).json()).toEqual({ ok: true, othersFollowing: 0, autoDownload: false });
+    expect(await (await leaveChannel(req(), ctx('s1'))).json()).toEqual({ ok: true, othersFollow: false, othersFollowing: 0, autoDownload: false });
     expect(mocks.policy.findUnique).not.toHaveBeenCalled();
   });
 
   it('still warns the last follower when a followed playlist brings the channel in', async () => {
     mocks.subscription.count.mockResolvedValue(0);
     mocks.playlist.count.mockResolvedValue(1);
-    expect(await (await leaveChannel(req(), ctx('s1'))).json()).toEqual({ ok: true, othersFollowing: 0, autoDownload: true });
+    expect(await (await leaveChannel(req(), ctx('s1'))).json()).toEqual({ ok: true, othersFollow: false, othersFollowing: 0, autoDownload: true });
     expect(mocks.playlist.count).toHaveBeenCalledWith({
       where: { subscriptions: { some: {} }, videos: { some: { video: { creatorId: 'c1' } } } },
     });
 
     // Twitch has no playlists.
     mocks.playlist.count.mockClear();
-    expect(await (await leaveStreamer(req(), ctx('s1'))).json()).toEqual({ ok: true, othersFollowing: 0, autoDownload: false });
+    expect(await (await leaveStreamer(req(), ctx('s1'))).json()).toEqual({ ok: true, othersFollow: false, othersFollowing: 0, autoDownload: false });
     expect(mocks.playlist.count).not.toHaveBeenCalled();
   });
 
@@ -119,35 +122,55 @@ describe('unfollowing a creator others still follow', () => {
 
   it('works the same for a Twitch streamer, under twitch.manage', async () => {
     const response = await leaveStreamer(req(), ctx('s1'));
-    expect(await response.json()).toEqual({ ok: true, othersFollowing: 2, autoDownload: true });
+    expect(await response.json()).toEqual({ ok: true, othersFollow: true, othersFollowing: 2, autoDownload: true });
     expect(mocks.subscription.deleteMany).toHaveBeenCalledWith({ where: { id: 's1', userId: 'u1', creator: { platform: 'TWITCH' } } });
     expect(mocks.twitchSettings).toHaveBeenCalled();
 
     mocks.user = { ...MEMBER, permissions: { 'twitch.view': true, 'youtube.manage': true } };
-    expect(await (await leaveStreamer(req(), ctx('s1'))).json()).toEqual({ ok: true, othersFollowing: 2 });
+    expect(await (await leaveStreamer(req(), ctx('s1'))).json()).toEqual({ ok: true, othersFollow: true });
   });
 
   it('tells who else follows a playlist, and whether its rules download', async () => {
-    expect(await (await leavePlaylist(req(), ctx('ps1'))).json()).toEqual({ ok: true, othersFollowing: 1, autoDownload: false });
+    expect(await (await leavePlaylist(req(), ctx('ps1'))).json()).toEqual({
+      ok: true, othersFollow: true, othersFollowing: 1, autoDownload: false, channels: [], moreChannels: 0,
+    });
     expect(mocks.playlistSubscription.count).toHaveBeenCalledWith({ where: { playlistId: 'p1' } });
 
     mocks.youtubeSettings.mockResolvedValue(settings({ defaultPolicy: { autoDownload: true } }));
     expect(await (await leavePlaylist(req(), ctx('ps1'))).json()).toMatchObject({ autoDownload: true });
 
-    // Off globally, on for one channel in the playlist: its videos there still download.
+    // Off globally, on for one channel in the playlist: its videos there still download,
+    // and the notice links to that channel's rules.
     mocks.youtubeSettings.mockResolvedValue(settings());
-    mocks.policy.findMany.mockResolvedValue([{ policy: {}, typePolicies: {} }, { policy: { autoDownload: true }, typePolicies: {} }]);
-    expect(await (await leavePlaylist(req(), ctx('ps1'))).json()).toMatchObject({ autoDownload: true });
-    expect(mocks.policy.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { creator: { videos: { some: { playlists: { some: { playlistId: 'p1' } } } } } },
+    mocks.creator.findMany.mockResolvedValue([
+      { id: 'c1', displayName: 'Quiet', policy: { policy: {}, typePolicies: {} } },
+      { id: 'c2', displayName: 'Loud', policy: { policy: { autoDownload: true }, typePolicies: {} } },
+      { id: 'c3', displayName: 'No rule', policy: null },
+    ]);
+    expect(await (await leavePlaylist(req(), ctx('ps1'))).json()).toMatchObject({
+      autoDownload: true, channels: [{ id: 'c2', name: 'Loud' }], moreChannels: 0,
+    });
+    expect(mocks.creator.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { videos: { some: { playlists: { some: { playlistId: 'p1' } } } } },
     }));
+
+    // On for every channel: three links, the rest counted.
+    mocks.youtubeSettings.mockResolvedValue(settings({ defaultPolicy: { autoDownload: true } }));
+    mocks.creator.findMany.mockResolvedValue(['A', 'B', 'C', 'D', 'E'].map((name) => ({ id: name, displayName: name, policy: null })));
+    expect(await (await leavePlaylist(req(), ctx('ps1'))).json()).toMatchObject({
+      channels: [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }, { id: 'C', name: 'C' }], moreChannels: 2,
+    });
+    mocks.youtubeSettings.mockResolvedValue(settings());
+    mocks.creator.findMany.mockResolvedValue([{ id: 'c2', displayName: 'Loud', policy: { policy: { autoDownload: true }, typePolicies: {} } }]);
 
     // The playlist's own layer outranks the channel's.
     mocks.playlist.findUnique.mockResolvedValue({ policy: { autoDownload: false } });
     expect(await (await leavePlaylist(req(), ctx('ps1'))).json()).toMatchObject({ autoDownload: false });
 
     mocks.user = MEMBER;
-    expect(await (await leavePlaylist(req(), ctx('ps1'))).json()).toEqual({ ok: true, othersFollowing: 1 });
+    mocks.creator.findMany.mockClear();
+    expect(await (await leavePlaylist(req(), ctx('ps1'))).json()).toEqual({ ok: true, othersFollow: true });
+    expect(mocks.creator.findMany).not.toHaveBeenCalled();
   });
 });
 

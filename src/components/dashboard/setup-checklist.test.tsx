@@ -127,6 +127,24 @@ describe('SetupChecklist', () => {
     await waitFor(() => expect(screen.getByText(/2 of 4/)).toBeTruthy());
   });
 
+  it('shows a skipped optional step as skipped, not done, and does not count it', async () => {
+    const fetchMock = respond({ ...fresh, skipped: ['people'] });
+    const { unmount } = render(<SetupChecklist initial={fresh} mobile />);
+    await userEvent.click(screen.getByRole('button', { name: 'Skip: Add people' }));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ action: 'done', step: 'people' });
+    const link = screen.getByRole('link', { name: /^Add people ?· Skipped/ });
+    expect(link.textContent).not.toMatch(/, done/);
+    expect(link.textContent).not.toMatch(/\(optional\)/);
+    expect(screen.queryByRole('button', { name: 'Skip: Add people' })).toBeNull();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(/^Getting started/).textContent).toMatch(/^Getting started · 1 of 4 done$/);
+    unmount();
+
+    // As the server sends it after a reload; a real tick (someone was added) wins.
+    render(<SetupChecklist initial={{ ...fresh, skipped: ['people'] }} mobile />);
+    expect(screen.getByRole('link', { name: /^Add people ?· Skipped/ })).toBeTruthy();
+  });
+
   it('puts a step back and says so when saving fails', async () => {
     respond(null, false);
     render(<SetupChecklist initial={fresh} mobile />);

@@ -29,6 +29,20 @@ export function useQualityProfiles(service: ArrService, instanceId?: string, ena
   });
 }
 
+/**
+ * Seerr's default profile and folder for this Sonarr/Radarr instance (both null when
+ * Seerr is not connected or sends requests elsewhere). The add pages start from it
+ * when nothing is remembered for the instance.
+ */
+export function useSeerrAddDefaults(service: 'sonarr' | 'radarr', instanceId?: string) {
+  return useQuery({
+    queryKey: ['seerr-add-defaults', service, instanceId ?? 'default'],
+    queryFn: jsonFetcher<{ profileId: string | null; rootFolder: string | null }>(`/api/${service}/seerr-defaults`, instanceId),
+    staleTime: REFERENCE_STALE,
+    enabled: Boolean(instanceId),
+  });
+}
+
 // The catalog the bulk-edit quality picker offers. Sorted heaviest-first so the
 // list reads best→worst, matching how the *arr UIs present it.
 export function useQualityDefinitions(

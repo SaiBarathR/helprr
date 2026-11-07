@@ -35,7 +35,7 @@ beforeEach(() => {
   sessionStorage.clear();
 });
 
-it('pull to refresh refetches the cleanup queries, but not over unsaved cleaner edits', async () => {
+it('pull to refresh refetches the cleanup queries, and asks first over unsaved cleaner edits', async () => {
   const client = new QueryClient();
   const invalidate = vi.spyOn(client, 'invalidateQueries');
   const user = userEvent.setup();
@@ -43,11 +43,26 @@ it('pull to refresh refetches the cleanup queries, but not over unsaved cleaner 
   expect(screen.getByRole('heading', { level: 1, name: 'Cleanup' }).className).toContain('sr-only');
   expect(screen.getByRole('tablist').dataset.variant).toBe('segmented');
 
-  expect(mocks.pullToRefresh!.disabled).toBe(false);
+  expect(mocks.pullToRefresh!.disabled).toBeFalsy();
   await act(async () => { await mocks.pullToRefresh!.onRefresh(); });
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cleanup'] });
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  invalidate.mockClear();
 
   await user.click(screen.getByRole('tab', { name: /Queue/ }));
   expect(await screen.findByText('Queue tab')).toBeTruthy();
-  expect(mocks.pullToRefresh!.disabled).toBe(true);
+  expect(mocks.pullToRefresh!.disabled).toBeFalsy();
+
+  // Over unsaved edits the pull asks first; Cancel keeps the edits.
+  await act(async () => { await mocks.pullToRefresh!.onRefresh(); });
+  expect(await screen.findByRole('alertdialog', { name: 'Refresh with unsaved changes?' })).toBeTruthy();
+  expect(invalidate).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(invalidate).not.toHaveBeenCalled();
+
+  // Confirming refetches.
+  await act(async () => { await mocks.pullToRefresh!.onRefresh(); });
+  await user.click(await screen.findByRole('button', { name: 'Refresh' }));
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cleanup'] });
+  expect(screen.queryByRole('alertdialog')).toBeNull();
 });

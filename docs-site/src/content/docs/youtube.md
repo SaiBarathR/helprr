@@ -91,7 +91,8 @@ download by themselves, so one you deleted never comes back.
 
 A channel's rule belongs to the channel, not to whoever set it. While anyone still follows
 the channel, it is checked and its rule keeps downloading. When you unfollow and others
-still follow, Helprr says how many, and an admin can **Turn off auto-download** right there.
+still follow, Helprr says so. An admin sees how many and can **Turn off auto-download**
+right there; for a playlist, the notice links to the download rules of its channels.
 Admins see **Followed by N people** on a channel or playlist page.
 
 ## Watch and clear
