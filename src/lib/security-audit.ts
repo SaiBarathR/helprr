@@ -10,7 +10,7 @@ import { LOCAL_USERNAME_MAX_CODE_POINTS } from '@/lib/username-policy';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Security and admin audit trail: account, permission, session, service
-// connection and settings-import changes, and sign-ins. Each row says who did
+// connection and settings-import changes, database backups, and sign-ins. Each row says who did
 // what to which target, and which FIELD NAMES changed: never a value, a hash, a
 // key or a password (the one value kept is a new role, as "made admin"; a failed
 // sign-in keeps the username as typed). Writes are fail-soft, made after the action, and never
@@ -26,16 +26,19 @@ export interface SecurityAuditActor {
   username: string;
 }
 
-export type SecurityAuditTargetType = 'user' | 'session' | 'service' | 'settings';
+export type SecurityAuditTargetType = 'user' | 'session' | 'service' | 'settings' | 'backup';
 
 export interface SecurityAuditInput {
-  /** Who acted; null for a failed sign-in, where nobody is signed in, or a start-up reset. */
-  actor: SecurityAuditActor | null;
+  /**
+   * Who acted; null for a failed sign-in, where nobody is signed in, or a start-up
+   * reset. A scheduled job has a null id and a `system:<label>` name.
+   */
+  actor: SecurityAuditActor | { id: null; username: string } | null;
   action: SecurityAuditAction;
   targetType: SecurityAuditTargetType;
   targetId?: string | null;
   targetLabel?: string | null;
-  /** Names only, e.g. ['displayName', 'password'] (a role change: 'made admin'). Never pass a secret. */
+  /** Names only, e.g. ['displayName', 'password'] (a role change: 'made admin'; a backup: its trigger and size). Never pass a secret. */
   fields?: string[] | null;
   /** Items the one action covered, e.g. sessions revoked at once. */
   count?: number;
@@ -96,7 +99,7 @@ function logWriteFailure(error: unknown): void {
   console.error(`[SecurityAudit] Failed to write audit row: ${reason}`);
 }
 
-/** Record one security event; request is null outside a request (at start-up). Never throws. */
+/** Record one security event; request is null outside a request (at start-up, or a scheduled job). Never throws. */
 export async function recordSecurityEvent(request: NextRequest | null, input: SecurityAuditInput): Promise<void> {
   try {
     await prisma.securityAuditEvent.create({
@@ -109,7 +112,7 @@ export async function recordSecurityEvent(request: NextRequest | null, input: Se
         targetLabel: input.targetLabel ?? null,
         fields: input.fields?.length ? (input.fields as Prisma.InputJsonValue) : Prisma.JsonNull,
         count: input.count ?? 1,
-        ...requestMeta(request),
+        ...(request ? requestMeta(request) : { ip: null, userAgent: null }),
         requestId: currentRequestContext()?.requestId ?? null,
       },
     });

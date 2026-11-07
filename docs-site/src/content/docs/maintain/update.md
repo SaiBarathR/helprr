@@ -30,6 +30,12 @@ and replaces only the Helprr app container, waits up to five minutes for it to r
 healthy, and checks `/api/ready` from inside the container. The dump path it prints is
 the restore point if you need to roll back. `--keep N` is passed to `backup.sh`.
 
+Releases with backups made in Helprr add a `helprr-backups` volume to
+`docker-compose.yml`; downloading the release's file as above adds it. With an older
+file Helprr works as before, and **Settings → Backup & Restore** says **Backup folder not
+mounted** ([Back up from Helprr](/helprr/maintain/backup/#back-up-from-helprr) has the
+lines to add).
+
 The same steps by hand:
 
 ```bash

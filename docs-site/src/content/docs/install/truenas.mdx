@@ -88,6 +88,12 @@ Compose file changed, take the new file from
 
 ## Back up
 
+Helprr can also back up its database itself, now or on a schedule, from **Settings →
+Backup & Restore** ([Back up from Helprr](/helprr/maintain/backup/#back-up-from-helprr)).
+Those backups go to the `backups` folder of the `helprr` dataset, so the backup below includes them. If that page
+says **Backup folder not mounted**, Helprr was installed from an older Compose file:
+install the current one as in [Update](#update).
+
 Open **Datasets**, select `helprr`, and under **Data Protection** select **Take
 Snapshot**, then **Save**. A snapshot holds the whole folder at one moment (the database
 and the passwords and keys Helprr made), so Helprr can keep running: restoring it is like

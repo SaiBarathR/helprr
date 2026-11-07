@@ -96,6 +96,7 @@ const SETTINGS_SOURCES = [
   'checkDiskSpace',
   'checkUpcoming',
   'checkActivityDigest',
+  'checkDatabaseBackup',
   'applyBandwidthSchedule',
   'checkRetention',
   'checkAnimeAutoMap',

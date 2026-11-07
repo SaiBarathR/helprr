@@ -66,6 +66,7 @@ The development and production environments should also have separate:
 
 - PostgreSQL and Redis volumes.
 - Image-cache volumes (`helprr-image-cache` versus `helprr-dev-image-cache`).
+- In-app backup volumes (`helprr-backups` versus `helprr-dev-backups`).
 - `.env` files and secrets.
 - VAPID key pairs and push subscriptions.
 - Ports, hostnames, and reverse-proxy routes.

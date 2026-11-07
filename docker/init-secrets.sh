@@ -193,3 +193,21 @@ else
   own_copy "$REDIS_AUTH" redis_password
   copy_to app redis_password "$APP_GID"
 fi
+
+# The folder for in-app database backups (Settings -> Backup & Restore), when it is
+# mounted here too. Docker makes a host folder as root, which the app cannot write to,
+# so one it has just made (empty, owned by root, changed in the last five minutes) goes
+# to the app's user. Any other folder is left alone, such as the empty mount point of a
+# drive that is not mounted (the app then says it cannot write there), and nothing here
+# ever fails.
+BACKUPS=${HELPRR_BACKUP_DIR:-/app/backups}
+if [ "$as_root" = yes ] && [ -d "$BACKUPS" ] && [ ! -L "$BACKUPS" ] \
+  && [ "$(stat -c %u "$BACKUPS")" = 0 ] && [ -z "$(ls -A "$BACKUPS")" ] \
+  && [ $(( $(date +%s) - $(stat -c %Z "$BACKUPS") )) -le 300 ]; then
+  APP_UID=$(id -u nextjs 2>/dev/null || echo 1001)
+  if chown "$APP_UID:$APP_GID" "$BACKUPS" && chmod 700 "$BACKUPS"; then
+    echo "init-secrets: the backup folder now belongs to the app"
+  else
+    echo "init-secrets: could not give the backup folder to the app (a network share?); in-app backups need it writable by $APP_UID" >&2
+  fi
+fi

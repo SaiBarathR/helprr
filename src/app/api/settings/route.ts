@@ -51,9 +51,15 @@ async function getHandler() {
   if (authError) return authError;
 
   try {
-    // Everyone reads these; the backup time is for admins (/api/admin/database-backup).
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { lastDatabaseBackupAt, ...settings } = await getOrCreateAppSettings();
+    // Everyone reads these; the database backup time and schedule are for admins
+    // (/api/admin/database-backup).
+    const {
+      /* eslint-disable @typescript-eslint/no-unused-vars */
+      lastDatabaseBackupAt, databaseBackupSchedule, databaseBackupHour, databaseBackupDayOfWeek,
+      databaseBackupKeep, databaseBackupAlertDays, databaseBackupScheduledAt, databaseBackupAlertedAt,
+      /* eslint-enable @typescript-eslint/no-unused-vars */
+      ...settings
+    } = await getOrCreateAppSettings();
 
     return NextResponse.json({
       ...settings,

@@ -1,39 +1,149 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
 
-const mocks = vi.hoisted(() => ({ admin: vi.fn(), findUnique: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  admin: vi.fn(),
+  findUnique: vi.fn(),
+  upsert: vi.fn(),
+  checkDir: vi.fn(),
+  list: vi.fn(),
+  start: vi.fn(),
+  running: vi.fn(() => false),
+  last: vi.fn(() => null),
+}));
 vi.mock('@/lib/auth', () => ({ requireAdmin: mocks.admin }));
-vi.mock('@/lib/db', () => ({ prisma: { appSettings: { findUnique: mocks.findUnique } } }));
+vi.mock('@/lib/db', () => ({ prisma: { appSettings: { findUnique: mocks.findUnique, upsert: mocks.upsert } } }));
+vi.mock('@/lib/database-backup', () => ({
+  BACKUP_SCHEDULES: new Set(['off', 'daily', 'weekly']),
+  BACKUP_KEEP_MAX: 100,
+  BACKUP_ALERT_DAYS_MAX: 365,
+  checkBackupDir: mocks.checkDir,
+  listBackups: mocks.list,
+  startDatabaseBackup: mocks.start,
+  isBackupRunning: mocks.running,
+  lastBackupResult: mocks.last,
+}));
 
-const { GET } = await import('@/app/api/admin/database-backup/route');
+const { GET, PUT, POST } = await import('@/app/api/admin/database-backup/route');
+
+const ADMIN = { ok: true, user: { id: 'a', username: 'admin', role: 'admin' } };
+const ROW = {
+  lastDatabaseBackupAt: new Date('2026-11-04T03:00:00.000Z'),
+  databaseBackupSchedule: 'daily',
+  databaseBackupHour: 3,
+  databaseBackupDayOfWeek: 0,
+  databaseBackupKeep: 7,
+  databaseBackupAlertDays: 7,
+  timeZone: 'Europe/Berlin',
+};
+
+function put(body: unknown) {
+  return PUT(new NextRequest('http://localhost/api/admin/database-backup', {
+    method: 'PUT',
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  }));
+}
+
+function post() {
+  return POST(new NextRequest('http://localhost/api/admin/database-backup', { method: 'POST' }));
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.admin.mockResolvedValue(ADMIN);
+  mocks.checkDir.mockResolvedValue({ ok: true });
+  mocks.list.mockResolvedValue([]);
 });
 
-describe('/api/admin/database-backup', () => {
-  it('returns the last recorded backup time to an admin, uncached', async () => {
-    mocks.admin.mockResolvedValue({ ok: true, user: { id: 'a', role: 'admin' } });
-    mocks.findUnique.mockResolvedValue({ lastDatabaseBackupAt: new Date('2026-11-04T03:00:00.000Z') });
+describe('GET /api/admin/database-backup', () => {
+  it('returns the last backup, the folder, the dumps and the schedule to an admin, uncached', async () => {
+    mocks.findUnique.mockResolvedValue(ROW);
+    mocks.list.mockResolvedValue([{ name: 'helprr-backup-20261104-030000.dump', sizeBytes: 10, createdAt: '2026-11-04T03:00:00.000Z' }]);
     const res = await GET();
     expect(res.status).toBe(200);
     expect(res.headers.get('Cache-Control')).toBe('private, no-store');
-    expect(await res.json()).toEqual({ lastBackupAt: '2026-11-04T03:00:00.000Z' });
-    expect(mocks.findUnique).toHaveBeenCalledWith({ where: { id: 'singleton' }, select: { lastDatabaseBackupAt: true } });
+    expect(await res.json()).toEqual({
+      lastBackupAt: '2026-11-04T03:00:00.000Z',
+      folder: { ok: true },
+      backups: [{ name: 'helprr-backup-20261104-030000.dump', sizeBytes: 10, createdAt: '2026-11-04T03:00:00.000Z' }],
+      running: false,
+      lastRun: null,
+      timeZone: 'Europe/Berlin',
+      schedule: 'daily',
+      hour: 3,
+      dayOfWeek: 0,
+      keep: 7,
+      alertDays: 7,
+    });
   });
 
-  it('says none when no backup was recorded or there is no settings row', async () => {
-    mocks.admin.mockResolvedValue({ ok: true, user: { id: 'a', role: 'admin' } });
-    for (const row of [{ lastDatabaseBackupAt: null }, null]) {
-      mocks.findUnique.mockResolvedValueOnce(row);
-      expect(await (await GET()).json()).toEqual({ lastBackupAt: null });
-    }
+  it('says why the folder cannot be used, and lists nothing', async () => {
+    mocks.findUnique.mockResolvedValue(null);
+    mocks.checkDir.mockResolvedValue({ ok: false, reason: 'not-mounted' });
+    const body = await (await GET()).json();
+    expect(body).toMatchObject({ lastBackupAt: null, folder: { ok: false, reason: 'not-mounted' }, backups: [], schedule: 'off' });
+    expect(mocks.list).not.toHaveBeenCalled();
+  });
+});
+
+describe('PUT /api/admin/database-backup', () => {
+  it('saves only the fields sent', async () => {
+    mocks.upsert.mockResolvedValue({ ...ROW, databaseBackupSchedule: 'weekly', databaseBackupDayOfWeek: 5 });
+    const res = await put({ schedule: 'weekly', dayOfWeek: 5 });
+    expect(res.status).toBe(200);
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: { databaseBackupSchedule: 'weekly', databaseBackupDayOfWeek: 5 },
+    }));
+    expect(await res.json()).toMatchObject({ schedule: 'weekly', dayOfWeek: 5 });
   });
 
-  it('refuses anyone else before reading anything', async () => {
+  it.each([
+    [{ schedule: 'hourly' }],
+    [{ schedule: 1 }],
+    [{ hour: 24 }],
+    [{ hour: 2.5 }],
+    [{ dayOfWeek: -1 }],
+    [{ keep: 0 }],
+    [{ keep: 101 }],
+    [{ keep: '7' }],
+    [{ alertDays: 366 }],
+    [{}],
+    [[]],
+    ['not json'],
+  ])('refuses %j', async (body) => {
+    expect((await put(body)).status).toBe(400);
+    expect(mocks.upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/admin/database-backup', () => {
+  it('starts a backup as the admin and returns at once', async () => {
+    mocks.start.mockReturnValue(new Promise(() => {}));
+    const res = await post();
+    expect(res.status).toBe(202);
+    expect(mocks.start).toHaveBeenCalledWith(expect.objectContaining({
+      trigger: 'manual',
+      actor: { id: 'a', username: 'admin' },
+    }));
+  });
+
+  it('says so when one is already running', async () => {
+    mocks.start.mockReturnValue(null);
+    expect((await post()).status).toBe(409);
+  });
+});
+
+describe('authorization', () => {
+  it('refuses anyone else before reading, saving or starting anything', async () => {
     for (const status of [401, 403]) {
-      mocks.admin.mockResolvedValueOnce({ ok: false, response: new Response(null, { status }) });
+      mocks.admin.mockResolvedValue({ ok: false, response: new Response(null, { status }) });
       expect((await GET()).status).toBe(status);
+      expect((await put({ schedule: 'daily' })).status).toBe(status);
+      expect((await post()).status).toBe(status);
     }
     expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.checkDir).not.toHaveBeenCalled();
+    expect(mocks.upsert).not.toHaveBeenCalled();
+    expect(mocks.start).not.toHaveBeenCalled();
   });
 });

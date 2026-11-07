@@ -82,6 +82,12 @@ update takes a minute or two, most of it Helprr finishing its work before it sto
 
 ## Back up
 
+Helprr can also back up its database itself, now or on a schedule, from **Settings →
+Backup & Restore** ([Back up from Helprr](/helprr/maintain/backup/#back-up-from-helprr)).
+Those backups go to the `backups` folder in Helprr's app data, so the backup below includes them. If that page
+says **Backup folder not mounted**, Helprr was installed from an older Compose file:
+install the current one as in [Update](#update).
+
 On Helprr's page, the **Backups** tab has **Backup now** (confirm with **Backup**):
 Runtipi stops Helprr, copies its folder, and starts it again. Each backup there also has
 **Download** and **Restore**. Restoring replaces all of Helprr's data with the backup's,

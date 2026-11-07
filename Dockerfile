@@ -62,10 +62,16 @@ ENV CHECKPOINT_DISABLE=1
 # only what the OS-package scanner reads and cannot affect the runtime.
 RUN apk upgrade --no-cache libcrypto3 libssl3
 
+# pg_dump and pg_restore for in-app database backups (Settings → Backup & Restore).
+# The major version matches the bundled database (postgres:16-alpine in the Compose
+# files): pg_dump refuses a newer server, and helprr-db's pg_restore must read the dump.
+RUN apk add --no-cache postgresql16-client
+
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
-RUN mkdir -p /app/logs /app/image-cache \
-    && chown nextjs:nodejs /app/logs /app/image-cache
+RUN mkdir -p /app/logs /app/image-cache /app/backups \
+    && chown nextjs:nodejs /app/logs /app/image-cache /app/backups \
+    && chmod 700 /app/backups
 
 # npm/Corepack are build tools, not runtime requirements. Prisma is invoked via
 # its project-local executable below, so remove the global package managers from

@@ -91,6 +91,8 @@ services:
       - helprr-secrets:/secrets
       - helprr-db-auth:/auth/db
       - helprr-redis-auth:/auth/redis
+      # Only to give a new backup folder to the app's user.
+      - helprr-backups:/app/backups
 
   helprr:
     # Published image. The default `stable` channel tracks qualified releases;
@@ -164,6 +166,8 @@ services:
       - helprr-image-cache:/app/image-cache
       # Read-only: the app only reads its copies; helprr-init writes them.
       - helprr-secrets:/app/secrets:ro
+      # In-app database backups (Settings -> Backup & Restore); never served over HTTP.
+      - helprr-backups:/app/backups
     # Lets an app on the same machine be reached as http://host.docker.internal:<port>.
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -278,6 +282,9 @@ volumes:
   # Generated secrets: losing it ends every session and makes stored tokens unreadable.
   helprr-secrets:
     name: helprr-secrets
+  # In-app database backups. Copy them off the server too; see the backup guide.
+  helprr-backups:
+    name: helprr-backups
   # Root-only copies of the database and Redis passwords, rewritten by helprr-init.
   helprr-db-auth:
   helprr-redis-auth:

@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 export const EVENT_TYPES = [
   'grabbed', 'imported', 'downloadFailed', 'importFailed',
   'upcomingPremiere', 'healthWarning',
-  'serviceDown', 'serviceRestored', 'diskLowSpace',
+  'serviceDown', 'serviceRestored', 'diskLowSpace', 'databaseBackup',
   'torrentAdded', 'torrentCompleted', 'torrentDeleted',
   'jellyfinPlaybackStart',
   'cleanupStrike', 'cleanupRemoved', 'cleanupFailed',
@@ -84,6 +84,12 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     label: 'Low Disk Space',
     description: 'When a disk drops below its free-space threshold',
     iconName: 'AlertTriangle', colorClass: 'bg-orange-500/10 text-orange-500',
+  },
+  databaseBackup: {
+    type: 'databaseBackup', group: 'services',
+    label: 'Database Backup',
+    description: 'When a scheduled database backup fails, or the last one is too old (admins)',
+    iconName: 'AlertTriangle', colorClass: 'bg-amber-500/10 text-amber-400',
   },
   torrentAdded: {
     type: 'torrentAdded', group: 'qbittorrent',
@@ -246,7 +252,7 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
   {
     id: 'services',
     title: 'Services',
-    types: ['serviceDown', 'serviceRestored', 'diskLowSpace'],
+    types: ['serviceDown', 'serviceRestored', 'diskLowSpace', 'databaseBackup'],
   },
   {
     id: 'qbittorrent',
