@@ -4,10 +4,11 @@ import type { NotificationEventType } from './notification-events';
 /**
  * Alerts every follower gets their own copy of. An admin still sees everyone's requests and
  * alerts, but only their own copy of these: one new video is one row, however many follow it.
- * A watchlisted title arriving is the same: one copy per person who has it on their watchlist.
+ * A watchlisted title arriving is the same: one copy per person who has it on their watchlist,
+ * and so is a new episode of a show someone is watching.
  */
 export const FOLLOWER_EVENT_TYPES: NotificationEventType[] = [
-  'watchlistAvailable',
+  'watchlistAvailable', 'watchingNewEpisode',
   'youtubeVideoNew', 'youtubeDownloadComplete', 'youtubeDownloadFailed',
   'twitchVodNew', 'twitchVodExpiring', 'twitchDownloadComplete', 'twitchDownloadFailed',
 ];

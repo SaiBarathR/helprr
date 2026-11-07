@@ -7,7 +7,7 @@ export const EVENT_TYPES = [
   'torrentAdded', 'torrentCompleted', 'torrentDeleted',
   'jellyfinPlaybackStart',
   'cleanupStrike', 'cleanupRemoved', 'cleanupFailed',
-  'watchlistReminder', 'watchlistAvailable',
+  'watchlistReminder', 'watchlistAvailable', 'watchingNewEpisode',
   'scheduledAlert',
   'requestCreated', 'requestApproved', 'requestAvailable',
   'requestDeclined', 'requestFailed',
@@ -145,6 +145,12 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     label: 'Now in Your Library',
     description: 'When a movie or series on your watchlist is imported',
     iconName: 'Check', colorClass: 'bg-green-500/10 text-green-500',
+  },
+  watchingNewEpisode: {
+    type: 'watchingNewEpisode', group: 'watchlist',
+    label: 'New Episodes of Your Shows',
+    description: 'When a new episode of a series you played in Jellyfin recently is imported',
+    iconName: 'Play', colorClass: 'bg-green-500/10 text-green-500',
   },
   scheduledAlert: {
     type: 'scheduledAlert', group: 'scheduled',
@@ -291,7 +297,7 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
   {
     id: 'watchlist',
     title: 'Watchlist',
-    types: ['watchlistReminder', 'watchlistAvailable'],
+    types: ['watchlistReminder', 'watchlistAvailable', 'watchingNewEpisode'],
   },
   {
     id: 'scheduled',
@@ -330,6 +336,11 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
     types: ['updateAvailable', 'securityAlert'],
   },
 ];
+
+// "New Episodes of Your Shows" (watchingNewEpisode): a series counts when the
+// person played it in Jellyfin within this many days; 0 turns it off for them.
+export const WATCHING_EPISODE_DAYS_DEFAULT = 14;
+export const WATCHING_EPISODE_DAY_OPTIONS = [0, 7, 14, 30, 60, 90] as const;
 
 export function isKnownEventType(value: string): value is NotificationEventType {
   return (EVENT_TYPES as readonly string[]).includes(value);

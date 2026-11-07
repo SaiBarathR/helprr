@@ -2,8 +2,9 @@
 // watchlist, that person (and only they) gets their own copy. Matching uses the
 // title's TMDB/TVDB id, so it is the same whichever instance imported it. Each
 // watchlist item is alerted once (WatchlistItem.availableNotifiedAt), so a
-// second instance, a later episode or a retried poll never pushes again, even
-// after the person clears their notifications.
+// second instance or a retried poll never pushes again, even after the person
+// clears their notifications. A series item whose episodes were all announced
+// already ("New episode") is given back and alerts on a later episode.
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/permissions';
 import { logger } from '@/lib/logger';
@@ -24,6 +25,16 @@ export interface LibraryArrival {
   tvdbId?: number;
   /** Sonarr only: the episodes imported this cycle, as "S01E02". */
   episodes?: string[];
+  /** Sonarr only: the same episodes with their ids and titles, for "New episode" alerts. */
+  episodeRefs?: EpisodeRef[];
+}
+
+export interface EpisodeRef {
+  episodeId: number;
+  seasonNumber: number;
+  episodeNumber: number;
+  label: string;
+  title?: string;
 }
 
 const MOVIE_IMPORTS = new Set(['downloadFolderImported', 'movieFileImported']);
@@ -61,7 +72,7 @@ export function movieArrivals(newHistory: HistoryItem[], fetched: HistoryItem[],
   return [...byMovie.values()];
 }
 
-function episodeLabel(season: number, episode: number): string {
+export function episodeLabel(season: number, episode: number): string {
   return `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
 }
 
@@ -83,13 +94,23 @@ export function seriesArrivals(newHistory: HistoryItem[], fetched: HistoryItem[]
         tvdbId: positiveId(item.series.tvdbId),
         tmdbId: positiveId(item.series.tmdbId),
         episodes: [],
+        episodeRefs: [],
       };
       bySeries.set(seriesId, arrival);
     }
     const ep = item.episode;
     if (ep && Number.isInteger(ep.seasonNumber) && Number.isInteger(ep.episodeNumber)) {
       const label = episodeLabel(ep.seasonNumber, ep.episodeNumber);
-      if (!arrival.episodes!.includes(label)) arrival.episodes!.push(label);
+      if (!arrival.episodes!.includes(label)) {
+        arrival.episodes!.push(label);
+        arrival.episodeRefs!.push({
+          episodeId,
+          seasonNumber: ep.seasonNumber,
+          episodeNumber: ep.episodeNumber,
+          label,
+          ...(ep.title?.trim() ? { title: ep.title.trim() } : {}),
+        });
+      }
     }
   }
   return [...bySeries.values()];
@@ -114,6 +135,27 @@ function whereFor(arrival: LibraryArrival): Prisma.WatchlistItemWhereInput[] {
   if (arrival.tmdbId) where.push({ source: 'TMDB', mediaType, externalId: String(arrival.tmdbId) });
   if (arrival.tvdbId) where.push({ source: 'TVDB', mediaType, externalId: String(arrival.tvdbId) });
   return where;
+}
+
+/** One episode of one title, the same from any instance. */
+export function episodeKey(arrival: LibraryArrival, label: string): string {
+  return `${titleKey(arrival)}:${label}`;
+}
+
+/**
+ * Claims episodes for a person (AnnouncedEpisode) and returns the keys no
+ * personal alert announced before. The insert is atomic, so two instances
+ * importing the same episode at once get it once between them.
+ */
+export async function claimEpisodes(userId: string, episodeKeys: string[]): Promise<Set<string>> {
+  if (episodeKeys.length === 0) return new Set();
+  // Sorted, so two overlapping claims lock rows in the same order and cannot deadlock.
+  const rows = await prisma.announcedEpisode.createManyAndReturn({
+    data: [...new Set(episodeKeys)].sort().map((key) => ({ userId, episodeKey: key })),
+    skipDuplicates: true,
+    select: { episodeKey: true },
+  });
+  return new Set(rows.map((row) => row.episodeKey));
 }
 
 function sameTitle(a: string, b: string): boolean {
@@ -199,29 +241,65 @@ export async function notifyWatchlistArrivals(arrivals: LibraryArrival[]): Promi
       // is written first, so the person must also be allowed to see the title
       // and the watchlist page the alert opens. Nobody is marked when skipped.
       if (user.status !== 'active' || !can(user, viewCap) || !can(user, 'watchlist.view') || !can(user, 'notify.watchlist')) continue;
+      const claimedAt = new Date();
       try {
         // The claim is the dedupe gate: when two instances import the same
         // title at once, only one poll gets a count.
         const claim = await prisma.watchlistItem.updateMany({
           where: { id: { in: ids }, availableNotifiedAt: null },
-          data: { availableNotifiedAt: new Date() },
+          data: { availableNotifiedAt: claimedAt },
         });
         if (claim.count === 0) continue;
       } catch (error) {
         reportFailure(error);
         continue;
       }
+      // A series' episodes are claimed too, so "New episode" never repeats
+      // them, and the alert lists only the new ones. When a "New episode"
+      // alert already announced all of them (or the claim fails), nothing is
+      // sent and the item is given back for the next new episode.
+      let fresh: string[] | undefined;
+      const dedupeKey = `${titleKey(arrival)}-${user.id}`;
+      if (arrival.episodes?.length) {
+        // An earlier alert for this title (another saved copy, or before it was
+        // removed and re-added) makes this send a silent duplicate: claiming
+        // the episodes then would also swallow their "New episode" alert.
+        try {
+          const sent = await prisma.notificationHistory.findFirst({
+            where: { eventType: 'watchlistAvailable', dedupeKey },
+            select: { id: true },
+          });
+          if (sent) continue;
+        } catch (error) {
+          reportFailure(error);
+          continue;
+        }
+        try {
+          const claimed = await claimEpisodes(user.id, arrival.episodes.map((label) => episodeKey(arrival, label)));
+          fresh = arrival.episodes.filter((label) => claimed.has(episodeKey(arrival, label)));
+        } catch (error) {
+          reportFailure(error);
+          fresh = [];
+        }
+        if (fresh.length === 0) {
+          await prisma.watchlistItem.updateMany({
+            where: { id: { in: ids }, availableNotifiedAt: claimedAt },
+            data: { availableNotifiedAt: null },
+          }).catch(reportFailure);
+          continue;
+        }
+      }
       const focusId = ids[0];
       const url = `/watchlist?focus=${encodeURIComponent(focusId)}`;
       await notifyAndLog({
         eventType: 'watchlistAvailable',
         title: `Now in your library: ${arrival.title}`.slice(0, 200),
-        body: bodyFor(arrival),
+        body: bodyFor(fresh ? { ...arrival, episodes: fresh } : arrival),
         url,
         // Per person per title: two instances that each claim a different copy
         // of the same saved title (one matched by TMDB id, one by library id)
         // still send once.
-        dedupeKey: `${titleKey(arrival)}-${user.id}`,
+        dedupeKey,
         userIds: [user.id],
         ownerUserId: user.id,
         metadata: {

@@ -11,6 +11,7 @@ import { fetchAllQueueRecords } from '@/lib/activity-queue';
 import { getMediaHrefFromIds } from '@/lib/media-href';
 import crypto from 'crypto';
 import { notifyWatchlistArrivals, seriesArrivals } from './watchlist-available';
+import { notifyWatchingEpisodes } from './watching-episodes';
 import { importFailureBody, downloadFailureBody, buildTagMap, mediaFilterMeta, readQueueSnapshots, errorMessage, getPollingState, historyCursorFromState, fetchNewHistoryPages, advanceHistoryCursor, notifyAndLog, instanceTitle, type CycleContext, type QueueSnapshot } from './shared';
 
 export async function pollSonarr(context: CycleContext) {
@@ -204,7 +205,8 @@ export async function pollSonarr(context: CycleContext) {
       if (newHistory.some((item) => item.eventType === 'downloadFolderImported' || item.eventType === 'episodeFileImported')) {
         await invalidateTaggedLibrary('sonarr', instanceId);
       }
-      await notifyWatchlistArrivals(seriesArrivals(newHistory, historyRecords, instanceId, n === 1));
+      const arrivals = seriesArrivals(newHistory, historyRecords, instanceId, n === 1);
+      await notifyWatchlistArrivals(arrivals);
 
       // Health check
       const health = await client.getHealth();
@@ -240,6 +242,9 @@ export async function pollSonarr(context: CycleContext) {
           lastHealthHash: healthHash,
         },
       });
+      // After the import alerts and the cursor: Jellyfin lookups must never
+      // delay them.
+      await notifyWatchingEpisodes(arrivals, { groupingEnabled });
       logger.debug('Sonarr polling state updated', {
         instanceId,
         queueCount: currentSnapshots.length,

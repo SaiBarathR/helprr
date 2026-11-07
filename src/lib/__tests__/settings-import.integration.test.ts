@@ -568,6 +568,26 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
       .toEqual({ timeFormat: null, dateFormat: null });
   });
 
+  it("restores a user's New episode window, defaulting to 14 days for older or invalid values", async () => {
+    const doc = fullDocument();
+    const base = {
+      timeZone: null, upcomingNotifyMode: null, activityDigestMode: null,
+      quietHoursEnabled: false, quietHoursStart: null, quietHoursEnd: null,
+    };
+    const days = async () => (await prisma.userSettings.findUnique({ where: { userId: 'member-1' }, select: { watchingEpisodeDays: true } }))?.watchingEpisodeDays;
+    doc.users.accounts[0].settings = { ...base, watchingEpisodeDays: 0 } as never;
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    expect(await days()).toBe(0);
+
+    doc.users.accounts[0].settings = { ...base, watchingEpisodeDays: 5 } as never;
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    expect(await days()).toBe(14);
+
+    doc.users.accounts[0].settings = base as never;
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    expect(await days()).toBe(14);
+  });
+
   it("leaves an existing user's taste profile to be rebuilt, since their links may have changed", async () => {
     const built = new Date('2026-10-20T00:00:00.000Z');
     for (const [id, username] of [['member-1', 'member'], ['other-1', 'other']]) {

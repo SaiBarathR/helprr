@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   users: (() => []) as (args: unknown) => unknown[],
   watchlist: (() => []) as () => unknown[],
   watchlistMarked: new Set<string>(),
+  announced: new Set<string>(),
   history: [] as unknown[],
   digestRows: [] as unknown[],
   disks: [] as unknown[],
@@ -63,6 +64,12 @@ vi.mock('@/lib/db', () => {
           return { count: fresh.length };
         }),
       },
+      // Episodes claimed by personal alerts; a repeat insert is skipped.
+      announcedEpisode: {
+        createManyAndReturn: vi.fn(async ({ data }: { data: Array<{ userId: string; episodeKey: string }> }) => data
+          .filter((row) => !mocks.announced.has(`${row.userId}|${row.episodeKey}`))
+          .map((row) => { mocks.announced.add(`${row.userId}|${row.episodeKey}`); return { episodeKey: row.episodeKey }; })),
+      },
       serviceConnection: { findMany: vi.fn(async () => mocks.serviceConnections) },
       appSettings: { update: vi.fn(async (args: unknown) => { record('appSettings.update', args); return {}; }) },
       notificationHistory: {
@@ -88,8 +95,15 @@ vi.mock('@/lib/service-helpers', () => {
     getQBittorrentClient: clients('qbit', () => mocks.qbit),
     getJellyfinClient: clients('jellyfin', () => mocks.jellyfin),
     getSeerrClient: clients('seerr', () => mocks.seerr),
+    getJellyfinUserContext: vi.fn(async (user: { jellyfinUserId: string }) => ({
+      client: mocks.jellyfin, connectionFingerprint: 'fp', jellyfinUserId: user.jellyfinUserId,
+    })),
+    isJellyfinUnavailable: () => false,
   };
 });
+vi.mock('@/lib/cache/jellyfin-watch-status-cache', () => ({
+  getWatchStatusJson: vi.fn(async (_seed: string, fetcher: () => Promise<unknown>) => fetcher()),
+}));
 vi.mock('@/lib/arr-instances', () => ({ getDefaultConnection: vi.fn(async (type: string) => mocks.connections[type] ?? null) }));
 vi.mock('@/lib/activity-queue', () => ({ fetchAllQueueRecords: vi.fn(async (client: { queue: unknown }) => client.queue) }));
 vi.mock('@/lib/cache/badge-counts', () => ({ writeBadgeSlice: vi.fn(async (...args: unknown[]) => record('badge', ...args)) }));
@@ -307,6 +321,7 @@ beforeEach(() => {
   mocks.users = () => [];
   mocks.watchlist = () => [];
   mocks.watchlistMarked = new Set();
+  mocks.announced = new Set();
   mocks.qbit = null;
   mocks.jellyfin = null;
   mocks.seerr = null;
@@ -392,6 +407,31 @@ describe('pollers on fixed fixtures (golden)', () => {
   it('pollSonarr with grouping on: a burst of imports sent as one grouped notification', async () => {
     mocks.sonarr = [arrInstance('i1', 'Main', 'sonarr', true, 3)];
     expectGolden('pollSonarr:grouped', await run('pollSonarr', { ...SETTINGS, notificationGroupingEnabled: true }));
+  });
+
+  it('pollSonarr: a new episode of a show a member is watching, imported on two instances, alerts them once', async () => {
+    mocks.sonarr = [arrInstance('i1', 'Main', 'sonarr', true), arrInstance('i2', 'Anime', 'sonarr', true)];
+    for (const { client } of mocks.sonarr as ReturnType<typeof arrInstance>[]) {
+      const { records } = await client.getHistory(1);
+      Object.assign((records[0] as { series: object }).series, { title: 'Severance', tvdbId: 371980 });
+      Object.assign((records[0] as { episode: object }).episode, { episodeNumber: 5, title: 'Trojan Horse' });
+    }
+    mocks.users = (args) => ((args as { where: { jellyfinUserId?: unknown } }).where.jellyfinUserId
+      ? [{ id: 'u1', role: 'member', status: 'active', template: 'member', permissions: {}, jellyfinUserId: 'jf-1', settings: null }]
+      : []);
+    mocks.jellyfin = {
+      queryItems: vi.fn(async (params: { IncludeItemTypes?: string }) => (params.IncludeItemTypes === 'Episode'
+        ? { Items: [{ Id: 'e1', SeriesId: 'jf-sev', UserData: { LastPlayedDate: new Date().toISOString() } }] }
+        : { Items: [{ Id: 'jf-sev', ProviderIds: { Tvdb: '371980' } }] })),
+    };
+    const out = await run('pollSonarr');
+    const alerts = out.flatMap((o) => {
+      const event = (o as { notify?: { eventType: string } }).notify;
+      return event?.eventType === 'watchingNewEpisode' ? [event] : [];
+    });
+    expect(alerts).toEqual([
+      expect.objectContaining({ title: 'New episode: Severance S01E05 · Trojan Horse', userIds: ['u1'], ownerUserId: 'u1' }),
+    ]);
   });
 
   it('pollRadarr: a watchlisted movie imported on two instances alerts its owner once', async () => {

@@ -968,6 +968,26 @@ title, for two instances claiming different saved copies of one title. The
 tap opens `/watchlist?focus=<id>` (Open or Remove), the iOS stand-in for the
 Android/desktop Remove button.
 
+"New episode" (`watchingNewEpisode`, `src/lib/polling/watching-episodes.ts`) runs
+right after it in the Sonarr poll. A non-upgrade episode import alerts each active
+person with their own Jellyfin link (`User.jellyfinUserId`; the admin fallback to
+the connection user is not used) who played that series in Jellyfin within
+`UserSettings.watchingEpisodeDays` (default 14, 0 = off; Settings → Notifications
+→ Watchlist), gated by `series.view` and `notify.watchlist`. Plays come from
+Jellyfin's own per-user play state (`/Items` sorted by `DatePlayed`, paged until
+older than the 90-day maximum or 1,000 plays, then the series' provider ids in chunks of 100),
+cached per person for the watch-status TTL, so the Playback Reporting plugin is
+not needed. Series match by TVDB id when both sides have one, otherwise TMDB id.
+A Jellyfin error skips that person; two people in a row with no answer end the batch.
+Both personal alerts claim each episode they announce in `AnnouncedEpisode`
+(`userId` + `<title key>:S01E05`, inserted with `skipDuplicates`, keys sorted)
+before sending, so an episode reaches a person once across instances and across
+the two alerts, even after they clear their notifications; "Now in your library"
+skips a series send whose episodes were all claimed already and releases
+its watchlist claim for the next episode. Rows are never
+pruned (one per person per announced episode). With grouping on, three or more
+new episodes for a person in one poll send one grouped push.
+
 A subscription's endpoint is a URL the server posts to, and it arrives in a
 request. `src/lib/push-endpoint.ts` therefore accepts only the push services
 browsers use (FCM, Mozilla autopush, Apple, Windows Notification Services): the

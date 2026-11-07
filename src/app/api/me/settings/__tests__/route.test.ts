@@ -13,7 +13,7 @@ vi.mock('@/lib/db', () => ({ prisma: { userSettings: { findUnique: mocks.findUni
 
 import { GET, PATCH } from '@/app/api/me/settings/route';
 
-const STORED = { quietHoursEnabled: false, quietHoursStart: null, quietHoursEnd: null, timeFormat: null, dateFormat: null };
+const STORED = { quietHoursEnabled: false, quietHoursStart: null, quietHoursEnd: null, timeFormat: null, dateFormat: null, watchingEpisodeDays: 14 };
 
 function patch(body: unknown) {
   return PATCH(new NextRequest('http://localhost/api/me/settings', {
@@ -38,6 +38,8 @@ describe('/api/me/settings date and time format', () => {
       quietHoursEnd: null,
       timeFormat: 'auto',
       dateFormat: 'auto',
+      watchingEpisodeDays: 14,
+      jellyfinLinked: false,
     });
   });
 
@@ -57,6 +59,24 @@ describe('/api/me/settings date and time format', () => {
     expect((await patch({ timeFormat: 'h23' })).status).toBe(400);
     expect((await patch({ dateFormat: 'ymd' })).status).toBe(400);
     expect((await patch({ dateFormat: null })).status).toBe(400);
+    expect(mocks.upsert).not.toHaveBeenCalled();
+  });
+
+  it('saves the New episode window and says whether Jellyfin is linked', async () => {
+    mocks.requireUser.mockResolvedValue({ ok: true, user: { id: 'user-1', jellyfinUserId: 'jf-1' }, session: {} });
+    mocks.upsert.mockResolvedValue({ ...STORED, watchingEpisodeDays: 0 });
+    const res = await patch({ watchingEpisodeDays: 0 });
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 'user-1' },
+      update: { watchingEpisodeDays: 0 },
+    }));
+    expect(await res.json()).toMatchObject({ watchingEpisodeDays: 0, jellyfinLinked: true });
+  });
+
+  it('rejects a window that is not offered', async () => {
+    for (const watchingEpisodeDays of [5, -1, 14.5, '14', null]) {
+      expect((await patch({ watchingEpisodeDays })).status).toBe(400);
+    }
     expect(mocks.upsert).not.toHaveBeenCalled();
   });
 
