@@ -47,6 +47,8 @@ export interface ScheduledAlertMetadata {
   movieId?: number;
   migratedFromWatchlist?: boolean;
   watchlistItemId?: string;
+  /** Artist alerts: the albums ahead already seen ("instanceId:albumId"), so only new ones are announced. */
+  knownAlbumKeys?: string[];
 }
 
 export interface OccurrenceCandidate {
@@ -70,8 +72,18 @@ export interface PreviewResult {
   candidates: OccurrenceCandidate[];
 }
 
+/** An album ahead that an artist alert found, however far off its release is. */
+export interface UpcomingAlbum {
+  key: string;
+  title: string;
+  artistName: string;
+  releaseAt: Date;
+}
+
 export interface ResolveResult {
   candidates: OccurrenceCandidate[];
   /** False when a required remote source failed and no fallback candidates were produced. */
   resolved: boolean;
+  /** Artist alerts only: every album ahead Lidarr knows of, for the "new album" announcement. */
+  upcomingAlbums?: UpcomingAlbum[];
 }

@@ -296,6 +296,11 @@ export function ScheduledAlertDialog({
                     {previewCount} upcoming release{previewCount === 1 ? '' : 's'} found
                   </p>
                 )}
+                {draft.mediaType === 'music' && draft.albumId == null && (
+                  <p className="text-[11px] text-muted-foreground">
+                    You also get a push as soon as Lidarr adds an album ahead.
+                  </p>
+                )}
               </>
             )}
 

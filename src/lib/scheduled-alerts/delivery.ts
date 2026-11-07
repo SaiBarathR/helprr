@@ -4,9 +4,10 @@ import { notifyEvent } from '@/lib/notification-service';
 import { MAX_REMINDER_ATTEMPTS } from '@/lib/scheduled-alerts/constants';
 import { resolveHref } from '@/lib/scheduled-alerts/helpers';
 import { createResolverContext, resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
-import type { OccurrenceCandidate } from '@/lib/scheduled-alerts/types';
+import type { OccurrenceCandidate, ScheduledAlertMetadata, UpcomingAlbum } from '@/lib/scheduled-alerts/types';
 import type { ScheduledAlert, Prisma } from '@prisma/client';
 import { noteJobFailure, noteJobSkipped } from '@/lib/polling-job-report';
+import { can, type PermissionUser } from '@/lib/permissions';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -79,6 +80,53 @@ export async function upsertOccurrencesForAlert(
   }
 }
 
+// Enough for years of an artist's announcements; the oldest are dropped first.
+const MAX_KNOWN_ALBUM_KEYS = 500;
+
+/**
+ * An artist alert also tells its owner as soon as Lidarr learns of an album
+ * ahead: each album not seen at an earlier resolve gets a push now. The first
+ * resolve only records the albums Lidarr already knows. Seen albums are kept
+ * even when an instance does not answer, so its albums are not announced twice.
+ */
+export async function announceNewAlbums(
+  alert: ScheduledAlert,
+  upcoming: UpcomingAlbum[],
+  db: DbClient = prisma,
+): Promise<void> {
+  const metadata = (alert.metadata ?? {}) as ScheduledAlertMetadata;
+  const known = metadata.knownAlbumKeys ? new Set(metadata.knownAlbumKeys) : null;
+  const fresh = known ? upcoming.filter((album) => !known.has(album.key)) : [];
+  const now = new Date();
+  const day = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeZone: alert.timeZone });
+  for (const album of fresh) {
+    await db.scheduledAlertOccurrence.create({
+      data: {
+        alertId: alert.id,
+        releaseAt: album.releaseAt,
+        notifyAt: now,
+        releaseKind: 'album',
+        targetKey: `lidarr:${album.key}:announced`,
+        title: album.artistName,
+        body: `New album: ${album.title}, out ${day.format(album.releaseAt)}`,
+      },
+    });
+  }
+  if (known && fresh.length === 0) return;
+  const knownAlbumKeys = [...new Set([...(known ?? []), ...upcoming.map((album) => album.key)])].slice(-MAX_KNOWN_ALBUM_KEYS);
+  await db.scheduledAlert.update({
+    where: { id: alert.id },
+    data: { metadata: { ...metadata, knownAlbumKeys } as Prisma.InputJsonValue },
+  });
+}
+
+/** A Lidarr alert reads the music library, so its owner must still have music.view. */
+function ownerMaySee(alert: Pick<ScheduledAlert, 'source'> & { user: PermissionUser }): boolean {
+  return alert.source !== 'LIDARR' || can(alert.user, 'music.view');
+}
+
+const OWNER_PERMISSIONS = { select: { role: true, template: true, permissions: true } } as const;
+
 // How long a refreshed alert is left alone before it's re-resolved. Each
 // refresh does upstream lookups + DB writes per alert, so without this gate
 // every active alert churns on every poll cycle for nothing new (releases
@@ -96,6 +144,7 @@ export async function refreshScheduledAlertOccurrences(): Promise<void> {
     },
     take: 100,
     orderBy: { updatedAt: 'asc' },
+    include: { user: OWNER_PERMISSIONS },
   });
   if (alerts.length === 0) {
     noteJobSkipped();
@@ -105,12 +154,16 @@ export async function refreshScheduledAlertOccurrences(): Promise<void> {
   const ctx = createResolverContext({
     maxOffsetMinutes: Math.max(...alerts.map((alert) => alert.offsetMinutes)),
   });
-  for (const alert of alerts) {
+  for (const { user, ...alert } of alerts) {
     try {
-      const { candidates, resolved } = await resolveAlertOccurrencesResult(alert, ctx);
+      // An owner who lost music.view gets no more music reminders; Lidarr is not asked.
+      const { candidates, resolved, upcomingAlbums } = ownerMaySee({ ...alert, user })
+        ? await resolveAlertOccurrencesResult(alert, ctx)
+        : { candidates: [], resolved: true, upcomingAlbums: undefined };
       // Unresolved means a release source it needs did not answer.
       if (!resolved) noteJobFailure(new Error('A release source for a scheduled alert did not answer'));
       await upsertOccurrencesForAlert(alert, candidates, { resolved });
+      if (resolved && upcomingAlbums) await announceNewAlbums(alert, upcomingAlbums);
       await prisma.scheduledAlert.update({
         where: { id: alert.id },
         data: { updatedAt: new Date() },
@@ -131,7 +184,7 @@ export async function checkScheduledAlerts(): Promise<void> {
       attempts: { lt: MAX_REMINDER_ATTEMPTS },
       alert: { status: 'active' },
     },
-    include: { alert: true },
+    include: { alert: { include: { user: OWNER_PERMISSIONS } } },
     take: 50,
     orderBy: { notifyAt: 'asc' },
   });
@@ -142,6 +195,13 @@ export async function checkScheduledAlerts(): Promise<void> {
 
   for (const occ of due) {
     const alert = occ.alert;
+    if (!ownerMaySee(alert)) {
+      await prisma.scheduledAlertOccurrence.update({
+        where: { id: occ.id },
+        data: { status: 'cancelled', cancelledAt: now },
+      });
+      continue;
+    }
     const redirect =
       alert.href ??
       resolveHref({

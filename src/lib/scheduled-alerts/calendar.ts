@@ -21,6 +21,8 @@ export async function fetchScheduledCalendarEvents(args: {
     where: {
       status: { in: ['pending', 'sent'] },
       alert: { userId: args.userId, status: 'active' },
+      // A "new album" announcement repeats the album's release reminder.
+      NOT: { targetKey: { endsWith: ':announced' } },
       OR: [
         { releaseAt: { not: null, gte: args.start, lte: args.end } },
         { releaseAt: null, notifyAt: { gte: args.start, lte: args.end } },

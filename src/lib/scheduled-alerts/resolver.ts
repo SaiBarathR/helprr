@@ -17,6 +17,7 @@ import type {
   ResolveResult,
   ScheduledAlertDraft,
   ScheduledAlertMetadata,
+  UpcomingAlbum,
 } from '@/lib/scheduled-alerts/types';
 import { defaultReleaseTypes, defaultScheduleMode, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
 import { getAppTimeZone, startOfLocalDay } from '@/lib/timezone';
@@ -246,6 +247,7 @@ async function resolveReleaseCandidates(
   const startIso = ctx?.calendarStartIso ?? lookupWindow.start.toISOString();
   const endIso = ctx?.calendarEndIso ?? lookupWindow.end.toISOString();
   const out: OccurrenceCandidate[] = [];
+  const upcomingAlbums: UpcomingAlbum[] = [];
 
   const outcomes: SourceOutcomes = {
     radarr: needsRadarr(draft) ? 'failure' : 'not_needed',
@@ -408,9 +410,12 @@ async function resolveReleaseCandidates(
           // Lidarr's release date is a calendar day (midnight UTC): remind on that local day.
           const releaseAt = dateOnlyAtLocalNine(album.releaseDate.slice(0, 10), opts.timeZone);
           if (!Number.isFinite(releaseAt.getTime())) continue;
+          const artistName = album.artist?.artistName ?? (opts.scope === 'album' ? draft.subtitle : draft.title);
+          if (opts.scope === 'artist' && releaseAt > notifyStart) {
+            upcomingAlbums.push({ key: `${connection.id}:${album.id}`, title: album.title, artistName: artistName || draft.title, releaseAt });
+          }
           const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
           if (!withinNotifyHorizon(notifyAt)) continue;
-          const artistName = album.artist?.artistName ?? (opts.scope === 'album' ? draft.subtitle : draft.title);
           out.push(
             candidate(
               `lidarr:${connection.id}:${album.id}`,
@@ -499,6 +504,7 @@ async function resolveReleaseCandidates(
   return {
     candidates: out,
     resolved: computeResolved(outcomes, draft, opts.releaseTypes, out),
+    ...(opts.scope === 'artist' && needsLidarr(draft) ? { upcomingAlbums } : {}),
   };
 }
 

@@ -5,7 +5,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { parseReleaseTypes, isAlertScope, isScheduleMode, musicAlertForbidden, scopeFitsMediaType } from '@/lib/scheduled-alerts/helpers';
 import { resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
-import { upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
+import { announceNewAlbums, upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
 import { serializeAlert } from '@/lib/scheduled-alerts/serialize';
 import type { ScheduledAlertMetadata } from '@/lib/scheduled-alerts/types';
 
@@ -58,7 +58,11 @@ async function patchHandler(
   if (typeof body.scheduleMode === 'string' && isScheduleMode(body.scheduleMode)) {
     data.scheduleMode = body.scheduleMode;
   }
-  if (typeof body.scope === 'string' && isAlertScope(body.scope) && scopeFitsMediaType(body.scope, existing.mediaType)) {
+  // A music alert's scope says what its id is (album or artist), so it never changes.
+  if (
+    existing.mediaType !== 'music' &&
+    typeof body.scope === 'string' && isAlertScope(body.scope) && scopeFitsMediaType(body.scope, existing.mediaType)
+  ) {
     data.scope = body.scope;
   }
   if (body.releaseTypes !== undefined) data.releaseTypes = parseReleaseTypes(body.releaseTypes);
@@ -110,8 +114,9 @@ async function patchHandler(
   });
 
   if (alert.scheduleMode === 'release_relative') {
-    const { candidates, resolved } = await resolveAlertOccurrencesResult(alert);
+    const { candidates, resolved, upcomingAlbums } = await resolveAlertOccurrencesResult(alert);
     await upsertOccurrencesForAlert(alert, candidates, { resolved });
+    if (resolved && upcomingAlbums) await announceNewAlbums(alert, upcomingAlbums);
   }
 
   const full = await prisma.scheduledAlert.findUnique({

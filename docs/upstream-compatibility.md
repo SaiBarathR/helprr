@@ -485,10 +485,14 @@ order was checked read-only against the Radarr on the test host on 2026-11-07.
 
 A scheduled alert for one album reads Lidarr `GET /api/v1/album/{id}`; an alert for an
 artist's next album reads `GET /api/v1/album?artistId=&includeAllArtistAlbums=true`
-on each refresh, so an album Lidarr learns of later is picked up then. Lidarr's
+on each refresh. Lidarr's album resource has no "added" time, so Helprr keeps the
+albums ahead it has already seen in the alert's metadata (`knownAlbumKeys`) and
+pushes once for each new one; the first resolve only records them. Lidarr's
 `releaseDate` is a calendar day at midnight UTC (checked read-only on the test host's
-Lidarr on 2026-11-07), so the reminder is set from that day in the alert's time zone.
-A 404 for the album means Lidarr no longer has it and gives no reminder.
+Lidarr on 2026-11-07), so the release reminder is set from that day in the alert's
+time zone. A 404 for the album means Lidarr no longer has it and gives no reminder.
+Lidarr ids repeat across instances, so an alert made on the default instance is tied
+to it.
 
 ## Before reporting an upstream compatibility problem
 

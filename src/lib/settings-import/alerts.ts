@@ -13,6 +13,7 @@ import {
   scopeFitsMediaType,
 } from '@/lib/scheduled-alerts/helpers';
 import { DEFAULT_OFFSET_MINUTES, defaultScopeForMediaType } from '@/lib/scheduled-alerts/constants';
+import { isValidExternalId } from '@/lib/watchlist-helpers';
 import { validateImportedPosterUrl } from './shared';
 
 // Rows per bulk statement, well inside PostgreSQL's bind-parameter limit.
@@ -54,8 +55,9 @@ export function prepareScheduledAlerts(alerts: unknown[], skipped: string[], own
     if (
       !isAlertSource(source) ||
       !isAlertMediaType(mediaType) ||
-      // Lidarr holds music only, and music comes only from Lidarr.
+      // Lidarr holds music only, and music comes only from Lidarr; its ids are numbers.
       (source === 'LIDARR') !== (mediaType === 'music') ||
+      (source === 'LIDARR' && !isValidExternalId(externalId)) ||
       !externalId ||
       !title ||
       !isScheduleMode(scheduleMode)

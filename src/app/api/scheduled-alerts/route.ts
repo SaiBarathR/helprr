@@ -9,10 +9,11 @@ import {
   getDefaultTimeZone,
   musicAlertForbidden,
   parseCreateInput,
+  pinMusicInstance,
   resolveHref,
 } from '@/lib/scheduled-alerts/helpers';
 import { resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
-import { upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
+import { announceNewAlbums, upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
 import { serializeAlert } from '@/lib/scheduled-alerts/serialize';
 import type { ScheduledAlertMetadata } from '@/lib/scheduled-alerts/types';
 
@@ -139,9 +140,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const parsed = parseCreateInput(body, fallbackTz);
   if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
-  const { draft, scheduleMode, scope, releaseTypes, offsetMinutes, timeZone, absoluteNotifyAt } = parsed;
-  const forbidden = musicAlertForbidden(auth.user, draft.source);
+  const { scheduleMode, scope, releaseTypes, offsetMinutes, timeZone, absoluteNotifyAt } = parsed;
+  const forbidden = musicAlertForbidden(auth.user, parsed.draft.source);
   if (forbidden) return forbidden;
+  const draft = await pinMusicInstance(parsed.draft);
   const metadata: ScheduledAlertMetadata = {};
   if (draft.seasonNumber != null) metadata.seasonNumber = draft.seasonNumber;
   if (draft.episodeId != null) metadata.episodeId = draft.episodeId;
@@ -213,6 +215,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         resolved: resolveResult.resolved,
         db: tx,
       });
+      // Records the albums Lidarr already knows, so only later ones are announced.
+      if (resolveResult.resolved && resolveResult.upcomingAlbums) {
+        await announceNewAlbums(created, resolveResult.upcomingAlbums, tx);
+      }
     }
 
     return created;
