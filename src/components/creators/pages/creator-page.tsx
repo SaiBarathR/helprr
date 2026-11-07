@@ -19,6 +19,7 @@ import { CreatorAvatar } from '@/components/creators/creator-avatar';
 import { CreatorVideoCard } from '@/components/creators/video-card';
 import { CreatorVideoList, CreatorVideoSkeleton } from '@/components/creators/video-list';
 import { useCreatorPlatform } from '@/components/creators/platform';
+import { followedBy, showUnfollowNotice, turnOffAutoDownload, type UnfollowResult } from '@/components/creators/unfollow-notice';
 import { whileDownloading, type CreatorVideoPage } from '@/components/creators/types';
 import { useFeedLayout } from '@/components/creators/use-feed-view';
 import { useVideoActions } from '@/components/creators/use-video-actions';
@@ -34,6 +35,8 @@ interface Streamer {
   id: string;
   login: string;
   subscription: { id: string; notifyNewVods: boolean } | null;
+  /** Only sent to someone who can change the rules. */
+  followers?: number;
   displayName: string;
   description: string | null;
   profileImageUrl: string | null;
@@ -87,6 +90,7 @@ export function CreatorPage({ params }: { params: Promise<{ id: string }> }) {
 
   const follow = useMutation({
     mutationFn: async () => {
+      const leaving = Boolean(streamer?.subscription);
       const res = streamer?.subscription
         ? await fetch(`${platform.api}/subscriptions/${streamer.subscription.id}`, { method: 'DELETE' })
         : await fetch(platform.creatorsApi, {
@@ -95,8 +99,19 @@ export function CreatorPage({ params }: { params: Promise<{ id: string }> }) {
             body: JSON.stringify(platform.followBody(streamer?.login ?? '')),
           });
       if (!res.ok) throw new Error('Could not change the subscription');
+      return leaving ? (await res.json().catch(() => null)) as UnfollowResult | null : null;
     },
-    onSuccess: () => void refresh(),
+    onSuccess: (result) => {
+      void refresh();
+      if (result && streamer) {
+        showUnfollowNotice({
+          done: platform.unfollowedLabel,
+          name: streamer.displayName,
+          result,
+          turnOff: canManage ? () => turnOffAutoDownload(platform.id, streamer.id).then(refresh) : undefined,
+        });
+      }
+    },
     onError: (error) => toast.error(error.message),
   });
   const toggleNotify = useMutation({
@@ -158,7 +173,10 @@ export function CreatorPage({ params }: { params: Promise<{ id: string }> }) {
   const identity = streamer && (
     <>
       <h1 className="truncate text-xl font-bold leading-tight">{streamer.displayName}</h1>
-      <p className="mt-0.5 truncate text-sm text-muted-foreground">@{streamer.login}</p>
+      <p className="mt-0.5 truncate text-sm text-muted-foreground">
+        @{streamer.login}
+        {streamer.followers !== undefined && ` · ${followedBy(streamer.followers)}`}
+      </p>
     </>
   );
 

@@ -48,6 +48,10 @@ turn on the switch and write rules. Sub-only VODs and 1440p need your browser's
 `auth-token` cookie, which grants full access to your Twitch account; changing your
 password or signing out everywhere revokes it, and logging out does not.
 
+A streamer's rule belongs to the streamer, not to whoever set it: while anyone is still
+subscribed, it keeps downloading. Unsubscribing tells you how many others still are, and
+offers an admin **Turn off auto-download**.
+
 **Twitch → Library** lists every saved video with its size, codec and whether it was
 re-encoded, how much space that saved, and whether the original is still kept. From there
 you can re-encode now or tonight, restore or delete a kept original, keep a video forever,

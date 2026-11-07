@@ -89,6 +89,11 @@ Rules wait 3 hours after a video is published, or after a stream ends, because h
 qualities and SponsorBlock segments take time to appear. Only newly found videos
 download by themselves, so one you deleted never comes back.
 
+A channel's rule belongs to the channel, not to whoever set it. While anyone still follows
+the channel, it is checked and its rule keeps downloading. When you unfollow and others
+still follow, Helprr says how many, and an admin can **Turn off auto-download** right there.
+Admins see **Followed by N people** on a channel or playlist page.
+
 ## Watch and clear
 
 Off by default. In **Settings → YouTube**, choose whose watching counts and turn on

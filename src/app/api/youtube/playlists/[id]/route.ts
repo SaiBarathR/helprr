@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
+import { can } from '@/lib/permissions';
 import { YOUTUBE } from '@/lib/youtube/platform';
 
 async function getHandler(
@@ -17,12 +18,15 @@ async function getHandler(
     select: {
       id: true, externalId: true, title: true, ownerName: true, description: true, thumbnailUrl: true, itemCount: true,
       subscriptions: { where: { userId: auth.user.id }, select: { id: true, notifyNewVideos: true } },
+      _count: { select: { subscriptions: true } },
     },
   });
   if (!playlist) return NextResponse.json({ error: 'Playlist not found' }, { status: 404 });
 
-  const { subscriptions, ...rest } = playlist;
-  return NextResponse.json({ ...rest, subscription: subscriptions[0] ?? null });
+  const { subscriptions, _count, ...rest } = playlist;
+  // Who follows is for whoever sets the rules: it decides whether they still run.
+  const followers = can(auth.user, 'youtube.manage') ? { followers: _count.subscriptions } : {};
+  return NextResponse.json({ ...rest, subscription: subscriptions[0] ?? null, ...followers });
 }
 
 export const GET = withApiLogging(getHandler, 'api/youtube/playlists/[id]');
