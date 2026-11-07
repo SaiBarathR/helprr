@@ -2,7 +2,7 @@
 
 import type { Prisma } from '@prisma/client';
 import type { ExportedCleanup } from '@/lib/settings-export';
-import { toAutoRunMode } from '@/lib/cleanup/types';
+import { toAutoRunMode, toIncludeApp } from '@/lib/cleanup/types';
 
 export async function applyCleanupInTxn(
   tx: Prisma.TransactionClient,
@@ -24,6 +24,9 @@ export async function applyCleanupInTxn(
         failedImport: (c.failedImport ?? {}) as unknown as Prisma.InputJsonValue,
         reSearchAfterRemoval: Boolean(c.reSearchAfterRemoval),
         autoRunMode: toAutoRunMode(c.autoRunMode),
+        includeSonarr: toIncludeApp(c.includeSonarr),
+        includeRadarr: toIncludeApp(c.includeRadarr),
+        includeLidarr: toIncludeApp(c.includeLidarr),
       },
       update: {
         enabled: Boolean(c.enabled),
@@ -34,6 +37,9 @@ export async function applyCleanupInTxn(
         failedImport: (c.failedImport ?? {}) as unknown as Prisma.InputJsonValue,
         reSearchAfterRemoval: Boolean(c.reSearchAfterRemoval),
         autoRunMode: toAutoRunMode(c.autoRunMode),
+        includeSonarr: toIncludeApp(c.includeSonarr),
+        includeRadarr: toIncludeApp(c.includeRadarr),
+        includeLidarr: toIncludeApp(c.includeLidarr),
       },
     });
   } else {

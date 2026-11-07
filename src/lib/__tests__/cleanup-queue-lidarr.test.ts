@@ -204,6 +204,48 @@ describe('queue cleaner with Lidarr', () => {
     await expect(preview()).resolves.toMatchObject({ decisions: [], pendingStrikes: [], warnings: [expect.stringContaining('Lidarr')] });
   });
 
+  it('skips Lidarr when it is turned off: its queue is never read, so it being offline no longer aborts the cycle', async () => {
+    qbitWithTorrent();
+    mocks.configFindUnique.mockResolvedValue({ ...baseConfig, includeLidarr: false });
+    mocks.getLidarrClients.mockResolvedValue([{ connection: lidarrConnection('lidarr-2'), client: { getQueue: vi.fn().mockRejectedValue(new Error('offline')) } }]);
+
+    const result = await preview();
+
+    expect(mocks.getLidarrClients).not.toHaveBeenCalled();
+    expect(mocks.getSonarrClients).toHaveBeenCalled();
+    expect(result.warnings).toEqual([]);
+    // The torrent is still checked by the qBittorrent rules, unlinked.
+    expect(result.decisions).toEqual([expect.objectContaining({ strikeType: 'stall', linked: null })]);
+    expect(result.binding.candidates).toEqual([expect.objectContaining({ hash: 'abc123', links: [] })]);
+  });
+
+  it('never deletes the torrent of a turned-off app under a change-category rule', async () => {
+    const deleteTorrent = vi.fn();
+    mocks.getQBittorrentClient.mockResolvedValue({
+      getTorrents: vi.fn(async () => [torrent()]),
+      getTorrentTrackers: vi.fn().mockResolvedValue([]),
+      deleteTorrent,
+    });
+    mocks.configFindUnique.mockResolvedValue({ ...baseConfig, includeLidarr: false });
+    mocks.stallFindMany.mockResolvedValue([{ ...stall, changeCategory: true }]);
+    mocks.strikeFindMany.mockResolvedValueOnce([strikeRecord('stall', 'stall-a', 2)]).mockResolvedValue([strikeRecord('stall', 'stall-a', 3)]);
+
+    const result = await runQueueCleanerCycle({ dryRun: false, triggeredBy: 'auto', actor: scheduler });
+
+    expect(deleteTorrent).not.toHaveBeenCalled();
+    expect(mocks.auditCreate).not.toHaveBeenCalled();
+    expect(result.outcomes).toEqual([expect.objectContaining({ status: 'skipped', action: 'skipped', filesDeleted: false })]);
+  });
+
+  it('keeps reading the other apps when one is turned off, and still aborts on their unreadable queues', async () => {
+    qbitWithTorrent();
+    mocks.configFindUnique.mockResolvedValue({ ...baseConfig, includeSonarr: false });
+    mocks.getLidarrClients.mockResolvedValue([{ connection: lidarrConnection('lidarr-2'), client: { getQueue: vi.fn().mockRejectedValue(new Error('offline')) } }]);
+
+    await expect(preview()).resolves.toMatchObject({ decisions: [], warnings: [expect.stringContaining('Lidarr')] });
+    expect(mocks.getSonarrClients).not.toHaveBeenCalled();
+  });
+
   it('removes on the scheduled path as the cleanup scheduler without a preview token', async () => {
     const qbit = qbitWithTorrent();
     const lidarr = lidarrInstanceClient((_, options) => { if (options.removeFromClient) qbit.removed = true; });

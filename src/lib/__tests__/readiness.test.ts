@@ -117,7 +117,8 @@ describe('migration readiness', () => {
     expect(names).toContain('20261107220000_last_database_backup');
     expect(names).toContain('20261107230000_user_totp');
     expect(names).toContain('20261108000000_in_app_database_backups');
+    expect(names).toContain('20261108010000_queue_cleaner_apps');
     expect(names).not.toContain('migration_lock.toml');
-    expect(names).toHaveLength(34);
+    expect(names).toHaveLength(35);
   });
 });

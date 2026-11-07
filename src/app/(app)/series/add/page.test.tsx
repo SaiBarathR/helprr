@@ -158,3 +158,35 @@ it("switching instances applies the new instance's remembered options, never the
   await waitFor(() => expect(posts).toHaveLength(1));
   expect(posts[0]).toEqual(expect.objectContaining({ instanceId: 'son-1', qualityProfileId: 2, rootFolderPath: '/anime' }));
 });
+
+describe("add series page with Seerr's default", () => {
+  const seerrDefault = { profileId: '7', rootFolder: '/tv-kids' };
+
+  it("opens on Seerr's default profile and folder for this instance when nothing is remembered", async () => {
+    instanceRoutes['son-2 /api/sonarr/seerr-defaults'] = seerrDefault;
+    renderPage();
+    await screen.findByText('Monitor New Seasons');
+    await waitFor(() => expect(screen.getByDisplayValue('4k Max OTT Quality')).toBeTruthy());
+    expect(screen.getByDisplayValue('/tv-kids')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add Series' }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toEqual(expect.objectContaining({ instanceId: 'son-2', qualityProfileId: 7, rootFolderPath: '/tv-kids' }));
+  });
+
+  it("keeps a remembered choice over Seerr's, and falls back to the first option when Seerr's is not offered", async () => {
+    instanceRoutes['son-2 /api/sonarr/seerr-defaults'] = seerrDefault;
+    localStorage.setItem('helprr-add-defaults:sonarr:son-2', JSON.stringify({ profileId: '4', rootFolder: '/tv' }));
+    const { unmount } = renderPage();
+    await screen.findByText('Monitor New Seasons');
+    await waitFor(() => expect(screen.getByDisplayValue('HD')).toBeTruthy());
+    expect(screen.getByDisplayValue('/tv')).toBeTruthy();
+    unmount();
+
+    localStorage.clear();
+    instanceRoutes['son-2 /api/sonarr/seerr-defaults'] = { profileId: '99', rootFolder: '/gone' };
+    renderPage();
+    await screen.findByText('Monitor New Seasons');
+    await waitFor(() => expect(screen.getByDisplayValue('HD')).toBeTruthy());
+    expect(screen.getByDisplayValue('/tv')).toBeTruthy();
+  });
+});

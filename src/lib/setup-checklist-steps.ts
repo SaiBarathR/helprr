@@ -31,6 +31,8 @@ export interface SetupChecklistState {
   /** Hidden for good: dismissed, or every required step is done. */
   hidden: boolean;
   done: Record<SetupStep, boolean>;
+  /** Optional steps the admin skipped (not done): shown as skipped and not counted. */
+  skipped?: SetupStep[];
 }
 
 export function isSetupStep(value: unknown): value is SetupStep {

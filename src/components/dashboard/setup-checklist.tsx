@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import dynamic from 'next/dynamic';
 import { toast } from 'sonner';
-import { Bell, Check, ChevronRight, DatabaseBackup, Plug, Smartphone, Users, X, type LucideIcon } from 'lucide-react';
+import { Bell, Check, ChevronRight, DatabaseBackup, Minus, Plug, Smartphone, Users, X, type LucideIcon } from 'lucide-react';
 import Link from '@/components/ui/app-link';
 import { useIsStandalone } from '@/hooks/use-is-standalone';
 import { isIosDevice } from '@/lib/push-availability';
@@ -79,12 +79,20 @@ async function send(body: ChecklistAction): Promise<SetupChecklistState> {
   return res.json();
 }
 
-// Replies can arrive out of order, so one only adds the ticks it saw: a late reply never
-// undoes a newer tick. Whether the card is hidden is decided here, not by replies.
+// Replies can arrive out of order, so one only adds the ticks and skips it saw: a late
+// reply never undoes a newer one. Whether the card is hidden is decided here, not by replies.
 function mergeReply(prev: SetupChecklistState, reply: SetupChecklistState): SetupChecklistState {
   const done = { ...prev.done };
   for (const step of SETUP_STEPS) done[step] = prev.done[step] || Boolean(reply.done?.[step]);
-  return { ...prev, done };
+  const skipped = SETUP_STEPS.filter((step) => prev.skipped?.includes(step) || reply.skipped?.includes(step));
+  return { ...prev, done, skipped };
+}
+
+// An optional step marked by hand is skipped; any other is done.
+function withMark(prev: SetupChecklistState, step: SetupStep, on: boolean): SetupChecklistState {
+  if (!OPTIONAL_SETUP_STEPS.has(step)) return { ...prev, done: { ...prev.done, [step]: on } };
+  const others = (prev.skipped ?? []).filter((other) => other !== step);
+  return { ...prev, skipped: on ? [...others, step] : others };
 }
 
 function isPhone(): boolean {
@@ -111,12 +119,12 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
   const links = useRef<Partial<Record<SetupStep, HTMLAnchorElement | null>>>({});
 
   const markDone = (step: SetupStep, quiet = false) => {
-    setState((prev) => ({ ...prev, done: { ...prev.done, [step]: true } }));
+    setState((prev) => withMark(prev, step, true));
     send({ action: 'done', step })
       .then((reply) => setState((prev) => mergeReply(prev, reply)))
       .catch(() => {
         // Undo only this step: other ticks may have saved meanwhile.
-        setState((prev) => ({ ...prev, done: { ...prev.done, [step]: false } }));
+        setState((prev) => withMark(prev, step, false));
         if (!quiet) toast.error('Could not save that. Try again.');
       });
   };
@@ -244,6 +252,7 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
         {SETUP_STEPS.map((step) => {
           const copy = STEP_COPY[step];
           const done = state.done[step];
+          const skipped = !done && Boolean(state.skipped?.includes(step));
           const Icon = copy.icon;
           return (
             <li
@@ -267,11 +276,12 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
                   width: 28,
                   height: 28,
                   borderRadius: '50%',
-                  background: done ? HPR.amber : mix(HPR.amber, 12),
-                  color: done ? HPR.ink : HPR.amber,
+                  background: done ? HPR.amber : skipped ? 'transparent' : mix(HPR.amber, 12),
+                  color: done ? HPR.ink : skipped ? HPR.fgSubtle : HPR.amber,
+                  border: skipped ? `1px dashed ${HPR.hairline2}` : undefined,
                 }}
               >
-                {done ? <Check size={15} strokeWidth={2.5} /> : <Icon size={14} />}
+                {done ? <Check size={15} strokeWidth={2.5} /> : skipped ? <Minus size={14} /> : <Icon size={14} />}
               </span>
               <Link
                 ref={(element: HTMLAnchorElement | null) => {
@@ -287,12 +297,14 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
                       display: 'block',
                       fontSize: 13.5,
                       fontWeight: 600,
-                      color: done ? HPR.fgSubtle : HPR.fg,
+                      color: done || skipped ? HPR.fgSubtle : HPR.fg,
                       textDecoration: done ? 'line-through' : 'none',
                     }}
                   >
                     {copy.title}
-                    {OPTIONAL_SETUP_STEPS.has(step) && (
+                    {skipped ? (
+                      <span style={{ fontWeight: 400, color: HPR.fgSubtle }}> · Skipped</span>
+                    ) : OPTIONAL_SETUP_STEPS.has(step) && (
                       <span style={{ fontWeight: 400, color: HPR.fgSubtle }}> (optional)</span>
                     )}
                     <span className="sr-only">{done ? ', done' : ''}</span>
@@ -313,7 +325,7 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
                   Show code
                 </button>
               )}
-              {!done && MANUAL_SETUP_STEPS.has(step) && copy.manualLabel && (
+              {!done && !skipped && MANUAL_SETUP_STEPS.has(step) && copy.manualLabel && (
                 <button
                   type="button"
                   className="touch-target press-feedback"

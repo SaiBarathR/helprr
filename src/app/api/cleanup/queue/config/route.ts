@@ -8,10 +8,13 @@ import {
   AutoRunMode,
   DEFAULT_FAILED_IMPORT,
   FailedImportConfig,
+  QueueCleanerApps,
   QueueCleanerConfigShape,
+  toIncludeApp,
 } from '@/lib/cleanup/types';
 
-function validateConfig(body: unknown): { ok: true; value: QueueCleanerConfigShape } | { ok: false; error: string } {
+// `stored` keeps an app switch the body leaves out (a form from an older cached app).
+function validateConfig(body: unknown, stored: QueueCleanerApps): { ok: true; value: QueueCleanerConfigShape } | { ok: false; error: string } {
   if (!body || typeof body !== 'object') return { ok: false, error: 'Invalid body' };
   const b = body as Record<string, unknown>;
   const enabled = Boolean(b.enabled);
@@ -68,6 +71,9 @@ function validateConfig(body: unknown): { ok: true; value: QueueCleanerConfigSha
       failedImport: fi,
       reSearchAfterRemoval,
       autoRunMode,
+      includeSonarr: toIncludeApp(b.includeSonarr, stored.includeSonarr),
+      includeRadarr: toIncludeApp(b.includeRadarr, stored.includeRadarr),
+      includeLidarr: toIncludeApp(b.includeLidarr, stored.includeLidarr),
     },
   };
 }
@@ -84,7 +90,7 @@ async function putHandler(req: NextRequest) {
   if (!auth.ok) return auth.response;
   let body: unknown;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
-  const result = validateConfig(body);
+  const result = validateConfig(body, await loadQueueCleanerConfig());
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
 
   await saveQueueCleanerConfig(result.value);

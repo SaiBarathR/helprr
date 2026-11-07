@@ -27,7 +27,7 @@ import { AddPageInstanceSelect } from '@/components/media/add-page-instance-sele
 import { Search, Plus, Loader2, Film, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import type { RadarrLookupResult } from '@/types';
-import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
+import { useQualityProfiles, useRootFolders, useSeerrAddDefaults } from '@/lib/hooks/use-reference-data';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { resolveAddPageInstance } from '@/lib/add-page-instances';
 import { pickRememberedOption, readAddDefaults, saveAddDefaults } from '@/lib/add-defaults';
@@ -61,6 +61,8 @@ function AddMoviePageContent() {
   // Per-instance reference data, shared (and deduped) with the list/edit pages.
   const { data: profiles = [] } = useQualityProfiles('radarr', instanceId);
   const { data: rootFolders = [] } = useRootFolders('radarr', instanceId);
+  // Where the profile and folder start when nothing is remembered (see below).
+  const seerrDefaults = useSeerrAddDefaults('radarr', instanceId);
 
   // Search runs against the submitted term (form submit / URL prefill set it).
   // TanStack threads the AbortSignal, so an in-flight lookup is cancelled on a
@@ -115,15 +117,28 @@ function AddMoviePageContent() {
 
   // Default the profile / root-folder selection when the instance's reference
   // data arrives: the last one used on this instance while it still exists,
-  // else the first option. Keep a still-valid user choice on a background
-  // refetch; re-default only when the current value is missing from the fresh
-  // list (e.g. after switching instances).
-  if (profiles.length > 0 && !(profileId && profiles.some((p) => String(p.id) === profileId))) {
-    setProfileId(pickRememberedOption(profiles.map((p) => String(p.id)), readAddDefaults('radarr', instanceId).profileId)!);
+  // else Seerr's default for this instance, else the first option. Without a
+  // usable remembered value, wait for Seerr's answer before defaulting. Keep a
+  // still-valid user choice on a background refetch; re-default only when the
+  // current value is missing from the fresh list (e.g. after switching instances).
+  const remembered = readAddDefaults('radarr', instanceId);
+  const profileIds = profiles.map((p) => String(p.id));
+  const folderPaths = rootFolders.map((f) => f.path);
+  if (
+    profiles.length > 0
+    && !(profileId && profileIds.includes(profileId))
+    && (!seerrDefaults.isLoading || (remembered.profileId !== undefined && profileIds.includes(remembered.profileId)))
+  ) {
+    setProfileId(pickRememberedOption(profileIds, remembered.profileId, seerrDefaults.data?.profileId)!);
   }
-  if (rootFolders.length > 0 && !(rootFolder && rootFolders.some((f) => f.path === rootFolder))) {
-    setRootFolder(pickRememberedOption(rootFolders.map((f) => f.path), readAddDefaults('radarr', instanceId).rootFolder)!);
+  if (
+    rootFolders.length > 0
+    && !(rootFolder && folderPaths.includes(rootFolder))
+    && (!seerrDefaults.isLoading || (remembered.rootFolder !== undefined && folderPaths.includes(remembered.rootFolder)))
+  ) {
+    setRootFolder(pickRememberedOption(folderPaths, remembered.rootFolder, seerrDefaults.data?.rootFolder)!);
   }
+
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
