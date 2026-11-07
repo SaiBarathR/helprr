@@ -539,7 +539,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(272);
+    expect(handlers.size).toBe(273);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
