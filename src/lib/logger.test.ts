@@ -268,3 +268,17 @@ describe('two-step sign-in redaction', () => {
       .toBe('otpauth://totp/Helprr:a?issuer=Helprr&secret=[REDACTED]&algorithm=SHA1');
   });
 });
+
+describe('personal API token redaction', () => {
+  const token = `hlp_${'A1b2_-'.repeat(7)}x`;
+
+  it('redacts the Authorization header by key, and a token anywhere in a string', () => {
+    expect(redact({ authorization: `Bearer ${token}`, Authorization: `Bearer ${token}` })).toEqual({
+      authorization: '[REDACTED]',
+      Authorization: '[REDACTED]',
+    });
+    expect(redact(`Authorization: Bearer ${token}`)).toBe('Authorization: Bearer [REDACTED]');
+    expect(redact(`pasted ${token} into a URL /api/v1/summary?k=${token}`)).toBe('pasted hlp_[REDACTED] into a URL /api/v1/summary?k=hlp_[REDACTED]');
+    expect(JSON.stringify(redact({ error: new Error(`refused ${token}`) }))).not.toContain(token.slice(4));
+  });
+});

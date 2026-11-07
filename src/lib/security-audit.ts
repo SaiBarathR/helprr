@@ -26,7 +26,7 @@ export interface SecurityAuditActor {
   username: string;
 }
 
-export type SecurityAuditTargetType = 'user' | 'session' | 'service' | 'settings' | 'backup';
+export type SecurityAuditTargetType = 'user' | 'session' | 'service' | 'settings' | 'backup' | 'api-token';
 
 export interface SecurityAuditInput {
   /**

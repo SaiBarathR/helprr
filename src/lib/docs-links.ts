@@ -42,3 +42,6 @@ export function isTroubleshootingSection(value: unknown): value is Troubleshooti
 export function troubleshootingUrl(section: TroubleshootingSection): string {
   return `${DOCS_URL}troubleshooting/#${section}`;
 }
+
+/** Personal API tokens and the read-only status API, with Shortcuts and Homepage recipes. */
+export const STATUS_API_GUIDE_URL = 'https://saibarathr.github.io/helprr/status-api/';

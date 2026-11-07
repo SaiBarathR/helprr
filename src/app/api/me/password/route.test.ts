@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   userUpdateMany: vi.fn(),
   passwordLinkDeleteMany: vi.fn(),
   feedDeleteMany: vi.fn(),
+  apiTokenDeleteMany: vi.fn(),
   enforceLoginRateLimit: vi.fn(),
   enforceUsernameBackoff: vi.fn(),
   enforceGlobalLoginBackstop: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock('@/lib/db', () => {
     user: { updateMany: (args: unknown) => (mocks.order.push('user'), mocks.userUpdateMany(args)) },
     passwordLink: { deleteMany: (args: unknown) => (mocks.order.push('link'), mocks.passwordLinkDeleteMany(args)) },
     calendarFeedToken: { deleteMany: (args: unknown) => (mocks.order.push('feed'), mocks.feedDeleteMany(args)) },
+    apiToken: { deleteMany: (args: unknown) => (mocks.order.push('api-token'), mocks.apiTokenDeleteMany(args)) },
   };
   return { prisma: { $transaction: (fn: (t: typeof tx) => unknown) => fn(tx) } };
 });
@@ -75,6 +77,7 @@ beforeEach(() => {
   mocks.userUpdateMany.mockResolvedValue({ count: 1 });
   mocks.passwordLinkDeleteMany.mockResolvedValue({ count: 0 });
   mocks.feedDeleteMany.mockResolvedValue({ count: 0 });
+  mocks.apiTokenDeleteMany.mockResolvedValue({ count: 0 });
   for (const gate of [mocks.enforceLoginRateLimit, mocks.enforceUsernameBackoff, mocks.enforceGlobalLoginBackstop]) {
     gate.mockResolvedValue(null);
   }
@@ -113,11 +116,13 @@ describe('POST /api/me/password', () => {
     expect(res.headers.get('set-cookie')).toBeNull();
     expect(mocks.clearUsernameBackoff).toHaveBeenCalledWith('member');
     // User row before sessions, like Settings -> Users, so concurrent writes can't deadlock.
-    expect(mocks.order).toEqual(['user', 'session', 'session', 'link', 'feed']);
+    expect(mocks.order).toEqual(['user', 'session', 'session', 'link', 'feed', 'api-token']);
     // An outstanding reset link can no longer override the new password.
     expect(mocks.passwordLinkDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
     // The calendar feed link ends with the other sessions.
     expect(mocks.feedDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+    // A password change ends every personal API token too.
+    expect(mocks.apiTokenDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
     expect(mocks.enforceLoginRateLimit).toHaveBeenCalledWith('10.0.0.5');
   });
 

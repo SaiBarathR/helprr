@@ -56,6 +56,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       fields: ['password'],
     });
   }
+  if (user.apiTokensRevoked > 0) {
+    await recordSecurityEvent(request, {
+      actor: { id: user.id, username: user.username },
+      action: 'API_TOKEN_REVOKED',
+      targetType: 'user',
+      targetId: user.id,
+      targetLabel: user.username,
+      fields: ['password'],
+      count: user.apiTokensRevoked,
+    });
+  }
 
   if (user.mfaDisabled) {
     await recordSecurityEvent(request, {

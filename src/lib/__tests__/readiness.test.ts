@@ -121,7 +121,8 @@ describe('migration readiness', () => {
     expect(names).toContain('20261108020000_calendar_feed_links');
     expect(names).toContain('20261108020100_whats_new_existing_users');
     expect(names).toContain('20261108030000_watchlist_available_notified_at');
+    expect(names).toContain('20261108040000_api_tokens');
     expect(names).not.toContain('migration_lock.toml');
-    expect(names).toHaveLength(38);
+    expect(names).toHaveLength(39);
   });
 });

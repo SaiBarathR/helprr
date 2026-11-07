@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   linkDeleteMany: vi.fn(),
   feedDeleteMany: vi.fn(),
   recoveryCodeDeleteMany: vi.fn(),
+  apiTokenDeleteMany: vi.fn(),
   watchlistUpdateMany: vi.fn(),
   subscriptionUpdateMany: vi.fn(),
   transaction: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock('@/lib/db', () => ({
     passwordLink: { deleteMany: mocks.linkDeleteMany },
     calendarFeedToken: { deleteMany: mocks.feedDeleteMany },
     recoveryCode: { deleteMany: mocks.recoveryCodeDeleteMany },
+    apiToken: { deleteMany: mocks.apiTokenDeleteMany },
     watchlistItem: { updateMany: mocks.watchlistUpdateMany },
     pushSubscription: { updateMany: mocks.subscriptionUpdateMany },
     $transaction: mocks.transaction,
@@ -49,7 +51,7 @@ beforeEach(() => {
   mocks.sessionUpdateMany.mockResolvedValue({ count: 0 });
   mocks.watchlistUpdateMany.mockResolvedValue({ count: 0 });
   mocks.subscriptionUpdateMany.mockResolvedValue({ count: 0 });
-  mocks.transaction.mockResolvedValue([{ count: 0 }, { count: 0 }, { count: 0 }, { count: 0 }]);
+  mocks.transaction.mockResolvedValue([{ count: 0 }, { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 }]);
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -113,7 +115,7 @@ describe('bootstrap local-password policy', () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  it('a forced reset also ends the admin\'s sessions, password link, calendar feed link and two-step sign-in, in one transaction', async () => {
+  it('a forced reset also ends the admin\'s sessions, password link, calendar feed link, API tokens and two-step sign-in, in one transaction', async () => {
     process.env.HELPRR_ADMIN_PASSWORD_RESET = 'true';
     process.env.APP_PASSWORD = 'a-long-bootstrap-password-1';
     mocks.findUnique.mockResolvedValue({ id: 'user-bootstrap-admin', username: 'admin', passwordHash: 'existing-hash' });
@@ -122,14 +124,16 @@ describe('bootstrap local-password policy', () => {
     mocks.sessionUpdateMany.mockReturnValueOnce('session-op');
     mocks.feedDeleteMany.mockReturnValue('feed-op');
     mocks.recoveryCodeDeleteMany.mockReturnValue('recovery-op');
-    mocks.transaction.mockResolvedValueOnce([{}, { count: 1 }, { count: 2 }, { count: 1 }, { count: 10 }]);
+    mocks.apiTokenDeleteMany.mockReturnValue('api-token-op');
+    mocks.transaction.mockResolvedValueOnce([{}, { count: 1 }, { count: 2 }, { count: 1 }, { count: 10 }, { count: 3 }]);
 
     await ensureBootstrapAdmin();
 
-    expect(mocks.transaction).toHaveBeenNthCalledWith(1, ['update-op', 'link-op', 'session-op', 'feed-op', 'recovery-op']);
+    expect(mocks.transaction).toHaveBeenNthCalledWith(1, ['update-op', 'link-op', 'session-op', 'feed-op', 'recovery-op', 'api-token-op']);
+    expect(mocks.apiTokenDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-bootstrap-admin' } });
     expect(mocks.feedDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-bootstrap-admin' } });
     expect(mocks.recoveryCodeDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-bootstrap-admin' } });
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('ended 1 link(s) and 1 calendar feed link(s), and turned off two-step sign-in'));
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('ended 1 link(s), 1 calendar feed link(s) and 3 API token(s), and turned off two-step sign-in'));
     expect(mocks.update).toHaveBeenCalledWith({
       where: { id: 'user-bootstrap-admin' },
       data: { passwordHash: 'new-hash', totpSecret: null, totpEnabledAt: null, totpLastUsedStep: null },
@@ -140,8 +144,17 @@ describe('bootstrap local-password policy', () => {
       where: { OR: [{ userId: 'user-bootstrap-admin' }, { userId: null }], revokedAt: null },
       data: { revokedAt: expect.any(Date) },
     });
-    // Two-step sign-in was off, so there is nothing to record.
-    expect(mocks.recordSecurityEvent).not.toHaveBeenCalled();
+    // Two-step sign-in was off, so only the ended tokens are recorded.
+    expect(mocks.recordSecurityEvent).toHaveBeenCalledTimes(1);
+    expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(null, {
+      actor: null,
+      action: 'API_TOKEN_REVOKED',
+      targetType: 'user',
+      targetId: 'user-bootstrap-admin',
+      targetLabel: 'admin',
+      fields: ['admin-password-reset'],
+      count: 3,
+    });
   });
 
   it('a forced reset that turned two-step sign-in off records it, with no request and no actor', async () => {
@@ -150,7 +163,7 @@ describe('bootstrap local-password policy', () => {
     mocks.findUnique.mockResolvedValue({
       id: 'user-bootstrap-admin', username: 'admin', passwordHash: 'existing-hash', totpEnabledAt: new Date('2026-11-01'),
     });
-    mocks.transaction.mockResolvedValueOnce([{}, { count: 0 }, { count: 1 }, { count: 0 }, { count: 10 }]);
+    mocks.transaction.mockResolvedValueOnce([{}, { count: 0 }, { count: 1 }, { count: 0 }, { count: 10 }, { count: 0 }]);
 
     await ensureBootstrapAdmin();
 
@@ -176,6 +189,7 @@ describe('bootstrap local-password policy', () => {
     expect(mocks.linkDeleteMany).not.toHaveBeenCalled();
     expect(mocks.feedDeleteMany).not.toHaveBeenCalled();
     expect(mocks.recoveryCodeDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.apiTokenDeleteMany).not.toHaveBeenCalled();
     expect(mocks.sessionUpdateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: { revokedAt: expect.any(Date) } }));
   });
 

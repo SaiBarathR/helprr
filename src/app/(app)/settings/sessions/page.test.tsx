@@ -32,6 +32,9 @@ vi.mock('@/components/ui/confirm-dialog', () => ({
   }) => (open ? <button data-confirm onClick={onConfirm}>{confirmLabel}</button> : null),
 }));
 
+// API tokens have their own test (api-tokens-section.test.tsx).
+vi.mock('@/components/settings/api-tokens-section', () => ({ ApiTokensSection: () => null }));
+
 import SessionsPage from './page';
 
 function session(id: string, label: string, isCurrent = false) {

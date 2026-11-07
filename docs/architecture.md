@@ -303,7 +303,7 @@ link matching its id and hash (single use; a race loser rolls back), and a revok
 session of the user; then it signs the browser in. Making, replacing, revoking and using
 links are security audit events. `HELPRR_ADMIN_PASSWORD_RESET=true` is a separate startup recovery
 path for the bootstrap admin: in one transaction it sets the password from `APP_PASSWORD`,
-deletes the admin's password link and calendar feed link, turns off two-step sign-in (secret
+deletes the admin's password link, calendar feed link and API tokens, turns off two-step sign-in (secret
 and recovery codes, with an `MFA_DISABLED` audit row when it was on), and revokes every
 session of the admin (and any
 owner-less legacy session, which the startup attach would otherwise hand to the admin). It
@@ -465,6 +465,56 @@ query parameters narrow it the way the Calendar page's filters do and are
 validated. The window is 30 days back to 180 ahead (whole days in the app time
 zone); episodes are timed events, movie and album releases all-day. The request
 log redacts the token, but a reverse proxy's access log may keep it.
+
+Personal API tokens (`ApiToken`, `src/lib/api-tokens.ts`; Settings -> Sessions ->
+API tokens) open the read-only status API and nothing else. A token is `hlp_` and
+32 random bytes (base64url); only its SHA-256 is stored, so it is shown once when
+made (`POST /api/me/api-tokens` with a name, scopes and an optional expiry of 1 to
+365 days; up to 10 per user). Its scopes are read capabilities from a fixed list
+(`src/lib/api-token-scopes.ts`), and each must be one the owner holds when it is
+made (403 otherwise). It is sent as `Authorization: Bearer hlp_…`, which the proxy
+lets through only for `GET /api/v1/summary` and `GET /api/v1/queue` (exact paths)
+and refuses with 401 on every other path and method, before any other rule, so a
+public path or a session cookie never carries one elsewhere; without the header
+those two paths are 401 too, so a session never opens them. No CORS headers are
+sent and preflights are refused. Each request (`authorizeApiTokenRequest`)
+re-reads the token and its owner: a missing, malformed, unknown, turned-off or
+expired token, or an owner who is not active, is the same 401 with
+`WWW-Authenticate: Bearer`, and counts against the client IP behind a trusted
+proxy: after 30 refusals in 15 minutes that IP's refused tokens get 429 instead
+(reading the cap fails closed; refusals while held do not extend it). The cap is
+applied only to refusals, after the lookup, so a stale widget's old token never
+locks a live token on the same IP out. A live token is rate-limited by its hash
+(300 per 5 minutes, failing closed), and only the scopes the owner still holds
+are used; none left is 403. A role or capability change therefore narrows a token on its
+next request without ending it (Settings shows which scopes are not used now). A
+password change (own, an admin reset, a reset link used, or the
+`HELPRR_ADMIN_PASSWORD_RESET` startup reset), an admin disabling the user, a
+settings import that restores a different password hash or status, and deleting
+the user end every token the user has ("Revoke all other sessions" and an admin
+turning off two-step sign-in do not). A token is made only while the creating
+session is live, in a transaction that holds its row, so a password change either
+deletes it or ends the session first. The first use from a network a token has
+not been used from (the coarse IP, or `unknown` without a trusted proxy; the last
+20 are kept per token) is an `API_TOKEN_NEW_NETWORK` audit row; making and turning
+off a token are `API_TOKEN_CREATED` (with the scopes) and `API_TOKEN_REVOKED`,
+with the token as the target (type `api-token`, its id and name). A password
+change, reset or disable that ended some, and the startup reset, are one
+`API_TOKEN_REVOKED` row on the user with the count; a settings import that ends
+them is covered by its `SETTINGS_IMPORTED` row. The status API
+(`src/lib/status-api.ts`) is a public contract, versioned in the body: the summary
+holds one section per scope the token may use (downloads from qBittorrent, the
+queue size, free space on the disks of the apps whose view scope it has, the next
+three releases, active Jellyfin streams, unread alerts), null when that service is
+not set up or did not answer (the queue count is null when any instance did not
+answer, which `QueueResult.partial` reports), and leaves the rest out; it is
+cached for 10 seconds per scope set, never when a section did not answer (alerts
+are per user and live). The queue is the first 100 items of the combined
+Sonarr/Radarr/Lidarr queue (page 1 of each instance), soonest estimated
+completion first, with `partial`, without paths, download ids or indexers.
+Responses are `no-store`. The request log never holds the header, and the logger
+redacts `Authorization` by key and any `hlp_…` string. Settings exports never
+include tokens.
 
 ## Jellyfin Identity and Playback Credentials
 
@@ -665,7 +715,8 @@ password reset with the sessions it revoked), a member linking their own
 Jellyfin account, permission changes, the self password change, session
 revocations, service connection add/edit/delete (main, external URL, YouTube,
 Twitch, AniList and the Seerr/Prowlarr import), settings import, and a user
-making or turning off a calendar feed link (renewals before named links appear as rotations). A row holds the actor (id not a FK, username
+making or turning off a calendar feed link (renewals before named links appear as rotations), and making,
+turning off or ending personal API tokens and a token's first use from a new network. A row holds the actor (id not a FK, username
 denormalized), action, target type/id/label, the coarse IP (IPv4 /24, IPv6 /64,
 from the trusted-proxy address only), a 256-character user agent, the request
 id, and `fields`: the names of what changed (or the sign-in method, or the

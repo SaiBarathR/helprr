@@ -96,3 +96,7 @@ an admin changing their own. Changing your own password in **Settings → Accoun
 out your other devices and keeps this one signed in. The
 `HELPRR_ADMIN_PASSWORD_RESET` startup reset signs the admin out everywhere too, and ends
 any reset link made for them.
+
+The same page holds your **API tokens**, for reading Helprr from Shortcuts and
+dashboards: see [Status API and tokens](/helprr/status-api/). A password change, a
+reset or a disabled account ends them too.
