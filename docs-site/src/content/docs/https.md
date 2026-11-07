@@ -195,14 +195,14 @@ real domain and was not part of the test.*
 
 ## Sign in once, at the proxy
 
-A proxy that asks for its own sign-in (Authelia, Authentik, Cloudflare Access) can also
-sign you in to Helprr, so you sign in once. The proxy names the signed-in user in a
-header, and sends a secret in a second header that proves the request came through it.
-Helprr signs in the existing, active Helprr account with that username (an exact match
-first, otherwise the one account whose name differs only in case). It never creates an
-account: add each person in **Settings → Users** first, with the same username they
-have at the proxy. A disabled account, or one whose invite is not accepted yet, is
-refused.
+A proxy that asks for its own sign-in (Authelia, Authentik) can also sign you in to
+Helprr, so you sign in once. The proxy names the signed-in user in a header, and sends a
+secret in a second header that proves the request came through it. Helprr signs in the
+existing, active Helprr account with exactly that username, including upper and lower
+case, as at its own sign-in. It never creates an account: add each person in
+**Settings → Users** first, with the same username they have at the proxy. A disabled
+account, or one whose invite is not accepted yet, is refused. Use plain-ASCII usernames:
+headers carry other characters unreliably, so such a name never matches.
 
 Two things are required, or anyone can sign in as anyone:
 
@@ -213,6 +213,10 @@ Two things are required, or anyone can sign in as anyone:
   the same machine or Docker network, and the port on `127.0.0.1` (see
   [What Helprr needs from it](#what-helprr-needs-from-it)). The secret travels in plain
   HTTP between the proxy and Helprr.
+
+Make the proxy ask for its sign-in on every Helprr address: a rule that lets some paths
+through without it (Authelia's `bypass`, for example) sends those requests with no user,
+and Helprr then treats a session made this way as signed out.
 
 Then, in `.env`, with a secret from `openssl rand -hex 32`:
 
@@ -229,28 +233,35 @@ for anyone who reaches it some other way.
 
 - **Two-step sign-in is skipped** for this sign-in: the proxy's own sign-in is the second
   factor, so turn on two-step sign-in at the proxy.
-- **Signing out of Helprr does not sign you out of the proxy**, and Helprr's sign-in page
-  then signs you straight back in. Sign out at the proxy instead.
-- Sign-ins show in **Settings → Operation audit → Security** as *through the sign-in proxy*. A
-  request with the user header but a wrong secret is recorded and counts toward the
-  sign-in limits, like a wrong password.
+- **Signing out at the proxy signs you out of Helprr** on your next tap, and so does
+  someone else signing in to the proxy on the same browser: a session made this way lasts
+  only while the proxy still names the same user. Signing out of Helprr alone does not
+  sign you out of the proxy, so Helprr's sign-in page signs you straight back in.
+- Sign-ins show in **Settings → Operation audit → Security** as *through the sign-in
+  proxy*. A request with a wrong secret is recorded and counts toward the sign-in limits,
+  like a wrong password: about 30 in 15 minutes pause every sign-in, password ones too.
+  When you change the secret, change it in the proxy and in `.env` together.
 
 The examples use Authelia's `Remote-User` header; Authentik's proxy outpost sends
 `X-authentik-username`. Replace `the-secret` with your `HELPRR_TRUSTED_AUTH_SECRET`.
 
-**Caddy** with Authelia (`forward_auth` replaces the copied header with Authelia's
-answer; the `request_header` lines drop a sent copy first anyway):
+**Caddy** with Authelia. Caddy normally runs directives in its own order, which would
+remove the header after `forward_auth` sets it; inside `route` they run as written, so a
+copy a visitor sent is dropped first, then Authelia's answer is copied in, and
+`header_up` replaces any sent secret:
 
 ```caddy
 helprr.example.com {
-  request_header -Remote-User
-  request_header -X-Helprr-Proxy-Secret
-  forward_auth authelia:9091 {
-    uri /api/authz/forward-auth
-    copy_headers Remote-User
-  }
-  reverse_proxy localhost:3050 {
-    header_up X-Helprr-Proxy-Secret "the-secret"
+  route {
+    request_header -Remote-User
+    request_header -X-Helprr-Proxy-Secret
+    forward_auth authelia:9091 {
+      uri /api/authz/forward-auth
+      copy_headers Remote-User
+    }
+    reverse_proxy localhost:3050 {
+      header_up X-Helprr-Proxy-Secret "the-secret"
+    }
   }
 }
 ```
@@ -283,8 +294,11 @@ http:
 ```
 
 **nginx** with Authelia, using the `auth_request` locations from
-[Authelia's nginx guide](https://www.authelia.com/integration/proxies/nginx/)
-(`proxy_set_header` replaces a header a visitor sent under the same name):
+[Authelia's nginx guide](https://www.authelia.com/integration/proxies/nginx/).
+`proxy_set_header` replaces a header a visitor sent under the same name. A location with
+its own `proxy_set_header` lines stops inheriting the server's, so the forwarded headers
+are set here too (`X-Forwarded-For` replaced, not appended, as `TRUST_FORWARDED_PROTO`
+needs):
 
 ```nginx
 location / {
@@ -292,11 +306,13 @@ location / {
   auth_request_set $user $upstream_http_remote_user;
   proxy_set_header Remote-User $user;
   proxy_set_header X-Helprr-Proxy-Secret "the-secret";
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_set_header X-Forwarded-Proto $scheme;
   proxy_pass http://127.0.0.1:3050;
 }
 ```
 
-Nginx Proxy Manager can take the same lines under a proxy host's **Advanced** tab.
 Cloudflare Access sends no username header Helprr can trust on its own, so it is not one
 of the proxies this works with yet.
 

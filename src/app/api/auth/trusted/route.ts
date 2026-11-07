@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { randomUUID } from 'crypto';
 import { prisma } from '@/lib/db';
 import { createSession, COOKIE_NAME, SESSION_DURATION } from '@/lib/auth';
 import {
   getClientIp,
   enforceLoginRateLimit,
   clearLoginAttempts,
-  enforceUsernameBackoff,
-  recordUsernameFailure,
   clearUsernameBackoff,
   enforceGlobalLoginBackstop,
   recordGlobalLoginFailure,
@@ -29,28 +26,10 @@ const NO_STORE = { 'Cache-Control': 'no-store' };
 // page treats this as "not through the proxy" and shows the normal form.
 const NOT_FROM_PROXY = 'This request did not come through the sign-in proxy';
 const NO_ACCOUNT = 'Your sign-in proxy named no active Helprr account. Ask whoever runs Helprr to add you.';
-
-const USER_SELECT = { id: true, username: true, role: true, status: true } as const;
+const NO_NAME = 'Your sign-in proxy sent no username. Check its settings.';
 
 function json(body: unknown, status = 200): NextResponse {
   return NextResponse.json(body, { status, headers: NO_STORE });
-}
-
-/**
- * The account the proxy named: an exact username first, else the one account
- * whose name matches ignoring case. Two names differing only in case make the
- * folded match ambiguous, so neither is used. A disabled or pending account is
- * never signed in, and nothing is ever created.
- */
-async function findNamedUser(username: string) {
-  const exact = await prisma.user.findUnique({ where: { username }, select: USER_SELECT });
-  if (exact) return exact.status === 'active' ? exact : null;
-  const folded = await prisma.user.findMany({
-    where: { username: { equals: username, mode: 'insensitive' } },
-    select: USER_SELECT,
-    take: 2,
-  });
-  return folded.length === 1 && folded[0].status === 'active' ? folded[0] : null;
 }
 
 async function getHandler(): Promise<NextResponse> {
@@ -73,18 +52,20 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return (await recordMalformedLoginRequest()) ?? json({ error: 'Forbidden' }, 403);
   }
 
+  const providedSecret = request.headers.get(config.secretHeader);
+  if (providedSecret === null) {
+    // Reached Helprr some other way, such as its own port on the home network.
+    // Before the IP bucket, so loading the login page that way spends no sign-in attempts.
+    return (await recordMalformedLoginRequest()) ?? json({ error: NOT_FROM_PROXY }, 401);
+  }
+
   const ip = getClientIp(request);
   const limited = await enforceLoginRateLimit(ip);
   if (limited) return limited;
   const globalBackstop = await enforceGlobalLoginBackstop();
   if (globalBackstop) return globalBackstop;
 
-  const providedSecret = request.headers.get(config.secretHeader);
   const rawName = request.headers.get(config.userHeader) ?? '';
-  if (providedSecret === null) {
-    // Reached Helprr some other way, such as its own port on the home network.
-    return (await recordMalformedLoginRequest()) ?? json({ error: NOT_FROM_PROXY }, 401);
-  }
   if (!trustedAuthSecretMatches(config, providedSecret)) {
     // Someone sent the header without knowing the secret: count it like a wrong password.
     await recordGlobalLoginFailure();
@@ -96,19 +77,26 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return json({ error: NOT_FROM_PROXY }, 401);
   }
 
-  if (localUsernameValidationError(rawName)) {
-    return json({ error: NO_ACCOUNT }, 403);
-  }
   const username = normalizeLocalUsername(rawName);
+  if (!username) return json({ error: NO_NAME }, 403);
 
-  const backoff = await enforceUsernameBackoff(username);
-  if (backoff) return backoff;
-
-  const user = await findNamedUser(username);
-  if (!user) {
-    // The proxy vouched for the name, so this is not guessing: only that name backs off.
-    await recordUsernameFailure(username, randomUUID());
-    await recordFailedSignIn(request, { username, method: 'trusted-header-no-account', nameIsAccount: true });
+  // From here the proxy has vouched for the name, so nobody is guessing: the
+  // per-name backoff (a password-guessing defense) neither applies nor grows.
+  // The name must match exactly, as at password sign-in: a case-insensitive
+  // match would let a proxy's "Admin" in as Helprr's "admin". A disabled or
+  // pending account is refused, and nothing is ever created.
+  const nameError = localUsernameValidationError(username);
+  const user = nameError
+    ? null
+    : await prisma.user.findUnique({
+      where: { username },
+      select: { id: true, username: true, role: true, status: true },
+    });
+  if (!user || user.status !== 'active') {
+    // An overlong name is kept masked, like a typed one.
+    await recordFailedSignIn(request, nameError
+      ? { username, method: 'trusted-header-no-account', user: null }
+      : { username, method: 'trusted-header-no-account', nameIsAccount: true });
     return json({ error: NO_ACCOUNT }, 403);
   }
 
@@ -123,7 +111,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   const userAgent = request.headers.get('user-agent');
-  const token = await createSession({ userId: user.id, role: user.role, userAgent, ip });
+  const token = await createSession({ userId: user.id, role: user.role, userAgent, ip, trustedUsername: user.username });
   await recordSecurityEvent(request, {
     actor: user,
     action: 'LOGIN_SUCCEEDED',

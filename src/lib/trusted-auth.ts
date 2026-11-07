@@ -18,6 +18,9 @@ export const TRUSTED_AUTH_SECRET_MIN_LENGTH = 32;
 
 // An HTTP field name (RFC 9110 token).
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+// Headers that HTTP, Next.js or Helprr already give a meaning, or store (the
+// user agent is kept on the session and in the audit trail): never usable here.
+const RESERVED_HEADER = /^(?:host|cookie|authorization|proxy-authorization|user-agent|origin|referer|content-[a-z-]+|connection|upgrade|keep-alive|transfer-encoding|te|trailer|expect|accept(?:-[a-z-]+)?|forwarded|x-forwarded-(?:for|proto|host|port|prefix|uri|method|ssl|scheme|server)|x-real-ip|x-request-id|x-nonce|content-security-policy|rsc|next-[a-z-]+|x-middleware-[a-z-]+|x-nextjs-[a-z-]+|sec-[a-z-]+)$/i;
 // Printable ASCII without spaces: proxies trim and may re-encode anything else,
 // so such a secret could never match.
 const SECRET_VALUE = /^[\x21-\x7e]+$/;
@@ -48,6 +51,8 @@ function readTrustedAuth(env: RuntimeEnvironment): TrustedAuthState {
   if (!secret) return off('HELPRR_TRUSTED_AUTH_HEADER is set but HELPRR_TRUSTED_AUTH_SECRET is not');
   if (!HEADER_NAME.test(userHeader)) return off('HELPRR_TRUSTED_AUTH_HEADER is not a valid header name');
   if (!HEADER_NAME.test(secretHeader)) return off('HELPRR_TRUSTED_AUTH_SECRET_HEADER is not a valid header name');
+  if (RESERVED_HEADER.test(userHeader)) return off('HELPRR_TRUSTED_AUTH_HEADER names a header with another use');
+  if (RESERVED_HEADER.test(secretHeader)) return off('HELPRR_TRUSTED_AUTH_SECRET_HEADER names a header with another use');
   if (userHeader.toLowerCase() === secretHeader.toLowerCase()) {
     return off('HELPRR_TRUSTED_AUTH_HEADER and HELPRR_TRUSTED_AUTH_SECRET_HEADER must be different headers');
   }

@@ -28,6 +28,10 @@ describe('trusted-header sign-in configuration', () => {
     expect(trustedAuthConfigProblem({})).toBeNull();
   });
 
+  it.each(['X-authentik-username', 'X-Forwarded-User', 'X-Forwarded-Preferred-Username', 'Remote-Email'])('accepts the ordinary proxy header %s', (header) => {
+    expect(getTrustedAuthConfig({ ...BASE, HELPRR_TRUSTED_AUTH_HEADER: header })).not.toBeNull();
+  });
+
   it('is on with a user header and a long secret, defaulting the secret header', () => {
     expect(getTrustedAuthConfig(BASE)).toEqual({
       userHeader: 'remote-user',
@@ -47,6 +51,11 @@ describe('trusted-header sign-in configuration', () => {
     [{ ...BASE, HELPRR_TRUSTED_AUTH_HEADER: 'Remote User' }, 'HELPRR_TRUSTED_AUTH_HEADER is not a valid header name'],
     [{ ...BASE, HELPRR_TRUSTED_AUTH_SECRET_HEADER: 'X:Secret' }, 'HELPRR_TRUSTED_AUTH_SECRET_HEADER is not a valid header name'],
     [{ ...BASE, HELPRR_TRUSTED_AUTH_SECRET_HEADER: 'REMOTE-USER' }, 'must be different headers'],
+    [{ ...BASE, HELPRR_TRUSTED_AUTH_SECRET_HEADER: 'User-Agent' }, 'SECRET_HEADER names a header with another use'],
+    [{ ...BASE, HELPRR_TRUSTED_AUTH_SECRET_HEADER: 'x-forwarded-for' }, 'SECRET_HEADER names a header with another use'],
+    [{ ...BASE, HELPRR_TRUSTED_AUTH_HEADER: 'Cookie' }, 'HELPRR_TRUSTED_AUTH_HEADER names a header with another use'],
+    [{ ...BASE, HELPRR_TRUSTED_AUTH_HEADER: 'Authorization' }, 'HELPRR_TRUSTED_AUTH_HEADER names a header with another use'],
+    [{ ...BASE, HELPRR_TRUSTED_AUTH_HEADER: 'sec-fetch-site' }, 'HELPRR_TRUSTED_AUTH_HEADER names a header with another use'],
   ])('is off with a warning that names the variable, never the value (%#)', (env, problem) => {
     expect(getTrustedAuthConfig(env)).toBeNull();
     const message = trustedAuthConfigProblem(env)!;

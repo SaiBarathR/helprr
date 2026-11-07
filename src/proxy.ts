@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 import { getJwtSecret } from '@/lib/jwt-secret';
+import { TRUSTED_SESSION_CLAIM, trustedSessionStillVouched } from '@/lib/trusted-session';
 
 const COOKIE_NAME = 'helprr-session';
 
@@ -148,7 +149,11 @@ export async function proxy(request: NextRequest) {
   try {
     const { payload } = await jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] });
     // Session tokens never carry an audience (the two-step pending token does).
-    if (typeof payload.sid !== 'string' || !payload.sid || payload.aud !== undefined) {
+    // A trusted-header session also needs the proxy to still name its user.
+    if (
+      typeof payload.sid !== 'string' || !payload.sid || payload.aud !== undefined
+      || !trustedSessionStillVouched(payload[TRUSTED_SESSION_CLAIM], request.headers)
+    ) {
       if (pathname.startsWith('/api/')) {
         return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), csp);
       }

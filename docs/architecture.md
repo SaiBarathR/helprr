@@ -351,11 +351,18 @@ is same-origin JSON only (a JSON content type needs a CORS preflight Helprr neve
 and a `Sec-Fetch-Site` other than `same-origin` is refused), behind the sign-in throttles: a
 missing secret header counts as a malformed request (401, so the page quietly shows its
 form), a wrong one as a global failure plus `LOGIN_FAILED` method `trusted-header-secret`
-with the name masked. With the right secret the named user is the exact username, else the
-single case-insensitive match (two such accounts: neither); a disabled or pending account
-or none is a per-name failure and `LOGIN_FAILED` method `trusted-header-no-account`, and
-nothing is ever provisioned. Success makes a normal session (`LOGIN_SUCCEEDED`, fields
+with the name masked. A missing secret is checked before the IP bucket, so the login page reached some other
+way spends no attempts. With the right secret the named user must be the exact username,
+as at password sign-in (Prisma's `mode: 'insensitive'` is an unescaped `ILIKE`, and case
+folding would let a proxy's `Admin` in as `admin`); the per-name backoff is skipped, since
+the proxy vouched for the name. A disabled or pending account or none is `LOGIN_FAILED`
+method `trusted-header-no-account`, and nothing is ever provisioned. Header names HTTP,
+Next.js or Helprr already use (`Cookie`, `User-Agent`, `X-Forwarded-For`, `sec-*`, …) are
+refused at config time. Success makes a normal session (`LOGIN_SUCCEEDED`, fields
 `['trusted-header']`) without two-step sign-in: the proxy's sign-in is the second factor.
+Its JWT carries the username in claim `tu` (`src/lib/trusted-session.ts`): the request proxy
+and `decodeToken` refuse it unless the user header still names exactly that user, so a
+sign-out at the proxy, or another user signing in there, ends it on the next request.
 The logger redacts the configured secret wherever it appears and the default header name
 as a key; request headers are never logged.
 

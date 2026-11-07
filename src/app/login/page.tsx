@@ -138,12 +138,17 @@ export default function LoginPage() {
         });
         if (!active) return;
         if (res.ok) {
+          storeMfaPending(null);
           await completeBrowserSignIn();
           router.replace(getPostLoginTarget());
           router.refresh();
           return;
         }
-        if (res.status !== 401) {
+        const retryAfter = res.status === 429 ? Number(res.headers.get('Retry-After')) : NaN;
+        if (Number.isFinite(retryAfter) && retryAfter > 0) {
+          setNowMs(Date.now());
+          setRetryAt(Date.now() + retryAfter * 1000);
+        } else if (res.status !== 401) {
           const data = (await res.json().catch(() => ({}))) as { error?: unknown };
           if (active && typeof data.error === 'string') setError(data.error);
         }

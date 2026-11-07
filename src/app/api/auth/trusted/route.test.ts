@@ -6,7 +6,6 @@ import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
-  findMany: vi.fn(),
   createSession: vi.fn(),
   recordFailedSignIn: vi.fn(),
   recordSecurityEvent: vi.fn(),
@@ -23,7 +22,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@/lib/db', () => ({ prisma: { user: { findUnique: mocks.findUnique, findMany: mocks.findMany } } }));
+vi.mock('@/lib/db', () => ({ prisma: { user: { findUnique: mocks.findUnique } } }));
 vi.mock('@/lib/auth', () => ({ createSession: mocks.createSession, COOKIE_NAME: 'helprr-session', SESSION_DURATION: 60 }));
 vi.mock('@/lib/login-rate-limit', () => ({ getClientIp: () => '203.0.113.9', ...mocks.limits }));
 vi.mock('@/lib/security-audit', () => ({
@@ -65,7 +64,6 @@ beforeEach(() => {
   for (const fn of Object.values(mocks.limits)) fn.mockResolvedValue(null);
   mocks.createSession.mockResolvedValue('session-token');
   mocks.findUnique.mockResolvedValue(null);
-  mocks.findMany.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -113,7 +111,13 @@ describe('trusted-header sign-in', () => {
     expect(response.headers.get('set-cookie')).toContain('helprr-session=session-token');
     expect(response.headers.get('set-cookie')).toContain('HttpOnly');
     expect(mocks.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { username: 'Alice' } }));
-    expect(mocks.createSession).toHaveBeenCalledWith({ userId: 'user-1', role: 'member', userAgent: 'Safari', ip: '203.0.113.9' });
+    expect(mocks.createSession).toHaveBeenCalledWith({
+      userId: 'user-1',
+      role: 'member',
+      userAgent: 'Safari',
+      ip: '203.0.113.9',
+      trustedUsername: 'Alice',
+    });
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: 'LOGIN_SUCCEEDED',
       targetId: 'user-1',
@@ -142,6 +146,8 @@ describe('trusted-header sign-in', () => {
     expect(mocks.findUnique).not.toHaveBeenCalled();
     expect(mocks.limits.recordMalformedLoginRequest).toHaveBeenCalledTimes(1);
     expect(mocks.limits.recordGlobalLoginFailure).not.toHaveBeenCalled();
+    // Loading the login page some other way spends no sign-in attempts.
+    expect(mocks.limits.enforceLoginRateLimit).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -178,12 +184,22 @@ describe('trusted-header sign-in', () => {
     expect(mocks.findUnique).not.toHaveBeenCalled();
   });
 
-  it('honors the per-name backoff', async () => {
+  it('honors the per-IP limit once the request carries a secret', async () => {
     enable();
-    mocks.limits.enforceUsernameBackoff.mockResolvedValue(Response.json({ error: 'Too many' }, { status: 429 }));
+    mocks.limits.enforceLoginRateLimit.mockResolvedValue(Response.json({ error: 'Too many' }, { status: 429 }));
     const response = await POST(fromProxy('Alice'));
     expect(response.status).toBe(429);
     expectNoSession(response);
+    expect(mocks.limits.enforceLoginRateLimit).toHaveBeenCalledWith('203.0.113.9');
+  });
+
+  it('ignores the password backoff: the proxy vouched for the name, so nobody is guessing', async () => {
+    enable();
+    mocks.findUnique.mockResolvedValue(ACTIVE);
+    mocks.limits.enforceUsernameBackoff.mockResolvedValue(Response.json({ error: 'Too many' }, { status: 429 }));
+    const response = await POST(fromProxy('Alice'));
+    expect(response.status).toBe(200);
+    expect(mocks.limits.enforceUsernameBackoff).not.toHaveBeenCalled();
   });
 
   it('reads the headers whatever case the setting and the request use', async () => {
@@ -196,33 +212,21 @@ describe('trusted-header sign-in', () => {
     expect(defaultHeader.status).toBe(401);
   });
 
-  it('matches a name differing only in case when exactly one account has it', async () => {
+  it('matches the name exactly, as password sign-in does: no case folding, no wildcards', async () => {
     enable();
-    mocks.findMany.mockResolvedValue([ACTIVE]);
-    const response = await POST(fromProxy('alice'));
-    expect(response.status).toBe(200);
-    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { username: { equals: 'alice', mode: 'insensitive' } },
-    }));
-    expect(mocks.createSession).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1' }));
-  });
-
-  it('refuses a case-folded name two accounts share', async () => {
-    enable();
-    mocks.findMany.mockResolvedValue([ACTIVE, { ...ACTIVE, id: 'user-2', username: 'ALICE' }]);
-    const response = await POST(fromProxy('alice'));
-    expect(response.status).toBe(403);
-    expectNoSession(response);
-  });
-
-  it('refuses an exact disabled account without falling back to another case', async () => {
-    enable();
-    mocks.findUnique.mockResolvedValue({ ...ACTIVE, username: 'alice', status: 'disabled' });
-    mocks.findMany.mockResolvedValue([ACTIVE]);
-    const response = await POST(fromProxy('alice'));
-    expect(response.status).toBe(403);
-    expectNoSession(response);
-    expect(mocks.findMany).not.toHaveBeenCalled();
+    mocks.findUnique.mockImplementation(async ({ where }: { where: { username: string } }) => (
+      where.username === 'Alice' ? ACTIVE : null
+    ));
+    for (const name of ['alice', 'ALICE', 'A_ice', 'Al%', '%']) {
+      const response = await POST(fromProxy(name));
+      expect(response.status).toBe(403);
+      expectNoSession(response);
+    }
+    expect(mocks.findUnique.mock.calls.map(([args]) => args.where)).toEqual(
+      ['alice', 'ALICE', 'A_ice', 'Al%', '%'].map((username) => ({ username })),
+    );
+    // Surrounding spaces are trimmed, as for a typed name.
+    expect((await POST(fromProxy('  Alice  '))).status).toBe(200);
   });
 
   it.each(['disabled', 'pending'])('refuses a %s account', async (status) => {
@@ -239,7 +243,8 @@ describe('trusted-header sign-in', () => {
     expect(response.status).toBe(403);
     expect((await response.json()).error).toContain('no active Helprr account');
     expectNoSession(response);
-    expect(mocks.limits.recordUsernameFailure).toHaveBeenCalledWith('mallory', expect.any(String));
+    expect(mocks.limits.recordUsernameFailure).not.toHaveBeenCalled();
+    expect(mocks.limits.recordGlobalLoginFailure).not.toHaveBeenCalled();
     expect(mocks.recordFailedSignIn).toHaveBeenCalledWith(expect.anything(), {
       username: 'mallory',
       method: 'trusted-header-no-account',
@@ -247,12 +252,22 @@ describe('trusted-header sign-in', () => {
     });
   });
 
-  it.each([['no name', ''], ['a blank name', '   '], ['an overlong name', 'x'.repeat(65)]])('refuses %s from the proxy', async (_label, name) => {
+  it.each([['no name', ''], ['a blank name', '   ']])('says the proxy sent %s', async (_label, name) => {
     enable();
     const response = await POST(fromProxy(name));
     expect(response.status).toBe(403);
+    expect((await response.json()).error).toContain('sent no username');
     expectNoSession(response);
     expect(mocks.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('refuses an overlong name without looking it up, and audits it masked', async () => {
+    enable();
+    const response = await POST(fromProxy('x'.repeat(65)));
+    expect(response.status).toBe(403);
+    expectNoSession(response);
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.recordFailedSignIn).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ user: null }));
   });
 
   it.each([

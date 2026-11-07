@@ -1,7 +1,7 @@
 import { measureServer } from '@/lib/server-perf';
 import { cache } from 'react';
 import { SignJWT, jwtVerify } from 'jose';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { timingSafeEqual } from 'crypto';
 import type { User, UserRole } from '@prisma/client';
@@ -11,6 +11,7 @@ import { verifyPasswordHash } from '@/lib/password';
 import { can } from '@/lib/permissions';
 import type { Capability } from '@/lib/capabilities';
 import { SESSION_DURATION_SECONDS, SESSION_IDLE_TIMEOUT_SECONDS } from '@/lib/session-policy';
+import { TRUSTED_SESSION_CLAIM, trustedSessionStillVouched } from '@/lib/trusted-session';
 
 const SESSION_DURATION = SESSION_DURATION_SECONDS;
 const COOKIE_NAME = 'helprr-session';
@@ -38,6 +39,8 @@ export interface CreateSessionInput {
   role: UserRole;
   userAgent?: string | null;
   ip?: string | null;
+  /** Trusted-header sign-in: the username the proxy named, which it must keep naming. */
+  trustedUsername?: string;
 }
 
 export async function createSession(input: CreateSessionInput): Promise<string> {
@@ -58,6 +61,7 @@ export async function createSession(input: CreateSessionInput): Promise<string> 
     sid: session.id,
     uid: input.userId,
     role: input.role,
+    ...(input.trustedUsername ? { [TRUSTED_SESSION_CLAIM]: input.trustedUsername } : {}),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -77,6 +81,9 @@ async function decodeToken(token: string): Promise<DecodedToken | null> {
     // Session tokens never carry an audience; other signed tokens (the two-step
     // pending token) do, and must never count as a session.
     if (payload.aud !== undefined) return null;
+    // Read only for a trusted-header session, so other sessions never need the request headers.
+    const claim = payload[TRUSTED_SESSION_CLAIM];
+    if (claim !== undefined && !trustedSessionStillVouched(claim, await headers())) return null;
     const sid = typeof payload.sid === 'string' ? payload.sid : null;
     return { sid };
   } catch {
