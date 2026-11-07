@@ -58,7 +58,7 @@ export function TorrentsBulkBar({
       )}
       {canManageTorrents && (
         <button
-          className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
+          className="relative touch-target min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
           onClick={openOrganize}
           aria-label="Location, Tags & Queue"
         >

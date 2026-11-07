@@ -13,7 +13,7 @@ describe('newTagProblem', () => {
   it('refuses what qBittorrent cannot store as one tag', () => {
     expect(newTagProblem('  ')).toBe('Name the tag');
     expect(newTagProblem('a,b')).toBe("A tag can't contain a comma");
-    expect(newTagProblem('x'.repeat(101))).toBe('Keep the tag under 100 characters');
+    expect(newTagProblem('x'.repeat(101))).toBe('Keep the tag to 100 characters');
     expect(newTagProblem(' keep ')).toBeNull();
   });
 });

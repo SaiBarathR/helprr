@@ -141,7 +141,8 @@ async function runTorrentAction(
       break;
     case 'setLocation': {
       const location = parseLocation(body.location);
-      if (!location || !(await isInsideDownloadRoots(client, location))) {
+      if (!location) return NextResponse.json({ error: 'Enter a folder path' }, { status: 400 });
+      if (!(await isInsideDownloadRoots(client, location))) {
         return NextResponse.json({ error: 'Location must be inside a configured download folder' }, { status: 400 });
       }
       await client.setLocation(hash, location);
@@ -150,7 +151,7 @@ async function runTorrentAction(
     case 'addTags':
     case 'removeTags': {
       const tags = parseTags(body.tags);
-      if (!tags) return NextResponse.json({ error: 'Tags must be named, without commas' }, { status: 400 });
+      if (!tags) return NextResponse.json({ error: 'Each tag needs 1 to 100 characters and no comma' }, { status: 400 });
       if (action === 'addTags') await client.addTags(hash, tags);
       else await client.removeTags(hash, tags);
       break;

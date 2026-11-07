@@ -135,9 +135,13 @@ async function postHandler(
         break;
       case 'setLocation': {
         const location = parseLocation(body.location);
-        if (!location || !(await isInsideDownloadRoots(client, location))) {
+        const outside = location !== null && !(await isInsideDownloadRoots(client, location));
+        if (!location || outside) {
           logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action, validationFailed: true });
-          return NextResponse.json({ error: 'Location must be inside a configured download folder' }, { status: 400 });
+          return NextResponse.json(
+            { error: outside ? 'Location must be inside a configured download folder' : 'Enter a folder path' },
+            { status: 400 },
+          );
         }
         await client.setLocation(hash, location);
         break;
@@ -147,7 +151,7 @@ async function postHandler(
         const tags = parseTags(body.tags);
         if (!tags) {
           logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action, validationFailed: true });
-          return NextResponse.json({ error: 'Tags must be named, without commas' }, { status: 400 });
+          return NextResponse.json({ error: 'Each tag needs 1 to 100 characters and no comma' }, { status: 400 });
         }
         if (action === 'addTags') await client.addTags(hash, tags);
         else await client.removeTags(hash, tags);

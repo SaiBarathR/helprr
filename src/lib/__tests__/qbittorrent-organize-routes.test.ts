@@ -72,14 +72,16 @@ describe.each(['bulk', 'single'] as const)('%s torrent route', (route) => {
   });
 
   it.each([
-    ['outside every download folder', '/etc'],
-    ['a parent hop', '/downloads/../etc'],
-    ['empty', '  '],
-    ['a NUL byte', '/downloads/\u0000'],
-    ['not a string', 7],
-  ])('refuses a location %s', async (_label, location) => {
+    ['outside every download folder', '/etc', 'Location must be inside a configured download folder'],
+    ['a parent hop', '/downloads/../etc', 'Location must be inside a configured download folder'],
+    ['a parent hop qBittorrent would trim into', '/downloads/..\u0085', 'Enter a folder path'],
+    ['empty', '  ', 'Enter a folder path'],
+    ['a NUL byte', '/downloads/\u0000', 'Enter a folder path'],
+    ['not a string', 7, 'Enter a folder path'],
+  ])('refuses a location %s', async (_label, location, error) => {
     const res = await post({ action: 'setLocation', location });
     expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error });
     expect(mocks.qbit.setLocation).not.toHaveBeenCalled();
   });
 

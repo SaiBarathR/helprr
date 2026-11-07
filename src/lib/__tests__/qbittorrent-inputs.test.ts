@@ -13,6 +13,7 @@ describe('parseLocation', () => {
     ['too long', `/${'a'.repeat(4096)}`],
     ['a NUL byte', '/downloads/\u0000x'],
     ['a newline', '/downloads/\nx'],
+    ['a C1 control', '/downloads/..\u0085'],
   ])('refuses %s', (_label, value) => {
     expect(parseLocation(value)).toBeNull();
   });
@@ -31,6 +32,7 @@ describe('parseTags', () => {
     ['a comma, which qBittorrent splits on', ['a,b']],
     ['a non-string', [1]],
     ['a NUL byte', ['a\u0000']],
+    ['a C1 control', ['a\u0085']],
     ['a name over 100 characters', ['x'.repeat(101)]],
     ['more than 50 tags', Array.from({ length: 51 }, (_, i) => `t${i}`)],
   ])('refuses %s', (_label, value) => {
@@ -55,5 +57,8 @@ describe('isInsideDownloadRoots', () => {
     await expect(isInsideDownloadRoots(client, '/downloads-other')).resolves.toBe(false);
     await expect(isInsideDownloadRoots(client, '/downloads/../etc')).resolves.toBe(false);
     await expect(isInsideDownloadRoots(client, '/')).resolves.toBe(false);
+    // qBittorrent trims U+0085 (JS trim() keeps it), then reads "/downloads/.." as "/".
+    await expect(isInsideDownloadRoots(client, '/downloads/..\u0085')).resolves.toBe(false);
+    await expect(isInsideDownloadRoots(client, '\u0085/downloads/x')).resolves.toBe(true);
   });
 });

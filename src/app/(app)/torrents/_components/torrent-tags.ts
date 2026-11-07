@@ -8,6 +8,6 @@ export function newTagProblem(tag: string): string | null {
   const name = tag.trim();
   if (!name) return 'Name the tag';
   if (name.includes(',')) return "A tag can't contain a comma";
-  if (name.length > 100) return 'Keep the tag under 100 characters';
+  if (name.length > 100) return 'Keep the tag to 100 characters';
   return null;
 }

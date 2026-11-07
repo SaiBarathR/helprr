@@ -4,10 +4,15 @@ import type { QBittorrentClient } from '@/lib/qbittorrent-client';
 const MAX_SAVE_PATH_LENGTH = 4096;
 const MAX_TAG_LENGTH = 100;
 const MAX_TAGS = 50;
-const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
+// C0, DEL and C1 (U+0085 among them).
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/;
+// What qBittorrent's QString::trimmed() strips: JS whitespace plus U+0085, which
+// JS keeps. A path must be checked as qBittorrent will read it, or a trailing
+// U+0085 turns "<root>/.." into a segment that only looks harmless here.
+const QT_TRIM = /^[\s\u0085]+|[\s\u0085]+$/g;
 
 function normalizeSavePath(value: string): string | null {
-  const normalized = value.replace(/\\/g, '/').replace(/\/+$/, '');
+  const normalized = value.replace(QT_TRIM, '').replace(/\\/g, '/').replace(/\/+$/, '');
   if (!normalized) return null;
   if (normalized.split('/').some((segment) => segment === '..')) return null;
   return normalized;
