@@ -8,7 +8,7 @@
  */
 
 import type * as React from 'react';
-import { darkenToContrast, generatePaletteFromBase, relativeLuminance, type PaletteTokens } from './color-utils';
+import { darkenToContrast, generatePaletteFromBase, relativeLuminance, scaleColor, type PaletteTokens } from './color-utils';
 
 export type DashboardAccent = string;
 export type DashboardPalette = string;
@@ -231,6 +231,21 @@ const GLASS_CHART_COLORS: Record<GlassScheme, Record<string, string>> = {
   },
 };
 
+/** The fixed category colours (media types, chart series, badges), as the
+ *  globals.css :root sets them. A light custom palette darkens them below. */
+export const CATEGORY_COLORS: Record<string, string> = {
+  '--hpr-green': '#5ac893',
+  '--hpr-rose': '#e36a7a',
+  '--hpr-blue': '#82a8d3',
+  '--hpr-purple': '#bb90ce',
+  '--hpr-violet': '#877bc8',
+  '--hpr-cyan': '#00a4dc',
+  '--hpr-pink': '#d97da1',
+};
+
+/** The strongest wash of a category colour under text in that colour (`bg-[var(--hpr-cyan)]/20`). */
+export const CATEGORY_TINT = 0.2;
+
 /** Page background color per scheme, for the <meta name="theme-color"> tag. */
 export function glassThemeColor(scheme: GlassScheme): string {
   return scheme === 'dark' ? '#000000' : '#F2F2F7';
@@ -329,6 +344,24 @@ export const THEME_VAR_KEYS: readonly string[] = Array.from(
   ]),
 );
 
+/** How dark a category colour may go (its channels scaled to 30%): darker,
+ *  the seven turn near-black and can no longer be told apart. */
+const CATEGORY_FLOOR = 0.3;
+
+/**
+ * A category colour darkened for a light page: 4.5:1 also on its own wash,
+ * else 4.5:1 on the surfaces, else 3:1, within CATEGORY_FLOOR; on a page too
+ * dim for any of them (a dim custom palette), the floor itself.
+ */
+function darkenCategoryColor(color: string, surfaces: string[]): string {
+  const floor = scaleColor(color, CATEGORY_FLOOR);
+  for (const [min, tint] of [[4.5, CATEGORY_TINT], [4.5, 0], [3, 0]]) {
+    const darker = darkenToContrast(color, surfaces, min, tint);
+    if (relativeLuminance(darker) >= relativeLuminance(floor)) return darker;
+  }
+  return floor;
+}
+
 /** Resolve theme prefs into concrete token values (palette + per-tone overrides). */
 function resolveThemeTokens(prefs: DashboardThemePrefs) {
   const chosenAccent = prefs.accent in ACCENT_COLORS
@@ -368,6 +401,20 @@ function resolveThemeTokens(prefs: DashboardThemePrefs) {
 /** Build a React style object containing every --hpr-* variable. */
 export function buildDashboardThemeStyle(prefs: DashboardThemePrefs): React.CSSProperties {
   const { accent, isCyan, palette, font, gradient } = resolveThemeTokens(prefs);
+  // On a light palette the category colours are darkened (same hue) like the
+  // cyan accent, so text in them reaches 4.5:1 on the page, sidebar and cards,
+  // also on a badge's 20% wash of its own colour (the strongest the app puts
+  // under same-colour text), and icons and chart marks pass 3:1. A dark palette
+  // keeps the globals.css values (ThemeApplier sweeps these vars); so do the
+  // dark surfaces a light palette still has (globals.css, .hpr-on-dark). Light
+  // here is the page alone, as data-scheme decides it, so that reset always
+  // applies with it; a mid-tone page with dark text keeps the values.
+  const categoryColors = schemeFromBackground(palette.inkSoft) === 'light'
+    ? Object.fromEntries(Object.entries(CATEGORY_COLORS).map(([key, color]) => [
+        key,
+        darkenCategoryColor(color, [palette.ink, palette.inkSoft, palette.surface, palette.surfaceHi]),
+      ]))
+    : {};
   // The active tab's label (phone tabs, More, sidebar): with the cyan accent
   // only the icon takes it and the label keeps the text colour, as under
   // Liquid Glass. Every other accent tints the label. A var, so the pre-paint
@@ -390,6 +437,7 @@ export function buildDashboardThemeStyle(prefs: DashboardThemePrefs): React.CSSP
     ['--hpr-font-display' as string]: font.display,
     ['--hpr-font-mono' as string]: font.mono,
     ['--hpr-bg-grad' as string]: gradient,
+    ...categoryColors,
   } as React.CSSProperties;
 }
 

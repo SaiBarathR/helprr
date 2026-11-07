@@ -6,7 +6,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Adding Jellyfin or changing its address or key asks an admin for their
-// password (and code), and tells a member it is for an admin.
+// password (and code), and tells a member it is for an admin. So is its
+// external URL, which a member sees read-only.
 
 const mocks = vi.hoisted(() => ({ me: { role: 'admin' } as { role: string } }));
 vi.mock('@/components/permission-provider', () => ({ useMe: () => mocks.me }));
@@ -93,5 +94,24 @@ describe('the Jellyfin connection', () => {
     await screen.findByText('Only an admin can add Jellyfin or change its address or API key.');
     expect(screen.queryByLabelText('Your current password')).toBeNull();
     expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true);
+  });
+});
+
+describe("Jellyfin's external URL", () => {
+  const field = () => screen.getByPlaceholderText('https://jellyfin.example.com') as HTMLInputElement;
+
+  it('an admin can edit and save it', async () => {
+    await renderPage();
+    expect(field().readOnly).toBe(false);
+    expect(screen.getByRole('button', { name: 'Save external URL' })).toBeTruthy();
+  });
+
+  it('is read-only for a member, with the reason and no Save button', async () => {
+    mocks.me = { role: 'member' };
+    await renderPage();
+    expect(field().readOnly).toBe(true);
+    expect(field().getAttribute('aria-describedby')).toBe('external-url-locked');
+    expect(screen.getByText("Only an admin can set Jellyfin's external URL.")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Save external URL' })).toBeNull();
   });
 });

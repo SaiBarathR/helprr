@@ -191,6 +191,20 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       );
     }
 
+    const rawExternalUrl = body.externalUrl;
+    let externalUrl = typeof rawExternalUrl === 'string' && rawExternalUrl.trim()
+      ? rawExternalUrl.trim().replace(/\/+$/, '')
+      : undefined;
+    // Jellyfin's external URL builds the "Open in Jellyfin" links everyone
+    // follows, so only an admin sets it. A member's re-save may carry the stored
+    // value, which is then not written, so it cannot put back an older one.
+    if (type === 'JELLYFIN' && externalUrl !== undefined && auth.user.role !== 'admin') {
+      if (externalUrl !== existing?.externalUrl) {
+        return NextResponse.json({ error: 'Only an admin can set Jellyfin\'s external URL.' }, { status: 403 });
+      }
+      externalUrl = undefined;
+    }
+
     if (type === 'JELLYFIN') {
       const client = new JellyfinClient(url, apiKeyToStore, '', customHeaders);
       const [currentUser, hasAdminAccess] = await Promise.all([
@@ -232,11 +246,6 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
       username = selectedUserId;
     }
-
-    const rawExternalUrl = body.externalUrl;
-    const externalUrl = typeof rawExternalUrl === 'string' && rawExternalUrl.trim()
-      ? rawExternalUrl.trim().replace(/\/+$/, '')
-      : undefined;
 
     // Label: arr instances require a user-supplied name; single-instance types
     // default to the service's display label.

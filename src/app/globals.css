@@ -757,7 +757,8 @@ html {
   --hpr-seek: var(--hpr-amber);
   /* Category colours (media types, chart series). Blue/purple/violet/pink are
      low-chroma so they sit on warm ink beside the amber accent; Liquid Glass
-     replaces all of these with iOS system colours (dashboard-theme.ts). */
+     replaces all of these with iOS system colours, and a light custom palette
+     darkens them (CATEGORY_COLORS in dashboard-theme.ts mirrors these). */
   --hpr-green: #5ac893;
   --hpr-rose: #e36a7a;
   --hpr-blue: #82a8d3;
@@ -1941,6 +1942,35 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) {
      tag line with generous breathing room. It is a fixed length rather than
      `auto` so the popover's growth can transition (see .hpr-cine-face). */
   --hpr-pop-panel: 118px;
+}
+
+/* A light palette darkens the category colours for its light surfaces
+   (dashboard-theme.ts); the dark ones it still has keep the dark values: the
+   Cinematic Watch skin's ground, and badges on a black scrim over artwork
+   (.hpr-on-dark). !important for the skin, as above: the theme is an inline
+   style on <html>. */
+html[data-scheme='light'][data-watch-skin='cinematic']:has(.hpr-watch),
+html[data-scheme='light'] .hpr-on-dark {
+  --hpr-green: #5ac893 !important;
+  --hpr-rose: #e36a7a !important;
+  --hpr-blue: #82a8d3 !important;
+  --hpr-purple: #bb90ce !important;
+  --hpr-violet: #877bc8 !important;
+  --hpr-cyan: #00a4dc !important;
+  --hpr-pink: #d97da1 !important;
+}
+
+/* Liquid Glass light: the same dark surfaces take Glass's dark iOS colours
+   (GLASS_CHART_COLORS.dark in dashboard-theme.ts). */
+html[data-glass][data-scheme='light'][data-watch-skin='cinematic']:has(.hpr-watch),
+html[data-glass][data-scheme='light'] .hpr-on-dark {
+  --hpr-green: #30D158 !important;
+  --hpr-rose: #FF453A !important;
+  --hpr-blue: #0A84FF !important;
+  --hpr-purple: #BF5AF2 !important;
+  --hpr-violet: #5E5CE6 !important;
+  --hpr-cyan: #64D2FF !important;
+  --hpr-pink: #FF375F !important;
 }
 
 /* Matches the xl: step where the tile and its type scale up. */

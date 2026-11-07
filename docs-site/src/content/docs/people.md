@@ -25,7 +25,8 @@ are unchanged. An admin who signs in only with Jellyfin sets a Helprr password i
 The same check guards a few more steps: giving a member the **Admin template**, turning a
 disabled admin back on, turning off another admin's two-step sign-in, importing a backup
 that has user accounts in it, and adding Jellyfin or changing its address or API key. Only
-an admin can change the Jellyfin connection, even a member who may manage the other apps.
+an admin can change the Jellyfin connection, delete it or set its external URL, even a
+member who may manage the other apps (the member sees the external URL read-only).
 Disabling an account signs it out everywhere, so turning it back on does not bring old
 sessions back. A new Jellyfin address signs out every account linked to a Jellyfin user
 (except you), so each signs in again, and ends everyone's Jellyfin connection for

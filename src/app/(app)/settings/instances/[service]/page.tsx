@@ -229,6 +229,9 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   const stepUp = useStepUp(isJellyfin ? undefined : false);
   const jellyfinGated = isJellyfin && Boolean(servicesQuery.data) && (!existingConn || urlChanged || apiKey.trim() !== existingConn.apiKey);
   const showStepUp = jellyfinGated || stepUp.asked;
+  // Jellyfin's external URL builds the "Open in Jellyfin" links, so only an
+  // admin sets it (the server refuses a member's change).
+  const externalUrlLocked = isJellyfin && !isAdminUser;
   const secretNoun = isQbt ? 'password' : 'API key';
 
   // Seed the form from the matching connection. Re-seeds when the edited entity
@@ -901,24 +904,32 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
               placeholder={`https://${config.label.toLowerCase()}.example.com`}
               value={externalUrl}
               onChange={(e) => setExternalUrl(e.target.value)}
-              className="h-10"
+              readOnly={externalUrlLocked}
+              aria-describedby={externalUrlLocked ? 'external-url-locked' : undefined}
+              className={externalUrlLocked ? 'h-10 cursor-default text-muted-foreground' : 'h-10'}
             />
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-9"
-              onClick={handleSaveExternalUrl}
-              disabled={savingExternalUrl}
-            >
-              {savingExternalUrl ? (
-                <>
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                  Saving…
-                </>
-              ) : (
-                'Save external URL'
-              )}
-            </Button>
+            {externalUrlLocked ? (
+              <p id="external-url-locked" className="text-xs text-muted-foreground">
+                Only an admin can set Jellyfin&apos;s external URL.
+              </p>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9"
+                onClick={handleSaveExternalUrl}
+                disabled={savingExternalUrl}
+              >
+                {savingExternalUrl ? (
+                  <>
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    Saving…
+                  </>
+                ) : (
+                  'Save external URL'
+                )}
+              </Button>
+            )}
           </div>
         </GroupedSection>
       )}

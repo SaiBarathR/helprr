@@ -158,19 +158,38 @@ export function contrastRatio(a: string, b: string): number {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
 
+const channels = (hex: string) => {
+  const x = parseInt(hex.slice(1), 16);
+  return [(x >> 16) & 255, (x >> 8) & 255, x & 255];
+};
+const toHex = (rgb: number[]) => `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
+
+/** A #rrggbb colour with each channel scaled by `scale` (0-1): same hue, darker. */
+export function scaleColor(hex: string, scale: number): string {
+  return toHex(channels(hex).map((c) => Math.round(c * scale)));
+}
+
 /**
  * `hex` darkened (same hue, each channel scaled down) until it reaches `min`
  * contrast on every #rrggbb background, or black if none does. Unchanged when
- * it already does, or `hex` is not #rrggbb.
+ * it already does, or `hex` is not #rrggbb. With `tint` (0-1), it must also
+ * reach `min` on its own tint over each background (`bg-[colour]/15`-style
+ * badges, text on a wash of its own colour).
  */
-export function darkenToContrast(hex: string, backgrounds: string[], min: number): string {
+export function darkenToContrast(hex: string, backgrounds: string[], min: number, tint = 0): string {
   if (!HEX6.test(hex)) return hex;
   const solid = backgrounds.filter((b) => HEX6.test(b));
-  const x = parseInt(hex.slice(1), 16);
-  const rgb = [(x >> 16) & 255, (x >> 8) & 255, x & 255];
   for (let scale = 1; scale > 0; scale -= 0.01) {
-    const candidate = `#${rgb.map((c) => Math.round(c * scale).toString(16).padStart(2, '0')).join('')}`;
-    if (solid.every((b) => contrastRatio(candidate, b) >= min)) return scale === 1 ? hex : candidate;
+    const candidate = scaleColor(hex, scale);
+    const reads = (b: string) => contrastRatio(candidate, b) >= min
+      && (tint === 0 || contrastRatio(candidate, blendOver(b, candidate, tint)) >= min);
+    if (solid.every(reads)) return scale === 1 ? hex : candidate;
   }
   return '#000000';
+}
+
+/** `fg` at `alpha` (0-1) painted over the #rrggbb `bg`, as #rrggbb. */
+export function blendOver(bg: string, fg: string, alpha: number): string {
+  const [b, f] = [channels(bg), channels(fg)];
+  return toHex(b.map((c, i) => c * (1 - alpha) + f[i] * alpha));
 }

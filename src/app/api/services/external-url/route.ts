@@ -31,6 +31,15 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     if (!existing) {
       return NextResponse.json({ error: 'Service not configured' }, { status: 404 });
     }
+    // Jellyfin's builds the "Open in Jellyfin" links everyone follows, so only
+    // an admin sets or clears it. Unchanged, nothing is written, so a member's
+    // save cannot put back an older value.
+    if (existing.type === 'JELLYFIN' && auth.user.role !== 'admin') {
+      if (existing.externalUrl !== externalUrl) {
+        return NextResponse.json({ error: 'Only an admin can set Jellyfin\'s external URL.' }, { status: 403 });
+      }
+      return NextResponse.json({ id: existing.id, type: existing.type, externalUrl: existing.externalUrl });
+    }
     const updated = await prisma.serviceConnection.update({
       where: { id: id.trim() },
       data: { externalUrl },

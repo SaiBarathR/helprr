@@ -134,7 +134,7 @@ export function MediaTile({
         {topLeftBadge && (
           <span
             className={cn(
-              'absolute top-2 left-2 z-20 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase backdrop-blur-md',
+              'hpr-on-dark absolute top-2 left-2 z-20 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase backdrop-blur-md',
               badgeShape,
               cinematic ? 'text-white' : TONE_CLASS[topLeftBadge.tone],
             )}
@@ -146,7 +146,7 @@ export function MediaTile({
         {watched && (
           <span
             className={cn(
-              'absolute top-2 right-2 z-20 flex size-5 items-center justify-center rounded-full text-[var(--hpr-green)] backdrop-blur-md',
+              'hpr-on-dark absolute top-2 right-2 z-20 flex size-5 items-center justify-center rounded-full text-[var(--hpr-green)] backdrop-blur-md',
               cinematic ? 'bg-black/60' : 'border border-white/15 bg-black/45',
             )}
             title="Watched"
@@ -158,7 +158,7 @@ export function MediaTile({
         {bottomLeftBadge && (
           <span
             className={cn(
-              'absolute bottom-2 left-2 z-20 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase backdrop-blur-md',
+              'hpr-on-dark absolute bottom-2 left-2 z-20 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase backdrop-blur-md',
               badgeShape,
               cinematic ? 'text-white' : TONE_CLASS[bottomLeftBadge.tone],
             )}
