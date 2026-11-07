@@ -54,14 +54,21 @@ afterEach(async () => {
 const render = () => act(async () => root.render(<TooltipProvider><Sidebar /></TooltipProvider>));
 const nameOf = (el: Element) => el.getAttribute('aria-label') ?? el.textContent?.trim() ?? '';
 const names = (scope = 'aside') => Array.from(document.querySelectorAll(`${scope} a, ${scope} button`)).map(nameOf);
-const sectionsOf = () => Array.from(document.querySelectorAll('aside nav[aria-label="Main"] [role="group"]'))
-  .map((group) => [group.getAttribute('aria-label'), ...Array.from(group.querySelectorAll('a')).map(nameOf)]);
-const DEFAULT_SECTIONS = [
-  ['Overview', 'Dashboard', 'Insights'],
-  ['Library', 'Movies', 'TV Series', 'Music', 'Watchlist', 'Calendar', 'Library Gaps'],
-  ['Downloads', 'Activity', 'Torrents', 'Cleanup', 'Prowlarr'],
-  ['Discover', 'Discover', 'Anime', 'Requests', 'Recommendations'],
-  ['Media server', 'Watch', 'Jellyfin'],
+// The scrolling list after Search: one run of links per group, a divider between runs.
+const runsOf = () => Array.from(document.querySelectorAll('aside nav[aria-label="Main"] > div'))
+  .map((run) => Array.from(run.querySelectorAll('a')).map(nameOf));
+const dividers = () => Array.from(document.querySelectorAll('aside nav[aria-label="Main"] > div > div[aria-hidden]'));
+const DEFAULT_RUNS = [
+  ['Dashboard'],
+  ['Movies', 'TV Series'],
+  ['Activity'],
+  ['Discover', 'Anime'],
+  ['Music', 'Watchlist'],
+  ['Requests', 'Recommendations'],
+  ['Calendar', 'Library Gaps'],
+  ['Torrents', 'Cleanup', 'Prowlarr'],
+  ['Watch', 'Jellyfin'],
+  ['Insights'],
 ];
 
 describe('Sidebar names', () => {
@@ -99,26 +106,34 @@ describe('Sidebar layout', () => {
     expect(names('aside > div')).toEqual(['Notifications', 'Settings', 'Collapse']);
   });
 
-  it('groups the default order under section labels', async () => {
+  it('follows the default saved order, with plain dividers where a group ends and no labels', async () => {
     mocks.collapsed = false;
     await render();
     // Twitch and YouTube stay hidden until configured (useMe is null here).
-    expect(sectionsOf()).toEqual(DEFAULT_SECTIONS);
-    expect(Array.from(document.querySelectorAll('aside nav[aria-label="Main"] [role="group"] > div')).map((el) => el.textContent))
-      .toEqual(DEFAULT_SECTIONS.map(([label]) => label));
+    expect(runsOf()).toEqual(DEFAULT_RUNS);
+    expect(dividers()).toHaveLength(DEFAULT_RUNS.length - 1);
+    expect(dividers().every((divider) => divider.textContent === '' && divider.classList.contains('border-t'))).toBe(true);
+    const main = document.querySelector('aside nav[aria-label="Main"]')!;
+    expect(main.querySelector('[role="group"]')).toBeNull();
+    // No section labels: the list's text is Search and the links alone.
+    expect(main.textContent).toBe(`Search⌘K${DEFAULT_RUNS.flat().join('')}`);
   });
 
-  it('keeps a saved order inside each section and orders sections by their first item', async () => {
+  it('follows a saved order exactly, not a fixed section order', async () => {
     mocks.collapsed = false;
-    mocks.navOrder = ['settings', 'jellyfin', 'requests', 'series', 'discover', 'notifications', 'movies', 'jellyfin-library'];
+    mocks.navOrder = ['settings', 'jellyfin', 'requests', 'series', 'discover', 'notifications', 'movies', 'jellyfin-library', 'insights'];
     await render();
-    expect(sectionsOf().slice(0, 3)).toEqual([
-      ['Media server', 'Jellyfin', 'Watch'],
-      ['Discover', 'Requests', 'Discover', 'Anime', 'Recommendations'],
-      ['Library', 'TV Series', 'Movies', 'Music', 'Watchlist', 'Calendar', 'Library Gaps'],
-    ]);
+    expect(runsOf().flat().slice(0, 7)).toEqual(['Jellyfin', 'Requests', 'TV Series', 'Discover', 'Movies', 'Watch', 'Insights']);
+    expect(runsOf().slice(0, 6)).toEqual([['Jellyfin'], ['Requests'], ['TV Series'], ['Discover'], ['Movies'], ['Watch']]);
     expect(names('aside > div')).toEqual(['Settings', 'Notifications', 'Collapse']);
     expect(names('aside nav[aria-label="Pinned"]')).toEqual(['Settings', 'Notifications']);
+  });
+
+  it('keeps one run when a pinned item sits between two items of the same group', async () => {
+    mocks.collapsed = false;
+    mocks.navOrder = ['movies', 'notifications', 'series', 'dashboard'];
+    await render();
+    expect(runsOf().slice(0, 2)).toEqual([['Movies', 'TV Series'], ['Dashboard']]);
   });
 
   it('leaves hidden and disallowed items out, and drops sections left empty', async () => {
@@ -130,17 +145,20 @@ describe('Sidebar layout', () => {
     for (const hidden of ['Notifications', 'Jellyfin', 'Watch', 'Movies', 'Insights', 'Cleanup']) {
       expect(all).not.toContain(hidden);
     }
-    expect(sectionsOf().map(([label]) => label)).toEqual(['Overview', 'Library', 'Downloads', 'Discover']);
+    // Removing Movies leaves TV Series alone in its run; nothing is left empty.
+    expect(runsOf()).toEqual([
+      ['Dashboard'], ['TV Series'], ['Activity'], ['Discover', 'Anime'], ['Music', 'Watchlist'],
+      ['Requests', 'Recommendations'], ['Calendar', 'Library Gaps'], ['Torrents', 'Prowlarr'],
+    ]);
     expect(names('aside > div')).toEqual(['Settings', 'Collapse']);
   });
 
-  it('swaps labels for dividers when collapsed and keeps the footer', async () => {
+  it('keeps the same runs and dividers when collapsed, and keeps the footer', async () => {
     mocks.collapsed = true;
     await render();
-    const groups = Array.from(document.querySelectorAll('aside nav[aria-label="Main"] [role="group"]'));
-    expect(groups.map((g) => g.getAttribute('aria-label'))).toEqual(DEFAULT_SECTIONS.map(([label]) => label));
-    expect(groups.map((g) => g.querySelector('.border-t') !== null)).toEqual([false, true, true, true, true]);
-    expect(document.querySelector('aside nav[aria-label="Main"]')?.textContent).not.toContain('Library');
+    expect(runsOf()).toEqual(DEFAULT_RUNS);
+    expect(dividers()).toHaveLength(DEFAULT_RUNS.length - 1);
     expect(names('aside > div')).toEqual(['Notifications', 'Settings', 'Expand sidebar']);
   });
+
 });

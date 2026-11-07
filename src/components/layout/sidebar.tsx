@@ -120,9 +120,9 @@ export function Sidebar() {
         prefetch={null}
         aria-label={sidebarCollapsed ? label : undefined}
         className={cn(
-          // Shorter rows on short screens so more of the list fits above the
-          // footer, but never under 44px on a touch screen (a tablet's rail).
-          'relative flex items-center gap-3 rounded-md px-3 py-2 [@media(max-height:960px)]:py-1.5 pointer-coarse:min-h-11 text-sm font-medium transition-colors',
+          // Shorter rows on short screens so the whole list fits above the
+          // footer at 1440x900, but never under 44px on a touch screen (a tablet's rail).
+          'relative flex items-center gap-3 rounded-md px-3 py-2 [@media(max-height:960px)]:py-1 pointer-coarse:min-h-11 text-sm font-medium transition-colors',
           isActive
             ? 'bg-primary/10 text-primary'
             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
@@ -174,15 +174,10 @@ export function Sidebar() {
           searchButton
         )}
 
-        {sections.map(({ group, label, items }, index) => (
-          <div key={group} role="group" aria-label={label} className="space-y-1">
-            {sidebarCollapsed ? (
-              index > 0 && <div aria-hidden className="mx-2 my-2 border-t border-border" />
-            ) : (
-              <div aria-hidden className="tracked-caps px-3 pt-2 pb-0.5 leading-none text-muted-foreground">
-                {label}
-              </div>
-            )}
+        {/* The saved order, with a plain divider where one group ends. */}
+        {sections.map(({ items }, index) => (
+          <div key={items[0].href} className="space-y-1">
+            {index > 0 && <div aria-hidden className="mx-2 my-1 border-t border-border" />}
             {items.map(renderItem)}
           </div>
         ))}

@@ -290,8 +290,8 @@
   --footer-cover: calc(var(--footer-height) + var(--player-bar-height));
 }
 
-/* The mini video player floats in the corner the dashboard's Edit button uses;
-   its 9rem height plus a gap lifts the button clear of it. */
+/* The mini video player floats in the bottom corner; its 9rem height plus a gap
+   is the room the dashboard leaves under its last row. */
 :root:has([data-mini-player]) {
   --mini-player-clearance: 9.25rem;
 }
