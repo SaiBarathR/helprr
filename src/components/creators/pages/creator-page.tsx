@@ -50,8 +50,6 @@ interface Streamer {
 
 export function CreatorPage({ params }: { params: Promise<{ id: string }> }) {
   const platform = useCreatorPlatform();
-  // YouTube channels take the feed rails' tile size (owner, 2026-11-07); Twitch keeps YouTube-wide tiles.
-  const tile = platform.id === 'youtube' ? 'rail' : 'wide';
   const { id } = use(params);
   const me = useMe();
   const canManage = hasCapability(me, platform.canManage);
@@ -265,8 +263,9 @@ export function CreatorPage({ params }: { params: Promise<{ id: string }> }) {
           ) : <Skeleton className="h-9 w-full rounded-lg" />}
         </Tabs>
 
+        {/* Channel and streamer pages take the feed rails' tile size (owner, 2026-11-07). */}
         {videos.isLoading ? (
-          <CreatorVideoSkeleton tile={tile} />
+          <CreatorVideoSkeleton tile="rail" />
         ) : videos.isError ? (
           <ErrorState compact message="Couldn't load the videos" onRetry={() => void videos.refetch()} />
         ) : rows.length === 0 ? (
@@ -275,7 +274,7 @@ export function CreatorPage({ params }: { params: Promise<{ id: string }> }) {
           <CreatorVideoList
             videos={rows}
             layout={view}
-            tile={tile}
+            tile="rail"
             renderVideo={(video) => (
               <CreatorVideoCard
                 video={video}

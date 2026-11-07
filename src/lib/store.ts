@@ -30,6 +30,7 @@ import {
   type SubtitleAppearance,
 } from '@/lib/jellyfin-playback/subtitle-appearance';
 import { DEFAULT_SKIP_SECONDS, isSkipLength } from '@/lib/jellyfin-playback/skip-length';
+import { DEFAULT_RANDOM_WATCH_PREFS, normalizeRandomWatchPrefs, type RandomWatchPrefs } from '@/lib/random-watch-filters';
 
 export type MediaViewMode = 'posters' | 'overview' | 'table';
 /** A Twitch or YouTube feed: by channel, or every video together. */
@@ -257,7 +258,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 54;
+export const STORE_VERSION = 55;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -613,6 +614,9 @@ interface UIState {
   setAnimeSort: (sort: string) => void;
   animeFilters: AnimeFiltersState;
   setAnimeFilters: (filters: AnimeFiltersState) => void;
+  // Random's filters, remembered per device
+  randomFilters: RandomWatchPrefs;
+  setRandomFilters: (filters: Partial<RandomWatchPrefs>) => void;
   // Torrents preferences
   torrentsFilter: TorrentsFilterPreference[];
   setTorrentsFilter: (filter: TorrentsFilterPreference[]) => void;
@@ -795,6 +799,7 @@ const PERSISTED_KEYS = [
   'discoverFilters',
   'animeSort',
   'animeFilters',
+  'randomFilters',
   'torrentsFilter',
   'torrentsSortKey',
   'torrentsSortDir',
@@ -984,6 +989,9 @@ export const useUIStore = create<UIState>()(
       setAnimeSort: (sort) => set({ animeSort: sort }),
       animeFilters: cloneAnimeFilters(DEFAULT_ANIME_FILTERS),
       setAnimeFilters: (filters) => set({ animeFilters: cloneAnimeFilters(filters) }),
+      randomFilters: { ...DEFAULT_RANDOM_WATCH_PREFS },
+      setRandomFilters: (filters) =>
+        set((state) => ({ randomFilters: normalizeRandomWatchPrefs({ ...normalizeRandomWatchPrefs(state.randomFilters), ...filters }) })),
       // Torrents
       torrentsFilter: [],
       setTorrentsFilter: (filter) => set({ torrentsFilter: filter }),

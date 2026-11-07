@@ -61,6 +61,17 @@ describe('BottomNav', () => {
     expect([...search.classList]).toEqual(expect.arrayContaining(['app-tab-search', 'app-tab-surface']));
   });
 
+  it("under Liquid Glass tints only the active tab's icon, keeping its label the primary text colour", () => {
+    render(<BottomNav />);
+    const active = within(screen.getByRole('navigation')).getByRole('link', { name: 'Dashboard' });
+    // Other themes keep the tinted label; Glass (either scheme) turns it to the text colour.
+    expect([...active.classList]).toEqual(expect.arrayContaining(['text-primary', '[html[data-glass]_&]:text-foreground']));
+    expect(active.querySelector('svg')!.classList).toContain('text-primary');
+    const idle = within(screen.getByRole('navigation')).getByRole('link', { name: 'Movies' });
+    expect(idle.classList).toContain('text-muted-foreground');
+    expect(idle.querySelector('svg')!.classList).not.toContain('text-primary');
+  });
+
   it("keeps an existing user's saved tabs in the four tab slots", () => {
     useUIStore.setState({ navOrder: ['discover', 'anime', 'movies', 'torrents', 'dashboard'] });
     render(<BottomNav />);

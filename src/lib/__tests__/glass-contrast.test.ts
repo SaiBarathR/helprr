@@ -90,10 +90,10 @@ describe.each<GlassScheme>(['light', 'dark'])('Liquid Glass %s contrast at the d
     }
   });
 
-  // The active tab's icon and 11px label are the tint. On the 0.88 bars it is
-  // 3.99 (light) / 3.25 (dark) over the worst backdrop and 4.62 / 4.04 over
-  // typical content, so only the icon's 3:1 (WCAG 1.4.11) is held here; the
-  // dark label sits below AA, as Apple's own #0A84FF already did on surfaceHi.
+  // The active tab's icon is the tint; its 11px label is --hpr-fg, held to AA
+  // above. On the 0.88 bars the tint is 3.99 (light) / 3.25 (dark) over the
+  // worst backdrop and 4.62 / 4.04 over typical content, under AA as a label,
+  // so only the icon's 3:1 (WCAG 1.4.11) is held here.
   it('the active-tab tint reaches 3:1 on the bars over the worst backdrop', () => {
     const bg = over(vars['--hpr-glass-bg'], WORST_BACKDROP[scheme]);
     expect(contrast(vars['--hpr-amber'], bg)).toBeGreaterThanOrEqual(3);

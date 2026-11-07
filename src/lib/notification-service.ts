@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger';
 import { can } from '@/lib/permissions';
 import { getVapidPublicKey } from '@/lib/vapid';
 import { ADMIN_ONLY_EVENT_TYPES, EVENT_TYPE_TO_CAPABILITY, type Capability } from '@/lib/capabilities';
-import { isKnownEventType } from '@/lib/notification-events';
+import { eventEnabledByDefault, isKnownEventType } from '@/lib/notification-events';
 import { configuredAppOrigin } from '@/lib/request-utils';
 import { dispatchToChannels, shouldDeferChannel } from '@/lib/notification-channels/dispatch';
 import type { ChannelMessage } from '@/lib/notification-channels/transports';
@@ -637,7 +637,7 @@ export async function notifyEvent(event: {
       if (shouldDeferPush(sub)) return { kind: 'skipped' };
       if (!recipientAllowed(sub.user, event.eventType, requiredCap, Boolean(event.userIds))) return { kind: 'skipped' };
       const pref = sub.preferences.find((p) => p.eventType === event.eventType);
-      if (pref?.enabled === false) return { kind: 'skipped' };
+      if (!(pref ? pref.enabled : eventEnabledByDefault(event.eventType))) return { kind: 'skipped' };
       if (!matchesFilters(pref, event.eventType, metadata)) return { kind: 'skipped' };
       if (!bypassesQuietHours && isWithinQuietHours(sub.user, now)) return { kind: 'skipped' };
       const success = await sendPushNotification(

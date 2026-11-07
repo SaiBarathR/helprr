@@ -7,6 +7,7 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 import { isChannelType, MAX_CHANNELS_PER_USER } from '@/lib/notification-channels/catalog';
 import { encryptSecrets, serializeChannel, validateChannelInput } from '@/lib/notification-channels/config';
 import { parseChannelEvents, parseChannelName, receivableEventTypes } from '@/lib/notification-channels/requests';
+import { eventEnabledByDefault } from '@/lib/notification-events';
 
 // Everyone sees and changes only their own channels, admins included. An admin
 // also gets counts of everyone's, never their settings or secrets.
@@ -56,7 +57,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (!isChannelType(body.type)) return NextResponse.json({ error: 'Choose a channel type' }, { status: 400 });
   const name = parseChannelName(body.name);
   if (!name) return NextResponse.json({ error: 'Enter a name (up to 60 characters)' }, { status: 400 });
-  const events = body.events === undefined ? receivableEventTypes(user) : parseChannelEvents(user, body.events);
+  const events = body.events === undefined ? receivableEventTypes(user).filter(eventEnabledByDefault) : parseChannelEvents(user, body.events);
   if (!events) return NextResponse.json({ error: 'events must be a list' }, { status: 400 });
   const input = validateChannelInput(body.type, body.config, body.secrets, { allowPrivate: user.role === 'admin' });
   if (!input.ok) return NextResponse.json({ error: input.error }, { status: 400 });

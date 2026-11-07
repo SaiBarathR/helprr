@@ -15,6 +15,11 @@ import { NavBadge } from '@/components/layout/nav-badge';
 import { useSearchPalette } from '@/components/search/search-store';
 import type { BadgeSlice } from '@/types/badges';
 
+// With Liquid Glass's blue tint only the active icon takes the accent: as a
+// small label the tint is under AA on the bar and the More sheet in both
+// schemes (glass-contrast.test.ts). Other themes keep a tinted label.
+const GLASS_ACTIVE_LABEL = '[html[data-glass]_&]:text-foreground';
+
 export function BottomNav() {
   const pathname = usePathname();
   const pendingHref = usePendingHref();
@@ -79,7 +84,7 @@ export function BottomNav() {
                 prefetch={null}
                 className={cn(
                   'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-11 text-[11px] font-medium transition-colors',
-                  isActive ? 'text-primary' : 'text-muted-foreground',
+                  isActive ? cn('text-primary', GLASS_ACTIVE_LABEL) : 'text-muted-foreground',
                   isPending && 'opacity-70'
                 )}
               >
@@ -87,7 +92,7 @@ export function BottomNav() {
                   {isPending ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
                   ) : (
-                    <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
+                    <Icon className={cn('h-5 w-5', isActive && 'text-primary')} strokeWidth={isActive ? 2.5 : 2} />
                   )}
                   <NavBadge slice={slice} className="absolute -right-2.5 -top-1.5 h-4 min-w-[1rem] px-1 text-[10px]" />
                 </span>
@@ -105,11 +110,11 @@ export function BottomNav() {
                 <button
                   className={cn(
                     'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-11 text-[11px] font-medium transition-colors',
-                    isMoreActive ? 'text-primary' : 'text-muted-foreground'
+                    isMoreActive ? cn('text-primary', GLASS_ACTIVE_LABEL) : 'text-muted-foreground'
                   )}
                 >
                   <span className="relative">
-                    <MoreHorizontal className="h-5 w-5" strokeWidth={isMoreActive ? 2.5 : 2} />
+                    <MoreHorizontal className={cn('h-5 w-5', isMoreActive && 'text-primary')} strokeWidth={isMoreActive ? 2.5 : 2} />
                     <NavBadge slice={moreBadge} className="absolute -right-2.5 -top-1.5 h-4 min-w-[1rem] px-1 text-[10px]" />
                   </span>
                   More
@@ -148,12 +153,12 @@ export function BottomNav() {
                         className={cn(
                           'flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
                           isActive
-                            ? 'bg-primary/10 text-primary'
+                            ? cn('bg-primary/10 text-primary', GLASS_ACTIVE_LABEL)
                             : 'text-foreground hover:bg-accent',
                           isPending && 'opacity-70'
                         )}
                       >
-                        {isPending ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" /> : <Icon className="h-5 w-5 shrink-0" />}
+                        {isPending ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" /> : <Icon className={cn('h-5 w-5 shrink-0', isActive && 'text-primary')} />}
                         {label}
                         <NavBadge slice={slice} className="ml-auto" />
                       </Link>

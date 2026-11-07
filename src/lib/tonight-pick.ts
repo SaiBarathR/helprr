@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger';
 import { notifyEvent } from '@/lib/notification-service';
 import { isTonightSessionId } from '@/lib/tonight-pick-id';
 import { fetchUserWatchStatusMap } from '@/lib/jellyfin-watch-status-map';
+import { matchesRandomFilters } from '@/lib/random-watch-filters';
 import {
   fetchMoviePool,
   fetchSeriesPool,
@@ -319,11 +320,11 @@ function sample<T>(items: T[], count: number): T[] {
 }
 
 /**
- * The titles every participant may see: a kind of title is in only when
- * everyone may view it, and with "unwatched" a title must be unwatched for each
- * person whose Jellyfin watch state can be read (like Random, anyone else is
- * not filtered). `narrowed` says whether the others made the pool smaller than
- * the starter's own.
+ * The titles every participant may see, within the genre and length filters:
+ * a kind of title is in only when everyone may view it, and with "unwatched" a
+ * title must be unwatched for each person whose Jellyfin watch state can be
+ * read (like Random, anyone else is not filtered). `narrowed` says whether the
+ * others made the pool smaller than the starter's own.
  */
 export async function buildTonightTitles(
   starter: Participant,
@@ -356,13 +357,13 @@ export async function buildTonightTitles(
   let starterCount = 0;
   const shared: TonightTitle[] = [];
   for (const m of movies) {
-    if (!isEligibleUnwatched(starterMap, 'radarr', m.instanceId, m.id)) continue;
+    if (!matchesRandomFilters(m, filters) || !isEligibleUnwatched(starterMap, 'radarr', m.instanceId, m.id)) continue;
     starterCount++;
     if (!allMovies || !maps.every((map) => isEligibleUnwatched(map, 'radarr', m.instanceId, m.id))) continue;
     shared.push({ ...pickMovie(m), imdbId: m.imdbId || null, tmdbId: m.tmdbId || null, tvdbId: null });
   }
   for (const s of series) {
-    if (!isEligibleUnwatched(starterMap, 'sonarr', s.instanceId, s.id)) continue;
+    if (!matchesRandomFilters(s, filters) || !isEligibleUnwatched(starterMap, 'sonarr', s.instanceId, s.id)) continue;
     starterCount++;
     if (!allSeries || !maps.every((map) => isEligibleUnwatched(map, 'sonarr', s.instanceId, s.id))) continue;
     shared.push({ ...pickSeries(s), imdbId: s.imdbId || null, tmdbId: s.tmdbId || null, tvdbId: s.tvdbId || null });

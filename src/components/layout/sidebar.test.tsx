@@ -12,8 +12,8 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard' }));
 vi.mock('@/components/ui/app-link', () => ({
-  default: ({ children, href, 'aria-label': label }: { children: React.ReactNode; href: string; 'aria-label'?: string }) => (
-    <a href={href} aria-label={label}>{children}</a>
+  default: ({ children, href, className, 'aria-label': label }: { children: React.ReactNode; href: string; className?: string; 'aria-label'?: string }) => (
+    <a href={href} className={className} aria-label={label}>{children}</a>
   ),
 }));
 vi.mock('@/components/layout/navigation-provider', () => ({ usePendingHref: () => null }));
@@ -54,21 +54,14 @@ afterEach(async () => {
 const render = () => act(async () => root.render(<TooltipProvider><Sidebar /></TooltipProvider>));
 const nameOf = (el: Element) => el.getAttribute('aria-label') ?? el.textContent?.trim() ?? '';
 const names = (scope = 'aside') => Array.from(document.querySelectorAll(`${scope} a, ${scope} button`)).map(nameOf);
-// The scrolling list after Search: one run of links per group, a divider between runs.
+// The scrolling list after Search: the phone's four tabs, a divider, then the rest.
 const runsOf = () => Array.from(document.querySelectorAll('aside nav[aria-label="Main"] > div'))
   .map((run) => Array.from(run.querySelectorAll('a')).map(nameOf));
 const dividers = () => Array.from(document.querySelectorAll('aside nav[aria-label="Main"] > div > div[aria-hidden]'));
 const DEFAULT_RUNS = [
-  ['Dashboard'],
-  ['Movies', 'TV Series'],
-  ['Activity'],
-  ['Discover', 'Anime'],
-  ['Music', 'Watchlist'],
-  ['Requests', 'For You'],
-  ['Calendar', 'Library Gaps'],
-  ['Torrents', 'Cleanup', 'Prowlarr'],
-  ['Watch', 'Jellyfin'],
-  ['Insights'],
+  ['Dashboard', 'Movies', 'TV Series', 'Activity'],
+  ['Discover', 'Anime', 'Music', 'Watchlist', 'Requests', 'For You', 'Calendar', 'Library Gaps',
+    'Torrents', 'Cleanup', 'Prowlarr', 'Watch', 'Jellyfin', 'Insights'],
 ];
 
 describe('Sidebar names', () => {
@@ -89,9 +82,20 @@ describe('Sidebar names', () => {
   });
 });
 
+describe('Sidebar active item', () => {
+  it('in dark Liquid Glass tints only the icon, keeping the label the primary text colour', async () => {
+    mocks.collapsed = false;
+    await render();
+    const active = document.querySelector('aside a[href="/dashboard"]')!;
+    expect([...active.classList]).toEqual(expect.arrayContaining(['text-primary', '[html[data-glass][data-scheme=dark]_&]:text-foreground']));
+    expect(active.querySelector('svg')!.classList).toContain('text-primary');
+    expect(document.querySelector('aside a[href="/movies"] svg')!.classList).not.toContain('text-primary');
+  });
+});
+
 describe('Sidebar layout', () => {
-  it('leaves only Notifications and Settings without a section', () => {
-    expect(NAV_ITEMS.filter((item) => !item.group).map((item) => item.id)).toEqual(['notifications', 'settings']);
+  it('pins only Notifications and Settings to the footer', () => {
+    expect(NAV_ITEMS.filter((item) => item.sidebarFooter).map((item) => item.id)).toEqual(['notifications', 'settings']);
   });
 
   it('pins Notifications and Settings below the scrolling list', async () => {
@@ -106,12 +110,12 @@ describe('Sidebar layout', () => {
     expect(names('aside > div')).toEqual(['Notifications', 'Settings', 'Collapse']);
   });
 
-  it('follows the default saved order, with plain dividers where a group ends and no labels', async () => {
+  it('follows the default saved order, with one plain divider after the phone tabs and no labels', async () => {
     mocks.collapsed = false;
     await render();
     // Twitch and YouTube stay hidden until configured (useMe is null here).
     expect(runsOf()).toEqual(DEFAULT_RUNS);
-    expect(dividers()).toHaveLength(DEFAULT_RUNS.length - 1);
+    expect(dividers()).toHaveLength(1);
     expect(dividers().every((divider) => divider.textContent === '' && divider.classList.contains('border-t'))).toBe(true);
     const main = document.querySelector('aside nav[aria-label="Main"]')!;
     expect(main.querySelector('[role="group"]')).toBeNull();
@@ -119,21 +123,24 @@ describe('Sidebar layout', () => {
     expect(main.textContent).toBe(`Search⌘K${DEFAULT_RUNS.flat().join('')}`);
   });
 
-  it('follows a saved order exactly, not a fixed section order', async () => {
+  it('follows a saved order exactly, dividing after the four phone tabs', async () => {
     mocks.collapsed = false;
-    mocks.navOrder = ['settings', 'jellyfin', 'requests', 'series', 'discover', 'notifications', 'movies', 'jellyfin-library', 'insights'];
+    mocks.navOrder = ['jellyfin', 'requests', 'series', 'discover', 'movies', 'jellyfin-library', 'insights'];
     await render();
-    expect(runsOf().flat().slice(0, 7)).toEqual(['Jellyfin', 'Requests', 'TV Series', 'Discover', 'Movies', 'Watch', 'Insights']);
-    expect(runsOf().slice(0, 6)).toEqual([['Jellyfin'], ['Requests'], ['TV Series'], ['Discover'], ['Movies'], ['Watch']]);
-    expect(names('aside > div')).toEqual(['Settings', 'Notifications', 'Collapse']);
-    expect(names('aside nav[aria-label="Pinned"]')).toEqual(['Settings', 'Notifications']);
+    expect(runsOf()[0]).toEqual(['Jellyfin', 'Requests', 'TV Series', 'Discover']);
+    expect(runsOf()[1].slice(0, 3)).toEqual(['Movies', 'Watch', 'Insights']);
+    expect(dividers()).toHaveLength(1);
   });
 
-  it('keeps one run when a pinned item sits between two items of the same group', async () => {
+  it('leaves a pinned phone tab in the footer and divides after the other tabs', async () => {
     mocks.collapsed = false;
-    mocks.navOrder = ['movies', 'notifications', 'series', 'dashboard'];
+    mocks.navOrder = ['settings', 'jellyfin', 'requests', 'notifications', 'series', 'discover'];
     await render();
-    expect(runsOf().slice(0, 2)).toEqual([['Movies', 'TV Series'], ['Dashboard']]);
+    // The phone tabs are Settings, Jellyfin, Requests and Notifications.
+    expect(runsOf()[0]).toEqual(['Jellyfin', 'Requests']);
+    expect(runsOf()[1].slice(0, 2)).toEqual(['TV Series', 'Discover']);
+    expect(names('aside > div')).toEqual(['Settings', 'Notifications', 'Collapse']);
+    expect(names('aside nav[aria-label="Pinned"]')).toEqual(['Settings', 'Notifications']);
   });
 
   it('leaves hidden and disallowed items out, and drops sections left empty', async () => {
@@ -145,10 +152,10 @@ describe('Sidebar layout', () => {
     for (const hidden of ['Notifications', 'Jellyfin', 'Watch', 'Movies', 'Insights', 'Cleanup']) {
       expect(all).not.toContain(hidden);
     }
-    // Removing Movies leaves TV Series alone in its run; nothing is left empty.
+    // Without Movies the next allowed item takes the fourth phone tab.
     expect(runsOf()).toEqual([
-      ['Dashboard'], ['TV Series'], ['Activity'], ['Discover', 'Anime'], ['Music', 'Watchlist'],
-      ['Requests', 'For You'], ['Calendar', 'Library Gaps'], ['Torrents', 'Prowlarr'],
+      ['Dashboard', 'TV Series', 'Activity', 'Discover'],
+      ['Anime', 'Music', 'Watchlist', 'Requests', 'For You', 'Calendar', 'Library Gaps', 'Torrents', 'Prowlarr'],
     ]);
     expect(names('aside > div')).toEqual(['Settings', 'Collapse']);
   });
@@ -157,7 +164,7 @@ describe('Sidebar layout', () => {
     mocks.collapsed = true;
     await render();
     expect(runsOf()).toEqual(DEFAULT_RUNS);
-    expect(dividers()).toHaveLength(DEFAULT_RUNS.length - 1);
+    expect(dividers()).toHaveLength(1);
     expect(names('aside > div')).toEqual(['Notifications', 'Settings', 'Expand sidebar']);
   });
 

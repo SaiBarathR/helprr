@@ -322,6 +322,22 @@ describe('the shared pool', () => {
     expect(titles).toHaveLength(3);
   });
 
+  it('keeps only titles in a chosen genre and length; a pick started before them is unfiltered', async () => {
+    mocks.fetchMoviePool.mockResolvedValue([
+      { ...movie(1), genres: ['Comedy'], runtime: 95 },
+      { ...movie(2), genres: ['Drama'], runtime: 100 },
+      { ...movie(3), genres: ['Comedy', 'Drama'], runtime: 150 },
+    ]);
+    mocks.fetchSeriesPool.mockResolvedValue([{ ...show(4), genres: ['Comedy'], runtime: 25 }]);
+    const ids = async (filters: Parameters<typeof buildTonightTitles>[2]) =>
+      (await buildTonightTitles(member('sai'), [member('mum')], filters)).titles.map((t) => t.id).sort();
+    expect(await ids({ type: 'any', watch: 'all', genres: ['Comedy'], runtime: 'any' })).toEqual([1, 3, 4]);
+    expect(await ids({ type: 'any', watch: 'all', genres: ['Comedy'], runtime: '90to120' })).toEqual([1]);
+    // A series is matched by its episode length.
+    expect(await ids({ type: 'any', watch: 'all', genres: [], runtime: 'under90' })).toEqual([4]);
+    expect(await ids({ type: 'any', watch: 'all' })).toEqual([1, 2, 3, 4]);
+  });
+
   it(`deals at most ${TONIGHT_TITLE_COUNT} titles`, async () => {
     mocks.fetchMoviePool.mockResolvedValue(Array.from({ length: 60 }, (_, i) => movie(i + 1)));
     const { titles } = await buildTonightTitles(member('sai'), [member('mum')], { type: 'movie', watch: 'all' });

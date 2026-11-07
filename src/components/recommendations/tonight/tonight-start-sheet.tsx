@@ -14,11 +14,17 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { jsonFetcher } from '@/lib/query-fetch';
+import { RANDOM_RUNTIME_LABELS } from '@/lib/random-watch-filters';
 import type { TonightFilters, TonightMember } from '@/types/tonight';
 
 function filterSummary(filters: TonightFilters): string {
   const kind = filters.type === 'movie' ? 'Movies' : filters.type === 'series' ? 'Series' : 'Movies and series';
-  return filters.watch === 'unwatched' ? `${kind} · Unwatched` : kind;
+  const parts = [kind];
+  if (filters.watch === 'unwatched') parts.push('Unwatched');
+  if (filters.runtime && filters.runtime !== 'any') parts.push(RANDOM_RUNTIME_LABELS[filters.runtime]);
+  const genres = filters.genres ?? [];
+  if (genres.length > 0) parts.push(genres.length > 2 ? `${genres.slice(0, 2).join(', ')} +${genres.length - 2}` : genres.join(', '));
+  return parts.join(' · ');
 }
 
 /** Pick who to invite to a Tonight pick, using the Random filters already set. */

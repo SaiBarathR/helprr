@@ -91,6 +91,16 @@ describe('notification channels page', () => {
     });
   });
 
+  it('leaves a default-off event unticked on a new channel until it is chosen', async () => {
+    mocks.data = { channels: [], availableEvents: ['imported', 'tonightPickInvite'] };
+    const user = userEvent.setup();
+    render(<NotificationChannelsPage />);
+    await user.click(screen.getByRole('button', { name: 'Add channel' }));
+    await user.click(screen.getByRole('button', { name: /Events · 1 of 2/ }));
+    expect((screen.getByLabelText('Tonight Pick Invite') as HTMLInputElement).getAttribute('aria-checked')).toBe('false');
+    expect((screen.getByLabelText('Media Imported') as HTMLInputElement).getAttribute('aria-checked')).toBe('true');
+  });
+
   it('never fills a saved secret into the edit form, and sends none when left empty', async () => {
     mocks.data = { channels: [{ ...channel, lastError: null, consecutiveFailures: 0 }], availableEvents: ['imported'] };
     const user = userEvent.setup();

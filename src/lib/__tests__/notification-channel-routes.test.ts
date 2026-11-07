@@ -120,6 +120,14 @@ describe('POST /api/notifications/channels', () => {
     expect(await res.text()).not.toContain('my-topic');
   });
 
+  it('gives a channel saved without a list every event the caller receives except the default-off ones', async () => {
+    const res = await POST(request('POST', { type: 'ntfy', name: 'Phone', secrets: { topic: 't' } }));
+    expect(res.status).toBe(201);
+    const { events } = mocks.create.mock.calls[0][0].data;
+    expect(events).toContain('imported');
+    expect(events).not.toContain('tonightPickInvite');
+  });
+
   it('refuses an address that points at cloud metadata', async () => {
     const res = await POST(request('POST', {
       type: 'webhook', name: 'Hook', secrets: { url: 'http://169.254.169.254/latest/meta-data/' },

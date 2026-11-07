@@ -181,10 +181,10 @@ describe('the video tiles', () => {
     expect(skeletonGrid()).toContain('@[1164px]:grid-cols-5');
   });
 
-  it('stay wide on a Twitch streamer', async () => {
+  it('are feed-rail size on a Twitch streamer too', async () => {
     respond({ 'GET /api/twitch/streamers/c1': channel() });
     await renderPage('twitch');
-    expect(skeletonGrid()).not.toContain('grid-cols-5');
-    expect(skeletonGrid()).toContain('@[1112px]:grid-cols-3');
+    expect(skeletonGrid()).toContain('@[1164px]:grid-cols-5');
+    expect(skeletonGrid()).not.toContain('@[1112px]:grid-cols-3');
   });
 });
