@@ -13,6 +13,8 @@ const SELF_LINK_NEEDS_FACTORS =
   'To make a reset link for yourself while your two-step sign-in is on, enter your current password and a code from your authenticator app (or a recovery code).';
 const BODY_MAX_BYTES = 8 * 1024;
 
+class TwoStepTurnedOnError extends Error {}
+
 /**
  * Make a new invite link (pending user) or password-reset link (active local
  * user), ending any earlier one. The token is in this response only; the
@@ -66,8 +68,11 @@ async function postHandler(
     return NextResponse.json({ error: INVALID_APP_ORIGIN_LINK_ERROR }, { status: 500 });
   }
 
-  // admin.user is re-read from the database for this request, so its two-step state is current.
-  if (purpose === 'reset' && user.id === admin.user.id && isTotpEnabled(admin.user)) {
+  const isSelf = purpose === 'reset' && user.id === admin.user.id;
+  let confirmedSecondFactor = false;
+  // admin.user is read from the database for this request; the link is then
+  // made under a lock that checks again (below).
+  if (isSelf && isTotpEnabled(admin.user)) {
     const { currentPassword, code } = (body && typeof body === 'object' && !Array.isArray(body) ? body : {}) as {
       currentPassword?: unknown;
       code?: unknown;
@@ -80,6 +85,7 @@ async function postHandler(
     }
     const confirmed = await confirmPasswordAndSecondFactor(request, admin.user, currentPassword, code);
     if (!confirmed.ok) return confirmed.response;
+    confirmedSecondFactor = true;
     if (confirmed.factor === 'recovery-code') {
       await recordSecurityEvent(request, {
         actor: admin.user,
@@ -92,7 +98,25 @@ async function postHandler(
     }
   }
 
-  const link = await issuePasswordLink(prisma, { userId: user.id, purpose, createdById: admin.user.id });
+  let link: Awaited<ReturnType<typeof issuePasswordLink>>;
+  if (isSelf) {
+    // Holding your user row, as turning two-step sign-in on does: if it was
+    // turned on since this request read it, the link needs the password and
+    // code too; if it is turned on after, that ends the link (enable route).
+    try {
+      link = await prisma.$transaction(async (tx) => {
+        const [row] = await tx.$queryRaw<Array<{ totpEnabledAt: Date | null }>>`
+          SELECT "totpEnabledAt" FROM "User" WHERE "id" = ${user.id} FOR UPDATE`;
+        if (row?.totpEnabledAt != null && !confirmedSecondFactor) throw new TwoStepTurnedOnError();
+        return issuePasswordLink(tx, { userId: user.id, purpose, createdById: admin.user.id });
+      });
+    } catch (error) {
+      if (!(error instanceof TwoStepTurnedOnError)) throw error;
+      return NextResponse.json({ error: SELF_LINK_NEEDS_FACTORS, needsSecondFactor: true }, { status: 403 });
+    }
+  } else {
+    link = await issuePasswordLink(prisma, { userId: user.id, purpose, createdById: admin.user.id });
+  }
   await recordSecurityEvent(request, {
     actor: admin.user,
     action: purpose === 'reset'

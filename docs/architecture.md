@@ -341,7 +341,10 @@ needs `currentPassword` and `code` (an authenticator or recovery code), checked 
 throttles as turning it off: the sign-in throttles, the hourly code cap, a wrong one counted
 as a failed sign-in, a recovery code used up (`MFA_RECOVERY_CODE_USED`, `reset-link`).
 Without both it is 403 (`needsSecondFactor`), so a stolen session alone cannot remove the
-second factor. Links for other people need neither (lead decision 2026-11-07, conservative;
+second factor. The self link is made holding the user row (`FOR UPDATE`) and re-reads
+`totpEnabledAt` there, and turning two-step sign-in on (`/api/me/totp/enable`) deletes any
+reset link the user made for themselves in its transaction, so a link racing the turn-on
+cannot outlive it. Links for other people need neither (lead decision 2026-11-07, conservative;
 the owner can relax it). Turning it on can
 also end the user's other sessions (`signOutOtherDevices`). Ten
 80-bit recovery codes are stored as SHA-256 (`RecoveryCode`, deleted on use) and still work

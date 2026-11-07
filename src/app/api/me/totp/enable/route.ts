@@ -23,7 +23,9 @@ class AccountChangedError extends Error {}
  * returns them once; only their hashes are kept. Tries count toward the same
  * hourly cap as codes at sign-in, so a session alone cannot guess its way in.
  * With signOutOtherDevices: true, every other session of the user ends in the
- * same transaction; this one stays.
+ * same transaction; this one stays. A reset link the user made for themselves
+ * (an admin) ends too: made without the password and a code, it must not
+ * later turn off the two-step sign-in being turned on here.
  */
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUser();
@@ -79,6 +81,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         data: { totpEnabledAt: new Date(), totpLastUsedStep: step },
       });
       if (updated.count === 0) throw new AccountChangedError();
+      // After the row update, which holds the row the self reset link route locks.
+      await tx.passwordLink.deleteMany({ where: { userId: user.id, purpose: 'reset', createdById: user.id } });
       await tx.recoveryCode.deleteMany({ where: { userId: user.id } });
       await tx.recoveryCode.createMany({
         data: recovery.hashes.map((codeHash) => ({ userId: user.id, codeHash })),

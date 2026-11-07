@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   userUpdateMany: vi.fn(),
   recoveryDeleteMany: vi.fn(),
   linkUpsert: vi.fn(),
+  lockedTwoStep: vi.fn(),
   recordFailedSignIn: vi.fn(),
   recordSecurityEvent: vi.fn(),
   redisEval: vi.fn(),
@@ -28,13 +29,17 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@/lib/db', () => ({
-  prisma: {
+vi.mock('@/lib/db', () => {
+  const prisma = {
     user: { findUnique: mocks.userFindUnique, updateMany: mocks.userUpdateMany },
     recoveryCode: { deleteMany: mocks.recoveryDeleteMany },
     passwordLink: { upsert: mocks.linkUpsert },
-  },
-}));
+    // The row lock on your own account: answers its two-step state as it is now.
+    $queryRaw: async () => [{ totpEnabledAt: mocks.lockedTwoStep() }],
+    $transaction: async (fn: (tx: unknown) => unknown) => fn(prisma),
+  };
+  return { prisma };
+});
 vi.mock('@/lib/auth', () => ({ requireAdmin: mocks.requireAdmin, verifyUserPassword: mocks.verifyUserPassword }));
 vi.mock('@/lib/login-rate-limit', () => ({ getClientIp: () => undefined, ...mocks.limits }));
 vi.mock('@/lib/security-audit', () => ({
@@ -96,6 +101,7 @@ beforeEach(() => {
     totpLastUsedStep: null,
   };
   mocks.requireAdmin.mockImplementation(async () => ({ ok: true, user: admin }));
+  mocks.lockedTwoStep.mockImplementation(() => admin.totpEnabledAt);
   mocks.userFindUnique.mockImplementation(async ({ where }: { where: { id: string } }) => account(where.id));
 });
 
@@ -185,6 +191,15 @@ describe('POST /api/users/[id]/password-link, unchanged cases', () => {
     expect((await issue('admin-1')).status).toBe(201);
     expect(mocks.verifyUserPassword).not.toHaveBeenCalled();
     expect(mocks.redisEval).not.toHaveBeenCalled();
+  });
+
+  it('refuses, under the lock, when two-step sign-in was turned on after this request read it', async () => {
+    admin = { ...admin, totpSecret: null, totpEnabledAt: null };
+    mocks.lockedTwoStep.mockReturnValue(new Date(NOW));
+    const response = await issue('admin-1');
+    expect(response.status).toBe(403);
+    expect((await response.json()).needsSecondFactor).toBe(true);
+    expect(mocks.linkUpsert).not.toHaveBeenCalled();
   });
 
   it("makes someone else's link with no password or code, even with the admin's two-step sign-in on", async () => {
