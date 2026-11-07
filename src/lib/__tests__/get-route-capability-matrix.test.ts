@@ -271,6 +271,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/qbittorrent/[hash]/files',
     'GET /api/qbittorrent/bandwidth-schedule',
     'GET /api/qbittorrent/categories',
+    'GET /api/qbittorrent/options',
     'GET /api/qbittorrent',
     'GET /api/qbittorrent/summary',
     'GET /api/qbittorrent/transfer/limits',

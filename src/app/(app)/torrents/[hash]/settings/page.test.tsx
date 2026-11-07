@@ -23,11 +23,15 @@ const TORRENT = {
   seq_dl: false,
   f_l_piece_prio: false,
   auto_tmm: false,
+  save_path: '/downloads',
+  tags: 'movies',
+  priority: 2,
 };
 
 let root: Root;
 let queryClient: QueryClient;
 let torrents: unknown[];
+let options: { tags: string[]; queueingEnabled: boolean };
 let posts: Record<string, unknown>[];
 let postResponse: () => Promise<Response>;
 
@@ -36,10 +40,11 @@ beforeEach(async () => {
   vi.clearAllMocks();
   mocks.caps = new Set(['torrents.bandwidth', 'torrents.manage']);
   torrents = [TORRENT];
+  options = { tags: ['4k', 'movies'], queueingEnabled: true };
   posts = [];
   postResponse = async () => Response.json({ success: true });
   vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
-    if (init?.method !== 'POST') return Response.json(torrents);
+    if (init?.method !== 'POST') return Response.json(_url.includes('/options') ? options : torrents);
     posts.push(JSON.parse(String(init.body)));
     return postResponse();
   }));
@@ -68,6 +73,14 @@ async function waitFor(check: () => void, timeout = 3000) {
 async function renderPage() {
   await act(async () => root.render(<QueryClientProvider client={queryClient}><TorrentSettingsPage /></QueryClientProvider>));
   await waitFor(() => expect(document.querySelector('[role="status"]')).toBeNull());
+}
+const button = (label: string) => document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
+async function type(input: HTMLInputElement, value: string) {
+  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+  await act(async () => {
+    setValue.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
 }
 const option = (label: string) => document.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${label}"]`)!;
 
@@ -125,12 +138,74 @@ describe('torrent settings page', () => {
     expect(posts).toEqual([{ hash: 'abc', action: 'setDownloadLimit', limit: 2 * 1024 * 1024 }]);
   });
 
+  it('moves the torrent to a new folder and shows it', async () => {
+    await renderPage();
+    const row = [...document.querySelectorAll<HTMLButtonElement>('button.grouped-row')]
+      .find((el) => el.textContent?.startsWith('Save Path'))!;
+    expect(row.textContent).toContain('/downloads');
+    await act(async () => row.click());
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Save Path"]')!;
+    expect(input.value).toBe('/downloads');
+    await type(input, '/downloads/movies');
+    await act(async () => input.form!.requestSubmit());
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Moving to the new location'));
+
+    expect(posts).toEqual([{ hash: 'abc', action: 'setLocation', location: '/downloads/movies' }]);
+    expect(document.body.textContent).toContain('Save Path/downloads/movies');
+    // qBittorrent turns automatic management off when it moves a torrent.
+    expect(option('Auto Torrent Management').getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('removes a tag, adds a new one, and adds one qBittorrent already has', async () => {
+    await renderPage();
+    await act(async () => button('Remove tag movies').click());
+    await waitFor(() => expect(document.body.textContent).toContain('No tags'));
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="New tag"]')!;
+    await type(input, 'a,b');
+    await act(async () => input.form!.requestSubmit());
+    expect(mocks.toast.error).toHaveBeenCalledWith("A tag can't contain a comma");
+
+    await type(input, ' fresh ');
+    await act(async () => input.form!.requestSubmit());
+    await waitFor(() => expect(button('Remove tag fresh')).not.toBeNull());
+    await waitFor(() => expect(button('Add tag 4k')).not.toBeNull());
+    await act(async () => button('Add tag 4k').click());
+    await waitFor(() => expect(button('Remove tag 4k')).not.toBeNull());
+
+    expect(posts).toEqual([
+      { hash: 'abc', action: 'removeTags', tags: ['movies'] },
+      { hash: 'abc', action: 'addTags', tags: ['fresh'] },
+      { hash: 'abc', action: 'addTags', tags: ['4k'] },
+    ]);
+  });
+
+  it('moves the torrent in the queue and shows its position', async () => {
+    await renderPage();
+    expect(document.body.textContent).toContain('Position2');
+    await act(async () => button('Move to the top of the queue').click());
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Moved to the top of the queue'));
+
+    expect(posts).toEqual([{ hash: 'abc', action: 'topPrio' }]);
+  });
+
+  it('turns the queue moves off, and says why, while queueing is off in qBittorrent', async () => {
+    options = { tags: [], queueingEnabled: false };
+    await renderPage();
+    await waitFor(() => expect(document.body.textContent).toContain('Queueing is off in qBittorrent.'));
+
+    for (const label of ['Move to the top of the queue', 'Move up the queue', 'Move down the queue', 'Move to the bottom of the queue']) {
+      expect(button(label).disabled).toBe(true);
+    }
+  });
+
   it('shows only the sections the user may change', async () => {
     mocks.caps = new Set(['torrents.manage']);
     await renderPage();
 
     expect(document.body.textContent).not.toContain('Speed Limits');
     expect(option('Sequential Download')).not.toBeNull();
+    expect(document.body.textContent).toContain('Location');
   });
 
   it('explains when the user may change nothing', async () => {
@@ -139,6 +214,8 @@ describe('torrent settings page', () => {
 
     expect(document.body.textContent).toContain("You don't have permission to change torrent settings.");
     expect(document.querySelector('[role="switch"]')).toBeNull();
+    expect(document.body.textContent).not.toContain('Save Path');
+    expect(document.body.textContent).not.toContain('Queue');
   });
 
   it('says so when the torrent is no longer in qBittorrent', async () => {

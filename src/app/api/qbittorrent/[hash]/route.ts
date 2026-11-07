@@ -7,6 +7,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { deleteTorrentsAudited, TORRENT_DELETE_REFUSALS } from '@/lib/file-audit';
+import { isInsideDownloadRoots, parseLocation, parseTags } from '@/lib/qbittorrent-inputs';
 
 // A v1 info hash (SHA-1) or a v2 one (SHA-256), in hex.
 const SINGLE_TORRENT_HASH = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
@@ -33,6 +34,13 @@ function actionCapability(action: unknown): Capability | null {
     case 'reannounce':
     case 'setAutoManagement':
     case 'rename':
+    case 'setLocation':
+    case 'addTags':
+    case 'removeTags':
+    case 'topPrio':
+    case 'increasePrio':
+    case 'decreasePrio':
+    case 'bottomPrio':
       return 'torrents.manage';
     default:
       return null; // unknown/unmapped action → rejected up front (deny-by-default)
@@ -124,6 +132,36 @@ async function postHandler(
         break;
       case 'rename':
         await client.renameTorrent(hash, body.name ?? '');
+        break;
+      case 'setLocation': {
+        const location = parseLocation(body.location);
+        if (!location || !(await isInsideDownloadRoots(client, location))) {
+          logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action, validationFailed: true });
+          return NextResponse.json({ error: 'Location must be inside a configured download folder' }, { status: 400 });
+        }
+        await client.setLocation(hash, location);
+        break;
+      }
+      case 'addTags':
+      case 'removeTags': {
+        const tags = parseTags(body.tags);
+        if (!tags) {
+          logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action, validationFailed: true });
+          return NextResponse.json({ error: 'Tags must be named, without commas' }, { status: 400 });
+        }
+        if (action === 'addTags') await client.addTags(hash, tags);
+        else await client.removeTags(hash, tags);
+        break;
+      }
+      case 'topPrio':
+      case 'increasePrio':
+      case 'decreasePrio':
+      case 'bottomPrio':
+        if (!(await client.isQueueingEnabled())) {
+          logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action, refused: 'queueingOff' });
+          return NextResponse.json({ error: 'Queueing is off in qBittorrent' }, { status: 409 });
+        }
+        await client.moveInQueue(hash, action);
         break;
       default:
         logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action, invalidAction: true });

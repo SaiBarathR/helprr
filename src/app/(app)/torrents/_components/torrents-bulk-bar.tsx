@@ -1,7 +1,7 @@
 'use client';
 
 import type { Dispatch, SetStateAction } from 'react';
-import { Gauge, Pause, Play, Trash2, Zap } from 'lucide-react';
+import { FolderCog, Gauge, Pause, Play, Trash2, Zap } from 'lucide-react';
 import type { DeleteDrawerState } from './torrent-delete-drawer';
 
 /** Actions on the selected torrents, shown while any are selected. */
@@ -11,6 +11,7 @@ export function TorrentsBulkBar({
   bulkAction,
   canBandwidthTorrents,
   openBulkSpeedLimits,
+  openOrganize,
   canDeleteTorrents,
   setDeleteDrawer,
   setSelectedTorrents,
@@ -20,6 +21,7 @@ export function TorrentsBulkBar({
   bulkAction: (action: string, extra?: Record<string, unknown>) => Promise<boolean>;
   canBandwidthTorrents: boolean;
   openBulkSpeedLimits: () => void;
+  openOrganize: () => void;
   canDeleteTorrents: boolean;
   setDeleteDrawer: Dispatch<SetStateAction<DeleteDrawerState>>;
   setSelectedTorrents: Dispatch<SetStateAction<Set<string>>>;
@@ -52,6 +54,15 @@ export function TorrentsBulkBar({
           aria-label="Force Start"
         >
           <Zap className="h-4 w-4" />
+        </button>
+      )}
+      {canManageTorrents && (
+        <button
+          className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
+          onClick={openOrganize}
+          aria-label="Location, Tags & Queue"
+        >
+          <FolderCog className="h-4 w-4" />
         </button>
       )}
       {canBandwidthTorrents && (

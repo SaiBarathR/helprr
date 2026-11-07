@@ -37,7 +37,7 @@ Helprr is not trying to clone every setting from Sonarr, Radarr, Lidarr, qBittor
 ### Operations and server control
 
 - Activity queue/history, wanted/missing/cutoff views, manual import, and queue actions.
-- qBittorrent details/files, add/start/stop/delete actions, speed limits, alternative limits, and time-windowed bandwidth schedules.
+- qBittorrent details/files, add/start/stop/delete actions, moving, tags, queue order, speed limits, alternative limits, and time-windowed bandwidth schedules.
 - Rule-based queue, download, and seeding cleanup with dry runs, automation, strikes, and history.
 - Prowlarr indexer status and detail, on/off switches, quick edit of priority, app profile and tags, health warnings with push notifications, search across all indexers with grab, app sync status, testing, statistics, and history.
 - Jellyfin library and playback views, active sessions/devices, watch-state actions, server tasks/control, and playback analytics.

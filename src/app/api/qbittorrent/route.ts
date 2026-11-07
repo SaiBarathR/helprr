@@ -12,6 +12,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { deleteTorrentsAudited, TORRENT_DELETE_REFUSALS } from '@/lib/file-audit';
+import { isInsideDownloadRoots, parseLocation, parseTags } from '@/lib/qbittorrent-inputs';
 
 const MAGNET_VERIFY_TIMEOUT_MS = 5000;
 const MAGNET_VERIFY_INTERVAL_MS = 500;
@@ -52,6 +53,13 @@ function actionCapability(action: unknown): Capability | null {
     case 'reannounce':
     case 'setAutoManagement':
     case 'rename':
+    case 'setLocation':
+    case 'addTags':
+    case 'removeTags':
+    case 'topPrio':
+    case 'increasePrio':
+    case 'decreasePrio':
+    case 'bottomPrio':
       return 'torrents.manage';
     default:
       return null;
@@ -131,38 +139,38 @@ async function runTorrentAction(
     case 'rename':
       await client.renameTorrent(hash, typeof body.name === 'string' ? body.name : '');
       break;
+    case 'setLocation': {
+      const location = parseLocation(body.location);
+      if (!location || !(await isInsideDownloadRoots(client, location))) {
+        return NextResponse.json({ error: 'Location must be inside a configured download folder' }, { status: 400 });
+      }
+      await client.setLocation(hash, location);
+      break;
+    }
+    case 'addTags':
+    case 'removeTags': {
+      const tags = parseTags(body.tags);
+      if (!tags) return NextResponse.json({ error: 'Tags must be named, without commas' }, { status: 400 });
+      if (action === 'addTags') await client.addTags(hash, tags);
+      else await client.removeTags(hash, tags);
+      break;
+    }
+    case 'topPrio':
+    case 'increasePrio':
+    case 'decreasePrio':
+    case 'bottomPrio':
+      if (!(await client.isQueueingEnabled())) {
+        return NextResponse.json({ error: 'Queueing is off in qBittorrent' }, { status: 409 });
+      }
+      await client.moveInQueue(hash, action);
+      break;
   }
 
   return null;
 }
 
-// A client-supplied savepath is only forwarded if it resolves under one of
-// qBittorrent's configured download roots (default save path + category save
-// paths) — otherwise the grantable "may add torrents" capability silently
-// implies "may write torrent payloads anywhere qBittorrent can".
-function normalizeSavePath(value: string): string | null {
-  const normalized = value.replace(/\\/g, '/').replace(/\/+$/, '');
-  if (!normalized) return null;
-  if (normalized.split('/').some((segment) => segment === '..')) return null;
-  return normalized;
-}
-
 async function validateSavepath(client: QBittorrentClient, savepath: string): Promise<NextResponse | null> {
-  const normalized = normalizeSavePath(savepath);
-  if (normalized) {
-    const [defaultSavePath, categories] = await Promise.all([
-      client.getDefaultSavePath(),
-      client.getCategories(),
-    ]);
-    const roots = [defaultSavePath, ...Object.values(categories).map((category) => category.savePath)]
-      .map((root) => (root ? normalizeSavePath(root) : null))
-      .filter((root): root is string => Boolean(root));
-
-    if (roots.some((root) => normalized === root || normalized.startsWith(`${root}/`))) {
-      return null;
-    }
-  }
-
+  if (await isInsideDownloadRoots(client, savepath)) return null;
   return NextResponse.json(
     { error: 'savepath must be inside a configured download folder' },
     { status: 400 }
