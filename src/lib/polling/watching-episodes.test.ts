@@ -43,7 +43,7 @@ import type { HistoryItem } from '@/types';
 import * as cache from '@/lib/cache/jellyfin-watch-status-cache';
 import { JellyfinNotLinkedError } from '@/lib/service-helpers';
 import { seriesArrivals, type LibraryArrival } from './watchlist-available';
-import { fetchPlayedSeries, isSameSeries, notifyWatchingEpisodes, playedWithin } from './watching-episodes';
+import { fetchPlayedSeries, isSameSeries, notifyWatchingEpisodes, playedWithin, WATCHING_BATCH_BUDGET_MS } from './watching-episodes';
 
 const DAY = 86_400_000;
 const NOW = Date.parse('2026-11-07T12:00:00Z');
@@ -332,6 +332,17 @@ describe('Jellyfin', () => {
     await expect(notifyWatchingEpisodes([arrival()], { groupingEnabled: true })).resolves.toBeUndefined();
     expect(mocks.userContext).toHaveBeenCalledTimes(2);
     expect(mocks.noteJobFailure).not.toHaveBeenCalled();
+  });
+
+  it('stops the batch once it has used its time budget, even when Jellyfin keeps answering slowly', async () => {
+    mocks.findUsers.mockResolvedValue([user({ id: 'u-1', jellyfinUserId: 'jf-1' }), user()]);
+    mocks.userContext.mockImplementation(async (u: { jellyfinUserId: string }) => {
+      // A slow answer (or a stale-cache fallback after a timeout) for the first person.
+      vi.setSystemTime(Date.now() + WATCHING_BATCH_BUDGET_MS + 1);
+      return { client, connectionFingerprint: 'fp', jellyfinUserId: u.jellyfinUserId };
+    });
+    await expect(notifyWatchingEpisodes([arrival()], { groupingEnabled: true })).resolves.toBeUndefined();
+    expect(mocks.userContext).toHaveBeenCalledTimes(1);
   });
 
   it('skips only one slow account when the next one answers', async () => {

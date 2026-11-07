@@ -207,7 +207,6 @@ export async function pollSonarr(context: CycleContext) {
       }
       const arrivals = seriesArrivals(newHistory, historyRecords, instanceId, n === 1);
       await notifyWatchlistArrivals(arrivals);
-      await notifyWatchingEpisodes(arrivals, { groupingEnabled });
 
       // Health check
       const health = await client.getHealth();
@@ -243,6 +242,9 @@ export async function pollSonarr(context: CycleContext) {
           lastHealthHash: healthHash,
         },
       });
+      // After the import alerts and the cursor: Jellyfin lookups must never
+      // delay them.
+      await notifyWatchingEpisodes(arrivals, { groupingEnabled });
       logger.debug('Sonarr polling state updated', {
         instanceId,
         queueCount: currentSnapshots.length,

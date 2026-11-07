@@ -28,6 +28,8 @@ const DAY_MS = 86_400_000;
 const PLAYS_PAGE_SIZE = 200;
 const PLAYS_MAX_PAGES = 5;
 const LONGEST_WINDOW_DAYS = Math.max(...WATCHING_EPISODE_DAY_OPTIONS);
+// The whole batch's share of the Sonarr poll: past it, the rest are skipped.
+export const WATCHING_BATCH_BUDGET_MS = 20_000;
 // Series ids per lookup, keeping the request line well under 8 KB.
 const SERIES_IDS_PER_QUERY = 100;
 const ITEM_CAP = 50;
@@ -55,6 +57,8 @@ export async function fetchPlayedSeries(client: JellyfinClient): Promise<PlayedS
       Limit: PLAYS_PAGE_SIZE,
       EnableUserData: true,
       EnableImages: false,
+      // Jellyfin would otherwise count the whole episode library on every page.
+      EnableTotalRecordCount: false,
     });
     const items = plays.Items ?? [];
     let reachedEnd = items.length < PLAYS_PAGE_SIZE;
@@ -252,7 +256,14 @@ export async function notifyWatchingEpisodes(arrivals: LibraryArrival[], opts: {
   // than wait out a timeout per person while the Sonarr poll holds its slot.
   // One slow account alone only skips that person.
   let unanswered = 0;
+  const deadline = Date.now() + WATCHING_BATCH_BUDGET_MS;
   for (const user of users) {
+    // A slow Jellyfin that still answers (or falls back to stale cache after
+    // each timeout) would never trip the "no answer" stop below.
+    if (Date.now() > deadline) {
+      logger.warn('New episode alerts stopped: Jellyfin is too slow', { skipped: users.length - users.indexOf(user) }, { scope: 'polling' });
+      return;
+    }
     let played: PlayedSeries[];
     try {
       played = await loadPlayedSeries(user);

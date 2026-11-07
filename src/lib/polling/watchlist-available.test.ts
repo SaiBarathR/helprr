@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   updateMany: vi.fn(),
   claimEpisodes: vi.fn(),
+  historyFindFirst: vi.fn(async (): Promise<{ id: string } | null> => null),
   notify: vi.fn(async () => 1),
   noteJobFailure: vi.fn(),
 }));
@@ -12,6 +13,7 @@ vi.mock('@/lib/db', () => ({
   prisma: {
     watchlistItem: { findMany: mocks.findMany, updateMany: mocks.updateMany },
     announcedEpisode: { createManyAndReturn: mocks.claimEpisodes },
+    notificationHistory: { findFirst: mocks.historyFindFirst },
   },
 }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn() } }));
@@ -55,6 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   marked = new Set();
   mocks.findMany.mockResolvedValue([]);
+  mocks.historyFindFirst.mockResolvedValue(null);
   mocks.updateMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) => {
     const fresh = where.id.in.filter((id) => !marked.has(id));
     fresh.forEach((id) => marked.add(id));
@@ -152,6 +155,18 @@ describe('alerting the people who have it on their watchlist', () => {
       where: { id: { in: ['w2'] }, availableNotifiedAt: mocks.updateMany.mock.calls[0][0].data.availableNotifiedAt },
       data: { availableNotifiedAt: null },
     });
+  });
+
+  it('claims no episodes when this title was already alerted to the person, so "New episode" still sends them', async () => {
+    mocks.findMany.mockResolvedValue([watchlistRow({ id: 'w2', source: 'TVDB', externalId: '371980', mediaType: 'series', title: 'Severance' })]);
+    mocks.historyFindFirst.mockResolvedValue({ id: 'h1' });
+    await notifyWatchlistArrivals([severance]);
+    expect(mocks.historyFindFirst).toHaveBeenCalledWith({
+      where: { eventType: 'watchlistAvailable', dedupeKey: 'series-tvdb-371980-u-member' },
+      select: { id: true },
+    });
+    expect(mocks.claimEpisodes).not.toHaveBeenCalled();
+    expect(mocks.notify).not.toHaveBeenCalled();
   });
 
   it('gives the item back when the episode claim fails', async () => {

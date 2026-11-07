@@ -2,8 +2,9 @@
 // watchlist, that person (and only they) gets their own copy. Matching uses the
 // title's TMDB/TVDB id, so it is the same whichever instance imported it. Each
 // watchlist item is alerted once (WatchlistItem.availableNotifiedAt), so a
-// second instance, a later episode or a retried poll never pushes again, even
-// after the person clears their notifications.
+// second instance or a retried poll never pushes again, even after the person
+// clears their notifications. A series item whose episodes were all announced
+// already ("New episode") is given back and alerts on a later episode.
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/permissions';
 import { logger } from '@/lib/logger';
@@ -258,7 +259,21 @@ export async function notifyWatchlistArrivals(arrivals: LibraryArrival[]): Promi
       // alert already announced all of them (or the claim fails), nothing is
       // sent and the item is given back for the next new episode.
       let fresh: string[] | undefined;
+      const dedupeKey = `${titleKey(arrival)}-${user.id}`;
       if (arrival.episodes?.length) {
+        // An earlier alert for this title (another saved copy, or before it was
+        // removed and re-added) makes this send a silent duplicate: claiming
+        // the episodes then would also swallow their "New episode" alert.
+        try {
+          const sent = await prisma.notificationHistory.findFirst({
+            where: { eventType: 'watchlistAvailable', dedupeKey },
+            select: { id: true },
+          });
+          if (sent) continue;
+        } catch (error) {
+          reportFailure(error);
+          continue;
+        }
         try {
           const claimed = await claimEpisodes(user.id, arrival.episodes.map((label) => episodeKey(arrival, label)));
           fresh = arrival.episodes.filter((label) => claimed.has(episodeKey(arrival, label)));
@@ -284,7 +299,7 @@ export async function notifyWatchlistArrivals(arrivals: LibraryArrival[]): Promi
         // Per person per title: two instances that each claim a different copy
         // of the same saved title (one matched by TMDB id, one by library id)
         // still send once.
-        dedupeKey: `${titleKey(arrival)}-${user.id}`,
+        dedupeKey,
         userIds: [user.id],
         ownerUserId: user.id,
         metadata: {
