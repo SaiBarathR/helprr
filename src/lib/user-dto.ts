@@ -19,6 +19,7 @@ export function toSafeUser(u: User) {
     // they can actually play. A token encrypted under a rotated secret reads
     // back as absent, which is the truthful answer here — it cannot be used.
     hasJellyfinConnection: readJellyfinToken(u) !== null,
+    twoStepEnabled: u.totpEnabledAt !== null,
     createdAt: u.createdAt,
   };
 }

@@ -27,7 +27,7 @@ export interface SecurityAuditActor {
 export type SecurityAuditTargetType = 'user' | 'session' | 'service' | 'settings';
 
 export interface SecurityAuditInput {
-  /** Who acted; null for a failed sign-in, where nobody is signed in. */
+  /** Who acted; null for a failed sign-in, where nobody is signed in, or a start-up reset. */
   actor: SecurityAuditActor | null;
   action: SecurityAuditAction;
   targetType: SecurityAuditTargetType;
@@ -76,7 +76,8 @@ export function coarseIp(ip: string | undefined | null): string | null {
   return `${hex.slice(0, 4).join(':')}::/64`;
 }
 
-function requestMeta(request: NextRequest): { ip: string | null; userAgent: string | null } {
+function requestMeta(request: NextRequest | null): { ip: string | null; userAgent: string | null } {
+  if (!request) return { ip: null, userAgent: null };
   const userAgent = request.headers.get('user-agent');
   return {
     ip: coarseIp(getClientIp(request)),
@@ -93,8 +94,8 @@ function logWriteFailure(error: unknown): void {
   console.error(`[SecurityAudit] Failed to write audit row: ${reason}`);
 }
 
-/** Record one security event. Never throws. */
-export async function recordSecurityEvent(request: NextRequest, input: SecurityAuditInput): Promise<void> {
+/** Record one security event; request is null outside a request (at start-up). Never throws. */
+export async function recordSecurityEvent(request: NextRequest | null, input: SecurityAuditInput): Promise<void> {
   try {
     await prisma.securityAuditEvent.create({
       data: {

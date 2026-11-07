@@ -26,6 +26,7 @@ import {
   mfaLockedResponse,
   mfaPendingTokenMatches,
   readMfaPendingToken,
+  secondFactorKind,
   startMfaAttempt,
 } from '@/lib/totp';
 
@@ -42,8 +43,8 @@ function expired(): NextResponse {
  * Second step of sign-in with two-step sign-in on: a pending token from
  * /api/auth/login or /api/auth/jellyfin plus an authenticator or recovery code,
  * exchanged for a session. Behind the same throttles as the first step, keyed
- * on the account, plus the code caps in totp.ts; a wrong code counts as a
- * failed sign-in.
+ * on the account, plus the code caps in totp.ts (a recovery code skips only
+ * the hourly account cap); a wrong code counts as a failed sign-in.
  */
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const malformedBackstop = await enforceMalformedLoginBackstop();
@@ -97,7 +98,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   // Counted before the code is checked, so parallel guesses can't overshoot.
   let gate: Awaited<ReturnType<typeof startMfaAttempt>>;
   try {
-    gate = await startMfaAttempt(user.id, claims);
+    gate = await startMfaAttempt(user.id, secondFactorKind(code), claims);
   } catch {
     return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
   }

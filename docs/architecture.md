@@ -296,7 +296,8 @@ session of the user; then it signs the browser in. Making, replacing, revoking a
 links are security audit events. `HELPRR_ADMIN_PASSWORD_RESET=true` is a separate startup recovery
 path for the bootstrap admin: in one transaction it sets the password from `APP_PASSWORD`,
 deletes the admin's password link and calendar feed link, turns off two-step sign-in (secret
-and recovery codes), and revokes every session of the admin (and any
+and recovery codes, with an `MFA_DISABLED` audit row when it was on), and revokes every
+session of the admin (and any
 owner-less legacy session, which the startup attach would otherwise hand to the admin). It
 does this on every start while the flag is set, so remove it after one boot.
 
@@ -313,10 +314,17 @@ verifies a code (±1 step) and uses it up in the same conditional write
 and makes the session. The first step no longer clears the username backoff or IP bucket
 for these accounts, so a known password cannot reset them between code guesses, and every
 wrong code counts (no repeat-guess dedupe). Before a code is checked, one Redis script
-counts the attempt atomically: 10 per account per fixed hour (sign-in, enable and disable
-share it; cleared when a code passes) and 5 per pending token, and it answers "expired"
-for a token already used, so a retry after a lost response burns no code. A password-reset
-link for such an account sets the password but makes no session. Ten
+counts the attempt atomically: 10 authenticator codes per account per fixed hour (sign-in,
+enable and disable share it; cleared when a code passes; recovery codes skip it, so someone
+with only the password cannot lock the owner out of them) and 5 per pending token, and it
+answers "expired" for a token already used, so a retry after a lost response burns no code.
+A password-reset link for such an account sets the password and makes no session; a reset
+link an admin made after two-step sign-in was turned on (not an older one, and not one the
+user made for themselves) also turns it off in the same transaction (`MFA_DISABLED`,
+`reset-link`). An admin can turn off another
+user's two-step sign-in (`DELETE /api/users/[id]/totp`), which ends every session of that
+user in the same transaction; their own needs the password and a code. Turning it on can
+also end the user's other sessions (`signOutOtherDevices`). Ten
 80-bit recovery codes are stored as SHA-256 (`RecoveryCode`, deleted on use) and still work
 after a `JWT_SECRET` change, when the secret no longer decrypts. Setup needs the current
 password; turning it off needs the password and a code. Settings export never carries

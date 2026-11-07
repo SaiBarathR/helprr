@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/password';
+import { recordSecurityEvent } from '@/lib/security-audit';
 import { localPasswordValidationError } from '@/lib/password-policy';
 import {
   localUsernameValidationError,
@@ -50,7 +51,7 @@ export async function ensureBootstrapAdmin(): Promise<void> {
 
   const existing = await prisma.user.findUnique({
     where: { id: BOOTSTRAP_ADMIN_ID },
-    select: { id: true, passwordHash: true, username: true },
+    select: { id: true, passwordHash: true, username: true, totpEnabledAt: true },
   });
 
   const needsPasswordHash = !existing || !existing.passwordHash || forceReset;
@@ -105,6 +106,17 @@ export async function ensureBootstrapAdmin(): Promise<void> {
     console.log(
       `[Helprr] Bootstrap admin password reset from APP_PASSWORD (HELPRR_ADMIN_PASSWORD_RESET); signed out ${sessions.count} session(s), ended ${links.count} link(s) and ${feeds.count} calendar feed link(s), and turned off two-step sign-in. Remove HELPRR_ADMIN_PASSWORD_RESET now: while it is set, every start does this again.`
     );
+    if (existing.totpEnabledAt) {
+      // Nobody signed in did this: someone with shell access restarted with the flag.
+      await recordSecurityEvent(null, {
+        actor: null,
+        action: 'MFA_DISABLED',
+        targetType: 'user',
+        targetId: BOOTSTRAP_ADMIN_ID,
+        targetLabel: existing.username,
+        fields: ['admin-password-reset'],
+      });
+    }
     await attachOwnerlessRowsToAdmin();
   } else if (!existing.passwordHash) {
     const passwordHash = await hashPassword(appPassword);

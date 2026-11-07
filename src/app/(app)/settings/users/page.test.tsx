@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ permissions: { template: 'member', effective: { 'movies.add': false } as Record<string, boolean> } }));
+const mocks = vi.hoisted(() => ({
+  permissions: { template: 'member', effective: { 'movies.add': false } as Record<string, boolean> },
+  me: null as { id: string } | null,
+}));
+vi.mock('@/components/permission-provider', () => ({ useMe: () => mocks.me }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/components/ui/app-link', () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
@@ -19,6 +23,7 @@ const member = {
 
 beforeEach(() => {
   mocks.permissions = { template: 'member', effective: { 'movies.add': false } };
+  mocks.me = null;
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (url === '/api/users') return new Response(JSON.stringify([member]));
     if (url === '/api/users/u2/permissions') return new Response(JSON.stringify(mocks.permissions));
@@ -101,5 +106,53 @@ describe('invite and reset links', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Revoke' }));
     await waitFor(() => expect(screen.queryByLabelText('Password reset link for @iso')).toBeNull());
     expect(methods).toEqual(['POST', 'DELETE']);
+  });
+});
+
+describe('two-step sign-in', () => {
+  function renderPage() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><UsersAdminPage /></QueryClientProvider>);
+  }
+
+  it('shows it in the list, and turns it off for a member after a confirm', async () => {
+    let on = true;
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/users/u2/totp') {
+        calls.push(init?.method ?? 'GET');
+        on = false;
+        return new Response(JSON.stringify({ ok: true, revokedSessions: 2 }));
+      }
+      if (url === '/api/users') return new Response(JSON.stringify([{ ...member, hasPassword: true, passwordLink: null, twoStepEnabled: on }]));
+      if (url === '/api/users/u2/permissions') return new Response(JSON.stringify(mocks.permissions));
+      return new Response(JSON.stringify([]));
+    }));
+    renderPage();
+    expect(await screen.findByText(/two-step on/)).toBeDefined();
+    await userEvent.click(screen.getByRole('button', { name: /Iso/ }));
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Turn off' }));
+    const confirm = await screen.findByRole('alertdialog');
+    expect(confirm.textContent).toContain('Turn off two-step sign-in for Iso?');
+    expect(calls).toEqual([]);
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Turn off' }));
+
+    await waitFor(() => expect(calls).toEqual(['DELETE']));
+    await waitFor(() => expect(screen.queryByText(/two-step on/)).toBeNull());
+    expect(screen.queryByRole('button', { name: 'Turn off' })).toBeNull();
+  });
+
+  it('offers no turn-off for your own account', async () => {
+    mocks.me = { id: 'u2' };
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/users') return new Response(JSON.stringify([{ ...member, hasPassword: true, passwordLink: null, twoStepEnabled: true }]));
+      if (url === '/api/users/u2/permissions') return new Response(JSON.stringify(mocks.permissions));
+      return new Response(JSON.stringify([]));
+    }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    expect(await screen.findByRole('link', { name: 'Account → Two-step sign-in' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Turn off' })).toBeNull();
   });
 });

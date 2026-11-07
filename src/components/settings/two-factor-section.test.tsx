@@ -43,6 +43,8 @@ beforeEach(() => {
     return Response.json({}, { status: 404 });
   });
   vi.stubGlobal('fetch', fetchMock);
+  // The checkbox measures itself.
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -60,12 +62,31 @@ describe('TwoFactorSection', () => {
     expect(await screen.findByRole('img', { name: 'QR code for your authenticator app' })).toBeTruthy();
     expect((screen.getByLabelText('Or enter this key') as HTMLInputElement).value).toBe('JBSW Y3DP EHPK 3PXP JBSW Y3DP EHPK 3PXP');
     await user.type(screen.getByLabelText('Code from the app'), '123456');
+    // Signing out the other devices is offered, and on unless unticked.
+    expect(screen.getByRole('checkbox', { name: 'Sign out your other devices' }).getAttribute('aria-checked')).toBe('true');
     await user.click(screen.getByRole('button', { name: 'Turn on' }));
+    expect(JSON.parse(String(fetchMock.mock.calls.find(([u]) => u === '/api/me/totp/enable')![1].body)))
+      .toEqual({ code: '123456', signOutOtherDevices: true });
 
     const list = await screen.findByRole('list', { name: 'Recovery codes' });
     expect(list.querySelectorAll('li')).toHaveLength(10);
     expect(screen.queryByRole('img', { name: 'QR code for your authenticator app' })).toBeNull();
     await waitFor(() => expect(screen.getByText(/10 recovery codes left/)).toBeTruthy());
+  });
+
+  it('keeps the other devices signed in when unticked', async () => {
+    const user = userEvent.setup();
+    renderSection();
+    await user.click(await screen.findByRole('button', { name: /Authenticator app/ }));
+    await user.type(screen.getByLabelText('Current password'), 'correct horse battery');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.type(await screen.findByLabelText('Code from the app'), '123456');
+    await user.click(screen.getByRole('checkbox', { name: 'Sign out your other devices' }));
+    await user.click(screen.getByRole('button', { name: 'Turn on' }));
+
+    await screen.findByRole('list', { name: 'Recovery codes' });
+    expect(JSON.parse(String(fetchMock.mock.calls.find(([u]) => u === '/api/me/totp/enable')![1].body)))
+      .toEqual({ code: '123456', signOutOtherDevices: false });
   });
 
   it('turning off shows a wrong code against the code field', async () => {

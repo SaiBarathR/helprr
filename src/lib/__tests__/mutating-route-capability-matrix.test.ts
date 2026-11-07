@@ -74,6 +74,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/users',
     'POST /api/users/[id]/password-link',
     'DELETE /api/users/[id]/password-link',
+    'DELETE /api/users/[id]/totp',
   ],
   'cap:activity.manage': [
     'POST /api/manual-downloads/[id]/cancel',
@@ -569,7 +570,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(251);
+    expect(handlers.size).toBe(252);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

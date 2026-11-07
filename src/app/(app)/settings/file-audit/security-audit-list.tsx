@@ -141,7 +141,12 @@ function summary(record: SecurityAuditRecord): string {
       parts.push(`${plural(record.count, 'session')} signed out`);
       break;
     case 'MFA_ENABLED':
+      break;
     case 'MFA_DISABLED':
+      // fields[0]: 'totp' (by the user), 'admin', 'reset-link' or 'admin-password-reset'.
+      if (record.fields?.[0] === 'admin') parts.push(`${plural(record.count, 'session')} signed out`);
+      else if (record.fields?.[0] === 'reset-link') parts.push('with a password reset link');
+      else if (record.fields?.[0] === 'admin-password-reset') parts.push('HELPRR_ADMIN_PASSWORD_RESET at start-up');
       break;
     case 'MFA_RECOVERY_CODE_USED':
       parts.push(record.fields?.[0] === 'turn-off' ? 'to turn off two-step sign-in' : 'to sign in');

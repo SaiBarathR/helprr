@@ -48,6 +48,7 @@ interface SafeUser {
   hasPassword: boolean;
   hasJellyfinLink: boolean;
   hasJellyfinConnection: boolean;
+  twoStepEnabled: boolean;
   createdAt: string;
   /** The outstanding invite or reset link, if any; its token is never sent again. */
   passwordLink: { purpose: 'invite' | 'reset'; expiresAt: string } | null;
@@ -197,6 +198,7 @@ export default function UsersAdminPage() {
                     {u.role}
                     {u.status !== 'active' ? ` · ${u.status}` : ''}
                     {linkSummary(u.passwordLink)}
+                    {u.twoStepEnabled ? ' · two-step on' : ''}
                     {u.hasJellyfinLink ? ' · Jellyfin linked' : ''}
                     {u.hasJellyfinLink && !u.hasJellyfinConnection ? ' · not connected (cannot watch)' : ''}
                   </div>
@@ -814,6 +816,8 @@ function EditUserDialog({
 
         <PasswordLinkSection key={linkSectionKey} user={user} isSelf={isSelf} />
 
+        <TwoStepSection user={user} isSelf={isSelf} />
+
         <div className="mt-4 border-t border-border pt-4 space-y-3">
           <div className="flex items-center justify-between">
             <Label>Permissions</Label>
@@ -945,7 +949,9 @@ function PasswordLinkSection({ user, isSelf }: { user: SafeUser; isSelf: boolean
               : 'The last link expired.'
             : purpose === 'invite'
               ? 'They choose their own password from the link, then the account becomes active.'
-              : 'They choose a new password from the link; it signs them out everywhere.'}
+              : user.twoStepEnabled && !isSelf
+                ? 'They choose a new password from the link; it signs them out everywhere and turns off two-step sign-in.'
+                : 'They choose a new password from the link; it signs them out everywhere.'}
         </p>
         {isSelf && purpose === 'reset' && (
           <p className="text-xs text-amber-500">Using a reset link for yourself signs out this device too.</p>
@@ -970,6 +976,79 @@ function PasswordLinkSection({ user, isSelf }: { user: SafeUser; isSelf: boolean
           </Button>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Whether the saved user has two-step sign-in on, and turning it off for
+ * someone who lost their phone. Your own is turned off in Settings -> Account,
+ * with your password and a code.
+ */
+function TwoStepSection({ user, isSelf }: { user: SafeUser; isSelf: boolean }) {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+
+  const turnOffMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/users/${user.id}/totp`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? 'Failed to turn off two-step sign-in');
+      }
+    },
+    onSuccess: () => {
+      toast.success(`Two-step sign-in is off for ${user.displayName}`);
+      setConfirming(false);
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to turn off two-step sign-in'),
+    // Also after a 409: it may already be off (a reset link, another admin).
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.users() }),
+  });
+
+  return (
+    <div className="mt-4 border-t border-border pt-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <Label>Two-step sign-in</Label>
+        <span className="text-sm text-muted-foreground">{user.twoStepEnabled ? 'On' : 'Off'}</span>
+      </div>
+      {user.twoStepEnabled && (
+        isSelf ? (
+          <p className="text-xs text-muted-foreground">
+            Turn yours off in{' '}
+            <Link href="/settings/account" className="text-primary underline-offset-2 hover:underline">
+              Account → Two-step sign-in
+            </Link>
+            .
+          </p>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">
+              Lost their phone and recovery codes? Turn it off; they then sign in with their password alone.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setConfirming(true)}
+              disabled={turnOffMutation.isPending}
+            >
+              Turn off
+            </Button>
+            <ConfirmDialog
+              open={confirming}
+              onOpenChange={(o) => !turnOffMutation.isPending && setConfirming(o)}
+              title={`Turn off two-step sign-in for ${user.displayName}?`}
+              description="Their authenticator app and recovery codes stop working, and they are signed out everywhere. They can turn it on again in Settings → Account."
+              confirmLabel="Turn off"
+              destructive
+              busy={turnOffMutation.isPending}
+              onConfirm={() => turnOffMutation.mutateAsync().catch(() => {})}
+            />
+          </>
+        )
+      )}
     </div>
   );
 }

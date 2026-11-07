@@ -5,7 +5,9 @@ import { prisma } from '@/lib/db';
 /**
  * Single-use links an admin hands to someone so they set their own local
  * password (Settings -> Users). An invite activates a pending user; a reset
- * replaces an active user's password and revokes every session of theirs.
+ * replaces an active user's password, revokes every session of theirs and
+ * turns off their two-step sign-in (the way back for a lost phone), when an
+ * admin made the link after it was turned on.
  *
  * The token is 32 random bytes; only its SHA-256 is stored, so a database read
  * never yields a working link. Each user has at most one link: issuing another
@@ -112,8 +114,9 @@ class LinkUnusableError extends Error {}
 
 /**
  * Use a link: set the password, make the user active, end the link and revoke
- * every session of the user, all in one transaction. Returns null for a link
- * that cannot be used, in which case nothing is written.
+ * every session of the user, all in one transaction; a reset someone else
+ * made after two-step sign-in was turned on also turns it off. Returns null for a link that
+ * cannot be used, in which case nothing is written.
  */
 export async function redeemPasswordLink(
   token: unknown,
@@ -126,8 +129,10 @@ export async function redeemPasswordLink(
   purpose: PasswordLinkPurpose;
   revokedSessions: number;
   feedRevoked: boolean;
-  /** Two-step sign-in is on: the new password alone must not sign in. */
+  /** Two-step sign-in is still on: the new password alone must not sign in. */
   mfaEnabled: boolean;
+  /** This reset turned two-step sign-in off. */
+  mfaDisabled: boolean;
 } | null> {
   if (!isWellFormedPasswordLinkToken(token)) return null;
   const tokenHash = hashPasswordLinkToken(token);
@@ -146,6 +151,23 @@ export async function redeemPasswordLink(
       // Read now, with the row locked by the update: two-step sign-in turned on
       // after the link was read still counts.
       const mfa = await tx.user.findUnique({ where: { id: link.userId }, select: { totpEnabledAt: true } });
+      const enabledAt = mfa ? mfa.totpEnabledAt : undefined;
+      const mfaWasOn = enabledAt !== null;
+      // A reset an admin made after it was turned on is how someone who lost
+      // their phone gets back in. One the user made for themselves is not (a
+      // signed-in session alone must not remove its own second factor), and
+      // nor is an older link, which predates the second factor it would remove.
+      const mfaDisabled = enabledAt instanceof Date
+        && link.purpose === 'reset'
+        && link.createdById !== link.userId
+        && link.createdAt.getTime() > enabledAt.getTime();
+      if (mfaDisabled) {
+        await tx.user.updateMany({
+          where: { id: link.userId },
+          data: { totpSecret: null, totpEnabledAt: null, totpLastUsedStep: null },
+        });
+        await tx.recoveryCode.deleteMany({ where: { userId: link.userId } });
+      }
       // Single use: of two requests with the same link, only one deletes it.
       // Matching the hash too means a link reissued meanwhile is not consumed.
       const consumed = await tx.passwordLink.deleteMany({ where: { id: link.id, tokenHash } });
@@ -163,7 +185,8 @@ export async function redeemPasswordLink(
         purpose: link.purpose,
         revokedSessions: revoked.count,
         feedRevoked: feed.count > 0,
-        mfaEnabled: mfa?.totpEnabledAt !== null,
+        mfaEnabled: mfaWasOn && !mfaDisabled,
+        mfaDisabled,
       };
     });
   } catch (error) {

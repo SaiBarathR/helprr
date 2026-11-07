@@ -24,10 +24,13 @@ import { decryptTwitchToken, encryptTwitchToken } from '@/lib/twitch/token-ciphe
  *   at the time, lasts five minutes, and works for one sign-in.
  * - Recovery codes are 80 random bits, so a plain SHA-256 is enough; they work
  *   after a JWT_SECRET change, when the encrypted secret no longer decrypts.
- * - On top of the sign-in throttles, a six-digit code gets its own caps: each
- *   attempt is counted before the code is checked (so parallel guesses cannot
- *   overshoot), 10 per account per hour across sign-in, setup and turning it
- *   off, and 5 per pending token, after which the password is needed again.
+ * - On top of the sign-in throttles, a code gets its own caps: each attempt is
+ *   counted before the code is checked (so parallel guesses cannot overshoot),
+ *   5 per pending token, after which the password is needed again, and for a
+ *   six-digit code also 10 per account per hour across sign-in, setup and
+ *   turning it off. A recovery code skips the hourly account cap: guessing 80
+ *   bits is hopeless, and it stays the way in when someone with the password
+ *   has used up that cap.
  */
 
 const ISSUER = 'Helprr';
@@ -143,12 +146,17 @@ async function consumeRecoveryCode(user: TotpUser, code: string): Promise<boolea
   return deleted.count === 1;
 }
 
+/** Which kind of second factor a typed code is: six digits are an authenticator code, anything else a recovery code. */
+export function secondFactorKind(code: string): SecondFactor {
+  return TOTP_CODE_PATTERN.test(normalizeCode(code)) ? 'totp' : 'recovery-code';
+}
+
 /**
  * Check and use up a second factor: a six-digit authenticator code, or a
  * recovery code. Returns which one passed, or null.
  */
 export async function consumeSecondFactor(user: TotpUser, code: string, nowMs = Date.now()): Promise<SecondFactor | null> {
-  if (TOTP_CODE_PATTERN.test(normalizeCode(code))) {
+  if (secondFactorKind(code) === 'totp') {
     return (await consumeTotpCode(user, code, nowMs)) ? 'totp' : null;
   }
   return (await consumeRecoveryCode(user, code)) ? 'recovery-code' : null;
@@ -237,20 +245,27 @@ export type MfaAttemptGate =
   | { ok: false; reason: 'locked'; retryMs: number };
 
 /**
- * Count one code attempt for the account (and the pending token, at sign-in)
- * before the code is checked. 'used': the token already signed in. 'spent':
- * this token had its tries. 'locked': the account's hourly cap is reached; the
- * window is fixed, so further tries do not extend it. Throws when Redis is
- * unreachable, so the caller fails closed.
+ * Count one code attempt for the account (an authenticator code only) and the
+ * pending token (at sign-in) before the code is checked. 'used': the token
+ * already signed in. 'spent': this token had its tries. 'locked': the account's
+ * hourly cap is reached; the window is fixed, so further tries do not extend
+ * it. Throws when Redis is unreachable, so the caller fails closed.
  */
-export async function startMfaAttempt(userId: string, claims?: MfaPendingClaims, nowMs = Date.now()): Promise<MfaAttemptGate> {
+export async function startMfaAttempt(
+  userId: string,
+  factor: SecondFactor,
+  claims?: MfaPendingClaims,
+  nowMs = Date.now(),
+): Promise<MfaAttemptGate> {
   const redis = await getRedisClient();
   const tokenTtlMs = claims ? Math.max(1_000, claims.expiresAtMs - nowMs + 1_000) : 1_000;
   const result = await redis.eval(
     `if ARGV[5] == '1' and redis.call('EXISTS', KEYS[2]) == 1 then return {'used', '0'} end
-local n = redis.call('INCR', KEYS[1])
-if n == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
-if n > tonumber(ARGV[2]) then return {'locked', tostring(redis.call('PTTL', KEYS[1]))} end
+if ARGV[6] == '1' then
+  local n = redis.call('INCR', KEYS[1])
+  if n == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
+  if n > tonumber(ARGV[2]) then return {'locked', tostring(redis.call('PTTL', KEYS[1]))} end
+end
 if ARGV[5] == '1' then
   local t = redis.call('INCR', KEYS[3])
   if t == 1 then redis.call('PEXPIRE', KEYS[3], ARGV[3]) end
@@ -269,6 +284,7 @@ return {'ok', '0'}`,
         String(tokenTtlMs),
         String(MFA_ATTEMPTS_PER_TOKEN),
         claims ? '1' : '0',
+        factor === 'totp' ? '1' : '0',
       ],
     },
   );

@@ -12,9 +12,11 @@ const mocks = vi.hoisted(() => ({
   subscriptionUpdateMany: vi.fn(),
   transaction: vi.fn(),
   hashPassword: vi.fn(),
+  recordSecurityEvent: vi.fn(),
 }));
 
 vi.mock('@/lib/password', () => ({ hashPassword: mocks.hashPassword }));
+vi.mock('@/lib/security-audit', () => ({ recordSecurityEvent: mocks.recordSecurityEvent }));
 vi.mock('@/lib/db', () => ({
   prisma: {
     user: {
@@ -137,6 +139,30 @@ describe('bootstrap local-password policy', () => {
     expect(mocks.sessionUpdateMany).toHaveBeenNthCalledWith(1, {
       where: { OR: [{ userId: 'user-bootstrap-admin' }, { userId: null }], revokedAt: null },
       data: { revokedAt: expect.any(Date) },
+    });
+    // Two-step sign-in was off, so there is nothing to record.
+    expect(mocks.recordSecurityEvent).not.toHaveBeenCalled();
+  });
+
+  it('a forced reset that turned two-step sign-in off records it, with no request and no actor', async () => {
+    process.env.HELPRR_ADMIN_PASSWORD_RESET = 'true';
+    process.env.APP_PASSWORD = 'a-long-bootstrap-password-1';
+    mocks.findUnique.mockResolvedValue({
+      id: 'user-bootstrap-admin', username: 'admin', passwordHash: 'existing-hash', totpEnabledAt: new Date('2026-11-01'),
+    });
+    mocks.transaction.mockResolvedValueOnce([{}, { count: 0 }, { count: 1 }, { count: 0 }, { count: 10 }]);
+
+    await ensureBootstrapAdmin();
+
+    expect(mocks.findUnique).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({ totpEnabledAt: true }) }));
+    expect(mocks.recordSecurityEvent).toHaveBeenCalledTimes(1);
+    expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(null, {
+      actor: null,
+      action: 'MFA_DISABLED',
+      targetType: 'user',
+      targetId: 'user-bootstrap-admin',
+      targetLabel: 'admin',
+      fields: ['admin-password-reset'],
     });
   });
 

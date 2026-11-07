@@ -60,6 +60,17 @@ describe('/invite', () => {
     expect(mocks.replace).not.toHaveBeenCalled();
   });
 
+  it('after a reset that turned two-step sign-in off, sends them to sign in with the new password', async () => {
+    accept = () => Promise.resolve(Response.json({ success: true, twoStepTurnedOff: true }));
+    await open();
+    await submit(PASSWORD);
+
+    expect(screen.getByRole('status').textContent).toBe('Your password is set and two-step sign-in is off. Sign in with your new password.');
+    expect(screen.getByRole('link', { name: 'Go to sign in' }).getAttribute('href')).toBe('/login');
+    expect(mocks.complete).not.toHaveBeenCalled();
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
   it('reads the token from the fragment once and drops it from the address bar', async () => {
     await open();
     await waitFor(() => expect(window.location.hash).toBe(''));
