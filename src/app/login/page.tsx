@@ -126,6 +126,7 @@ export default function LoginPage() {
   const tryTrustedSignIn = useCallback(async (isActive: () => boolean): Promise<boolean> => {
     setPending('trusted');
     setError('');
+    let signedIn = false;
     try {
       const res = await fetch('/api/auth/trusted', {
         method: 'POST',
@@ -138,6 +139,7 @@ export default function LoginPage() {
         await completeBrowserSignIn();
         router.replace(getPostLoginTarget());
         router.refresh();
+        signedIn = true;
         return true;
       }
       const retryAfter = res.status === 429 ? Number(res.headers.get('Retry-After')) : NaN;
@@ -151,7 +153,8 @@ export default function LoginPage() {
     } catch (error) {
       if (isActive()) setError(error instanceof Error ? error.message : 'Something went wrong');
     } finally {
-      if (isActive()) setPending((current) => (current === 'trusted' ? null : current));
+      // Stays pending once signed in, so the button cannot sign in twice while the app loads.
+      if (isActive() && !signedIn) setPending((current) => (current === 'trusted' ? null : current));
     }
     return false;
   }, [router]);

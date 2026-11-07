@@ -125,12 +125,14 @@ describe('authorizeApiTokenRequest', () => {
     expect(auth.response.status).toBe(403);
   });
 
-  it('is a 403 once the owner may no longer make API tokens, checked on every request', async () => {
+  it('is a 403 once the owner may no longer make API tokens, checked on every request, and not counted as a use', async () => {
     mocks.findUnique.mockResolvedValue(row({}, { permissions: { 'api.tokens': false } }));
-    const auth = await authorizeApiTokenRequest(request(), NOW);
+    const auth = await authorizeApiTokenRequest(request(`Bearer ${TOKEN}`, '198.51.100.9'), NOW);
     expect(auth.ok).toBe(false);
     if (auth.ok) return;
     expect(auth.response.status).toBe(403);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.recordSecurityEvent).not.toHaveBeenCalled();
   });
 
   it('opens for an admin, who holds api.tokens by default', async () => {

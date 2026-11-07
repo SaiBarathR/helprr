@@ -57,13 +57,13 @@ describe.skipIf(!url)('password links against PostgreSQL', () => {
     await user('u4', 'active', 'old-hash');
     await user('u5', 'active', 'old-hash');
     await user('u6', 'active', 'old-hash');
+    await user('boss', 'active', 'old-hash');
     const on = { totpSecret: 'enc:v1:x', totpEnabledAt: new Date(Date.now() - 60_000), totpLastUsedStep: 3 };
     await prisma.user.updateMany({ where: { id: { in: ['u4', 'u5', 'u6'] } }, data: on });
     await prisma.recoveryCode.createMany({ data: [
       { userId: 'u4', codeHash: 'a' }, { userId: 'u4', codeHash: 'b' }, { userId: 'u5', codeHash: 'c' }, { userId: 'u6', codeHash: 'd' },
     ] });
-    // Made by an admin account since deleted: nobody to name.
-    const admins = await links.issuePasswordLink(prisma, { userId: 'u4', purpose: 'reset', createdById: 'gone-admin' });
+    const admins = await links.issuePasswordLink(prisma, { userId: 'u4', purpose: 'reset', createdById: 'boss' });
     const own = await links.issuePasswordLink(prisma, { userId: 'u5', purpose: 'reset', createdById: 'u5' });
 
     const results = await Promise.all([
@@ -72,7 +72,7 @@ describe.skipIf(!url)('password links against PostgreSQL', () => {
     ]);
     expect(results.filter((r) => r?.mfaDisabled === true)).toHaveLength(1);
     expect(results.filter((r) => r === null)).toHaveLength(1);
-    expect(results.find((r) => r !== null)?.linkCreator).toBeNull();
+    expect(results.find((r) => r !== null)?.linkCreator).toEqual({ id: 'boss', username: 'boss' });
     expect(await prisma.user.findUniqueOrThrow({ where: { id: 'u4' } }))
       .toMatchObject({ totpSecret: null, totpEnabledAt: null, totpLastUsedStep: null });
     expect(await prisma.recoveryCode.count({ where: { userId: 'u4' } })).toBe(0);

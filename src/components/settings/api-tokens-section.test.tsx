@@ -59,6 +59,13 @@ function listing(body: object) {
 }
 
 describe('ApiTokensSection', () => {
+  it('does not say tokens are off while the list is still loading', async () => {
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+    render(<ApiTokensSection />, { wrapper });
+    expect(screen.getByText(/Read-only access for Shortcuts and dashboards/)).toBeTruthy();
+    expect(screen.queryByText(/not turned on for you/)).toBeNull();
+  });
+
   it('without api.tokens offers no new token and says why', async () => {
     listing({ ...LIST, tokens: [], allowed: false });
     render(<ApiTokensSection />, { wrapper });

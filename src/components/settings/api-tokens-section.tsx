@@ -149,9 +149,9 @@ export function ApiTokensSection() {
         title={status.data ? `API tokens · ${tokens.length}` : 'API tokens'}
         footer={
           <>
-            {allowed
-              ? 'Read-only access for Shortcuts and dashboards. '
-              : 'Making API tokens is not turned on for you. Ask whoever runs Helprr. '}
+            {status.data && !allowed
+              ? 'Making API tokens is not turned on for you. Ask whoever runs Helprr. '
+              : 'Read-only access for Shortcuts and dashboards. '}
             <a href={STATUS_API_GUIDE_URL} target="_blank" rel="noreferrer" className="text-primary normal-case tracking-normal">
               How to use them
             </a>

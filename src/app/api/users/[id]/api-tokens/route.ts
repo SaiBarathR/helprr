@@ -43,4 +43,4 @@ async function getHandler(
   });
 }
 
-export const GET = withApiLogging(getHandler, 'api/users/[id]/api-tokens');
+export const GET = withApiLogging(getHandler, 'api/users/[id]/api-tokens', { logBodies: false });

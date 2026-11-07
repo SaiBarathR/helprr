@@ -70,7 +70,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     targetType: 'user',
     targetId: admin.id,
     targetLabel: admin.username,
-    fields: ['username', 'role', 'password'],
+    fields: ['username', `made ${admin.role}`, 'password'],
   });
 
   const token = await createSession({

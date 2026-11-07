@@ -162,10 +162,11 @@ export async function authorizeApiTokenRequest(request: NextRequest, now: Date =
   }
   if (retryAfter > 0) return { ok: false, response: json({ error: 'Too many requests' }, 429, { 'Retry-After': String(retryAfter) }) };
 
-  await noteUse(request, row, ip, now);
-
+  // Refused before it counts as a use, so "last used" and new-network rows only follow working requests.
   const scopes = new Set(grantableScopes(row.user, row.scopes));
   if (scopes.size === 0 || !can(row.user, 'api.tokens')) return { ok: false, response: json({ error: 'Forbidden' }, 403) };
+
+  await noteUse(request, row, ip, now);
   return { ok: true, user: row.user, tokenId: row.id, scopes };
 }
 

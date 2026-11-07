@@ -72,10 +72,10 @@ const TOKEN = 'A'.repeat(43);
 const PASSWORD = 'a long enough passphrase';
 const ADMIN = { id: 'admin-1', username: 'admin', role: 'admin' };
 
-function post(path: string, body: unknown) {
+function post(path: string, body: unknown, cookie?: string) {
   return new NextRequest(`http://localhost${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
     body: JSON.stringify(body),
   });
 }
@@ -116,6 +116,12 @@ describe('POST /api/invite/accept', () => {
     expect(response.cookies.get('helprr-session')).toBeUndefined();
     expect(mocks.createSession).not.toHaveBeenCalled();
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'RESET_LINK_USED' }));
+  });
+
+  it('clears the signed-out marker when it signs the person in', async () => {
+    mocks.redeemPasswordLink.mockResolvedValue({ id: 'u1', username: 'newbie', role: 'member', purpose: 'invite', revokedSessions: 0, mfaEnabled: false, mfaDisabled: false });
+    const response = await acceptInvite(post('/api/invite/accept', { token: TOKEN, password: PASSWORD }, 'helprr-signed-out=1'));
+    expect(response.headers.getSetCookie().some((c) => c.startsWith('helprr-signed-out=;') && c.includes('Max-Age=0'))).toBe(true);
   });
 
   it('a reset that turned two-step sign-in off records it, by the admin who made the link, and still makes no session', async () => {

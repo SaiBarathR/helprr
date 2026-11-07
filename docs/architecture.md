@@ -330,10 +330,13 @@ A password-reset link for such an account sets the password and makes no session
 link made after two-step sign-in was turned on (not an older one; an admin's own link for
 their own account counts too, owner decision 2026-11-07) also turns it off in the same
 transaction (`MFA_DISABLED`, `reset-link`, with the admin who made the link as the actor,
-or none when that account is gone, and the owner as the target). An admin can turn off another
+or none when that account is gone, and the owner as the target; the row's network and
+user agent are those of whoever used the link). An admin can turn off another
 user's two-step sign-in (`DELETE /api/users/[id]/totp`), which ends every session of that
 user in the same transaction; that route refuses their own, which needs the password and a
-code (or a reset link of their own, which also sets a new password and ends every session). Turning it on can
+code. A reset link an admin makes for themselves also removes it, so an admin session alone
+can (it takes a new password, ends every session and alerts admins); that is the owner's
+accepted trade-off for an admin who lost their phone. Turning it on can
 also end the user's other sessions (`signOutOtherDevices`). Ten
 80-bit recovery codes are stored as SHA-256 (`RecoveryCode`, deleted on use) and still work
 after a `JWT_SECRET` change, when the secret no longer decrypts. Setup needs the current
@@ -499,8 +502,8 @@ capability change therefore narrows or stops a token on its next request without
 password change (own, an admin reset, a reset link used, or the
 `HELPRR_ADMIN_PASSWORD_RESET` startup reset), an admin disabling the user, a
 settings import that restores a different password hash or status, and deleting
-the user end every token the user has ("Revoke all other sessions" and an admin
-turning off two-step sign-in do not). A token is made only while the creating
+the user end every token the user has, and so does "Revoke all other sessions"
+(`POST /api/sessions/revoke-others`); an admin turning off two-step sign-in does not. A token is made only while the creating
 session is live, in a transaction that holds its row, so a password change either
 deletes it or ends the session first. The first use from a network a token has
 not been used from (the coarse IP, or `unknown` without a trusted proxy; the last

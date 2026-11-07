@@ -265,6 +265,8 @@ describe('Login page', () => {
         await act(async () => signInButton()!.click());
         expect(posts(fetchMock)).toHaveLength(1);
         expect(mocks.replace).toHaveBeenCalledWith('/');
+        // Still busy while the app loads, so a second tap cannot sign in twice.
+        expect(signInButton()?.hasAttribute('disabled')).toBe(true);
       });
 
       it('shows the normal form after the tap when not reached through the proxy', async () => {

@@ -1165,6 +1165,12 @@ function UserApiTokensSection({ user }: { user: SafeUser }) {
                 <div className="text-xs text-muted-foreground">
                   {token.scopes.map((scope) => API_SCOPE_LABEL.get(scope) ?? scope).join(', ')}
                 </div>
+                {tokensQuery.data.allowed && token.scopes.some((scope) => !token.activeScopes.includes(scope)) && (
+                  <div className="text-xs text-amber-500">
+                    Not used now, as they no longer have access:{' '}
+                    {token.scopes.filter((scope) => !token.activeScopes.includes(scope)).map((scope) => API_SCOPE_LABEL.get(scope) ?? scope).join(', ')}
+                  </div>
+                )}
               </div>
               <Button
                 type="button"
