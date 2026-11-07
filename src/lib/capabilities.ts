@@ -264,6 +264,8 @@ export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability>
   // notify.health still never receives them.
   updateAvailable: 'notify.health',
   securityAlert: 'notify.health',
+  // Only people who can use Random can join a Tonight pick, so only they get invited.
+  tonightPickInvite: 'random.view',
 };
 
 /**

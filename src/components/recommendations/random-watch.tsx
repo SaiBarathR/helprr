@@ -1,21 +1,45 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { isQueryOffline } from '@/lib/network-error';
 import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
-import { Clock, Dices, Film, Loader2, RefreshCw, Sparkles, Star, Tv } from 'lucide-react';
+import { Clock, Dices, Film, Loader2, RefreshCw, Sparkles, Star, Tv, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { hasCapability, useMe } from '@/components/permission-provider';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { RandomPick, RandomWatchFilterType as FilterType } from '@/types';
 import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
+import { isTonightSessionId } from '@/lib/tonight-pick-id';
+import { TONIGHT_LAST_KEY, TonightPick } from './tonight/tonight-pick';
+import { TonightStartSheet } from './tonight/tonight-start-sheet';
 
 type WatchFilter = 'all' | 'unwatched';
+
+function subscribeStorage(onChange: () => void) {
+  window.addEventListener('storage', onChange);
+  return () => window.removeEventListener('storage', onChange);
+}
+
+/** The last Tonight pick this device opened, while it may still be running. */
+function readLastTonightId(): string | null {
+  try {
+    const raw = localStorage.getItem(TONIGHT_LAST_KEY);
+    if (!raw) return null;
+    const last = JSON.parse(raw) as { id?: unknown; expiresAt?: unknown };
+    return isTonightSessionId(last.id) && typeof last.expiresAt === 'string' && Date.parse(last.expiresAt) > Date.now()
+      ? last.id
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 /** The classic Random Watch experience, now a mode inside /recommendations.
  * Moved verbatim from the old /random page. */
@@ -27,6 +51,19 @@ export function RandomWatchView() {
   const [unwatchedOnly, setUnwatchedOnly] = useState(false);
 
   const watch: WatchFilter = canFilterUnwatched && unwatchedOnly ? 'unwatched' : 'all';
+
+  // A Tonight pick opens over Random from ?tonight=<id> (the push and the copied link).
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const tonightParam = searchParams.get('tonight');
+  const tonightId = isTonightSessionId(tonightParam) ? tonightParam : null;
+  const lastTonightId = useSyncExternalStore(subscribeStorage, readLastTonightId, () => null);
+  const [tonightSheetOpen, setTonightSheetOpen] = useState(false);
+  const openTonight = (id: string) => {
+    setTonightSheetOpen(false);
+    router.replace(`/recommendations?mode=random&tonight=${encodeURIComponent(id)}`, { scroll: false });
+  };
+  const closeTonight = () => router.replace('/recommendations?mode=random', { scroll: false });
 
   const apiUrl = useMemo(
     () => `/api/random-watch?type=${type}&watch=${watch}`,
@@ -79,6 +116,13 @@ export function RandomWatchView() {
     // Embedded in /recommendations, which owns page padding/animation; the
     // -mx heroes below now bleed into the shell padding = true full-bleed.
     <div className="space-y-4">
+        <TonightStartSheet
+          open={tonightSheetOpen}
+          onOpenChange={setTonightSheetOpen}
+          filters={{ type, watch }}
+          onStarted={openTonight}
+        />
+        {tonightId && <TonightPick key={tonightId} id={tonightId} onClose={closeTonight} onOpenPick={openTonight} />}
         {/* Single-row control bar: never wraps; overflows into horizontal scroll
             on very narrow screens instead of breaking onto a second line. */}
         <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto scrollbar-hide">
@@ -114,6 +158,14 @@ export function RandomWatchView() {
               />
             </label>
           )}
+          <button
+            type="button"
+            onClick={() => (lastTonightId ? openTonight(lastTonightId) : setTonightSheetOpen(true))}
+            className="touch-target relative inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent/40 px-3 py-1.5 text-xs font-semibold text-muted-foreground"
+          >
+            <Users className="h-3.5 w-3.5" />
+            {lastTonightId ? 'Back to pick' : 'Pick together'}
+          </button>
           <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1.5">
             {poolSize !== null && (
               <span className="whitespace-nowrap rounded-full bg-accent/40 px-2.5 py-1 text-[11px] tabular-nums text-muted-foreground">

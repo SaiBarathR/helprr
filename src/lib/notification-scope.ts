@@ -11,6 +11,7 @@ export const FOLLOWER_EVENT_TYPES: NotificationEventType[] = [
   'watchlistAvailable', 'watchingNewEpisode',
   'youtubeVideoNew', 'youtubeDownloadComplete', 'youtubeDownloadFailed',
   'twitchVodNew', 'twitchVodExpiring', 'twitchDownloadComplete', 'twitchDownloadFailed',
+  'tonightPickInvite',
 ];
 
 /** What a person's list, badge, mark-read and delete cover: members their own, admins all but others' follower copies. */
