@@ -7,6 +7,7 @@ import { parsePageParams } from '@/lib/pagination';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import {
   getDefaultTimeZone,
+  musicAlertForbidden,
   parseCreateInput,
   resolveHref,
 } from '@/lib/scheduled-alerts/helpers';
@@ -139,6 +140,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
   const { draft, scheduleMode, scope, releaseTypes, offsetMinutes, timeZone, absoluteNotifyAt } = parsed;
+  const forbidden = musicAlertForbidden(auth.user, draft.source);
+  if (forbidden) return forbidden;
   const metadata: ScheduledAlertMetadata = {};
   if (draft.seasonNumber != null) metadata.seasonNumber = draft.seasonNumber;
   if (draft.episodeId != null) metadata.episodeId = draft.episodeId;

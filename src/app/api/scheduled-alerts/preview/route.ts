@@ -3,7 +3,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { prisma } from '@/lib/db';
-import { getDefaultTimeZone, isAlertScope, normalizeDraft, parseReleaseTypes } from '@/lib/scheduled-alerts/helpers';
+import { getDefaultTimeZone, isAlertScope, musicAlertForbidden, normalizeDraft, parseReleaseTypes } from '@/lib/scheduled-alerts/helpers';
 import { previewScheduledAlert } from '@/lib/scheduled-alerts/resolver';
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
@@ -19,6 +19,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   const draft = normalizeDraft((body.draft as Record<string, unknown>) ?? body);
   if (!draft) return NextResponse.json({ error: 'Invalid media draft' }, { status: 400 });
+  const forbidden = musicAlertForbidden(auth.user, draft.source);
+  if (forbidden) return forbidden;
 
   const settings = await getOrCreateAppSettings();
   const userSettings = await prisma.userSettings.findUnique({ where: { userId: auth.user.id } });

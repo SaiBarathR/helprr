@@ -34,7 +34,7 @@ export async function fetchScheduledCalendarEvents(args: {
     const alert = occ.alert;
     const displayDate = occ.releaseAt ?? occ.notifyAt;
     const type =
-      alert.mediaType === 'movie' ? 'movie' : alert.mediaType === 'anime' ? 'episode' : 'episode';
+      alert.mediaType === 'movie' ? 'movie' : alert.mediaType === 'music' ? 'album' : 'episode';
     const href = alert.href ? validateInternalHref(alert.href) ?? undefined : undefined;
     const externalNum = Number.parseInt(alert.externalId, 10);
 

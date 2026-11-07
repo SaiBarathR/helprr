@@ -77,7 +77,7 @@ const STATUS_LABELS: Record<Exclude<StatusFilter, 'all'>, string> = {
   failed: 'Failed',
   cancelled: 'Cancelled',
 };
-const MEDIA_LABELS: Record<string, string> = { movie: 'Movies', series: 'Series', anime: 'Anime' };
+const MEDIA_LABELS: Record<string, string> = { movie: 'Movies', series: 'Series', anime: 'Anime', music: 'Music' };
 
 interface ListResponse {
   page: number;
@@ -582,8 +582,8 @@ export default function ScheduledAlertsPage() {
             </div>
             <div className="flex flex-col gap-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase">Media</p>
-              <div className="grid grid-cols-4 gap-1 p-1 rounded-md bg-muted/40">
-                {(['all', 'movie', 'series', 'anime'] as const).map((opt) => (
+              <div className="grid grid-cols-5 gap-1 p-1 rounded-md bg-muted/40">
+                {(['all', 'movie', 'series', 'anime', 'music'] as const).map((opt) => (
                   <button
                     key={opt}
                     type="button"

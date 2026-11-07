@@ -55,6 +55,7 @@ function toDatetimeLocalValue(iso: string | null | undefined): string {
 const MOVIE_RELEASE_OPTIONS: ReleaseKind[] = ['digital', 'cinema', 'physical'];
 const SERIES_RELEASE_OPTIONS: ReleaseKind[] = ['episode'];
 const ANIME_RELEASE_OPTIONS: ReleaseKind[] = ['airing'];
+const MUSIC_RELEASE_OPTIONS: ReleaseKind[] = ['album'];
 
 export function ScheduledAlertDialog({
   open,
@@ -81,7 +82,9 @@ export function ScheduledAlertDialog({
       ? MOVIE_RELEASE_OPTIONS
       : draft?.mediaType === 'anime'
         ? ANIME_RELEASE_OPTIONS
-        : SERIES_RELEASE_OPTIONS;
+        : draft?.mediaType === 'music'
+          ? MUSIC_RELEASE_OPTIONS
+          : SERIES_RELEASE_OPTIONS;
 
   // Seed the form whenever the dialog opens (or its inputs change while open).
   // Guarded during render; the preview fetch below fills defaults when no
@@ -192,13 +195,17 @@ export function ScheduledAlertDialog({
     }
     const body: Record<string, unknown> = {
       scheduleMode,
-      scope: defaultScopeForDraft(draft),
       releaseTypes,
       offsetMinutes,
       absoluteNotifyAt,
       title,
     };
-    if (!alertId) body.draft = { ...draft, title };
+    // An edit keeps the alert's scope: the draft rebuilt from a saved alert no
+    // longer carries the season, episode or album that chose it.
+    if (!alertId) {
+      body.scope = defaultScopeForDraft(draft);
+      body.draft = { ...draft, title };
+    }
     saveMutation.mutate(body);
   }
 

@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
+  Bell,
   Eye,
   EyeOff,
   MoreHorizontal,
@@ -44,6 +45,7 @@ import { useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
 import { arrInteractiveSearchHref } from '@/lib/arr-edit-href';
 import { useCan } from '@/components/permission-provider';
+import { ScheduledAlertDialog, type ScheduledAlertDraft } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -113,6 +115,21 @@ export default function AlbumDetailPage() {
   const canEditMonitoring = useCan('music.editMonitoring');
   const canManageActivity = useCan('activity.manage');
   const canDelete = useCan('music.delete');
+  const canScheduleAlert = useCan('scheduledAlerts.edit');
+  const [showScheduleAlert, setShowScheduleAlert] = useState(false);
+  // One object per album, so the open alert dialog is not reset by a re-render.
+  const alertDraft = useMemo((): ScheduledAlertDraft | null => album && {
+    source: 'LIDARR',
+    externalId: String(album.id),
+    mediaType: 'music',
+    albumId: album.id,
+    title: album.title,
+    subtitle: album.artist?.artistName ?? null,
+    posterUrl: album.images?.find((i) => i.coverType === 'cover')?.remoteUrl ?? null,
+    instanceId: instance ?? null,
+    href: `/music/album/${album.id}${instance ? `?instance=${instance}` : ''}`,
+    releaseDate: album.releaseDate ?? null,
+  }, [album, instance]);
 
   async function handleSearch() {
     if (!album) return;
@@ -365,6 +382,12 @@ export default function AlbumDetailPage() {
                   <DropdownMenuItem onClick={() => router.push(searchHref)}>
                     <Search className="h-4 w-4" />
                     Interactive Search
+                  </DropdownMenuItem>
+                )}
+                {canScheduleAlert && (
+                  <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
+                    <Bell className="h-4 w-4" />
+                    Schedule alert…
                   </DropdownMenuItem>
                 )}
                 {lidarrExternalUrl && album.foreignAlbumId && (
@@ -689,6 +712,9 @@ export default function AlbumDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {canScheduleAlert && (
+        <ScheduledAlertDialog open={showScheduleAlert} onOpenChange={setShowScheduleAlert} draft={alertDraft} />
+      )}
     </>
   );
 }

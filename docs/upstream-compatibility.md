@@ -481,6 +481,15 @@ with at most 100 `movieIds` per command; the confirm says so. Read from the
 Sonarr v5-develop, Radarr and Lidarr develop sources on 2026-11-06; the oldest-first
 order was checked read-only against the Radarr on the test host on 2026-11-07.
 
+### Music alerts (source contract)
+
+A scheduled alert for one album reads Lidarr `GET /api/v1/album/{id}`; an alert for an
+artist's next album reads `GET /api/v1/album?artistId=&includeAllArtistAlbums=true`
+on each refresh, so an album Lidarr learns of later is picked up then. Lidarr's
+`releaseDate` is a calendar day at midnight UTC (checked read-only on the test host's
+Lidarr on 2026-11-07), so the reminder is set from that day in the alert's time zone.
+A 404 for the album means Lidarr no longer has it and gives no reminder.
+
 ## Before reporting an upstream compatibility problem
 
 1. In **Settings → Instances**, re-test the affected connection and record the exact

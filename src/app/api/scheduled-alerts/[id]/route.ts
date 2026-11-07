@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { parseReleaseTypes, isAlertScope, isScheduleMode } from '@/lib/scheduled-alerts/helpers';
+import { parseReleaseTypes, isAlertScope, isScheduleMode, musicAlertForbidden, scopeFitsMediaType } from '@/lib/scheduled-alerts/helpers';
 import { resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
 import { upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
 import { serializeAlert } from '@/lib/scheduled-alerts/serialize';
@@ -23,6 +23,8 @@ async function patchHandler(
   const { id } = await params;
   const existing = await ownedAlert(auth.user.id, id);
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const forbidden = musicAlertForbidden(auth.user, existing.source);
+  if (forbidden) return forbidden;
 
   let body: Record<string, unknown>;
   try {
@@ -56,7 +58,9 @@ async function patchHandler(
   if (typeof body.scheduleMode === 'string' && isScheduleMode(body.scheduleMode)) {
     data.scheduleMode = body.scheduleMode;
   }
-  if (typeof body.scope === 'string' && isAlertScope(body.scope)) data.scope = body.scope;
+  if (typeof body.scope === 'string' && isAlertScope(body.scope) && scopeFitsMediaType(body.scope, existing.mediaType)) {
+    data.scope = body.scope;
+  }
   if (body.releaseTypes !== undefined) data.releaseTypes = parseReleaseTypes(body.releaseTypes);
   if (typeof body.offsetMinutes === 'number' && Number.isFinite(body.offsetMinutes)) {
     data.offsetMinutes = Math.max(0, Math.min(10_080, Math.round(body.offsetMinutes)));

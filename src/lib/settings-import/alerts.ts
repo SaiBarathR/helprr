@@ -4,9 +4,15 @@
 
 import type { Prisma, ScheduledAlert } from '@prisma/client';
 import { isValidTimeZone } from '@/lib/timezone';
-import { isAlertScope, isScheduleMode, parseReleaseTypes } from '@/lib/scheduled-alerts/helpers';
-import { DEFAULT_OFFSET_MINUTES } from '@/lib/scheduled-alerts/constants';
-import { isValidMediaType, isValidSource } from '@/lib/watchlist-helpers';
+import {
+  isAlertMediaType,
+  isAlertScope,
+  isAlertSource,
+  isScheduleMode,
+  parseReleaseTypes,
+  scopeFitsMediaType,
+} from '@/lib/scheduled-alerts/helpers';
+import { DEFAULT_OFFSET_MINUTES, defaultScopeForMediaType } from '@/lib/scheduled-alerts/constants';
 import { validateImportedPosterUrl } from './shared';
 
 // Rows per bulk statement, well inside PostgreSQL's bind-parameter limit.
@@ -46,8 +52,10 @@ export function prepareScheduledAlerts(alerts: unknown[], skipped: string[], own
     const title = typeof a.title === 'string' ? a.title.trim().slice(0, 200) : '';
     const scheduleMode = typeof a.scheduleMode === 'string' ? a.scheduleMode : '';
     if (
-      !isValidSource(source) ||
-      !isValidMediaType(mediaType) ||
+      !isAlertSource(source) ||
+      !isAlertMediaType(mediaType) ||
+      // Lidarr holds music only, and music comes only from Lidarr.
+      (source === 'LIDARR') !== (mediaType === 'music') ||
       !externalId ||
       !title ||
       !isScheduleMode(scheduleMode)
@@ -56,9 +64,9 @@ export function prepareScheduledAlerts(alerts: unknown[], skipped: string[], own
       continue;
     }
     const scope =
-      typeof a.scope === 'string' && isAlertScope(a.scope)
+      typeof a.scope === 'string' && isAlertScope(a.scope) && scopeFitsMediaType(a.scope, mediaType)
         ? a.scope
-        : mediaType === 'movie' ? 'movie' : mediaType === 'anime' ? 'anime' : 'series';
+        : defaultScopeForMediaType(mediaType);
     const releaseTypes = parseReleaseTypes(a.releaseTypes);
     const offsetMinutes =
       typeof a.offsetMinutes === 'number' && Number.isFinite(a.offsetMinutes)
