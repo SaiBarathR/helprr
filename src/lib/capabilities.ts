@@ -259,4 +259,17 @@ export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability>
   youtubeDownloadFailed: 'notify.youtube',
   youtubeCookiesExpired: 'notify.youtube',
   youtubeCleanupPaused: 'notify.youtube',
+  // Admin-only on top of this (ADMIN_ONLY_EVENT_TYPES): a member granted
+  // notify.health still never receives them.
+  updateAvailable: 'notify.health',
+  securityAlert: 'notify.health',
 };
+
+/**
+ * Events only admins receive, whatever a member is granted: they name other
+ * people's sign-ins, or are about running the server itself.
+ */
+export const ADMIN_ONLY_EVENT_TYPES: ReadonlySet<NotificationEventType> = new Set<NotificationEventType>([
+  'updateAvailable',
+  'securityAlert',
+]);

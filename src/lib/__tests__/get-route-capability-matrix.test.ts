@@ -261,6 +261,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/services',
   ],
   'cap:settings.notifications': [
+    // Own channels only; an admin also gets counts of everyone's.
+    'GET /api/notifications/channels',
     'GET /api/notifications/preferences',
     'GET /api/notifications/subscriptions',
   ],
@@ -552,7 +554,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(280);
+    expect(handlers.size).toBe(281);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

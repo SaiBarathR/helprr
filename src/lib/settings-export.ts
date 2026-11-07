@@ -343,6 +343,19 @@ export interface ExportedUserAccount {
   watchlist?: ExportedWatchlist | null;
   scheduledAlerts?: ExportedScheduledAlert[] | null;
   dashboardLayouts?: ExportedDashboardLayout[] | null;
+  // This account's outbound notification channels (ntfy, webhook, …).
+  notificationChannels?: ExportedNotificationChannel[] | null;
+}
+
+export interface ExportedNotificationChannel {
+  type: string;
+  name: string;
+  enabled: boolean;
+  events: string[];
+  /** The non-secret settings. */
+  config: Record<string, string>;
+  /** The secret fields in plain text; only when "Include API keys / tokens" is on, and only for the exporter's own channels. */
+  secrets?: Record<string, string> | null;
 }
 
 export interface ExportedTwitch {

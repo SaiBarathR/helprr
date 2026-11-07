@@ -282,3 +282,32 @@ describe('personal API token redaction', () => {
     expect(JSON.stringify(redact({ error: new Error(`refused ${token}`) }))).not.toContain(token.slice(4));
   });
 });
+
+describe('notification channel redaction', () => {
+  it('redacts channel secret fields by key and basic or bearer credentials in strings', () => {
+    expect(redact({
+      secrets: 'enc:v1:abc',
+      topic: 'helprr-private',
+      appToken: 'gotify-token',
+      'X-Gotify-Key': 'gotify-token',
+      headerValue: 'shh',
+      password: 'smtp-pass',
+      token: 'tk_x',
+      channelType: 'ntfy',
+    })).toEqual({
+      secrets: '[REDACTED]',
+      topic: '[REDACTED]',
+      appToken: '[REDACTED]',
+      'X-Gotify-Key': '[REDACTED]',
+      headerValue: '[REDACTED]',
+      password: '[REDACTED]',
+      token: '[REDACTED]',
+      channelType: 'ntfy',
+    });
+    // Built at runtime so no credential-shaped literal sits in the repo.
+    const basic = Buffer.from(['me', 'not-a-real-password'].join(':')).toString('base64');
+    expect(redact(`Authorization: Basic ${basic}`)).toBe('Authorization: Basic [REDACTED]');
+    expect(redact('Authorization: Bearer tk_abc')).toBe('Authorization: Bearer [REDACTED]');
+    expect(redact('Basic setup finished')).toBe('Basic setup finished');
+  });
+});

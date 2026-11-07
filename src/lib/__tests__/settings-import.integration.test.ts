@@ -219,6 +219,79 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     expect(await prisma.recoveryCode.count()).toBe(0);
   });
 
+  it('carries notification channels with each account: only the exporter\'s secrets, kept on a re-import without them', async () => {
+    vi.stubEnv('JWT_SECRET', 'settings-import-test-secret-long-enough-for-aes');
+    const { validateImportFile } = await import('@/lib/settings-export');
+    const { POST: exportSettings } = await import('@/app/api/settings/export/route');
+    const { encryptSecrets, decryptSecrets } = await import('@/lib/notification-channels/config');
+    const { NextRequest } = await import('next/server');
+    await prisma.user.create({ data: { id: 'member-ch', username: 'chmember', displayName: 'Member', role: 'member', template: 'member' } });
+    await prisma.notificationChannel.create({
+      data: {
+        userId: 'member-ch', type: 'ntfy', name: 'Phone', events: ['imported', 'healthWarning'],
+        config: { serverUrl: 'https://ntfy.sh', priority: '3' },
+        secrets: encryptSecrets({ topic: 'member-topic-value', token: 'tk_member_value' }),
+      },
+    });
+    await prisma.notificationChannel.create({
+      data: {
+        userId: IMPORTER_ID, type: 'webhook', name: 'Home Assistant', events: ['securityAlert'],
+        config: { headerName: 'X-Helprr-Secret' },
+        secrets: encryptSecrets({ url: 'http://192.168.1.10:8123/api/webhook/admin-hook-id', headerValue: 'admin-header-value' }),
+      },
+    });
+    const exportUsers = async (includeSecrets: boolean) => {
+      const response = await exportSettings(new NextRequest('http://localhost/api/settings/export', {
+        method: 'POST',
+        body: JSON.stringify({ users: true, includeSecrets }),
+        headers: { 'content-type': 'application/json' },
+      }));
+      expect(response.status).toBe(200);
+      return response.text();
+    };
+
+    const plain = await exportUsers(false);
+    expect(plain).toContain('"name":"Phone"');
+    for (const leak of ['member-topic-value', 'tk_member_value', 'admin-hook-id', 'admin-header-value', 'enc:v1']) {
+      expect(plain).not.toContain(leak);
+    }
+    // With secrets included: the exporter's own, never another person's.
+    const withSecrets = await exportUsers(true);
+    expect(withSecrets).toContain('admin-hook-id');
+    expect(withSecrets).not.toContain('member-topic-value');
+    expect(withSecrets).not.toContain('tk_member_value');
+    expect(withSecrets).not.toContain('enc:v1');
+
+    const full = validateImportFile(JSON.parse(withSecrets));
+    const bare = validateImportFile(JSON.parse(plain));
+    if (!full.ok || !bare.ok) throw new Error('invalid export');
+
+    // A fresh install: a channel without its secrets cannot be rebuilt, so it is skipped and said so.
+    await reset();
+    const fresh = await runImport.applySettingsImport({ users: full.payload.users } as never, IMPORTER_ID);
+    expect(fresh.skipped.some((line) => line.includes('notification channel "Phone" skipped'))).toBe(true);
+    const hook = await prisma.notificationChannel.findFirstOrThrow({ where: { name: 'Home Assistant' } });
+    expect(hook).toMatchObject({ userId: IMPORTER_ID, type: 'webhook', events: ['securityAlert'] });
+    expect(decryptSecrets(hook.secrets)).toEqual({ url: 'http://192.168.1.10:8123/api/webhook/admin-hook-id', headerValue: 'admin-header-value' });
+    expect(await prisma.notificationChannel.count()).toBe(1);
+
+    // The same install: the member's channel is still there, and a file without secrets keeps them.
+    await prisma.notificationChannel.create({
+      data: {
+        userId: 'member-ch', type: 'ntfy', name: 'Phone', events: [],
+        config: { serverUrl: 'https://ntfy.sh', priority: '3' },
+        secrets: encryptSecrets({ topic: 'member-topic-value', token: 'tk_member_value' }),
+      },
+    });
+    await runImport.applySettingsImport({ users: bare.payload.users } as never, IMPORTER_ID);
+    const phone = await prisma.notificationChannel.findFirstOrThrow({ where: { name: 'Phone' } });
+    expect(phone.events).toEqual(['imported']); // a member gets no health alerts
+    expect(decryptSecrets(phone.secrets)).toEqual({ topic: 'member-topic-value', token: 'tk_member_value' });
+    expect(decryptSecrets((await prisma.notificationChannel.findFirstOrThrow({ where: { name: 'Home Assistant' } })).secrets))
+      .toEqual({ url: 'http://192.168.1.10:8123/api/webhook/admin-hook-id', headerValue: 'admin-header-value' });
+    expect(await prisma.notificationChannel.count()).toBe(2);
+  });
+
   it('round-trips YouTube settings, rules and follows through export and import, without the cookies or the cleanup viewer', async () => {
     const { validateImportFile } = await import('@/lib/settings-export');
     const { POST: exportSettings } = await import('@/app/api/settings/export/route');

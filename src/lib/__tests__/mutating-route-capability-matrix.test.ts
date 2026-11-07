@@ -315,6 +315,11 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/services/test',
   ],
   'cap:settings.notifications': [
+    // Own channels only (another user's id is not found, admins included).
+    'POST /api/notifications/channels',
+    'PATCH /api/notifications/channels/[id]',
+    'DELETE /api/notifications/channels/[id]',
+    'POST /api/notifications/channels/[id]/test',
     'POST /api/notifications/preferences',
     'DELETE /api/notifications/subscriptions',
     'POST /api/notifications/test',
@@ -578,7 +583,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(257);
+    expect(handlers.size).toBe(261);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

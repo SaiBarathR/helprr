@@ -12,14 +12,15 @@ const RECOMMENDATION_FEEDBACK_EVENTS = ['like', 'love', 'dislike', 'not_interest
 /**
  * "Download my data": the signed-in user's own records, as one JSON file:
  * profile, settings, linked-account names, watchlist, alerts, layouts, push
- * devices and their rules, notification history, pending requests, sessions,
+ * devices and their rules, notification channels (without their secrets),
+ * notification history, pending requests, sessions,
  * follows, recommendation ratings (likes, loves, dislikes, "Not interested"),
  * the taste profile, and per-video seen/hidden flags. Impression, click and
  * play events are left out (see the coverage test); the taste profile is
  * exported whole, including what it derived from them. The user comes from the session only, and every query is scoped
  * to that user id and names its columns, so the file never holds another
  * user's rows or a secret: no password hash, Jellyfin/AniList/Twitch token,
- * push endpoint or key, or session id. Not a backup: there is no import for it.
+ * push endpoint or key, channel secret, or session id. Not a backup: there is no import for it.
  */
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUser();
@@ -45,6 +46,7 @@ async function getHandler(): Promise<NextResponse> {
       recommendationFeedback,
       tasteProfile,
       videoStates,
+      channels,
     ] = await Promise.all([
       prisma.userSettings.findUnique({
         where: { userId },
@@ -197,6 +199,12 @@ async function getHandler(): Promise<NextResponse> {
         },
         orderBy: { createdAt: 'asc' },
       }),
+      // The non-secret settings only: the secrets column can send to the channel.
+      prisma.notificationChannel.findMany({
+        where: { userId },
+        select: { type: true, name: true, enabled: true, events: true, config: true, createdAt: true, lastSucceededAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
     ]);
 
     const payload = {
@@ -226,6 +234,7 @@ async function getHandler(): Promise<NextResponse> {
       scheduledAlerts,
       dashboardLayouts,
       notificationDevices: devices,
+      notificationChannels: channels,
       notificationHistory,
       // Requests still waiting for an admin in Helprr. Approved ones live in Seerr.
       pendingRequests: requests,

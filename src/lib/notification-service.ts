@@ -7,8 +7,11 @@ import { Prisma } from '@prisma/client';
 import { logger } from '@/lib/logger';
 import { can } from '@/lib/permissions';
 import { getVapidPublicKey } from '@/lib/vapid';
-import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
+import { ADMIN_ONLY_EVENT_TYPES, EVENT_TYPE_TO_CAPABILITY, type Capability } from '@/lib/capabilities';
 import { isKnownEventType } from '@/lib/notification-events';
+import { configuredAppOrigin } from '@/lib/request-utils';
+import { dispatchToChannels, shouldDeferChannel } from '@/lib/notification-channels/dispatch';
+import type { ChannelMessage } from '@/lib/notification-channels/transports';
 import { isPushServiceEndpoint } from '@/lib/push-endpoint';
 import { getAppTimeZone, toZonedDate } from '@/lib/timezone';
 import { noteJobFailure } from '@/lib/polling-job-report';
@@ -192,7 +195,8 @@ const FILTERABLE_EVENTS = new Set(['grabbed', 'imported', 'downloadFailed', 'imp
 
 // Critical alerts always break through a user's quiet hours — a service going
 // down at 3am is exactly what they'd want to know about.
-const QUIET_HOURS_BYPASS_EVENTS = new Set(['healthWarning', 'serviceDown', 'serviceRestored']);
+// Security alerts too: a burst of failed sign-ins at night is worth waking for.
+const QUIET_HOURS_BYPASS_EVENTS = new Set(['healthWarning', 'serviceDown', 'serviceRestored', 'securityAlert']);
 
 interface QuietHoursSettings {
   quietHoursEnabled: boolean;
@@ -275,6 +279,70 @@ function matchesFilters(
   }
 
   return true;
+}
+
+type RecipientUser = Parameters<typeof can>[0] & { role: string };
+
+// Whether this user may receive the event at all, before their own per-device
+// or per-channel choice: the capability mapped to the event (a Member never
+// receives cleanup or health alerts), admins only for admin-only events, and
+// unmapped event types (a test) for admins only unless the caller targeted
+// users explicitly. Shared by push and the outbound channels.
+function recipientAllowed(
+  user: RecipientUser | null | undefined,
+  eventType: string,
+  requiredCap: Capability | undefined,
+  targeted: boolean,
+): boolean {
+  if (!user) return false;
+  if (requiredCap) {
+    if (ADMIN_ONLY_EVENT_TYPES.has(eventType as never) && user.role !== 'admin') return false;
+    return can(user, requiredCap);
+  }
+  return user.role === 'admin' || targeted;
+}
+
+/** The in-app path a notification opens, and the absolute link to it when APP_ORIGIN is set. */
+function channelLinks(targetUrl: string | undefined): { link: string | null; path: string | null } {
+  if (!targetUrl || !targetUrl.startsWith('/') || targetUrl.startsWith('//')) return { link: null, path: null };
+  const origin = configuredAppOrigin();
+  return { link: origin ? `${origin}${targetUrl}` : null, path: targetUrl };
+}
+
+// Find the user's outbound channels that take this event and pass the same
+// gates as push, then hand them to the channel dispatcher without waiting:
+// a slow endpoint must not hold up the caller (often a polling cycle).
+async function queueChannelSends(event: {
+  eventType: string;
+  title: string;
+  body: string;
+  userIds?: string[];
+}, requiredCap: Capability | undefined, metadata: Record<string, unknown>, targetUrl: string | undefined, now: Date): Promise<number> {
+  const channels = await prisma.notificationChannel.findMany({
+    where: {
+      enabled: true,
+      events: { has: event.eventType },
+      user: { status: 'active' },
+      ...(event.userIds ? { userId: { in: event.userIds } } : {}),
+    },
+    include: { user: { include: { settings: true } } },
+  });
+  const bypassesQuietHours = QUIET_HOURS_BYPASS_EVENTS.has(event.eventType);
+  const eligible = channels.filter((channel) =>
+    recipientAllowed(channel.user, event.eventType, requiredCap, Boolean(event.userIds))
+    && (bypassesQuietHours || !isWithinQuietHours(channel.user, now))
+    && !shouldDeferChannel(channel, now.getTime()));
+  if (eligible.length === 0) return 0;
+  const message: ChannelMessage = {
+    eventType: event.eventType,
+    title: event.title,
+    body: event.body,
+    ...channelLinks(targetUrl),
+    metadata: safeNotificationMetadata(metadata),
+    sentAt: now.toISOString(),
+  };
+  void dispatchToChannels(eligible, message).catch(() => {});
+  return eligible.length;
 }
 
 export function initVapid() {
@@ -553,16 +621,21 @@ export async function notifyEvent(event: {
     throw err;
   }
 
+  // Outbound channels (ntfy, webhook, …) after the dedupe row is claimed, like push.
+  let channelsQueued = 0;
+  try {
+    channelsQueued = await queueChannelSends(event, requiredCap, metadata, targetUrl, now);
+  } catch (err) {
+    logger.warn('Notification channel lookup failed', {
+      eventType: event.eventType,
+      reason: err instanceof Error ? err.message : String(err),
+    }, { scope: 'notifications' });
+  }
+
   type SendOutcome = { kind: 'sent' } | { kind: 'failed' } | { kind: 'skipped' };
   const results = await mapSettled(subscriptions, PUSH_FANOUT_CONCURRENCY, async (sub): Promise<SendOutcome> => {
       if (shouldDeferPush(sub)) return { kind: 'skipped' };
-      if (requiredCap) {
-        if (!sub.user || !can(sub.user, requiredCap)) return { kind: 'skipped' };
-      } else if (!sub.user || (sub.user.role !== 'admin' && !event.userIds)) {
-        // Unmapped event types broadcast to admins only — unless the caller
-        // explicitly targeted users (e.g. a member's own test notification).
-        return { kind: 'skipped' };
-      }
+      if (!recipientAllowed(sub.user, event.eventType, requiredCap, Boolean(event.userIds))) return { kind: 'skipped' };
       const pref = sub.preferences.find((p) => p.eventType === event.eventType);
       if (pref?.enabled === false) return { kind: 'skipped' };
       if (!matchesFilters(pref, event.eventType, metadata)) return { kind: 'skipped' };
@@ -607,6 +680,7 @@ export async function notifyEvent(event: {
           sentCount: sent,
           attempted,
           skippedByPreference,
+          channelsQueued,
         })),
       },
     });
@@ -642,6 +716,7 @@ export async function notifyEvent(event: {
     skippedByPreference,
     attempted,
     sentCount: sent,
+    channelsQueued,
   }, { scope: 'notifications' });
 
   return sent;

@@ -15,11 +15,12 @@ export const EVENT_TYPES = [
   'twitchVodNew', 'twitchVodExpiring', 'twitchDownloadComplete',
   'twitchDownloadFailed', 'twitchWorkerIssue',
   'youtubeVideoNew', 'youtubeDownloadComplete', 'youtubeDownloadFailed', 'youtubeCookiesExpired', 'youtubeCleanupPaused',
+  'updateAvailable', 'securityAlert',
 ] as const;
 
 export type NotificationEventType = (typeof EVENT_TYPES)[number];
 
-export type NotificationEventGroupId = 'sonarrRadarr' | 'services' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'scheduled' | 'requests' | 'digests' | 'twitch' | 'youtube';
+export type NotificationEventGroupId = 'sonarrRadarr' | 'services' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'scheduled' | 'requests' | 'digests' | 'twitch' | 'youtube' | 'helprr';
 
 export interface NotificationEventMeta {
   type: NotificationEventType;
@@ -247,6 +248,18 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     description: 'Automatic cleanup hit its limit, or could not read what was watched',
     iconName: 'AlertTriangle', colorClass: 'bg-amber-500/10 text-amber-400',
   },
+  updateAvailable: {
+    type: 'updateAvailable', group: 'helprr',
+    label: 'Helprr Update Available',
+    description: 'When a new Helprr release is out, once per version (admins)',
+    iconName: 'Download', colorClass: 'bg-sky-500/10 text-sky-400',
+  },
+  securityAlert: {
+    type: 'securityAlert', group: 'helprr',
+    label: 'Security Alert',
+    description: 'An admin signed in on a new device, a burst of failed sign-ins, or two-step sign-in was turned off (admins)',
+    iconName: 'AlertTriangle', colorClass: 'bg-red-500/10 text-red-500',
+  },
 };
 
 export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types: NotificationEventType[] }[] = [
@@ -310,6 +323,11 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
     id: 'youtube',
     title: 'YouTube',
     types: ['youtubeVideoNew', 'youtubeDownloadComplete', 'youtubeDownloadFailed', 'youtubeCookiesExpired', 'youtubeCleanupPaused'],
+  },
+  {
+    id: 'helprr',
+    title: 'Helprr',
+    types: ['updateAvailable', 'securityAlert'],
   },
 ];
 
