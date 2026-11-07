@@ -21,7 +21,7 @@ const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 // Headers that HTTP, Next.js or Helprr already give a meaning, or store (the
 // user agent is kept on the session and in the audit trail; Range and If-*
 // are passed on to Jellyfin): never usable here.
-const RESERVED_HEADER = /^(?:host|cookie|authorization|proxy-authorization|user-agent|origin|referer|content-[a-z-]+|connection|upgrade|keep-alive|transfer-encoding|te|trailer|expect|accept(?:-[a-z-]+)?|forwarded|x-forwarded-(?:for|proto|host|port|prefix|uri|method|ssl|scheme|server)|x-real-ip|x-request-id|x-nonce|content-security-policy|rsc|next-[a-z-]+|x-middleware-[a-z-]+|x-nextjs-[a-z-]+|x-matched-path|x-invoke-[a-z-]+|sec-[a-z-]+|range|if-[a-z-]+)$/i;
+const RESERVED_HEADER = /^(?:host|cookie|authorization|proxy-authorization|user-agent|origin|referer|content-[a-z-]+|connection|upgrade|keep-alive|transfer-encoding|te|trailer|expect|accept(?:-[a-z-]+)?|forwarded|x-forwarded-(?:for|proto|host|port|prefix|uri|method|ssl|scheme|server)|x-real-ip|x-request-id|x-nonce|content-security-policy|rsc|next-[a-z-]+|x-middleware-[a-z-]+|x-nextjs-[a-z-]+|x-matched-path|x-invoke-[a-z-]+|x-next-[a-z-]+|x-prerender-revalidate|sec-[a-z-]+|range|if-[a-z-]+)$/i;
 // Printable ASCII without spaces: proxies trim and may re-encode anything else,
 // so such a secret could never match.
 const SECRET_VALUE = /^[\x21-\x7e]+$/;
@@ -32,9 +32,9 @@ export interface TrustedAuthConfig {
   secretHeader: string;
   secretDigest: Buffer;
   /**
-   * Stamped into each session this sign-in makes. Derived from the secret
-   * (an HMAC, so the token, which its holder can read, reveals nothing of it):
-   * changing the secret ends those sessions.
+   * Stamped into each session this sign-in makes, so changing the secret ends
+   * them. An HMAC of the secret under JWT_SECRET: the token's holder can read
+   * it, but cannot test guesses at the secret against it without JWT_SECRET.
    */
   sessionStamp: string;
 }
@@ -72,6 +72,7 @@ function readTrustedAuth(env: RuntimeEnvironment): TrustedAuthState {
   if (isKnownPlaceholderSecret(secret)) {
     return off('HELPRR_TRUSTED_AUTH_SECRET must not use an example or change-me value');
   }
+  if (!env.JWT_SECRET) return off('JWT_SECRET is required');
   // The proxy's configuration holds this secret; it must not also sign sessions.
   if (secret === env.JWT_SECRET) return off('HELPRR_TRUSTED_AUTH_SECRET must not be the same as JWT_SECRET');
 
@@ -81,7 +82,10 @@ function readTrustedAuth(env: RuntimeEnvironment): TrustedAuthState {
       userHeader: userHeader.toLowerCase(),
       secretHeader: secretHeader.toLowerCase(),
       secretDigest: digest(secret),
-      sessionStamp: createHmac('sha256', secret).update('helprr:trusted-session').digest('base64url').slice(0, 22),
+      sessionStamp: createHmac('sha256', env.JWT_SECRET ?? '')
+        .update(JSON.stringify(['helprr:trusted-session', secret]))
+        .digest('base64url')
+        .slice(0, 22),
     },
   };
 }

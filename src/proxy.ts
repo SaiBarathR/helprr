@@ -149,10 +149,11 @@ export async function proxy(request: NextRequest) {
   try {
     const { payload } = await jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] });
     // Session tokens never carry an audience (the two-step pending token does).
-    // A trusted-header session also needs the proxy to still name its user.
+    // A trusted-header session also needs the proxy to still name its user,
+    // except to sign it out, which the logout route does for any signed token.
     if (
       typeof payload.sid !== 'string' || !payload.sid || payload.aud !== undefined
-      || !trustedSessionStillVouched(payload, request.headers)
+      || (pathname !== '/api/auth/logout' && !trustedSessionStillVouched(payload, request.headers))
     ) {
       if (pathname.startsWith('/api/')) {
         return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), csp);

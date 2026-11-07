@@ -15,7 +15,8 @@ import {
 import { redact } from '@/lib/logger';
 
 const SECRET = 'proxy-secret-0123456789abcdefghijklmnop';
-const BASE = { HELPRR_TRUSTED_AUTH_HEADER: 'Remote-User', HELPRR_TRUSTED_AUTH_SECRET: SECRET };
+const JWT = 'a-valid-session-secret-that-is-longer-than-32-characters';
+const BASE = { HELPRR_TRUSTED_AUTH_HEADER: 'Remote-User', HELPRR_TRUSTED_AUTH_SECRET: SECRET, JWT_SECRET: JWT };
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -44,6 +45,10 @@ describe('trusted-header sign-in configuration', () => {
 
   it.each<[Record<string, string>, string]>([
     [{ HELPRR_TRUSTED_AUTH_SECRET: SECRET }, 'HELPRR_TRUSTED_AUTH_HEADER is not'],
+    [{ ...BASE, JWT_SECRET: '' }, 'JWT_SECRET is required'],
+    [{ ...BASE, HELPRR_TRUSTED_AUTH_SECRET_HEADER: 'x-invoke-path' }, 'SECRET_HEADER names a header with another use'],
+    [{ ...BASE, HELPRR_TRUSTED_AUTH_SECRET_HEADER: 'If-Match' }, 'SECRET_HEADER names a header with another use'],
+    [{ ...BASE, HELPRR_TRUSTED_AUTH_SECRET_HEADER: 'x-next-revalidated-tags' }, 'SECRET_HEADER names a header with another use'],
     [{ HELPRR_TRUSTED_AUTH_HEADER: 'Remote-User' }, 'HELPRR_TRUSTED_AUTH_SECRET is not'],
     [{ ...BASE, HELPRR_TRUSTED_AUTH_SECRET: 'x'.repeat(31) }, 'at least 32 characters'],
     [{ ...BASE, HELPRR_TRUSTED_AUTH_SECRET: `${'x'.repeat(31)} y` }, 'no spaces'],

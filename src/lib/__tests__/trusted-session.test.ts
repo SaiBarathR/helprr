@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 // A trusted-header session stays valid only while trusted-header sign-in is
@@ -10,23 +10,32 @@ const mocks = vi.hoisted(() => ({
   cookies: vi.fn(),
   sessionCreate: vi.fn(),
   sessionFindUnique: vi.fn(),
+  sessionUpdateMany: vi.fn(),
 }));
 
 vi.mock('react', () => ({ cache: (fn: unknown) => fn }));
 vi.mock('next/headers', () => ({ cookies: mocks.cookies, headers: mocks.headers }));
 vi.mock('@/lib/db', () => ({
-  prisma: { session: { create: mocks.sessionCreate, findUnique: mocks.sessionFindUnique, update: vi.fn() } },
+  prisma: {
+    session: {
+      create: mocks.sessionCreate,
+      findUnique: mocks.sessionFindUnique,
+      update: vi.fn(),
+      updateMany: mocks.sessionUpdateMany,
+    },
+  },
 }));
 
-vi.stubEnv('JWT_SECRET', 'a-valid-session-secret-that-is-longer-than-32-characters');
+const JWT = 'a-valid-session-secret-that-is-longer-than-32-characters';
+vi.stubEnv('JWT_SECRET', JWT);
 
-import { createSession, requireUser } from '@/lib/auth';
+import { createSession, getCurrentSid, requireUser } from '@/lib/auth';
 import { proxy } from '@/proxy';
 import { getTrustedAuthConfig } from '@/lib/trusted-auth';
 import { trustedSessionStillVouched } from '@/lib/trusted-session';
 
 const SECRET = 'proxy-secret-0123456789abcdefghijklmnop';
-const ENV = { HELPRR_TRUSTED_AUTH_HEADER: 'Remote-User', HELPRR_TRUSTED_AUTH_SECRET: SECRET };
+const ENV = { HELPRR_TRUSTED_AUTH_HEADER: 'Remote-User', HELPRR_TRUSTED_AUTH_SECRET: SECRET, JWT_SECRET: JWT };
 const ACTIVE_SESSION = {
   id: 'session-1',
   lastSeenAt: new Date(),
@@ -54,10 +63,15 @@ function pageRequest(token: string, headers: Record<string, string> = {}, path =
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv('JWT_SECRET', JWT);
   vi.stubEnv('HELPRR_TRUSTED_AUTH_HEADER', ENV.HELPRR_TRUSTED_AUTH_HEADER);
   vi.stubEnv('HELPRR_TRUSTED_AUTH_SECRET', ENV.HELPRR_TRUSTED_AUTH_SECRET);
   vi.stubEnv('HELPRR_TRUSTED_AUTH_SECRET_HEADER', '');
   mocks.sessionFindUnique.mockResolvedValue(ACTIVE_SESSION);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe('trustedSessionStillVouched', () => {
@@ -91,9 +105,9 @@ describe('trustedSessionStillVouched', () => {
     expect(trustedSessionStillVouched(claims(42), headers({ 'Remote-User': '42' }), ENV)).toBe(false);
   });
 
-  it('stamps the session with an HMAC that reveals nothing of the secret', () => {
+  it('keys the stamp with JWT_SECRET, so a token holder cannot test guesses at the proxy secret', () => {
     expect(stamp()).toMatch(/^[\w-]{22}$/);
-    expect(SECRET).not.toContain(stamp());
+    expect(stamp({ ...ENV, JWT_SECRET: `${JWT}-other` })).not.toBe(stamp());
   });
 });
 
@@ -122,6 +136,18 @@ describe('the request proxy', () => {
   it('answers an API call 401 once the proxy names someone else', async () => {
     const response = await proxy(pageRequest(await tokenFor('Alice'), { 'Remote-User': 'Bob' }, '/api/me'));
     expect(response.status).toBe(401);
+  });
+
+  it('ends a trusted session once the feature is turned off', async () => {
+    const token = await tokenFor('Alice');
+    vi.stubEnv('HELPRR_TRUSTED_AUTH_HEADER', '');
+    const response = await proxy(pageRequest(token, { 'Remote-User': 'Alice' }, '/api/me'));
+    expect(response.status).toBe(401);
+  });
+
+  it('still lets a session it refuses reach logout, so it can be signed out', async () => {
+    const response = await proxy(pageRequest(await tokenFor('Alice'), { 'Remote-User': 'Bob' }, '/api/auth/logout'));
+    expect(response.headers.get('x-middleware-next')).toBe('1');
   });
 
   it('keeps a password session whatever the header says', async () => {
@@ -153,6 +179,31 @@ describe('server auth', () => {
     vi.stubEnv('HELPRR_TRUSTED_AUTH_SECRET', '');
     const auth = await asRequest(token, { 'Remote-User': 'Alice' });
     expect(auth.ok).toBe(false);
+    expect(mocks.sessionFindUnique).not.toHaveBeenCalled();
+  });
+
+  it('refuses it once the account was renamed, even while the proxy sends the old name', async () => {
+    mocks.sessionFindUnique.mockResolvedValue({ ...ACTIVE_SESSION, user: { ...ACTIVE_SESSION.user, username: 'Alicia' } });
+    const auth = await asRequest(await tokenFor('Alice'), { 'Remote-User': 'Alice' });
+    expect(auth.ok).toBe(false);
+  });
+
+  it('refuses a token carrying only half of the trusted claims', async () => {
+    const { SignJWT } = await import('jose');
+    const token = await new SignJWT({ authenticated: true, sid: 'session-1', uid: 'user-1', role: 'member', ts: stamp() })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('60s')
+      .sign(new TextEncoder().encode(JWT));
+    const auth = await asRequest(token, { 'Remote-User': 'Alice' });
+    expect(auth.ok).toBe(false);
+  });
+
+  it('still names the session for logout once the proxy no longer vouches for it', async () => {
+    const token = await tokenFor('Alice');
+    mocks.cookies.mockResolvedValue({ get: () => ({ value: token }) });
+    mocks.headers.mockResolvedValue(new Headers({ 'Remote-User': 'Bob' }));
+    expect(await getCurrentSid()).toBe('session-1');
   });
 
   it('never reads the request headers for any other session', async () => {

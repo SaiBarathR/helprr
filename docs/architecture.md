@@ -364,8 +364,13 @@ Its JWT carries the username in claim `tu` and an HMAC stamp of the proxy secret
 (`src/lib/trusted-session.ts`): the request proxy and `decodeToken` refuse it unless
 trusted-header sign-in is still validly on with the same secret and the user header still
 names exactly that user, so a sign-out at the proxy, another user signing in there, a
-changed secret or the feature turned off ends it on the next request. Only sessions made
-this way are bound; a password session on the same browser is not.
+changed secret or the feature turned off refuses it on the next request (the row is not
+revoked: restoring the same config makes it work again). The stamp is an HMAC under
+`JWT_SECRET`, so a holder cannot test guesses at the proxy secret against it. Server auth
+also refuses it once the account's username is no longer `tu`. Logout still revokes such a
+session: the request proxy lets `/api/auth/logout` through without the binding, and
+`getCurrentSid` checks only the signature. Only sessions made this way are bound; a
+password session on the same browser is not.
 The logger redacts the configured secret wherever it appears and the default header name
 as a key; request headers are never logged.
 
