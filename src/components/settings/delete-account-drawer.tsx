@@ -15,7 +15,7 @@ import { endSessionInThisBrowser } from '@/lib/client-cache';
 
 /**
  * Delete the signed-in user's own account. A local account confirms with its
- * password; a Jellyfin-only account, which has none, types its username.
+ * password; a Jellyfin-only account, which has none, with its Jellyfin password.
  */
 export function DeleteAccountDrawer({
   open,
@@ -36,7 +36,7 @@ export function DeleteAccountDrawer({
       const res = await fetch('/api/me', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(hasLocalPassword ? { currentPassword: confirmation } : { confirmUsername: confirmation }),
+        body: JSON.stringify({ currentPassword: confirmation }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new ApiError(res.status, data.error ?? 'Failed to delete your account');
@@ -46,9 +46,7 @@ export function DeleteAccountDrawer({
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to delete your account'),
   });
 
-  const canSubmit = confirmation.trim().length > 0
-    && (hasLocalPassword || confirmation.trim() === username)
-    && !mutation.isPending;
+  const canSubmit = confirmation.trim().length > 0 && !mutation.isPending;
 
   return (
     <Drawer
@@ -84,12 +82,12 @@ export function DeleteAccountDrawer({
               <input type="text" name="username" autoComplete="username" value={username} readOnly hidden />
             )}
             <Label htmlFor="da-confirm">
-              {hasLocalPassword ? 'Current password' : `Type ${username} to confirm`}
+              {hasLocalPassword ? 'Current password' : 'Jellyfin password'}
             </Label>
             <Input
               id="da-confirm"
-              type={hasLocalPassword ? 'password' : 'text'}
-              autoComplete={hasLocalPassword ? 'current-password' : 'off'}
+              type="password"
+              autoComplete="current-password"
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}

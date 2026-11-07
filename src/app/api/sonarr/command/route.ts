@@ -4,6 +4,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { checkOwnership, coercePositiveInt, coercePositiveIntArray } from '@/lib/manage-files-guard';
+import { can } from '@/lib/permissions';
 
 async function postHandler(request: NextRequest) {
   // Commands (search / refresh / rename) are activity-management actions;
@@ -22,6 +23,11 @@ async function postHandler(request: NextRequest) {
     let result;
     // Data-mutating commands routed here must also be listed in MUTATING_COMMANDS
     // (lib/cache/tagged-library.ts), or their completion won't drop the Redis caches.
+    // Renaming moves files on disk, so Organize and per-file rename also need
+    // the series file capability, checked before anything is sent.
+    if ((body.name === 'RenameSeries' || body.name === 'RenameFiles') && !can(auth.user, 'series.manageFiles')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     switch (body.name) {
       case 'EpisodeSearch':
         result = await client.searchEpisode(body.episodeIds);

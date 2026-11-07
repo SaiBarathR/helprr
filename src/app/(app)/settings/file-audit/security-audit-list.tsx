@@ -128,7 +128,7 @@ function summary(record: SecurityAuditRecord): string {
       break;
     case 'LOGIN_FAILED':
       parts.push(method, plural(record.count, 'attempt'));
-      // The name matched no Helprr account, so it was stored masked.
+      // The name, kept as typed, matched no Helprr account.
       if (!record.targetId && !ACCOUNT_NAME_METHODS.has(record.fields?.[0] ?? '')) parts.push('unknown username');
       break;
     case 'PASSWORD_CHANGED':

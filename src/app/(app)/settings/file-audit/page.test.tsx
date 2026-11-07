@@ -33,4 +33,13 @@ describe('Operation audit', () => {
     expect(screen.getAllByText(/files\/data deleted/)).toHaveLength(1);
     expect(screen.getByText('Request failed with status code 500')).toBeTruthy();
   });
+
+  it('names the releases a bulk blocklist removal unblocked', async () => {
+    records = [record({
+      service: 'SONARR', operation: 'REMOVE_BLOCKLIST', mediaType: 'blocklist', mediaTitle: '4 Sonarr blocklist entries',
+      fileCount: 4, filesDeleted: null, details: { source: 'sonarr', ids: [1, 2, 3, 4], titles: ['Show.S01E01', 'Show.S01E02', '#3', 'Show.S01E04'] },
+    })];
+    renderPage();
+    expect(await screen.findByText('Show.S01E01 • Show.S01E02 • #3 • +1 more')).toBeTruthy();
+  });
 });

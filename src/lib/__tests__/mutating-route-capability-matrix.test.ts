@@ -612,6 +612,18 @@ describe('mutating API route capability matrix', () => {
     }
   });
 
+  it('makes the rename commands also need the title\'s file capability', () => {
+    // Organize and per-file rename move files on disk: activity.manage alone is not enough.
+    for (const [route, capability] of [
+      ['POST /api/sonarr/command', 'series.manageFiles'],
+      ['POST /api/radarr/command', 'movies.manageFiles'],
+      // Music has no manageFiles; music.delete gates its track files.
+      ['POST /api/lidarr/command', 'music.delete'],
+    ] as const) {
+      expect(hasCapabilityGuard(handlers.get(route)!, capability), `${route} must require ${capability} to rename`).toBe(true);
+    }
+  });
+
   it('locks dynamic, field-level, and ownership-aware policies to their fail-closed guards', () => {
     const known = new Set<string>(CAPABILITIES);
     for (const [route, policy] of Object.entries(SPECIAL_POLICIES)) {

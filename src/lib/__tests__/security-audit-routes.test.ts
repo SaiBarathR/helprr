@@ -185,7 +185,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('sign-in', () => {
-  it('records a success with the method, and a failure by account or masked when no account matches', async () => {
+  it('records a success with the method, and a failure by account or by the name as typed when no account matches', async () => {
     mocks.db.user.findFirst.mockResolvedValue({ id: 'user-1', username: 'member', role: 'member', passwordHash: 'h', totpEnabledAt: null });
     mocks.verifyUserPassword.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
@@ -202,11 +202,10 @@ describe('sign-in', () => {
     const failures = mocks.db.securityAuditEvent.upsert.mock.calls.map((call) => call[0]);
     expect(failures.map((f) => [f.create.targetId, f.create.targetLabel])).toEqual([
       ['user-1', 'member'],
-      [null, 'no… (6 chars)'],
+      [null, 'nobody'],
     ]);
     expect(failures[0]).toMatchObject({ update: { count: { increment: 1 } }, create: { action: 'LOGIN_FAILED', actorUserId: null } });
     expect(JSON.stringify(failures)).not.toContain('wrong guess');
-    expect(JSON.stringify(failures)).not.toContain('nobody');
     // The route already knows the account: one lookup per attempt, as before.
     expect(mocks.db.user.findFirst).toHaveBeenCalledTimes(3);
   });
@@ -275,9 +274,17 @@ describe('users', () => {
     const response = await updateUser(req('/api/users/user-1', 'PATCH', { role: 'admin', password: PASSWORD, displayName: 'Member' }), params('user-1'));
     expect(response.status).toBe(200);
     expect(events()).toEqual([expect.objectContaining({
-      action: 'USER_UPDATED', targetId: 'user-1', targetLabel: 'member', fields: ['role', 'template', 'password'], count: 2,
+      action: 'USER_UPDATED', targetId: 'user-1', targetLabel: 'member', fields: ['made admin', 'template', 'password'], count: 2,
     })]);
     expectNoSecrets();
+  });
+
+  it('records a demotion as "made member"', async () => {
+    mocks.db.user.findUnique.mockResolvedValue({ ...member, role: 'admin', template: 'admin' });
+    mocks.db.user.update.mockImplementation(async ({ data }) => ({ ...member, role: 'admin', template: 'admin', ...data }));
+    const response = await updateUser(req('/api/users/user-1', 'PATCH', { role: 'member' }), params('user-1'));
+    expect(response.status).toBe(200);
+    expect(events()).toEqual([expect.objectContaining({ action: 'USER_UPDATED', fields: ['made member', 'template'] })]);
   });
 
   it('records the calendar feed link a password reset ended', async () => {
@@ -392,7 +399,7 @@ describe('Jellyfin self-link', () => {
     expect(response.status).toBe(401);
     expect(mocks.db.securityAuditEvent.upsert.mock.calls.map((call) => call[0].create)).toEqual([expect.objectContaining({
       action: 'LOGIN_FAILED', actorUserId: 'user-1', actorUsername: 'member', targetId: null,
-      targetLabel: 'jf… (9 chars)', fields: ['jellyfin'],
+      targetLabel: 'jf-member', fields: ['jellyfin'],
     })]);
     expectNoSecrets();
   });

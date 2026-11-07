@@ -167,7 +167,7 @@ export function SeriesHeaderActions({
               Edit
             </DropdownMenuItem>
           )}
-          {canManageActivity && (
+          {canManageActivity && canManageFiles && (
             <DropdownMenuItem onClick={() => open('renamePreview')}>
               <FileEdit className="h-4 w-4" />
               Preview Rename

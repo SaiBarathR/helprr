@@ -558,7 +558,7 @@ export default function SeriesPage() {
                   href: arrManageHref('series', item.id, item.title, item.instanceId),
                 }]
               : []),
-            ...(canSearch
+            ...(canSearch && canManageFiles
               ? [{
                   id: 'rename',
                   label: 'Preview rename…',
@@ -1128,7 +1128,7 @@ export default function SeriesPage() {
             instanceId: selectedInstance,
             isAdmin,
             canChangePath,
-            canOrganize: canSearch,
+            canOrganize: canSearch && canManageFiles,
             onApply: handleBulkEdit,
             onOrganize: handleOrganize,
           }}

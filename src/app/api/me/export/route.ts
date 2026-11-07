@@ -5,13 +5,18 @@ import { withApiLogging } from '@/lib/api-logger';
 
 const MY_DATA_EXPORT_KIND = 'helprr-my-data';
 const MY_DATA_EXPORT_VERSION = 1;
+// Ratings and "Not interested": the user's own choices. Impressions, clicks and
+// plays are the engine's measurements and stay out.
+const RECOMMENDATION_FEEDBACK_EVENTS = ['like', 'love', 'dislike', 'not_interested'] as const;
 
 /**
  * "Download my data": the signed-in user's own records, as one JSON file:
  * profile, settings, linked-account names, watchlist, alerts, layouts, push
- * devices and their rules, notification history, pending requests, sessions
- * and follows. Recommendation signals and per-video seen/hidden flags are left
- * out (see the coverage test). The user comes from the session only, and every query is scoped
+ * devices and their rules, notification history, pending requests, sessions,
+ * follows, recommendation ratings (likes, loves, dislikes, "Not interested"),
+ * the taste profile, and per-video seen/hidden flags. Impression, click and
+ * play events are left out (see the coverage test); the taste profile is
+ * exported whole, including what it derived from them. The user comes from the session only, and every query is scoped
  * to that user id and names its columns, so the file never holds another
  * user's rows or a secret: no password hash, Jellyfin/AniList/Twitch token,
  * push endpoint or key, or session id. Not a backup: there is no import for it.
@@ -37,6 +42,9 @@ async function getHandler(): Promise<NextResponse> {
       sessions,
       creatorSubscriptions,
       playlistSubscriptions,
+      recommendationFeedback,
+      tasteProfile,
+      videoStates,
     ] = await Promise.all([
       prisma.userSettings.findUnique({
         where: { userId },
@@ -168,6 +176,26 @@ async function getHandler(): Promise<NextResponse> {
         },
         orderBy: { createdAt: 'asc' },
       }),
+      // What the user told Recommendations, not what it showed them.
+      prisma.recommendationEvent.findMany({
+        where: { userId, eventType: { in: [...RECOMMENDATION_FEEDBACK_EVENTS] } },
+        select: { itemKey: true, eventType: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma.userTasteProfile.findUnique({
+        where: { userId },
+        select: { profile: true, version: true, builtAt: true },
+      }),
+      prisma.creatorVideoState.findMany({
+        where: { userId },
+        select: {
+          seenAt: true,
+          hidden: true,
+          updatedAt: true,
+          video: { select: { platform: true, externalId: true, title: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
     ]);
 
     const payload = {
@@ -205,6 +233,12 @@ async function getHandler(): Promise<NextResponse> {
         creators: creatorSubscriptions,
         playlists: playlistSubscriptions,
       },
+      recommendations: {
+        feedback: recommendationFeedback,
+        tasteProfile,
+      },
+      // YouTube and Twitch videos marked seen or hidden.
+      videoStates,
     };
 
     const date = new Date().toISOString().slice(0, 10);

@@ -16,6 +16,11 @@ vi.mock('@/components/ui/app-link', () => ({
 
 import UsersAdminPage from './page';
 
+// Radix Select needs these, which jsdom lacks.
+Element.prototype.scrollIntoView ??= () => {};
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.releasePointerCapture ??= () => {};
+
 const member = {
   id: 'u2', username: 'iso', displayName: 'Iso', role: 'member', status: 'active', template: 'member',
   jellyfinUserId: null, seerrUserId: null, createdAt: '2026-10-01T00:00:00.000Z', lastLoginAt: null,
@@ -44,6 +49,18 @@ describe('editing a user', () => {
     mocks.permissions = { template: 'admin', effective: { 'movies.add': true } };
     await client.invalidateQueries({ queryKey: ['users', 'permissions', 'u2'] });
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Add movies to library' }).getAttribute('aria-checked')).toBe('true'));
+  });
+
+  it('warns when the user can request but not browse Discover', async () => {
+    mocks.permissions = { template: 'member', effective: { 'requests.create': true, 'discover.view': false } };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><UsersAdminPage /></QueryClientProvider>);
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    expect(await screen.findByText(/Can request, but can.t browse Discover/)).toBeTruthy();
+
+    mocks.permissions = { template: 'member', effective: { 'requests.create': true, 'discover.view': true } };
+    await client.invalidateQueries({ queryKey: ['users', 'permissions', 'u2'] });
+    await waitFor(() => expect(screen.queryByText(/Can request, but can.t browse Discover/)).toBeNull());
   });
 });
 
@@ -84,6 +101,53 @@ describe('invite and reset links', () => {
     expect(sent).not.toHaveProperty('password');
   });
 
+  it('builds the invite link on APP_ORIGIN when the server sends one', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/users' && init?.method === 'POST') {
+        return new Response(JSON.stringify({
+          ...member, id: 'u3', username: 'newbie', status: 'pending', hasPassword: false,
+          passwordLink: { purpose: 'invite', expiresAt }, linkToken: TOKEN, linkOrigin: 'https://helprr.example.com',
+        }), { status: 201 });
+      }
+      if (url === '/api/users') return new Response(JSON.stringify([member]));
+      return new Response(JSON.stringify([]));
+    }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add' }));
+    await userEvent.type(screen.getByLabelText('Username'), 'newbie');
+    await userEvent.type(screen.getByLabelText('Display name'), 'New');
+    await userEvent.click(screen.getByRole('button', { name: 'Create and get link' }));
+    const field = await screen.findByLabelText('Invite link for @newbie');
+    expect((field as HTMLInputElement).value).toBe(`https://helprr.example.com/invite#${TOKEN}`);
+  });
+
+  it('turns the invite link off when a Jellyfin account is picked', async () => {
+    const calls: Array<{ url: string; body?: unknown }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? JSON.parse(init.body as string) : undefined });
+      if (url === '/api/jellyfin/users') return new Response(JSON.stringify({ users: [{ Id: 'jf-7', Name: 'Jelly Seven' }] }));
+      if (url === '/api/users' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ ...member, id: 'u3', username: 'jelly', passwordLink: null }), { status: 201 });
+      }
+      if (url === '/api/users') return new Response(JSON.stringify([member]));
+      return new Response(JSON.stringify([]));
+    }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add' }));
+    await userEvent.type(screen.getByLabelText('Username'), 'jelly');
+    await userEvent.type(screen.getByLabelText('Display name'), 'Jelly');
+    expect(screen.getByRole('switch', { name: 'Invite link' }).getAttribute('aria-checked')).toBe('true');
+
+    // Role, Jellyfin account, Seerr account.
+    await userEvent.click(screen.getAllByRole('combobox')[1]);
+    await userEvent.click(await screen.findByRole('option', { name: 'Jelly Seven' }));
+    expect(screen.getByRole('switch', { name: 'Invite link' }).getAttribute('aria-checked')).toBe('false');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(calls.some((c) => c.url === '/api/users' && c.body)).toBe(true));
+    expect(calls.find((c) => c.url === '/api/users' && c.body)?.body).toMatchObject({ invite: false, jellyfinUserId: 'jf-7' });
+  });
+
   it('makes and revokes a reset link for an active local user', async () => {
     const local = { ...member, hasPassword: true, passwordLink: null };
     const methods: string[] = [];
@@ -91,7 +155,7 @@ describe('invite and reset links', () => {
       if (url === '/api/users/u2/password-link') {
         methods.push(init?.method ?? 'GET');
         return init?.method === 'POST'
-          ? new Response(JSON.stringify({ token: TOKEN, purpose: 'reset', expiresAt }), { status: 201 })
+          ? new Response(JSON.stringify({ token: TOKEN, purpose: 'reset', expiresAt, origin: 'https://helprr.example.com' }), { status: 201 })
           : new Response(JSON.stringify({ revoked: true }));
       }
       if (url === '/api/users') return new Response(JSON.stringify([local]));
@@ -102,7 +166,8 @@ describe('invite and reset links', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
     await userEvent.click(await screen.findByRole('button', { name: 'Make link' }));
 
-    expect(((await screen.findByLabelText('Password reset link for @iso')) as HTMLInputElement).value).toContain(TOKEN);
+    expect(((await screen.findByLabelText('Password reset link for @iso')) as HTMLInputElement).value)
+      .toBe(`https://helprr.example.com/invite#${TOKEN}`);
     await userEvent.click(screen.getByRole('button', { name: 'Revoke' }));
     await waitFor(() => expect(screen.queryByLabelText('Password reset link for @iso')).toBeNull());
     expect(methods).toEqual(['POST', 'DELETE']);

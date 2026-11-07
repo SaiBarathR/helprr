@@ -4,6 +4,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { checkOwnership } from '@/lib/manage-files-guard';
+import { can } from '@/lib/permissions';
 
 function toPositiveInt(value: unknown): number | null {
   const n = Number(value);
@@ -35,6 +36,12 @@ async function postHandler(request: NextRequest) {
     let result;
     // Data-mutating commands routed here must also be listed in MUTATING_COMMANDS
     // (lib/cache/tagged-library.ts), or their completion won't drop the Redis caches.
+    // Renaming moves files on disk, so Organize and per-file rename also need a
+    // music file capability. Music has no manageFiles; music.delete is the one
+    // that gates its track files (/api/lidarr/trackfile).
+    if ((body.name === 'RenameArtist' || body.name === 'RenameFiles') && !can(auth.user, 'music.delete')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     switch (body.name) {
       case 'ArtistSearch': {
         // Bulk callers send `artistIds` (fanned out one search per id, since Lidarr

@@ -255,16 +255,21 @@ a local password (Jellyfin-only) get 409.
 Settings -> Account also lets a user delete their own account (`DELETE /api/me`). The
 user comes from the session only; an id in the body is ignored. A local account
 re-enters its password behind the same throttles as a password change; a Jellyfin-only
-account types its username. In one transaction it takes the last-admin guard lock (for
+account enters its Jellyfin password behind the same throttles, checked against Jellyfin
+as the linked Jellyfin user (its name looked up by id; a sign-in that lands on another
+Jellyfin user is refused, and an unreachable Jellyfin answers 502 and counts nothing).
+In one transaction it takes the last-admin guard lock (for
 an admin), locks the user row only if it is still the account just confirmed (same hash,
-role and status, this session still live), then runs the same guarded delete and cascade
+Jellyfin link, role and status, this session still live), then runs the same guarded delete and cascade
 as Settings -> Users (`deleteUserUnlessLastAdmin` in `src/lib/user-deletion.ts`). Every
 change that can remove an active admin (delete, demotion, disable) takes the same
 transaction-scoped advisory lock before counting the admins left, so two of them cannot
 both pass the guard. The self-delete writes `USER_DELETED` with the user as actor and
 clears the cookie. `GET /api/me/export` is the matching "Download my data": the user's
 own rows, by named columns, never a hash, token, push endpoint or key, session id or
-another user's rows.
+another user's rows. It includes the recommendation ratings and "Not interested"
+events (not impressions, clicks or plays), the stored taste profile, and the per-video
+seen/hidden flags of YouTube and Twitch videos.
 
 Invite and password-reset links (`src/lib/password-links.ts`, table `PasswordLink`,
 one row per user) let a person set their own local password. An admin makes one in
@@ -274,7 +279,10 @@ makes an invite for a pending user or a reset for an active user with a local pa
 (409 for disabled and Jellyfin-only accounts). The token is 32 random bytes, returned
 once in that response (never logged), and only its SHA-256 is stored; a new link
 replaces the row, which ends the old one, and `DELETE` revokes it. A PATCH that sets a
-password or changes status also ends it. A link is `/invite#<token>`: the token is in
+password or changes status also ends it. A link is `/invite#<token>` on the configured
+`APP_ORIGIN` (sent with the token as `origin`, or `linkOrigin` on user create), or on
+the admin page's own address when `APP_ORIGIN` is unset; a set but invalid
+`APP_ORIGIN` makes no link (500, and no invited user is created): the token is in
 the fragment, which browsers never send to a server. The public `/invite` page (excluded
 from the service worker's page cache, served with `Referrer-Policy: no-referrer`) reads
 `location.hash` once, replaces the URL with `/invite` (one tick later, through the router's
@@ -583,8 +591,10 @@ of its releases, with the tracks that release's, because Lidarr
 imports to whatever ids it is handed. The command routes do
 not accept `ManualImport`. A rename's file ids are checked against the title it
 names, as the file manager's edits and deletes are, because the *arr renames
-whatever ids it is handed. Renames are not audited; the *arr keeps them in its
-own history. Queue and download cleaner runs, scheduled or interactive, send
+whatever ids it is handed. A rename (per-file or Organize) needs `activity.manage`
+and the title's file capability: `series.manageFiles`, `movies.manageFiles`, or for
+music, which has none, `music.delete` (the capability on its track files). Renames
+are not audited; the *arr keeps them in its own history. Queue and download cleaner runs, scheduled or interactive, send
 their per-item outcomes to `CleanupHistory`, which records the trigger (`auto`
 or `manual`), the actor (`actorUserId`/`actorUsername`: the user who ran the
 preview or run, or `system:cleanup-scheduler` with a null id for a scheduled
@@ -616,15 +626,16 @@ making, renewing or turning off their calendar feed link. A row holds the actor 
 denormalized), action, target type/id/label, the coarse IP (IPv4 /24, IPv6 /64,
 from the trusted-proxy address only), a 256-character user agent, the request
 id, and `fields`: the names of what changed (or the sign-in method, or the
-imported sections), never a value, hash or key. A failed sign-in has no actor
-(the signed-in user for a self-service check) and keeps the username, with the
-account as `targetId`, only when it names an active Helprr account or Jellyfin
-accepted it; any other name is masked to its first two characters and length,
-so a password typed into the username field is never stored. `recordFailedSignIn`
-upserts on a `coalesceKey` that is an HMAC under `JWT_SECRET` (or
-`APP_PASSWORD`) of (method, full normalized username, coarse IP, actor, minute),
-so repeats add to one row's `count` and a database copy cannot brute-force a
-masked name from it. The tab pages 50 rows at a time and can hide failed
+imported sections), never a hash or key; the one value kept is a new role, as
+`made admin` or `made member` in place of `role`. A failed sign-in has no actor
+(the signed-in user for a self-service check) and keeps the username as typed
+(owner decision 2026-11-07, accepting that a password typed into the username
+box is kept too), with control and format characters (zero-width, bidi) and line
+separators removed and at most 64 code points (`(unprintable)` when nothing is
+left); the account is `targetId` when the name is an active Helprr
+account. `recordFailedSignIn` upserts on a `coalesceKey` that is an HMAC under
+`JWT_SECRET` (or `APP_PASSWORD`) of (method, full normalized username, coarse IP,
+actor, minute), so repeats add to one row's `count`. The tab pages 50 rows at a time and can hide failed
 sign-ins (`hideFailedSignIns=1`) so a flood cannot bury account and connection
 changes; the switch also hides `INVITE_LINK_FAILED` rows. Only attempts that reach the credential check are recorded,
 so the sign-in rate limits and global backstop also bound how many rows a flood

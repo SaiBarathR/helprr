@@ -440,7 +440,7 @@ export default function MovieDetailPage() {
       id: 'organize',
       actions: [
         ...(canEditMovie ? [{ id: 'edit', label: 'Edit', icon: <Pencil className="h-4 w-4" />, href: arrEditHref('movie', movie.id, instance) }] : []),
-        ...(canManageActivity ? [{ id: 'rename', label: 'Preview Rename', icon: <FileEdit className="h-4 w-4" />, onSelect: () => setShowRenamePreview(true) }] : []),
+        ...(canManageActivity && canManageFiles ? [{ id: 'rename', label: 'Preview Rename', icon: <FileEdit className="h-4 w-4" />, onSelect: () => setShowRenamePreview(true) }] : []),
         ...(canManageFiles ? [{ id: 'files', label: 'Manage Files', icon: <FileStack className="h-4 w-4" />, href: arrManageHref('movie', movie.id, movie.title, instance) }] : []),
       ],
     },
@@ -558,7 +558,7 @@ export default function MovieDetailPage() {
                     Edit
                   </DropdownMenuItem>
                 )}
-                {canManageActivity && (
+                {canManageActivity && canManageFiles && (
                   <DropdownMenuItem onClick={() => setShowRenamePreview(true)}>
                     <FileEdit className="h-4 w-4" />
                     Preview Rename

@@ -132,6 +132,8 @@ function OperationsList() {
         <div className="space-y-2 px-4">
           {records.map((r) => {
             const paths = Array.isArray(r.details?.paths) ? (r.details!.paths as string[]) : null;
+            // A bulk blocklist removal names each release (one is already the row's title).
+            const titles = Array.isArray(r.details?.titles) && r.details.titles.length > 1 ? (r.details.titles as string[]) : null;
             const totalBytes = typeof r.details?.totalBytes === 'number' ? (r.details!.totalBytes as number) : null;
             const fields = Array.isArray(r.details?.fields) ? (r.details!.fields as string[]) : null;
             const rootFolder = r.operation === 'MOVE_MEDIA' && typeof r.details?.rootFolderPath === 'string'
@@ -166,6 +168,11 @@ function OperationsList() {
                 </p>
                 {rootFolder && (
                   <p className="mt-1 break-all text-[11px] font-mono text-muted-foreground/80">→ {rootFolder}</p>
+                )}
+                {titles && (
+                  <p className="mt-1 break-words text-[11px] text-muted-foreground/80">
+                    {titles.slice(0, 3).join(' • ')}{titles.length > 3 ? ` • +${titles.length - 3} more` : ''}
+                  </p>
                 )}
                 {paths?.length ? (
                   <p className="mt-1 break-all text-[11px] font-mono text-muted-foreground/80">

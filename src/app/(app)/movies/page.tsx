@@ -572,7 +572,7 @@ export default function MoviesPage() {
                   href: arrManageHref('movie', movie.id, movie.title, movie.instanceId),
                 }]
               : []),
-            ...(canSearch
+            ...(canSearch && canManageFiles
               ? [{
                   id: 'rename',
                   label: 'Preview rename…',
@@ -1156,7 +1156,7 @@ export default function MoviesPage() {
             instanceId: selectedInstance,
             isAdmin,
             canChangePath,
-            canOrganize: canSearch,
+            canOrganize: canSearch && canManageFiles,
             onApply: handleBulkEdit,
             onOrganize: handleOrganize,
           }}

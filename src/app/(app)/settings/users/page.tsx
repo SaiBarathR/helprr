@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import Link from '@/components/ui/app-link';
 import { ChevronLeft, Copy, Link2, Loader2, Pencil, Plus, Share, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -59,6 +59,8 @@ interface IssuedLink {
   token: string;
   purpose: 'invite' | 'reset';
   expiresAt: string;
+  /** The configured APP_ORIGIN; null or missing: this page's own address. */
+  origin?: string | null;
 }
 
 interface ExternalUser {
@@ -356,8 +358,9 @@ function ExternalLinkFields({
  * once: Helprr keeps only a fingerprint of it, so a lost link is replaced.
  */
 function IssuedLinkPanel({ link, username }: { link: IssuedLink; username: string }) {
-  // In the fragment, which browsers never send to a server.
-  const url = `${window.location.origin}/invite#${link.token}`;
+  // On APP_ORIGIN when it is set, so a link made over the LAN still works for the
+  // person it is sent to. The token is in the fragment, which browsers never send to a server.
+  const url = `${link.origin || window.location.origin}/invite#${link.token}`;
   const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
   async function copy() {
@@ -442,14 +445,14 @@ function CreateUserDialog({
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error ?? 'Failed to create user');
       }
-      return (await res.json()) as SafeUser & { linkToken?: string };
+      return (await res.json()) as SafeUser & { linkToken?: string; linkOrigin?: string | null };
     },
     onSuccess: (created) => {
       toast.success('User created');
       if (created.linkToken && created.passwordLink) {
         // Stay open on the link; closing the dialog refreshes the list.
         setIssued({
-          link: { token: created.linkToken, ...created.passwordLink },
+          link: { token: created.linkToken, ...created.passwordLink, origin: created.linkOrigin },
           username: created.username,
         });
         return;
@@ -544,7 +547,11 @@ function CreateUserDialog({
           <ExternalLinkFields
             jellyfinUserId={jellyfinUserId}
             seerrUserId={seerrUserId}
-            onJellyfin={setJellyfinUserId}
+            onJellyfin={(id) => {
+              setJellyfinUserId(id);
+              // A Jellyfin account signs in with Jellyfin: no invite link needed.
+              if (id) setInvite(false);
+            }}
             onSeerr={setSeerrUserId}
           />
         </div>
@@ -856,15 +863,24 @@ function EditUserDialog({
                   {group.title}
                 </div>
                 {group.items.map((item) => (
-                  <div key={item.cap} className="flex items-center justify-between py-1.5">
-                    <span className="text-sm pr-3">{item.label}</span>
-                    <Switch
-                      checked={effective[item.cap as Capability] === true}
-                      onCheckedChange={(v) => void toggleCap(item.cap as Capability, v)}
-                      disabled={permBusy}
-                      aria-label={item.label}
-                    />
-                  </div>
+                  <Fragment key={item.cap}>
+                    <div className="flex items-center justify-between py-1.5">
+                      <span className="text-sm pr-3">{item.label}</span>
+                      <Switch
+                        checked={effective[item.cap as Capability] === true}
+                        onCheckedChange={(v) => void toggleCap(item.cap as Capability, v)}
+                        disabled={permBusy}
+                        aria-label={item.label}
+                      />
+                    </div>
+                    {item.cap === 'requests.create'
+                      && effective['requests.create'] === true
+                      && effective['discover.view'] !== true && (
+                      <p className="pb-1.5 text-xs text-amber-500">
+                        Can request, but can&apos;t browse Discover: they can only find new titles by searching.
+                      </p>
+                    )}
+                  </Fragment>
                 ))}
               </div>
             ))

@@ -6,12 +6,14 @@ import { prisma } from '@/lib/db';
 import { getClientIp } from '@/lib/login-rate-limit';
 import { currentRequestContext } from '@/lib/request-context';
 import { findServiceByType } from '@/lib/settings/service-config';
+import { LOCAL_USERNAME_MAX_CODE_POINTS } from '@/lib/username-policy';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Security and admin audit trail: account, permission, session, service
 // connection and settings-import changes, and sign-ins. Each row says who did
 // what to which target, and which FIELD NAMES changed: never a value, a hash, a
-// key or a password. Writes are fail-soft, made after the action, and never
+// key or a password (the one value kept is a new role, as "made admin"; a failed
+// sign-in keeps the username as typed). Writes are fail-soft, made after the action, and never
 // stand in for authorization: a failed write logs one line and the action's
 // own response is returned unchanged.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,7 +35,7 @@ export interface SecurityAuditInput {
   targetType: SecurityAuditTargetType;
   targetId?: string | null;
   targetLabel?: string | null;
-  /** Names only, e.g. ['role', 'password']. Never pass a value. */
+  /** Names only, e.g. ['displayName', 'password'] (a role change: 'made admin'). Never pass a secret. */
   fields?: string[] | null;
   /** Items the one action covered, e.g. sessions revoked at once. */
   count?: number;
@@ -133,36 +135,43 @@ export interface FailedSignInInput {
    * wrong-password paths do the same work.
    */
   user?: SecurityAuditActor | null;
-  /** Jellyfin accepted the name (only the account was wrong), so it is an account name, not a stray password. */
+  /** Jellyfin accepted the name (only the account was wrong): a Jellyfin name, not looked up as a Helprr one. */
   nameIsAccount?: boolean;
   /** The signed-in user, when a self-service check failed. */
   actor?: SecurityAuditActor | null;
   nowMs?: number;
 }
 
+// Controls, format characters (zero-width, bidi, soft hyphen, tags) and line or
+// paragraph separators: what can make a name display as something it is not.
+const UNSAFE_LABEL_CHARS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+
 /**
- * "pa… (12 chars)": enough to tell attempts apart, never the whole of a
- * password typed into the username field.
+ * A typed username as the row keeps it: control and bidi characters removed,
+ * at most LOCAL_USERNAME_MAX_CODE_POINTS code points. The owner accepted that a
+ * password typed into the username box is kept too (2026-11-07).
  */
-export function maskUsername(username: string): string {
-  const chars = Array.from(username);
-  return `${chars.slice(0, 2).join('')}… (${chars.length} chars)`;
+export function typedUsernameLabel(username: string): string {
+  const label = Array.from(username.replace(UNSAFE_LABEL_CHARS, ''))
+    .slice(0, LOCAL_USERNAME_MAX_CODE_POINTS)
+    .join('');
+  return label.trim() || '(unprintable)';
 }
 
 /**
- * Record a failed sign-in and the coarse IP. The username is kept only when it
- * names an account; otherwise it is masked. Attempts with the same method,
- * username, actor and IP in the same minute add to one row's count, so a flood
- * of guesses is a few rows, not thousands. Never throws.
+ * Record a failed sign-in and the coarse IP. The username is kept as typed
+ * (see typedUsernameLabel), with the account as the target when it names one.
+ * Attempts with the same method, username, actor and IP in the same minute add
+ * to one row's count, so a flood of guesses is a few rows, not thousands.
+ * Never throws.
  */
 export async function recordFailedSignIn(request: NextRequest, input: FailedSignInInput): Promise<void> {
   try {
     const meta = requestMeta(request);
     const actor = input.actor ?? null;
     const minute = Math.floor((input.nowMs ?? Date.now()) / COALESCE_WINDOW_MS);
-    // Keyed on the full name, so masked names still coalesce apart. An HMAC
-    // under the server secret, not a bare hash: every other input is on the
-    // row, so a bare hash would let a database copy brute-force a masked name.
+    // Keyed on the full name. An HMAC under the server secret, not a bare
+    // hash, so the key says nothing the row does not.
     const secret = process.env.JWT_SECRET || process.env.APP_PASSWORD;
     if (!secret) throw new Error('JWT_SECRET or APP_PASSWORD is required');
     const coalesceKey = createHmac('sha256', secret)
@@ -174,7 +183,7 @@ export async function recordFailedSignIn(request: NextRequest, input: FailedSign
         where: { username: input.username, status: 'active' },
         select: { id: true, username: true },
       });
-    const targetLabel = user ? user.username : input.nameIsAccount ? input.username : maskUsername(input.username);
+    const targetLabel = user ? user.username : typedUsernameLabel(input.username);
     await prisma.securityAuditEvent.upsert({
       where: { coalesceKey },
       update: { count: { increment: 1 } },

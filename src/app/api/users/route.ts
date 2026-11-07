@@ -12,6 +12,7 @@ import { toSafeUser } from '@/lib/user-dto';
 import { withApiLogging } from '@/lib/api-logger';
 import { recordSecurityEvent } from '@/lib/security-audit';
 import { issuePasswordLink, type IssuedPasswordLink } from '@/lib/password-links';
+import { configuredAppOrigin, INVALID_APP_ORIGIN_LINK_ERROR, isAppOriginInvalid } from '@/lib/request-utils';
 
 const ROLES = new Set(['admin', 'member']);
 const TEMPLATES = new Set(['admin', 'member']);
@@ -81,6 +82,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: passwordError }, { status: 400 });
   }
 
+  // An invite link on the wrong address would not reach the person: make no user.
+  if (invite && isAppOriginInvalid()) {
+    return NextResponse.json({ error: INVALID_APP_ORIGIN_LINK_ERROR }, { status: 500 });
+  }
+
   const passwordHash = password ? await hashPassword(password) : null;
 
   try {
@@ -131,7 +137,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         ...toSafeUser(created),
         passwordLink: link ? { purpose: link.purpose, expiresAt: link.expiresAt } : null,
         // The invite token is in this response only; the database keeps its hash.
-        ...(link ? { linkToken: link.token } : {}),
+        // The link is built on APP_ORIGIN when set (null: unset, the page's own address).
+        ...(link ? { linkToken: link.token, linkOrigin: configuredAppOrigin() } : {}),
       },
       { status: 201 }
     );

@@ -348,7 +348,7 @@ export default function ArtistDetailPage() {
       id: 'manage',
       actions: [
         ...(canEditArtist ? [{ id: 'edit', label: 'Edit', icon: <Pencil className="h-4 w-4" />, href: `/music/${artist.id}/edit${instance ? `?instance=${instance}` : ''}` }] : []),
-        ...(canManageActivity ? [{ id: 'rename', label: 'Preview Rename', icon: <FileEdit className="h-4 w-4" />, onSelect: () => setShowRenamePreview(true) }] : []),
+        ...(canManageActivity && canDeleteArtist ? [{ id: 'rename', label: 'Preview Rename', icon: <FileEdit className="h-4 w-4" />, onSelect: () => setShowRenamePreview(true) }] : []),
         { id: 'files', label: 'Files & information', icon: <FileText className="h-4 w-4" />, href: `/music/${artist.id}/files${instance ? `?instance=${instance}` : ''}` },
       ],
     },
@@ -428,7 +428,7 @@ export default function ArtistDetailPage() {
                     Edit
                   </DropdownMenuItem>
                 )}
-                {canManageActivity && (
+                {canManageActivity && canDeleteArtist && (
                   <DropdownMenuItem onClick={() => setShowRenamePreview(true)}>
                     <FileEdit className="h-4 w-4" />
                     Preview Rename

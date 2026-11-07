@@ -57,7 +57,10 @@ vi.mock('@/lib/security-audit', () => ({
 vi.mock('@/lib/invite-rate-limit', () => mocks.limits);
 vi.mock('@/lib/login-rate-limit', () => ({ getClientIp: () => '203.0.113.7', ...mocks.login }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
-vi.mock('@/lib/request-utils', () => ({ isHttpsRequest: () => false }));
+vi.mock('@/lib/request-utils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/request-utils')>()),
+  isHttpsRequest: () => false,
+}));
 
 import { POST as acceptInvite } from '@/app/api/invite/accept/route';
 import { POST as inviteState } from '@/app/api/invite/state/route';
@@ -257,6 +260,43 @@ describe('admin link routes', () => {
     expect(body.passwordLink.purpose).toBe('invite');
     expect(mocks.db.passwordLink.upsert.mock.calls[0][0].create.tokenHash).not.toBe(body.linkToken);
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'INVITE_CREATED' }));
+  });
+
+  it('send the configured APP_ORIGIN with a new link, and null when it is unset', async () => {
+    mocks.db.user.create.mockImplementation(async ({ data }) => ({
+      id: 'u1', permissions: {}, jellyfinToken: null, createdAt: new Date(), updatedAt: new Date(), ...data,
+    }));
+    mocks.db.user.findUnique.mockResolvedValue({ id: 'u1', username: 'member', status: 'active', passwordHash: 'h', passwordLink: null });
+    try {
+      vi.stubEnv('APP_ORIGIN', 'https://helprr.example.com');
+      const created = await (await createUser(post('/api/users', { username: 'newbie', displayName: 'New', invite: true }))).json();
+      expect(created.linkOrigin).toBe('https://helprr.example.com');
+      const issued = await (await issueLink(post('/api/users/u1/password-link', {}), params('u1'))).json();
+      expect(issued.origin).toBe('https://helprr.example.com');
+
+      vi.stubEnv('APP_ORIGIN', '');
+      expect((await (await issueLink(post('/api/users/u1/password-link', {}), params('u1'))).json()).origin).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('make no link, and no invited user, when APP_ORIGIN is set but invalid', async () => {
+    mocks.db.user.findUnique.mockResolvedValue({ id: 'u1', username: 'member', status: 'active', passwordHash: 'h', passwordLink: null });
+    try {
+      for (const value of ['not a url', 'https://helprr.example.com/path']) {
+        vi.stubEnv('APP_ORIGIN', value);
+        const issued = await issueLink(post('/api/users/u1/password-link', {}), params('u1'));
+        expect(issued.status).toBe(500);
+        expect((await issued.json()).error).toMatch(/APP_ORIGIN/);
+        expect((await createUser(post('/api/users', { username: 'newbie', displayName: 'New', invite: true }))).status).toBe(500);
+      }
+      expect(mocks.db.passwordLink.upsert).not.toHaveBeenCalled();
+      expect(mocks.db.user.create).not.toHaveBeenCalled();
+      expect(mocks.recordSecurityEvent).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('refuse an invite that also sets a password', async () => {

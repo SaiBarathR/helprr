@@ -28,10 +28,13 @@ vi.mock('@/lib/api-logger', () => ({
 }));
 vi.mock('@/lib/db', () => {
   const model = (name: string) => {
-    const matching = (args: { where: { userId: string } }) =>
-      (mocks.tables[name] ?? []).filter((row) => row.userId === args.where.userId);
+    // userId, and an eventType `in` filter where a query has one.
+    type Where = { userId: string; eventType?: { in: string[] } };
+    const matching = (args: { where: Where }) =>
+      (mocks.tables[name] ?? []).filter((row) => row.userId === args.where.userId
+        && (!args.where.eventType || args.where.eventType.in.includes(row.eventType as string)));
     return {
-      findMany: async (args: { where: { userId: string }; select: Record<string, unknown> }) =>
+      findMany: async (args: { where: Where; select: Record<string, unknown> }) =>
         matching(args).map((row) => project(row, args.select)),
       findUnique: async (args: { where: { userId: string }; select: Record<string, unknown> }) => {
         const row = matching(args)[0];
@@ -42,7 +45,7 @@ vi.mock('@/lib/db', () => {
   const names = [
     'userSettings', 'userAniListLink', 'twitchUserLink', 'watchlistItem', 'watchlistTag', 'scheduledAlert',
     'dashboardLayout', 'pushSubscription', 'notificationHistory', 'pendingRequest', 'session',
-    'creatorSubscription', 'creatorPlaylistSubscription',
+    'creatorSubscription', 'creatorPlaylistSubscription', 'recommendationEvent', 'userTasteProfile', 'creatorVideoState',
   ];
   return { prisma: Object.fromEntries(names.map((n) => [n, model(n)])) };
 });
@@ -118,6 +121,16 @@ function rowsFor(userId: string, marker: string): Record<string, Row[]> {
       : [{ id: `${marker}-session`, userId, userAgent: `${marker}-agent` }],
     creatorSubscription: [{ userId, notifyNewVods: true, creator: { platform: 'TWITCH', externalId: '5', login: `${marker}-streamer`, displayName: 'S' } }],
     creatorPlaylistSubscription: [{ userId, notifyNewVideos: true, playlist: { platform: 'YOUTUBE', externalId: 'PL', title: `${marker} playlist` } }],
+    recommendationEvent: [
+      { id: `${marker}-ev1`, userId, itemKey: `tmdb:movie:${marker}-liked`, eventType: 'like', railId: 'top-picks', context: null },
+      { id: `${marker}-ev2`, userId, itemKey: `tmdb:tv:${marker}-hidden`, eventType: 'not_interested', railId: null, context: null },
+      { id: `${marker}-ev3`, userId, itemKey: `tmdb:movie:${marker}-shown`, eventType: 'impression', railId: 'feed', context: null },
+    ],
+    userTasteProfile: [{ id: `${marker}-taste`, userId, profile: { seeds: [`${marker}-seed`] }, version: 3, builtAt: new Date() }],
+    creatorVideoState: [{
+      id: `${marker}-vs`, userId, videoId: 'v1', seenAt: new Date(), hidden: true,
+      video: { platform: 'YOUTUBE', externalId: 'yt1', title: `${marker} video`, creatorId: 'c1' },
+    }],
   };
 }
 
@@ -165,6 +178,16 @@ describe('GET /api/me/export', () => {
     expect(data.sessions.map((s: { current: boolean }) => s.current)).toEqual([true, false]);
     expect(data.follows.creators[0].creator.login).toBe('mine-streamer');
     expect(data.follows.playlists[0].playlist.title).toBe('mine playlist');
+    // Ratings and "Not interested", never impressions.
+    expect(data.recommendations.feedback).toEqual([
+      expect.objectContaining({ itemKey: 'tmdb:movie:mine-liked', eventType: 'like' }),
+      expect.objectContaining({ itemKey: 'tmdb:tv:mine-hidden', eventType: 'not_interested' }),
+    ]);
+    expect(text).not.toContain('mine-shown');
+    expect(data.recommendations.tasteProfile).toMatchObject({ profile: { seeds: ['mine-seed'] }, version: 3 });
+    expect(data.videoStates).toEqual([expect.objectContaining({
+      hidden: true, video: { platform: 'YOUTUBE', externalId: 'yt1', title: 'mine video' },
+    })]);
   });
 
   it('never includes a hash, token, push key or session id', async () => {
@@ -199,11 +222,10 @@ describe('my-data export coverage', () => {
     'sessions', 'watchlistItems', 'watchlistTags', 'pushSubscriptions', 'notificationHistory',
     'pendingRequests', 'dashboardLayouts', 'aniListLink', 'settings', 'scheduledAlerts',
     'creatorSubscriptions', 'playlistSubscriptions', 'twitchLink',
+    // Feedback events only; impressions, clicks and plays are left out.
+    'recommendationEvents', 'tasteProfile', 'creatorVideoStates',
   ];
   const EXCLUDED: Record<string, string> = {
-    recommendationEvents: 'raw recommendation signals (impressions, clicks, feedback)',
-    tasteProfile: 'derived from other data; rebuilt on demand',
-    creatorVideoStates: 'per-video seen/hidden flags',
     passwordLink: 'holds only a token hash',
     calendarFeedToken: 'holds only a token hash',
     recoveryCodes: 'two-step sign-in recovery codes; holds only code hashes',

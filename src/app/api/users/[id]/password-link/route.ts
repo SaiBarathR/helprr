@@ -5,11 +5,14 @@ import { withApiLogging } from '@/lib/api-logger';
 import { issuePasswordLink, passwordLinkPurposeFor, revokePasswordLink } from '@/lib/password-links';
 import { recordSecurityEvent } from '@/lib/security-audit';
 import { boundedBodyErrorResponse, readBoundedJson } from '@/lib/server/bounded-body';
+import { configuredAppOrigin, INVALID_APP_ORIGIN_LINK_ERROR, isAppOriginInvalid } from '@/lib/request-utils';
 
 /**
  * Make a new invite link (pending user) or password-reset link (active local
  * user), ending any earlier one. The token is in this response only; the
- * database keeps its hash.
+ * database keeps its hash. `origin` is the configured APP_ORIGIN the link is
+ * built on (null: unset, and the page uses its own address). A set but invalid
+ * APP_ORIGIN makes no link rather than one on the wrong address.
  */
 async function postHandler(
   request: NextRequest,
@@ -45,6 +48,10 @@ async function postHandler(
     );
   }
 
+  if (isAppOriginInvalid()) {
+    return NextResponse.json({ error: INVALID_APP_ORIGIN_LINK_ERROR }, { status: 500 });
+  }
+
   const link = await issuePasswordLink(prisma, { userId: user.id, purpose, createdById: admin.user.id });
   await recordSecurityEvent(request, {
     actor: admin.user,
@@ -55,7 +62,7 @@ async function postHandler(
     targetId: user.id,
     targetLabel: user.username,
   });
-  return NextResponse.json(link, { status: 201 });
+  return NextResponse.json({ ...link, origin: configuredAppOrigin() }, { status: 201 });
 }
 
 async function deleteHandler(

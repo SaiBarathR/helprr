@@ -19,7 +19,8 @@ Anything not given is refused, including permissions added in later versions.
 - **With a Helprr password**. It needs at least 15 characters. By default **Add** makes
   an invite link: send it to the person, and they open it and choose their own password.
   Until then the account is pending and cannot sign in. Turn **Invite link** off to set
-  the password yourself, or for a Jellyfin-only account. Each person can change their
+  the password yourself, or for a Jellyfin-only account (picking a Jellyfin account
+  turns it off for you). Each person can change their
   password in **Settings → Account → Change password**.
 - **Invite and reset links** work once. An invite lasts 7 days and a password-reset link
   24 hours. Helprr shows a link only when it is made, so if one gets lost, open the person
@@ -29,6 +30,8 @@ Anything not given is refused, including permissions added in later versions.
   everywhere. A link looks like `https://helprr.example/invite#…`: the part after `#`
   is the key, and browsers never send that part to a server, so it does not end up in
   proxy or server logs. The page removes it from the address bar as soon as it opens.
+  With `APP_ORIGIN` set, links use that address even when you make them over the LAN;
+  without it they use the address you have Settings open on.
 - **With Jellyfin**: **Sign in with Jellyfin** on the sign-in page uses the person's
   Jellyfin account, with Jellyfin's own password rules.
 
@@ -71,10 +74,11 @@ two-step sign-in off too.
 
 In **Settings → Account**, anyone can **Download my data**: one JSON file with their
 profile, settings, watchlist, alerts, layouts, notification history, pending requests,
-push devices and sessions. It never holds a password, token or another person's data.
+push devices, sessions, recommendation ratings and taste profile, and the YouTube and
+Twitch videos they marked seen or hidden. It never holds a password, token or another person's data.
 **Delete my account** removes the account and everything it owns, and signs it out
 everywhere. It asks for the current password; an account that signs in only with
-Jellyfin types its username instead. The last active admin cannot delete itself:
+Jellyfin enters its Jellyfin password instead. The last active admin cannot delete itself:
 make someone else an admin first. The admin created from `APP_PASSWORD` cannot delete
 itself either, because Helprr re-creates it on every start while `APP_PASSWORD` is set.
 
