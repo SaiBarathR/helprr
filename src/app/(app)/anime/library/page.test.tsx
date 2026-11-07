@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from 'react';
+import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -16,6 +16,15 @@ vi.mock('@tanstack/react-query', () => ({
     : { data: { collection: { lists: [{ entries: mocks.entries }] } }, isPending: false, isFetching: false, isError: false }),
 }));
 vi.mock('@/components/anime/anilist-status-drawer', () => ({ AnilistStatusDrawer: () => null }));
+// Shows each card's external menu links, so the test can read them without a long-press.
+vi.mock('@/components/ui/quick-context-menu', () => ({
+  QuickContextMenu: ({ actions, children }: { actions: Array<{ id: string; href?: string; external?: boolean }>; children: React.ReactNode }) => (
+    <>
+      {children}
+      {actions.filter((action) => action.external).map((action) => <a key={action.id} data-menu-action={action.id} href={action.href} />)}
+    </>
+  ),
+}));
 
 import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import AnimeLibraryPage from './page';
@@ -111,6 +120,16 @@ describe('Anime Library tabs', () => {
 
     expect(activeTab()).toBe('Watching');
     expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
+  it('links each entry to its AniList page', async () => {
+    mocks.entries = [{
+      id: 1, mediaId: 21, status: 'COMPLETED', score: 0, progress: 0,
+      media: { id: 21, title: { romaji: 'One Piece', english: null, native: null, userPreferred: 'One Piece' }, coverImage: { large: null }, format: 'TV', episodes: 12 },
+    }];
+    await open('');
+    const link = document.querySelector('a[data-menu-action="anilist"]');
+    expect(link?.getAttribute('href')).toBe('https://anilist.co/anime/21');
   });
 
   it("restores each tab's own count of shown entries when the user switches to it", async () => {
