@@ -19,7 +19,7 @@ Open <http://localhost:3060> and sign in as `demo` with the password
 
 - Nothing can be changed in the fake apps: anything that would write says the demo is
   read-only.
-- TMDB is not connected, so Discover and Recommendations ask for it. The Anime pages
+- TMDB is not connected, so Discover and the For You page ask for it. The Anime pages
   work when the computer has internet.
 - Every page says **Demo: fake data. It resets when removed.**
 

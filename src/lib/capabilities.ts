@@ -58,7 +58,7 @@ export const CAPABILITY_GROUPS = [
       { cap: 'scheduledAlerts.view', label: 'View scheduled alerts' },
       { cap: 'scheduledAlerts.edit', label: 'Manage scheduled alerts' },
       { cap: 'random.view', label: 'Use Random Watch' },
-      { cap: 'recommendations.view', label: 'Use Recommendations' },
+      { cap: 'recommendations.view', label: 'Use For You' },
       { cap: 'calendar.view', label: 'View calendar' },
     ],
   },

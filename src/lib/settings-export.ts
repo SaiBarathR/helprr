@@ -104,7 +104,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
     'dashboardFg', 'dashboardFgMute', 'dashboardFgSubtle',
     'liquidGlass', 'glassMode', 'glassIntensity',
   ],
-  interaction: ['hapticsEnabled', 'dismissedTips'],
+  interaction: ['hapticsEnabled'],
   watch: ['watchSkin', 'watchPreviews'],
   playback: ['subtitleAppearance', 'playerSkipBackSeconds', 'playerSkipForwardSeconds'],
   search: ['searchHistory'],

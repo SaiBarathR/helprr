@@ -18,4 +18,12 @@ describe('columnsFor', () => {
     expect(columnsFor(1600)).toBe(4);
     expect(columnsFor(5000)).toBe(6);
   });
+
+  it('fits about five rail-size tiles across a laptop', () => {
+    expect(columnsFor(375, 'rail')).toBe(1);
+    expect(columnsFor(1008, 'rail')).toBe(4); // a 1280px laptop beside the sidebar
+    expect(columnsFor(1163, 'rail')).toBe(4);
+    expect(columnsFor(1168, 'rail')).toBe(5); // a 1440px laptop
+    expect(columnsFor(1456, 'rail')).toBe(6);
+  });
 });

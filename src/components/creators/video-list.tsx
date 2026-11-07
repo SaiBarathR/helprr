@@ -10,20 +10,24 @@ const LIST_ROW_HEIGHT = 93;
 const GRID_GAP = 16;
 const GRID_TEXT_HEIGHT = 92;
 /** Narrowest a tile gets before the row drops a column: YouTube's own spacing. */
-const MIN_TILE_WIDTH = 360;
+const MIN_TILE_WIDTH = { wide: 360, rail: 220 } as const;
 /** A phone shows one video across, as the YouTube app does. */
 const SINGLE_COLUMN_BELOW = 500;
 
-export function columnsFor(width: number): number {
+/** `rail` tiles are the size of the feed's rails (feed-groups), about five across a laptop. */
+export type TileSize = keyof typeof MIN_TILE_WIDTH;
+
+export function columnsFor(width: number, tile: TileSize = 'wide'): number {
   if (width < SINGLE_COLUMN_BELOW) return 1;
-  const fit = Math.floor((width + GRID_GAP) / (MIN_TILE_WIDTH + GRID_GAP));
+  const fit = Math.floor((width + GRID_GAP) / (MIN_TILE_WIDTH[tile] + GRID_GAP));
   return Math.min(6, Math.max(2, fit));
 }
 
 /** Only the rows near the viewport are rendered, so a long feed costs a phone nothing. */
-export function CreatorVideoList({ videos, layout, renderVideo }: {
+export function CreatorVideoList({ videos, layout, tile = 'wide', renderVideo }: {
   videos: CreatorVideoItem[];
   layout: 'grid' | 'list';
+  tile?: TileSize;
   renderVideo: (video: CreatorVideoItem) => React.ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -46,7 +50,7 @@ export function CreatorVideoList({ videos, layout, renderVideo }: {
   }, []);
 
   const isList = layout === 'list';
-  const columns = isList ? 1 : columnsFor(width);
+  const columns = isList ? 1 : columnsFor(width, tile);
   const rows = useMemo(() => {
     const chunks: CreatorVideoItem[][] = [];
     for (let index = 0; index < videos.length; index += columns) chunks.push(videos.slice(index, index + columns));
@@ -92,11 +96,17 @@ export function CreatorVideoList({ videos, layout, renderVideo }: {
   );
 }
 
-export function CreatorVideoSkeleton() {
+// Container queries, matching columnsFor (n columns from n × tile + (n - 1) × gap),
+// so the real list does not reflow the skeleton.
+const SKELETON_COLUMNS: Record<TileSize, string> = {
+  wide: '@[500px]:grid-cols-2 @[1112px]:grid-cols-3 @[1488px]:grid-cols-4',
+  rail: '@[500px]:grid-cols-2 @[692px]:grid-cols-3 @[928px]:grid-cols-4 @[1164px]:grid-cols-5 @[1400px]:grid-cols-6',
+};
+
+export function CreatorVideoSkeleton({ tile = 'wide' }: { tile?: TileSize }) {
   return (
-    // Container queries, matching columnsFor, so the real list does not reflow it.
     <div role="status" aria-live="polite" aria-label="Loading videos" className="@container">
-      <div className="grid grid-cols-1 gap-x-4 gap-y-6 @[500px]:grid-cols-2 @[1112px]:grid-cols-3 @[1488px]:grid-cols-4" aria-hidden="true">
+      <div className={cn('grid grid-cols-1 gap-x-4 gap-y-6', SKELETON_COLUMNS[tile])} aria-hidden="true">
         {Array.from({ length: 12 }, (_, index) => (
           <div key={index} className="space-y-2.5">
             <Skeleton className="aspect-video w-full rounded-xl" />

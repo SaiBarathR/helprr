@@ -62,7 +62,6 @@ import { EventIcon, getEventColorClass } from '@/components/notifications/event-
 import { SwipeRow } from '@/components/ui/swipe-row';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
-import { GestureTip } from '@/components/ui/gesture-tip';
 import { NotificationDetailDrawer, type GroupedNotificationItem } from '@/components/notifications/notification-detail-drawer';
 import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
 import { getMediaHrefFromIds } from '@/lib/media-href';
@@ -685,7 +684,6 @@ export default function NotificationsPage() {
         </div>
       ) : (
         <>
-          <GestureTip id="notification-swipe" />
           <div className="space-y-0.5 animate-list-in">
             {notifications.map((n) => (
               <SwipeRow

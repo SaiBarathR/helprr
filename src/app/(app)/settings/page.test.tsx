@@ -14,10 +14,15 @@ vi.mock('@/components/permission-provider', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/components/permission-provider')>()),
   useMe: () => mocks.me,
 }));
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/settings',
+  useSearchParams: () => new URLSearchParams(),
+}));
 vi.mock('@/components/ui/app-link', () => ({
   default: ({ children, href }: { children: ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
 
+import { resetRouteViewStateForTests } from '@/lib/hooks/use-route-view-state';
 import SettingsIndexPage from './page';
 
 const ADMIN = { role: 'admin', template: 'admin', capabilities: ADMIN_TEMPLATE } as MePayload;
@@ -26,7 +31,7 @@ const MEMBER = { role: 'member', template: 'member', capabilities: MEMBER_TEMPLA
 function renderPage(me: MePayload) {
   mocks.me = me;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={client}><SettingsIndexPage /></QueryClientProvider>);
+  return render(<QueryClientProvider client={client}><SettingsIndexPage /></QueryClientProvider>);
 }
 
 function linkHrefs(container: HTMLElement = document.body) {
@@ -46,6 +51,8 @@ describe('Settings index', () => {
   beforeEach(() => {
     // Admin rows fetch connection counts and the update check; keep them pending.
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+    sessionStorage.clear();
+    resetRouteViewStateForTests();
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -151,5 +158,16 @@ describe('Settings index', () => {
     renderPage(MEMBER);
     await user.type(screen.getByRole('searchbox', { name: 'Search settings' }), 'password');
     expect(linkHrefs()).toEqual([]);
+  });
+
+  it('keeps the search when you come back to Settings', async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderPage(ADMIN);
+    await user.type(screen.getByRole('searchbox', { name: 'Search settings' }), 'users');
+    unmount();
+
+    renderPage(ADMIN);
+    expect((screen.getByRole('searchbox', { name: 'Search settings' }) as HTMLInputElement).value).toBe('users');
+    expect(linkHrefs()).toEqual(['/settings/users']);
   });
 });
