@@ -11,14 +11,18 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   try {
     // "Revoke all other sessions" means *my* other devices — for admins too.
     // Force-logging out a specific member is done via the per-session revoke.
-    const result = await prisma.session.updateMany({
-      where: {
-        revokedAt: null,
-        userId: auth.user.id,
-        NOT: { id: auth.session.id },
-      },
-      data: { revokedAt: new Date() },
-    });
+    // Personal API tokens go too: this is the "I may be compromised" button.
+    const [result, tokens] = await prisma.$transaction([
+      prisma.session.updateMany({
+        where: {
+          revokedAt: null,
+          userId: auth.user.id,
+          NOT: { id: auth.session.id },
+        },
+        data: { revokedAt: new Date() },
+      }),
+      prisma.apiToken.deleteMany({ where: { userId: auth.user.id } }),
+    ]);
     if (result.count > 0) {
       await recordSecurityEvent(request, {
         actor: auth.user,
@@ -29,7 +33,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         count: result.count,
       });
     }
-    return NextResponse.json({ revoked: result.count });
+    if (tokens.count > 0) {
+      await recordSecurityEvent(request, {
+        actor: auth.user,
+        action: 'API_TOKEN_REVOKED',
+        targetType: 'user',
+        targetId: auth.user.id,
+        targetLabel: auth.user.username,
+        count: tokens.count,
+      });
+    }
+    return NextResponse.json({ revoked: result.count, apiTokensRevoked: tokens.count });
   } catch (error) {
     console.error('[Sessions] revoke-others failed:', error);
     return NextResponse.json({ error: 'Failed to revoke sessions' }, { status: 500 });

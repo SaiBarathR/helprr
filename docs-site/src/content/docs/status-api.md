@@ -193,9 +193,11 @@ environment variable (`{{HOMEPAGE_VAR_HELPRR_TOKEN}}`) instead of in the file.
 - **Turn off** a token you no longer use in **Settings → Sessions → API tokens**.
   It is refused from its next request.
 - **Changing your password ends every token you have**, and so does an admin
-  resetting your password or disabling your account. Make new ones afterwards.
-  **Revoke all other sessions** and turning off two-step sign-in do not end
-  tokens: turn them off here too.
+  resetting your password, disabling your account or changing its Jellyfin link.
+  **Revoke all other sessions** ends them too. Make new ones afterwards.
+  Turning off two-step sign-in does not end tokens: turn them off here too.
+- **A session from proxy sign-in can't make tokens**: a token works straight against
+  Helprr, around the proxy. Sign in with your Helprr password to make one.
 - Admins can see in **Settings → Operation audit → Security** when a token was made
   or turned off, and the first time one was used from a new network. Helprr can
   tell networks apart only behind a [reverse proxy it trusts](/helprr/https/);

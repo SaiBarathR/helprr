@@ -161,9 +161,13 @@ async function patchHandler(
       // Personal API tokens end the same way.
       let feedRevoked = false;
       let apiTokensRevoked = 0;
-      if (data.passwordHash !== undefined || (data.status && data.status !== 'active')) {
+      const credentialsReset = data.passwordHash !== undefined || (data.status && data.status !== 'active');
+      if (credentialsReset) {
         const feed = await tx.calendarFeedToken.deleteMany({ where: { userId: id } });
         feedRevoked = feed.count > 0;
+      }
+      // A Jellyfin relink is a password change for a Jellyfin-only account.
+      if (credentialsReset || (data.jellyfinUserId !== undefined && data.jellyfinUserId !== existing.jellyfinUserId)) {
         apiTokensRevoked = (await tx.apiToken.deleteMany({ where: { userId: id } })).count;
       }
       return { ok: true as const, updated, revokedSessions, endedLink, feedRevoked, apiTokensRevoked };

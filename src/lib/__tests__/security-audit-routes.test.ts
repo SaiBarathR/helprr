@@ -44,7 +44,10 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('@/lib/db', () => ({
-  prisma: { ...mocks.db, $transaction: (fn: (tx: typeof mocks.db) => unknown) => fn(mocks.db) },
+  prisma: {
+    ...mocks.db,
+    $transaction: (arg: ((tx: typeof mocks.db) => unknown) | Promise<unknown>[]) => (Array.isArray(arg) ? Promise.all(arg) : arg(mocks.db)),
+  },
 }));
 vi.mock('@/lib/auth', () => ({
   COOKIE_NAME: 'helprr-session',

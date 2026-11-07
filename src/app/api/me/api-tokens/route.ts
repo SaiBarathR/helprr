@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireUser } from '@/lib/auth';
+import { currentSessionIsTrusted, requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { API_TOKEN_SCOPES, isApiTokenScope } from '@/lib/api-token-scopes';
 import {
@@ -67,6 +67,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
   const { user, session } = auth;
+  // A token works straight against Helprr, so one made from a proxy sign-in
+  // would step around the proxy that session is bound to.
+  if (await currentSessionIsTrusted()) {
+    return NextResponse.json({ error: 'Sign in with your Helprr password to make an API token' }, { status: 403 });
+  }
 
   const body = (await request.json().catch(() => null)) as
     { name?: unknown; scopes?: unknown; expiresInDays?: unknown } | null;

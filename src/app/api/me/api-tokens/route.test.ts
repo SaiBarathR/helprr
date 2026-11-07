@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextResponse } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
+  currentSessionIsTrusted: vi.fn(async () => false),
   requireUser: vi.fn(),
   findMany: vi.fn(),
   count: vi.fn(),
@@ -13,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   recordSecurityEvent: vi.fn(),
 }));
 
-vi.mock('@/lib/auth', () => ({ requireUser: mocks.requireUser }));
+vi.mock('@/lib/auth', () => ({ requireUser: mocks.requireUser, currentSessionIsTrusted: mocks.currentSessionIsTrusted }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (fn: unknown) => fn }));
 vi.mock('@/lib/security-audit', () => ({ recordSecurityEvent: mocks.recordSecurityEvent, coarseIp: () => null }));
 vi.mock('@/lib/db', () => {
@@ -96,6 +97,13 @@ describe('POST /api/me/api-tokens', () => {
     const response = await post({ name: 'Homepage', scopes: ['activity.view'], expiresInDays: null });
     expect(response.status).toBe(200);
     expect((await response.json()).expiresAt).toBeNull();
+  });
+
+  it('refuses a session from proxy sign-in, since the token would step around the proxy', async () => {
+    mocks.currentSessionIsTrusted.mockResolvedValueOnce(true);
+    const response = await post({ name: 'x', scopes: ['activity.view'], expiresInDays: null });
+    expect(response.status).toBe(403);
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 
   it('refuses a scope the owner does not hold', async () => {
