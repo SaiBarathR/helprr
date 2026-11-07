@@ -39,6 +39,7 @@ export const queryKeys = {
   calendar: (range: string) => ['calendar', range] as const,
   health: () => ['services', 'health'] as const,
   adminPolling: () => ['admin', 'polling-status'] as const,
+  adminDatabaseBackup: () => ['admin', 'database-backup'] as const,
   widgetServiceAvailability: () => ['services', 'widget-availability'] as const,
   libraryGaps: () => ['library-gaps'] as const,
   /** Manual downloads sent to Sonarr/Radarr: lists by filter, and one with its events. */

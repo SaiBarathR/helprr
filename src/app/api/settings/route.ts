@@ -51,7 +51,9 @@ async function getHandler() {
   if (authError) return authError;
 
   try {
-    const settings = await getOrCreateAppSettings();
+    // Everyone reads these; the backup time is for admins (/api/admin/database-backup).
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { lastDatabaseBackupAt, ...settings } = await getOrCreateAppSettings();
 
     return NextResponse.json({
       ...settings,

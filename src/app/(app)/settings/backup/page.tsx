@@ -6,6 +6,8 @@ import { ChevronLeft, ChevronRight, Download as DownloadIcon, Upload } from 'luc
 import { ExportSettingsDialog } from '@/components/settings/export-settings-dialog';
 import { ImportSettingsDialog } from '@/components/settings/import-settings-dialog';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { DatabaseBackupSection } from '@/components/settings/database-backup-section';
+import { useMe } from '@/components/permission-provider';
 import {
   ImportWarningsNotice,
   rememberImportWarnings,
@@ -16,6 +18,7 @@ export default function BackupSettingsPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importWarnings, setImportWarnings] = useImportWarnings();
+  const isAdmin = useMe()?.role === 'admin';
 
   return (
     <div className="animate-content-in pb-12">
@@ -32,14 +35,21 @@ export default function BackupSettingsPage() {
       <div className="px-4 mb-4">
         <h1 className="text-2xl font-semibold">Backup & Restore</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Move your settings between devices or back them up to a file.
+          {isAdmin
+            ? 'See when the database was last backed up, or move your settings between installs.'
+            : 'Move your settings between devices or save them to a file.'}
         </p>
       </div>
 
       {/* An import reloads the page to apply itself; what it could not put into effect shows here. */}
       <ImportWarningsNotice warnings={importWarnings} onChange={setImportWarnings} />
 
-      <GroupedSection footer="Includes service connections, preferences, and device-local UI prefs">
+      {isAdmin && <DatabaseBackupSection />}
+
+      <GroupedSection
+        title="Settings export"
+        footer="Includes service connections, preferences, and device-local UI prefs. Not a database backup: no history, sessions or push devices."
+      >
         <button
           type="button"
           onClick={() => setExportOpen(true)}

@@ -830,6 +830,17 @@ in a disposable database named exactly `helprr_migration_test`, seeds
 representative user/service/cleanup/audit data, deploys all current migrations,
 and verifies preservation and final migration state.
 
+Database backups are made outside the app: `scripts/backup.sh` runs `pg_dump` in
+the database container (the app image has no PostgreSQL client and no backup
+volume). After a dump is validated and its secrets are saved, the script records
+the time in `AppSettings.lastDatabaseBackupAt` with one `UPDATE` through the same
+container; that write is best effort and never fails the backup. The admin-only
+`/api/admin/database-backup` reads it for **Settings -> Backup & Restore** (amber
+when none is recorded or it is over seven days old; `GET /api/settings` leaves it
+out), and a recorded backup ticks the setup checklist's backup step.
+Backups made another way are not seen. The settings export is not a backup and no
+longer ticks that step.
+
 Persistent runtime data is bounded through the relevant subsystem:
 
 - Notification retention follows `AppSettings.notificationHistoryRetentionDays`.

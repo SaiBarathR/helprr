@@ -67,7 +67,7 @@ describe('SetupChecklist', () => {
     // Only what the server cannot see can be marked by hand.
     expect(screen.getByRole('button', { name: 'Skip: Add people' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Done: Install on your phone' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Done: Export a backup' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Done: Back up the database' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Turn on push/ })).toBeNull();
   });
 
@@ -93,7 +93,7 @@ describe('SetupChecklist', () => {
       [/^Add people/, '/settings/users'],
       [/^Turn on push notifications/, '/settings/notifications/check'],
       [/^Install on your phone/, '/settings/appearance#install'],
-      [/^Export a backup/, '/settings/backup'],
+      [/^Back up the database/, '/settings/backup'],
     ];
     const links = screen.getAllByRole('link');
     expect(links).toHaveLength(expected.length);
@@ -120,9 +120,9 @@ describe('SetupChecklist', () => {
     const saved = { ...fresh, done: { ...fresh.done, backup: true } };
     const fetchMock = respond(saved);
     render(<SetupChecklist initial={fresh} mobile />);
-    await userEvent.click(screen.getByRole('button', { name: 'Done: Export a backup' }));
-    expect(screen.getByRole('link', { name: /Export a backup, done/ })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Done: Export a backup' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Done: Back up the database' }));
+    expect(screen.getByRole('link', { name: /Back up the database, done/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Done: Back up the database' })).toBeNull();
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ action: 'done', step: 'backup' });
     await waitFor(() => expect(screen.getByText(/2 of 4/)).toBeTruthy());
   });
@@ -149,27 +149,27 @@ describe('SetupChecklist', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<SetupChecklist initial={fresh} mobile />);
     await userEvent.click(screen.getByRole('button', { name: 'Done: Install on your phone' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Done: Export a backup' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Done: Back up the database' }));
     // The backup reply comes first and saw both; the install reply, read before the
     // backup was saved, comes last.
     replies[1]({ ok: true, json: async () => ({ hidden: false, done: { ...fresh.done, install: true, backup: true } }) });
     replies[0]({ ok: true, json: async () => ({ hidden: false, done: { ...fresh.done, install: true } }) });
-    await waitFor(() => expect(screen.getByRole('link', { name: /Export a backup, done/ })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('link', { name: /Back up the database, done/ })).toBeTruthy());
     expect(screen.getByText(/3 of 4/)).toBeTruthy();
 
     // A failed save undoes its own step, not the others.
     await userEvent.click(screen.getByRole('button', { name: 'Skip: Add people' }));
     replies[2]({ ok: false, json: async () => null });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Skip: Add people' })).toBeTruthy());
-    expect(screen.getByRole('link', { name: /Export a backup, done/ })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /Back up the database, done/ })).toBeTruthy();
     expect(screen.getByRole('link', { name: /Install on your phone, done/ })).toBeTruthy();
   });
 
   it('moves focus to the step when its button goes away', async () => {
     respond(fresh);
     render(<SetupChecklist initial={fresh} mobile />);
-    await userEvent.click(screen.getByRole('button', { name: 'Done: Export a backup' }));
-    expect(document.activeElement).toBe(screen.getByRole('link', { name: /Export a backup, done/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Done: Back up the database' }));
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: /Back up the database, done/ }));
   });
 
   it('offers Undo after hiding, which brings it back', async () => {

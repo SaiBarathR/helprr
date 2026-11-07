@@ -23,6 +23,18 @@ Run it before every update and on a schedule:
 ./scripts/backup.sh
 ```
 
+Each backup it makes is recorded in Helprr: **Settings → Backup & Restore** shows admins
+when the last one was, in amber when there is none or it is more than a week old. Backups
+made any other way are not shown there.
+
+To run it on a schedule, add a line like this to the crontab of the user that runs
+Docker (`crontab -e`), with your Helprr folder in place of the example; it backs up every
+night at 03:00:
+
+```bash
+0 3 * * * cd /path/to/helprr && ./scripts/backup.sh >> backup.log 2>&1
+```
+
 The no-clone quick start installs this helper under `scripts/` with mode `0700`.
 If it is missing from an older installation, download `backup.sh` from the exact
 target release as shown in [Update](/helprr/maintain/update/).
