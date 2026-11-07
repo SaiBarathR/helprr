@@ -5,7 +5,8 @@ import type { AuditActor } from '@/lib/file-audit';
 export type PrivacyType = 'public' | 'private' | 'both';
 export type PatternMode = 'include' | 'exclude';
 
-export type CleanerKind = 'queue' | 'download';
+// 'library' is library cleanup's "Delete now" (src/lib/library-cleanup); it shares the preview token store.
+export type CleanerKind = 'queue' | 'download' | 'library';
 export type StrikeType = 'stall' | 'slow' | 'failedImport' | 'downloadingMetadata';
 // Source-of-truth is the Prisma-generated `CleanupAction` enum
 // (prisma/schema.prisma); this alias keeps existing imports working.
@@ -265,7 +266,16 @@ export interface DownloadCandidateBinding {
   deleteSourceFiles: boolean;
 }
 
-export type CleanupCandidateBinding = QueueCandidateBinding | DownloadCandidateBinding;
+export interface LibraryCandidateBinding {
+  cleaner: 'library';
+  // The title's "<SERVICE>:<instanceId>:<arrId>" key, under the name the shared sort uses.
+  hash: string;
+  leavingSoonId: string;
+  deleteAfter: string;
+  addImportListExclusion: boolean;
+}
+
+export type CleanupCandidateBinding = QueueCandidateBinding | DownloadCandidateBinding | LibraryCandidateBinding;
 
 export interface CleanupExecutionBinding {
   cleaner: CleanerKind;

@@ -66,6 +66,12 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'DELETE /api/anilist/list-entry',
     'POST /api/anime/automap/run',
     'POST /api/anime/automap/stop',
+    // Library cleanup: rules, preview, marking Leaving soon and Delete now.
+    'PUT /api/cleanup/library/config',
+    'POST /api/cleanup/library/preview',
+    'POST /api/cleanup/library/leaving-soon',
+    'POST /api/cleanup/library/delete/preview',
+    'POST /api/cleanup/library/delete/run',
     'DELETE /api/settings/anime-mappings/[seriesId]',
     'DELETE /api/settings/anime-mappings',
     'PUT /api/settings/discover-layout',
@@ -353,7 +359,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
 };
 
 interface SpecialPolicy {
-  readonly kind: 'dynamic-capability' | 'field-capability' | 'owned-or-capability' | 'service-capabilities';
+  readonly kind: 'dynamic-capability' | 'field-capability' | 'owned-or-capability' | 'service-capabilities' | 'item-capability';
   readonly marker: string;
   readonly capabilities: readonly Capability[];
 }
@@ -440,6 +446,12 @@ const SPECIAL_POLICIES: Record<string, SpecialPolicy> = {
     kind: 'service-capabilities',
     marker: 'SERVICE_ADD_CAPABILITY',
     capabilities: ['torrents.add', 'torrents.manage', 'activity.manage'],
+  },
+  // Keep needs view access to the stored title's library type.
+  'POST /api/leaving-soon/[id]/keep': {
+    kind: 'item-capability',
+    marker: 'KEEP_VIEW_CAPABILITY',
+    capabilities: ['movies.view', 'series.view'],
   },
 };
 
@@ -589,7 +601,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(265);
+    expect(handlers.size).toBe(271);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
@@ -669,6 +681,9 @@ describe('mutating API route capability matrix', () => {
         }
         expect(evidence.handlerText).toContain('can(auth.user, SERVICE_ADD_CAPABILITY[');
         expect(SERVICE_ADD_CAPABILITY).toEqual({ RADARR: 'movies.add', SONARR: 'series.add' });
+      } else if (policy.kind === 'item-capability') {
+        expect(hasCall(evidence, 'requireUser')).toBe(true);
+        expect(evidence.handlerText).toContain(`can(auth.user, viewCap)`);
       } else {
         expect(hasCall(evidence, 'requireUser')).toBe(true);
         expect(evidence.fileText).toContain(`can(auth.user, '${policy.capabilities.at(-1)}')`);

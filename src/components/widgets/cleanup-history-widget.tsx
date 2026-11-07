@@ -33,6 +33,7 @@ async function fetchCleanupHistory(pageSize: number, signal?: AbortSignal): Prom
 function actionLabel(action: string): string {
   switch (action) {
     case 'removedFromClient': return 'Removed';
+    case 'removedFromLibrary': return 'Deleted';
     case 'removedFromQueue': return 'Queue removed';
     case 'categoryChanged': return 'Re-categorised';
     case 'skipped': return 'Skipped';
@@ -45,7 +46,7 @@ function actionLabel(action: string): string {
 
 function actionColor(action: string): string {
   if (action === 'strikeAdded') return HPR.amber;
-  if (action === 'failed' || action === 'removedFromClient') return HPR.rose;
+  if (action === 'failed' || action === 'removedFromClient' || action === 'removedFromLibrary') return HPR.rose;
   if (action === 'categoryChanged') return HPR.blue;
   return HPR.fgMute;
 }

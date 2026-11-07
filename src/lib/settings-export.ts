@@ -1,4 +1,5 @@
 import type { ServiceType } from '@prisma/client';
+import type { LibraryCleanupSettings } from '@/lib/library-cleanup/config';
 import { EVENT_TYPES, type NotificationEventType } from '@/lib/notification-events';
 import { STORE_VERSION } from '@/lib/store';
 import type {
@@ -203,6 +204,9 @@ export interface ExportedCleanup {
   // System-managed seeding rules (the auto-remove-imported synthetic rule) are
   // excluded — they're regenerated from downloadConfig on import.
   seedingRules: SeedingRuleShape[];
+  // Library cleanup ("Leaving soon") rules and options. Optional: absent in
+  // exports made before it existed; marked titles are not exported.
+  libraryConfig?: LibraryCleanupSettings;
 }
 
 export interface ExportedDashboardLayout {

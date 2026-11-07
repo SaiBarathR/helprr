@@ -16,7 +16,7 @@ interface AuditRecord {
   username: string;
   service: 'SONARR' | 'RADARR' | 'LIDARR' | 'QBITTORRENT';
   instanceId: string | null;
-  operation: 'EDIT' | 'DELETE' | 'IMPORT' | 'DELETE_MEDIA' | 'DELETE_TORRENT' | 'REMOVE_QUEUE' | 'REMOVE_BLOCKLIST' | 'MOVE_MEDIA' | 'MARK_FAILED';
+  operation: 'EDIT' | 'DELETE' | 'IMPORT' | 'DELETE_MEDIA' | 'DELETE_TORRENT' | 'REMOVE_QUEUE' | 'REMOVE_BLOCKLIST' | 'MOVE_MEDIA' | 'MARK_FAILED' | 'KEEP_MEDIA';
   mediaType: string;
   mediaId: number | null;
   mediaTitle: string;
@@ -39,6 +39,7 @@ const OP_VARIANT: Record<AuditRecord['operation'], 'default' | 'secondary' | 'de
   REMOVE_BLOCKLIST: 'secondary',
   MOVE_MEDIA: 'default',
   MARK_FAILED: 'destructive',
+  KEEP_MEDIA: 'secondary',
 };
 
 const OP_LABEL: Record<AuditRecord['operation'], string> = {
@@ -51,6 +52,7 @@ const OP_LABEL: Record<AuditRecord['operation'], string> = {
   REMOVE_BLOCKLIST: 'BLOCKLIST REMOVE',
   MOVE_MEDIA: 'ROOT FOLDER',
   MARK_FAILED: 'MARKED FAILED',
+  KEEP_MEDIA: 'KEEP',
 };
 
 function serviceLabel(service: AuditRecord['service']): string {
@@ -60,7 +62,7 @@ function serviceLabel(service: AuditRecord['service']): string {
 
 function countLabel(record: AuditRecord): string {
   const count = record.fileCount;
-  if (record.operation === 'DELETE_MEDIA' || record.operation === 'MOVE_MEDIA') {
+  if (record.operation === 'DELETE_MEDIA' || record.operation === 'MOVE_MEDIA' || record.operation === 'KEEP_MEDIA') {
     const noun = record.mediaType === 'series' ? 'series' : record.mediaType;
     return `${count} ${noun}${count === 1 || noun === 'series' ? '' : 's'}`;
   }

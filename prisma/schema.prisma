@@ -780,6 +780,7 @@ enum CleanupAction {
   skipped
   dryRunPreview
   failed
+  removedFromLibrary // library cleanup: the Sonarr/Radarr title was deleted with its files
 }
 
 model CleanupHistory {
@@ -823,6 +824,51 @@ model CleanupHistory {
   @@index([previewId])
 }
 
+// ==================== Library cleanup ("Leaving soon") ====================
+
+// Admin rules for library cleanup. v1 never deletes on its own: the rules only
+// fill a preview list; the admin marks titles Leaving soon and later deletes
+// them with an explicit, preview-token-bound "Delete now".
+model LibraryCleanupConfig {
+  id                  String   @id @default("singleton")
+  // Sonarr/Radarr tag label that protects a title; members' "Keep" adds it.
+  keepTag             String   @default("keep")
+  countdownDays       Int      @default(14) // days a title stays Leaving soon before it may be deleted
+  notifyOnMark        Boolean  @default(true) // push the people who watchlisted or requested a title when it is marked
+  importListExclusion Boolean  @default(false) // add an import-list exclusion when deleting
+  // { unwatchedDays, addedDays, minSizeGb, maxRating } per library type; null = defaults.
+  movieRule           Json?
+  seriesRule          Json?
+  updatedAt           DateTime @updatedAt
+}
+
+// A title an admin marked Leaving soon. The row goes away when someone keeps
+// the title or when it is deleted; a failed delete leaves it in place.
+model LeavingSoonItem {
+  id               String      @id @default(cuid())
+  mediaType        String // "movie" | "series"
+  service          ServiceType // RADARR | SONARR
+  instanceId       String
+  arrId            Int // Radarr movie id / Sonarr series id on that instance
+  title            String
+  year             Int?
+  tmdbId           Int?
+  tvdbId           Int?
+  imdbId           String?
+  posterUrl        String?
+  sizeBytes        BigInt
+  lastWatchedAt    DateTime?
+  reasons          Json // string[]: why the title qualified when it was marked
+  requestedBy      Json // string[]: Seerr requesters, for the admin list
+  markedByUserId   String? // not a FK, like FileOperationAudit.userId
+  markedByUsername String
+  markedAt         DateTime    @default(now())
+  deleteAfter      DateTime // earliest time "Delete now" may take it
+
+  @@unique([service, instanceId, arrId])
+  @@index([deleteAfter])
+}
+
 // ==================== File operations: audit trail ====================
 
 enum FileOperation {
@@ -837,6 +883,7 @@ enum FileOperation {
   REMOVE_BLOCKLIST // remove (unblock) one or more Arr blocklist entries
   MOVE_MEDIA // change the root folder of series / movies / artists, optionally moving their files
   MARK_FAILED // mark an Arr history event's download failed (blocklists the release, searches again)
+  KEEP_MEDIA // "Keep" on a Leaving soon title: adds the keep tag in Sonarr/Radarr so library cleanup never takes it
 }
 
 // Unified accountability log for file operations and destructive media/download

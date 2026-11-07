@@ -19,6 +19,7 @@ import { WidgetAvailabilityProvider } from '@/lib/widgets/widget-availability-co
 import { LayoutSwitcher } from '@/components/widgets/layout-switcher';
 import type { WidgetInstance, WidgetService } from '@/lib/widgets/types';
 import { SetupChecklist } from '@/components/dashboard/setup-checklist';
+import { LeavingSoonShelf } from '@/components/leaving-soon/leaving-soon-shelf';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 // Without Secure on plain http: a rejected cookie made the server render the other
 // layout on every refresh, and this page refreshed forever.
@@ -273,6 +274,7 @@ function DashboardInner({ initialLayout, initialDevice, setupChecklist }: Dashbo
       )}
       {!editMode && canCustomize && <EditRow onClick={() => setEditMode(true)} />}
       {!editMode && setupChecklist && <SetupChecklist initial={setupChecklist} mobile={isMobile} />}
+      {!editMode && <LeavingSoonShelf />}
       <WidgetGrid isMobile={isMobile} onConfigureRefresh={() => setRefreshDrawerOpen(true)} />
 
       {galleryOpen && <WidgetGallery open={galleryOpen} onOpenChange={setGalleryOpen} />}

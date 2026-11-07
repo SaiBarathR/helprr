@@ -65,6 +65,7 @@ import type { RadarrMovieListItem } from '@/types';
 
 import type { MediaViewMode } from '@/lib/store';
 import { PageTitle } from '@/components/layout/page-title';
+import { LeavingSoonShelf } from '@/components/leaving-soon/leaving-soon-shelf';
 
 // Stable empty reference so memo deps don't churn before the query resolves.
 const EMPTY_MOVIES: RadarrMovieListItem[] = [];
@@ -953,6 +954,7 @@ export default function MoviesPage() {
       {/* Below the sticky toolbar, so it can't push over sticky table headers;
           the filter button's dot stays in view. */}
       <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
+      {!search && !selectionMode && <LeavingSoonShelf type="movie" />}
 
       {(() => {
         if (loading && movies.length === 0) {

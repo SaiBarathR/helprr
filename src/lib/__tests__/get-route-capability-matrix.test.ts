@@ -29,6 +29,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/anilist/list-entry',
     'GET /api/anilist/viewer',
     'GET /api/anime/automap/status',
+    'GET /api/cleanup/library/config',
     'GET /api/file-audit',
     'GET /api/security-audit',
     'GET /api/services/import',
@@ -357,6 +358,10 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'any:dashboard.view|settings.dashboardRefresh': [
     'GET /api/dashboard-layouts',
   ],
+  // The Leaving soon shelf, filtered to the library types the caller may view.
+  'any:movies.view|series.view': [
+    'GET /api/leaving-soon',
+  ],
   'any:movies.view|movies.add': [
     'GET /api/radarr/qualityprofiles',
     'GET /api/radarr/tags',
@@ -556,7 +561,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(283);
+    expect(handlers.size).toBe(285);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

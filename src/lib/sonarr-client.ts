@@ -127,8 +127,8 @@ export class SonarrClient {
     return this.put<SonarrSeries>(endpoint, body);
   }
 
-  async deleteSeries(id: number, deleteFiles: boolean = false): Promise<void> {
-    await this.delete(`/api/v3/series/${id}`, { deleteFiles });
+  async deleteSeries(id: number, deleteFiles: boolean = false, addImportListExclusion: boolean = false): Promise<void> {
+    await this.delete(`/api/v3/series/${id}`, { deleteFiles, addImportListExclusion });
   }
 
   // Bulk editor — one request for monitored/tags/settings across many series. Sonarr

@@ -162,7 +162,8 @@ function sameTitle(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-function matches(
+/** Also used by library cleanup to protect watchlisted titles. */
+export function watchlistItemMatches(
   item: { source: string; externalId: string; mediaType: string; title: string },
   arrival: LibraryArrival,
 ): boolean {
@@ -230,7 +231,7 @@ export async function notifyWatchlistArrivals(arrivals: LibraryArrival[]): Promi
     // library page): one alert, and both items are marked.
     const byUser = new Map<string, { user: NonNullable<MatchedItem['user']>; ids: string[] }>();
     for (const item of items) {
-      if (!item.user || !matches(item, arrival)) continue;
+      if (!item.user || !watchlistItemMatches(item, arrival)) continue;
       const entry = byUser.get(item.user.id) ?? { user: item.user, ids: [] };
       entry.ids.push(item.id);
       byUser.set(item.user.id, entry);

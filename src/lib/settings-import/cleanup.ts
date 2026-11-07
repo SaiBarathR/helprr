@@ -3,6 +3,7 @@
 import type { Prisma } from '@prisma/client';
 import type { ExportedCleanup } from '@/lib/settings-export';
 import { toAutoRunMode, toIncludeApp } from '@/lib/cleanup/types';
+import { normalizeLibraryCleanupSettings, saveLibraryCleanupSettings } from '@/lib/library-cleanup/config';
 
 export async function applyCleanupInTxn(
   tx: Prisma.TransactionClient,
@@ -78,6 +79,14 @@ export async function applyCleanupInTxn(
     });
   } else {
     skipped.push('Cleanup: downloadConfig missing or invalid');
+  }
+
+  // Library cleanup settings go through the same validation as the Library tab;
+  // an invalid block is skipped and the current settings stay.
+  if (data.libraryConfig !== undefined) {
+    const library = normalizeLibraryCleanupSettings(data.libraryConfig);
+    if (library.ok) await saveLibraryCleanupSettings(library.value, tx);
+    else skipped.push(`Cleanup: libraryConfig skipped (${library.error})`);
   }
 
   // Replace user-defined rules with the imported set. System rules (the

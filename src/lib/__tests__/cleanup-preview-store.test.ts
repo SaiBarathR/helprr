@@ -93,4 +93,39 @@ describe('cleanup preview tokens', () => {
     await expect(consumeCleanupPreview('user-1', 'queue', issued.previewToken, { store, now: () => now + 1 }))
       .resolves.toMatchObject({ previewId: 'd'.repeat(43), binding });
   });
+
+  it('keeps library "Delete now" tokens single-use, short-lived and apart from the other cleaners', async () => {
+    const store = new MemoryPreviewStore();
+    const now = Date.parse('2026-11-07T10:00:00.000Z');
+    const library: CleanupExecutionBinding = {
+      cleaner: 'library',
+      configFingerprint: 'config',
+      scopeFingerprint: 'scope',
+      candidatesFingerprint: 'candidates',
+      candidates: [{ cleaner: 'library', hash: 'RADARR:r1:12', leavingSoonId: 'ls-12', deleteAfter: '2026-11-01T00:00:00.000Z', addImportListExclusion: false }],
+    };
+    const issued = await issueCleanupPreview('admin-1', library, {
+      store,
+      now: () => now,
+      randomToken: tokenGenerator('e'.repeat(43), 'f'.repeat(43), 'g'.repeat(43), 'h'.repeat(43)),
+    });
+    // A queue/download run cannot spend it, nor another admin.
+    await expect(consumeCleanupPreview('admin-1', 'download', issued.previewToken, { store, now: () => now + 1 }))
+      .rejects.toBeInstanceOf(InvalidCleanupPreviewError);
+    await expect(consumeCleanupPreview('admin-2', 'library', issued.previewToken, { store, now: () => now + 1 }))
+      .rejects.toBeInstanceOf(InvalidCleanupPreviewError);
+    await expect(consumeCleanupPreview('admin-1', 'library', issued.previewToken, { store, now: () => now + 1 }))
+      .resolves.toMatchObject({ binding: library });
+    // Reuse fails.
+    await expect(consumeCleanupPreview('admin-1', 'library', issued.previewToken, { store, now: () => now + 2 }))
+      .rejects.toBeInstanceOf(InvalidCleanupPreviewError);
+
+    // Expiry fails, and a download token cannot be spent as a library one.
+    const late = await issueCleanupPreview('admin-1', library, { store, now: () => now, randomToken: tokenGenerator('i'.repeat(43), 'j'.repeat(43)) });
+    await expect(consumeCleanupPreview('admin-1', 'library', late.previewToken, { store, now: () => now + CLEANUP_PREVIEW_TTL_SECONDS * 1000 }))
+      .rejects.toBeInstanceOf(InvalidCleanupPreviewError);
+    const download = await issueCleanupPreview('admin-1', { ...binding, cleaner: 'download' }, { store, now: () => now, randomToken: tokenGenerator('k'.repeat(43), 'l'.repeat(43)) });
+    await expect(consumeCleanupPreview('admin-1', 'library', download.previewToken, { store, now: () => now + 1 }))
+      .rejects.toBeInstanceOf(InvalidCleanupPreviewError);
+  });
 });
