@@ -128,7 +128,7 @@ export default function ExcludedTitlesPage() {
 
   return (
     <div className="space-y-3 animate-content-in">
-      <PageHeader title="Excluded titles" subtitle="Recommendations" backHref="/recommendations" />
+      <PageHeader title="Excluded titles" subtitle="For You" backHref="/recommendations" />
 
       <div className="mx-auto max-w-2xl space-y-3">
         {query.isLoading ? (

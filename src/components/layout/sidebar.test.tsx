@@ -64,7 +64,7 @@ const DEFAULT_RUNS = [
   ['Activity'],
   ['Discover', 'Anime'],
   ['Music', 'Watchlist'],
-  ['Requests', 'Recommendations'],
+  ['Requests', 'For You'],
   ['Calendar', 'Library Gaps'],
   ['Torrents', 'Cleanup', 'Prowlarr'],
   ['Watch', 'Jellyfin'],
@@ -148,7 +148,7 @@ describe('Sidebar layout', () => {
     // Removing Movies leaves TV Series alone in its run; nothing is left empty.
     expect(runsOf()).toEqual([
       ['Dashboard'], ['TV Series'], ['Activity'], ['Discover', 'Anime'], ['Music', 'Watchlist'],
-      ['Requests', 'Recommendations'], ['Calendar', 'Library Gaps'], ['Torrents', 'Prowlarr'],
+      ['Requests', 'For You'], ['Calendar', 'Library Gaps'], ['Torrents', 'Prowlarr'],
     ]);
     expect(names('aside > div')).toEqual(['Settings', 'Collapse']);
   });

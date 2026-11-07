@@ -3,10 +3,11 @@ import { Suspense, useState, type ComponentProps, type ReactNode } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   canManage: true,
+  videosLoading: false,
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
 }));
 
@@ -27,7 +28,7 @@ vi.mock('@/components/creators/use-video-selection', () => ({
   useVideoSelection: () => ({ canSelect: false, active: false, bar: null, selectionFor: () => undefined, startWith: () => undefined }),
 }));
 vi.mock('@/lib/hooks/use-restorable-infinite-query', () => ({
-  useRestorableInfiniteQuery: () => ({ isLoading: false, isError: false, data: { pages: [] }, hasNextPage: false }),
+  useRestorableInfiniteQuery: () => ({ isLoading: mocks.videosLoading, isError: false, data: { pages: [] }, hasNextPage: false }),
 }));
 
 import { CreatorPlatformProvider } from '@/components/creators/platform';
@@ -165,5 +166,25 @@ describe('leaving a channel others still follow', () => {
     await unfollow();
     await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(true));
     expect(mocks.toast).not.toHaveBeenCalled();
+  });
+});
+
+describe('the video tiles', () => {
+  // The videos stay loading, so the skeleton shows the column plan the list will use.
+  beforeEach(() => { mocks.videosLoading = true; });
+  afterEach(() => { mocks.videosLoading = false; });
+  const skeletonGrid = () => screen.getByRole('status', { name: 'Loading videos' }).firstElementChild!.className;
+
+  it('are feed-rail size on a YouTube channel, five across a laptop', async () => {
+    respond({ 'GET /api/youtube/channels/c1': channel() });
+    await renderPage('youtube');
+    expect(skeletonGrid()).toContain('@[1164px]:grid-cols-5');
+  });
+
+  it('stay wide on a Twitch streamer', async () => {
+    respond({ 'GET /api/twitch/streamers/c1': channel() });
+    await renderPage('twitch');
+    expect(skeletonGrid()).not.toContain('grid-cols-5');
+    expect(skeletonGrid()).toContain('@[1112px]:grid-cols-3');
   });
 });

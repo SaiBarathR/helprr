@@ -207,7 +207,7 @@ function RecommendationsPageInner() {
 
   return (
     <div className="animate-content-in pb-12">
-      <PageTitle>Recommendations</PageTitle>
+      <PageTitle>For You</PageTitle>
       {/* Sticky glass mode switcher — same page-toolbar convention as the
           library pages, so the chips stay reachable mid-feed. */}
       <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">

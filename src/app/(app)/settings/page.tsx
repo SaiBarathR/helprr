@@ -21,10 +21,11 @@ import {
   Lightbulb,
   Search,
 } from 'lucide-react';
-import { useState, type ComponentProps } from 'react';
+import type { ComponentProps } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher } from '@/lib/query-fetch';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { CategoryRow } from '@/components/settings/category-row';
 import { Input } from '@/components/ui/input';
@@ -61,7 +62,8 @@ interface SettingsRow {
 
 export default function SettingsIndexPage() {
   const me = useMe();
-  const [filter, setFilter] = useState('');
+  // Kept for the tab's session, like the Logs search, so coming back from a row finds it.
+  const [filter, setFilter] = useRouteViewState('filter', '');
   const canInstances = hasCapability(me, 'settings.instances');
 
   // members can't read connections; skip the 403 with enabled.

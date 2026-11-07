@@ -1,13 +1,13 @@
 ---
 title: TMDB
-description: Connect TMDB to Helprr for Discover and Recommendations.
+description: Connect TMDB to Helprr for Discover and the For You page.
 ---
 
 **Address:** `https://api.themoviedb.org/3`. **Key:** the API key, or the API read
 access token, from your TMDB account's
 [Settings → API](https://www.themoviedb.org/settings/api) page.
 
-**What it adds:** Discover, Recommendations, collections, people and credits, and
+**What it adds:** Discover, the For You page, collections, people and credits, and
 artwork for films and series. Without it, those pages ask for it.
 
 A TMDB account and its API key are free. In **Settings → Instances**, open **TMDB** under

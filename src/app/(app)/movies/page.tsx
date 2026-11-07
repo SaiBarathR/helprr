@@ -29,7 +29,6 @@ import {
 } from '@/components/ui/active-filter-bar';
 import { withAppName } from '@/components/instance-filter';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
-import { GestureTip, useGestureTipVisible } from '@/components/ui/gesture-tip';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { useToolbarHeight } from '@/lib/hooks/use-toolbar-height';
 import { MoviesSubNav } from '@/components/media/movies-subnav';
@@ -222,10 +221,6 @@ export default function MoviesPage() {
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [containerWidth, setContainerWidth] = useState(0);
   const [contentOffsetTop, setContentOffsetTop] = useState(0);
-  // Only when the press-and-hold menu has actions beyond Open (Select needs canBulk;
-  // selection mode turns the menu off). The tip sits above the virtualized list,
-  // so showing or closing it moves the list.
-  const longPressTipVisible = useGestureTipVisible('long-press') && canBulk && !selectionMode;
   const [deleteTarget, setDeleteTarget] = useState<RadarrMovieListItem | null>(null);
   const [renameTarget, setRenameTarget] = useState<{
     title: string;
@@ -301,7 +296,7 @@ export default function MoviesPage() {
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [viewMode, posterSize, loading, movies.length, search, filter, watchFilter, instanceFilter, longPressTipVisible]);
+  }, [viewMode, posterSize, loading, movies.length, search, filter, watchFilter, instanceFilter]);
 
   useEffect(() => {
     persistViewState(search);
@@ -958,7 +953,6 @@ export default function MoviesPage() {
       {/* Below the sticky toolbar, so it can't push over sticky table headers;
           the filter button's dot stays in view. */}
       <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
-      {filtered.length > 0 && longPressTipVisible && <GestureTip id="long-press" />}
 
       {(() => {
         if (loading && movies.length === 0) {

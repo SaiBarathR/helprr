@@ -259,9 +259,10 @@ const round3 = (n: number) => Math.round(n * 1000) / 1000;
  * (prefers-reduced-transparency / no backdrop-filter support) can ignore them.
  *
  * Chrome bars (--hpr-glass-bg) and sheets/overlays (--hpr-glass-bg-strong)
- * carry text over whatever scrolls behind them, so from the default
- * intensity up they stay opaque enough for AA text over a black or white
- * poster; below it the user has asked for a clearer material.
+ * carry text over whatever scrolls behind them. At the default intensity the
+ * bars are 0.88 opaque, so content still shows through (the owner's call) while
+ * the grey labels keep AA even over a black or white poster; sheets stay near
+ * opaque. Below the default the user has asked for a clearer material.
  */
 function glassMaterialVars(scheme: GlassScheme, intensity: number): Record<string, string> {
   const t = Math.min(100, Math.max(0, intensity)) / 100;
@@ -272,7 +273,7 @@ function glassMaterialVars(scheme: GlassScheme, intensity: number): Record<strin
   return {
     '--hpr-glass-blur': `${Math.round(36 * t)}px`,
     '--hpr-glass-saturate': String(round3(1 + 0.8 * t)),
-    '--hpr-glass-bg': `rgba(${bgBase},${round3(Math.min(0.97, 0.55 + 0.67 * t))})`,
+    '--hpr-glass-bg': `rgba(${bgBase},${round3(Math.min(0.97, 0.55 + 0.55 * t))})`,
     '--hpr-glass-bg-strong': `rgba(${bgBase},${round3(Math.min(0.97, 0.7 + 0.5 * t))})`,
     '--hpr-glass-fill': `rgba(${fillBase},${round3(0.45 + 0.5 * t)})`,
     '--hpr-glass-border': light

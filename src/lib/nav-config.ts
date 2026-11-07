@@ -90,7 +90,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   // Keeps the historical 'random' id so persisted nav orders / default-page
   // preferences survive the rename to Recommendations. Visible with EITHER
   // capability: a random.view-only user still reaches the Random mode.
-  { id: 'random', href: '/recommendations', icon: Popcorn, label: 'Recommendations', shortLabel: 'Recs', group: 'discover', requiredAnyCapability: ['recommendations.view', 'random.view'] },
+  { id: 'random', href: '/recommendations', icon: Popcorn, label: 'For You', shortLabel: 'For You', group: 'discover', requiredAnyCapability: ['recommendations.view', 'random.view'] },
   { id: 'calendar', href: '/calendar', icon: CalendarDays, label: 'Calendar', shortLabel: 'Calendar', group: 'library', requiredCapability: 'calendar.view' },
   { id: 'library-gaps', href: '/library-gaps', icon: LibraryBig, label: 'Library Gaps', shortLabel: 'Gaps', group: 'library' },
   { id: 'torrents', href: '/torrents', icon: HardDrive, label: 'Torrents', shortLabel: 'Torrents', group: 'downloads', requiredCapability: 'torrents.view', badgeArea: 'downloads' },

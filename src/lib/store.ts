@@ -257,7 +257,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 53;
+export const STORE_VERSION = 54;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -508,6 +508,10 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     // page picks by role (approvers Pending, members All). Other picks stay.
     state.requestsFilter = null;
   }
+  if (version < 54) {
+    // The one-time gesture tips were removed; their closed list is inert junk.
+    delete state.dismissedTips;
+  }
   // The player's skip lengths arrived in version 51; a missing value takes the
   // store default. Only a present, unusable value is replaced, so a partial
   // settings import does not gain fields it never exported.
@@ -729,9 +733,6 @@ interface UIState {
   // Haptic feedback on touch gestures (swipe actions, pull-to-refresh)
   hapticsEnabled: boolean;
   setHapticsEnabled: (v: boolean) => void;
-  // One-time gesture tips the user has closed (see components/ui/gesture-tip.tsx)
-  dismissedTips: string[];
-  dismissTip: (id: string) => void;
   // Jellyfin subtitle appearance (text subtitles only; libass owns ASS styling)
   subtitleAppearance: SubtitleAppearance;
   setSubtitleAppearance: (patch: Partial<SubtitleAppearance>) => void;
@@ -840,7 +841,6 @@ const PERSISTED_KEYS = [
   'glassMode',
   'glassIntensity',
   'hapticsEnabled',
-  'dismissedTips',
   'subtitleAppearance',
   'playerSkipBackSeconds',
   'playerSkipForwardSeconds',
@@ -862,7 +862,6 @@ const ARRAY_PERSISTED_KEYS: ReadonlySet<string> = new Set([
   'disabledNavItems',
   'animeCarouselOrder',
   'disabledAnimeCarousels',
-  'dismissedTips',
 ]);
 
 // Keys whose persisted shape is a VisibleFieldsByMode object ({ posters, overview,
@@ -1165,10 +1164,6 @@ export const useUIStore = create<UIState>()(
       // Haptics
       hapticsEnabled: true,
       setHapticsEnabled: (v) => set({ hapticsEnabled: v }),
-      // Gesture tips
-      dismissedTips: [],
-      dismissTip: (id) =>
-        set((state) => (state.dismissedTips.includes(id) ? {} : { dismissedTips: [...state.dismissedTips, id] })),
       // Jellyfin subtitle appearance
       subtitleAppearance: { ...DEFAULT_SUBTITLE_APPEARANCE },
       setSubtitleAppearance: (patch) =>
