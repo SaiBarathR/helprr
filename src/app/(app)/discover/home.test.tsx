@@ -368,17 +368,25 @@ describe('Discover home (characterization)', () => {
     expect(screen.getByRole('button', { name: 'Popular', pressed: true })).toBeTruthy();
   });
 
-  it('leaves a search for the sort chip chosen while searching', async () => {
+  it('keeps a search when a sort chip is tapped, and sorts once the search is cleared', async () => {
     const user = renderHome();
     await waitFor(() => expect(sectionTitles()).toContain('Trending'));
     await user.type(screen.getByPlaceholderText('Search movies and shows'), 'dune');
     expect(await screen.findByText('Results for "dune"', {}, { timeout: 2000 })).toBeTruthy();
+    await waitFor(() => expect(lastGrid()).toEqual(expect.objectContaining({ mode: 'search', q: 'dune' })));
+    const searchCalls = mocks.urls.length;
 
-    await user.click(screen.getByRole('button', { name: 'Trending' }));
-    await waitFor(() => expect(lastGrid()).toEqual(expect.objectContaining({ mode: 'browse', sortBy: 'trending' })));
-    expect(lastGrid().q).toBeUndefined();
-    expect((screen.getByPlaceholderText('Search movies and shows') as HTMLInputElement).value).toBe('');
-    expect(screen.getByRole('button', { name: 'Trending', pressed: true })).toBeTruthy();
+    // The chips are off while searching: a tap neither sorts nor ends the search.
+    await user.click(screen.getByRole('button', { name: 'Popular' }));
+    expect(mocks.urls.length).toBe(searchCalls);
+    expect(lastGrid()).toEqual(expect.objectContaining({ mode: 'search', q: 'dune' }));
+    expect((screen.getByPlaceholderText('Search movies and shows') as HTMLInputElement).value).toBe('dune');
+    expect(screen.getByText('Clear the search to sort')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: 'Clear search for "dune"' }));
+    await user.click(screen.getByRole('button', { name: 'Popular' }));
+    await waitFor(() => expect(lastGrid()).toEqual(expect.objectContaining({ mode: 'browse', sortBy: 'popular' })));
+    expect(screen.getByRole('button', { name: 'Popular', pressed: true })).toBeTruthy();
   });
 
   it('shows the loading skeleton until the carousels arrive', async () => {

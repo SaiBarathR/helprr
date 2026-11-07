@@ -5,6 +5,41 @@ import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { checkOwnership, coercePositiveInt, coercePositiveIntArray } from '@/lib/manage-files-guard';
 import { can } from '@/lib/permissions';
+import { isFilmNotReleased } from '@/lib/film-releases';
+import type { RadarrClient } from '@/lib/radarr-client';
+
+const MISSING_PAGE_SIZE = 500;
+const MISSING_MAX_PAGES = 20;
+// Films per MoviesSearch command: Radarr works through each command's list one
+// film at a time, so a long list becomes several commands instead of one huge one.
+const SEARCH_BATCH_SIZE = 100;
+
+/**
+ * Search every monitored missing film that is out, by id. Radarr's own
+ * MissingMoviesSearch runs as a manual search from the API, which skips its
+ * availability check and so searches films not released yet too. Films already
+ * in the queue are left out, as Radarr's own command does.
+ */
+async function searchReleasedMissing(client: RadarrClient) {
+  const now = Date.now();
+  // A film that moves between pages while they are read is counted once.
+  const ids = new Set<number>();
+  for (let page = 1; page <= MISSING_MAX_PAGES; page++) {
+    const { records, totalRecords } = await client.getWantedMissing(page, MISSING_PAGE_SIZE);
+    for (const film of records) if (!isFilmNotReleased(film, now)) ids.add(film.id);
+    if (records.length < MISSING_PAGE_SIZE || page * MISSING_PAGE_SIZE >= totalRecords) break;
+  }
+  // Leaving the queued ones out only saves indexer requests: search them anyway if the queue can't be read.
+  const queue = await client.getQueue(1, 1000).catch(() => null);
+  const queued = new Set(queue?.records.map((item) => item.movieId) ?? []);
+  const movieIds = [...ids].filter((id) => !queued.has(id));
+
+  const commands = [];
+  for (let i = 0; i < movieIds.length; i += SEARCH_BATCH_SIZE) {
+    commands.push(await client.searchMovie(movieIds.slice(i, i + SEARCH_BATCH_SIZE)));
+  }
+  return { movieCount: movieIds.length, commands };
+}
 
 async function postHandler(request: NextRequest) {
   const auth = await requireUserCapability('activity.manage');
@@ -31,7 +66,7 @@ async function postHandler(request: NextRequest) {
         result = await client.searchMovie(body.movieIds);
         break;
       case 'MissingMoviesSearch':
-        result = await client.searchWanted('missing');
+        result = await searchReleasedMissing(client);
         break;
       case 'CutoffUnmetMoviesSearch':
         result = await client.searchWanted('cutoff');

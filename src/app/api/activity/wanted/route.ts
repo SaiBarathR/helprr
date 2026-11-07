@@ -110,7 +110,11 @@ async function buildWantedBuckets(type: WantedType, filter: WantedFilter = {}): 
       source: 'radarr',
       instanceId: connection.id,
       instanceLabel: connection.label,
-      fetchPage: makeFetch(client),
+      // Missing films oldest first: the overdue ones lead and those not out yet
+      // come last. Sonarr's missing list has no unaired episodes, so it stays newest first.
+      fetchPage: type === 'missing'
+        ? (page, pageSize) => client.getWantedMissing(page, pageSize, 'movieMetadata.inCinemas', 'ascending')
+        : makeFetch(client),
       tag: (record) => ({ ...record, source: 'radarr' as const, mediaType: 'movie' as const, instanceId: connection.id, instanceLabel: connection.label }),
     });
   }

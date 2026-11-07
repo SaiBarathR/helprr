@@ -4,13 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * Activity → Missing / Cutoff Unmet "Search all" sends each app's own
  * whole-list search command through the existing command routes, to the
- * instance named in the query, behind activity.manage.
+ * instance named in the query, behind activity.manage. Radarr's Missing is the
+ * exception: it searches the released missing films by id.
  */
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   getClient: vi.fn(),
-  client: { searchWanted: vi.fn() },
+  client: { searchWanted: vi.fn(), getWantedMissing: vi.fn(), getQueue: vi.fn(), searchMovie: vi.fn() },
 }));
 vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.auth }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (fn: unknown) => fn }));
@@ -36,6 +37,8 @@ beforeEach(() => {
   mocks.auth.mockResolvedValue({ ok: true, user: { id: 'admin', role: 'admin' } });
   mocks.getClient.mockResolvedValue(mocks.client);
   mocks.client.searchWanted.mockResolvedValue({ id: 1, status: 'queued' });
+  mocks.client.getQueue.mockResolvedValue({ records: [] });
+  mocks.client.searchMovie.mockImplementation(async (ids: number[]) => ({ id: ids[0], name: 'MoviesSearch', status: 'queued' }));
 });
 
 describe.each([
@@ -43,7 +46,8 @@ describe.each([
   { service: 'radarr', handler: radarrCommand as Handler, missing: 'MissingMoviesSearch', cutoff: 'CutoffUnmetMoviesSearch' },
   { service: 'lidarr', handler: lidarrCommand as Handler, missing: 'MissingAlbumSearch', cutoff: 'CutoffUnmetAlbumSearch' },
 ])('/api/$service/command wanted searches', ({ service, handler, missing, cutoff }) => {
-  it.each([[missing, 'missing'], [cutoff, 'cutoff']])('%s searches the %s list on the named instance', async (name, type) => {
+  const wholeList = service === 'radarr' ? [[cutoff, 'cutoff']] : [[missing, 'missing'], [cutoff, 'cutoff']];
+  it.each(wholeList)('%s searches the %s list on the named instance', async (name, type) => {
     const res = await post(handler, service, name);
     expect(res.status).toBe(200);
     expect(mocks.auth).toHaveBeenCalledWith('activity.manage');
@@ -57,5 +61,65 @@ describe.each([
     expect(res.status).toBe(403);
     expect(mocks.getClient).not.toHaveBeenCalled();
     expect(mocks.client.searchWanted).not.toHaveBeenCalled();
+  });
+});
+
+describe('/api/radarr/command MissingMoviesSearch', () => {
+  const film = (id: number, dates: { inCinemas?: string; digitalRelease?: string; status?: string }) =>
+    ({ id, title: `Film ${id}`, status: 'released', ...dates });
+  const past = '2020-01-01T00:00:00Z';
+  const future = '2999-01-01T00:00:00Z';
+
+  it('searches only the released, unqueued missing films, by id, on the named instance', async () => {
+    mocks.client.getWantedMissing.mockResolvedValue({
+      totalRecords: 5,
+      records: [
+        film(1, { inCinemas: past }),
+        film(2, { inCinemas: future, status: 'inCinemas' }),
+        film(3, { inCinemas: future, digitalRelease: past }),
+        film(4, { status: 'announced' }),
+        film(5, { inCinemas: past }),
+      ],
+    });
+    mocks.client.getQueue.mockResolvedValue({ records: [{ movieId: 5 }] });
+
+    const res = await post(radarrCommand as Handler, 'radarr', 'MissingMoviesSearch');
+
+    expect(res.status).toBe(200);
+    expect(mocks.auth).toHaveBeenCalledWith('activity.manage');
+    expect(mocks.getClient).toHaveBeenCalledWith('radarr', 'inst-2');
+    expect(mocks.client.searchWanted).not.toHaveBeenCalled();
+    expect(mocks.client.searchMovie).toHaveBeenCalledTimes(1);
+    expect(mocks.client.searchMovie).toHaveBeenCalledWith([1, 3]);
+    expect(await res.json()).toMatchObject({ movieCount: 2 });
+  });
+
+  it('reads every page and sends at most 100 films per command', async () => {
+    const all = Array.from({ length: 730 }, (_, i) => film(i + 1, { inCinemas: past }));
+    mocks.client.getWantedMissing.mockImplementation(async (page: number, size: number) =>
+      ({ totalRecords: all.length, records: all.slice((page - 1) * size, page * size) }));
+
+    const res = await post(radarrCommand as Handler, 'radarr', 'MissingMoviesSearch');
+
+    expect(res.status).toBe(200);
+    expect(mocks.client.getWantedMissing.mock.calls.map((c) => c[0])).toEqual([1, 2]);
+    const batches = mocks.client.searchMovie.mock.calls.map((c) => c[0] as number[]);
+    expect(batches).toHaveLength(8);
+    expect(batches.every((ids) => ids.length <= 100)).toBe(true);
+    expect(batches.flat()).toEqual(all.map((f) => f.id));
+  });
+
+  it('still searches when the queue cannot be read, and sends nothing when no film is out', async () => {
+    mocks.client.getWantedMissing.mockResolvedValue({ totalRecords: 1, records: [film(1, { inCinemas: past })] });
+    mocks.client.getQueue.mockRejectedValue(new Error('down'));
+    await post(radarrCommand as Handler, 'radarr', 'MissingMoviesSearch');
+    expect(mocks.client.searchMovie).toHaveBeenCalledWith([1]);
+
+    mocks.client.searchMovie.mockClear();
+    mocks.client.getWantedMissing.mockResolvedValue({ totalRecords: 1, records: [film(2, { status: 'announced' })] });
+    const res = await post(radarrCommand as Handler, 'radarr', 'MissingMoviesSearch');
+    expect(res.status).toBe(200);
+    expect(mocks.client.searchMovie).not.toHaveBeenCalled();
+    expect(await res.json()).toMatchObject({ movieCount: 0, commands: [] });
   });
 });

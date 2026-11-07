@@ -120,7 +120,7 @@ describe('WantedTab', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Search all' }));
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByText('Search for all 42 missing items?')).toBeTruthy();
-    expect(within(dialog).queryByText(/Radarr also searches/)).toBeNull();
+    expect(within(dialog).queryByText(/Radarr searches only/)).toBeNull();
     expect(posts).toEqual([]);
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Search all' }));
@@ -131,12 +131,12 @@ describe('WantedTab', () => {
     ]);
   });
 
-  it('warns that Radarr also searches unreleased films when Search all covers Radarr', async () => {
+  it('says Radarr skips films not released yet when Search all covers Radarr', async () => {
     renderTab();
     await screen.findByText(/Classroom - S01E08/);
     await waitFor(() => expect((screen.getByRole('button', { name: 'Search all' }) as HTMLButtonElement).disabled).toBe(false));
     await userEvent.click(screen.getByRole('button', { name: 'Search all' }));
-    expect(within(await screen.findByRole('alertdialog')).getByText(/Radarr also searches films that are not released yet/)).toBeTruthy();
+    expect(within(await screen.findByRole('alertdialog')).getByText(/Radarr searches only the films that are out: those not released yet are skipped/)).toBeTruthy();
   });
 
   it('drops the selection when the filters change', async () => {

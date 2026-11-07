@@ -1,3 +1,5 @@
+import { filmReleases, isFilmNotReleased, validDate } from '@/lib/film-releases';
+
 export type WantedSource = 'sonarr' | 'radarr' | 'lidarr';
 export type WantedType = 'missing' | 'cutoff';
 
@@ -36,45 +38,9 @@ export function wantedRecordKey(record: WantedRecord): string {
   return `${record.source}-${record.instanceId ?? 'default'}-${record.id}`;
 }
 
-function validDate(value: string | undefined): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-type FilmRelease = { label: 'In cinemas' | 'Digital release' | 'Physical release'; date: Date };
-
-/**
- * A film's known releases, oldest first, split into those that have happened
- * and those still to come. The one place the Missing tab decides whether a
- * film is out: the "Not released yet" group and the row's date both read it.
- */
-function filmReleases(record: WantedRecord, now: number): { past: FilmRelease[]; future: FilmRelease[] } {
-  const releases = ([
-    ['In cinemas', record.inCinemas],
-    ['Digital release', record.digitalRelease],
-    ['Physical release', record.physicalRelease],
-  ] as const)
-    .map(([label, value]) => ({ label, date: validDate(value) }))
-    .filter((r): r is FilmRelease => r.date !== null)
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
-  return {
-    past: releases.filter((r) => r.date.getTime() <= now),
-    future: releases.filter((r) => r.date.getTime() > now),
-  };
-}
-
-/**
- * A Radarr film that is not out anywhere yet: none of its cinema, digital or
- * physical dates has passed (with no dates at all: Radarr's status says it is
- * only announced). Radarr's own isAvailable is not used: with minimum
- * availability "announced" it is true for films years from release.
- */
+/** A Radarr film that is not out anywhere yet (see isFilmNotReleased). */
 export function isNotReleased(record: WantedRecord, now = Date.now()): boolean {
-  if (record.source !== 'radarr') return false;
-  const { past, future } = filmReleases(record, now);
-  if (past.length > 0) return false;
-  return future.length > 0 || record.status === 'announced' || record.status === 'tba';
+  return record.source === 'radarr' && isFilmNotReleased(record, now);
 }
 
 /**

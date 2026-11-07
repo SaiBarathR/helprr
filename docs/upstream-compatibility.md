@@ -347,7 +347,8 @@ than treating a successful connection test as proof that playback still works.
 ### Wanted list order (source contract)
 
 Activity → Missing and Cutoff Unmet ask each app for newest first
-(`sortDirection=descending`). Sonarr and Radarr accept only the sort keys on their
+(`sortDirection=descending`), except Radarr's Missing, which asks for oldest first
+(`ascending`). Sonarr and Radarr accept only the sort keys on their
 wanted controllers' allow-lists and silently use their default key for any other,
 keeping the requested direction. Helprr sends the exact keys:
 
@@ -355,8 +356,9 @@ keeping the requested direction. Helprr sends the exact keys:
   `airDateUtc` already gave this order.
 - Radarr `movieMetadata.inCinemas`. Its default is `movieMetadata.sortTitle`, so the
   earlier `date` came back in reverse title order. Radarr's missing list includes
-  films not out yet, so those come first (and, on a PostgreSQL-backed Radarr, films
-  with no cinema date). Activity folds them under **Not released yet**. A row shows
+  films not out yet; read oldest first, the overdue films lead and those come last
+  (films with no cinema date come first on a SQLite-backed Radarr and last on a
+  PostgreSQL-backed one). Activity folds them under **Not released yet**. A row shows
   its home-release date when it has one, so rows can look slightly out of order.
   Library Gaps reads one page of 50, so it keeps `movieMetadata.sortTitle` to stop
   upcoming films crowding out overdue ones.
@@ -465,15 +467,19 @@ command (`EpisodeSearch` `episodeIds`, `MoviesSearch` `movieIds`, Lidarr
 `AlbumSearch` `albumIds`), one command per instance. **Search all** sends the
 whole-list command with no other fields, one per instance the filters cover:
 Sonarr `MissingEpisodeSearch` / `CutoffUnmetEpisodeSearch` (their `Monitored`
-defaults to true), Radarr `MissingMoviesSearch` / `CutoffUnmetMoviesSearch`
-(monitored movies only, skipping those already queued) and Lidarr
-`MissingAlbumSearch` / `CutoffUnmetAlbumSearch`. Radarr's wanted records carry
-`isAvailable` (its minimum-availability check), `inCinemas`, `digitalRelease` and
-`physicalRelease`; Missing groups films with `isAvailable: false` under **Not
-released yet**. A command sent through the API runs as a manual search, which
-skips Radarr's availability check, so **Search all** searches those films too
-(as Radarr's own Search All does); the confirm says so. Read from the Sonarr v5-develop, Radarr and Lidarr develop
-sources on 2026-11-06.
+defaults to true), Radarr `CutoffUnmetMoviesSearch` (monitored movies only,
+skipping those already queued) and Lidarr `MissingAlbumSearch` /
+`CutoffUnmetAlbumSearch`. Radarr's wanted records carry `isAvailable` (its
+minimum-availability check), `inCinemas`, `digitalRelease` and `physicalRelease`;
+Missing groups films none of whose dates has passed under **Not released yet**.
+A command sent through the API runs as a manual search, which skips Radarr's
+availability check, so Radarr's own `MissingMoviesSearch` would search those
+films too. Helprr's `/api/radarr/command` therefore answers `MissingMoviesSearch`
+by reading `/api/v3/wanted/missing` (monitored films, 500 a page), keeping the
+films that are out, leaving out those in the queue, and sending `MoviesSearch`
+with at most 100 `movieIds` per command; the confirm says so. Read from the
+Sonarr v5-develop, Radarr and Lidarr develop sources on 2026-11-06; the oldest-first
+order was checked read-only against the Radarr on the test host on 2026-11-07.
 
 ## Before reporting an upstream compatibility problem
 

@@ -142,10 +142,9 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
   });
   const searchAllInstances = searchAllTargets(instances, filterBy, instanceFilter);
   const listName = type === 'missing' ? 'missing' : 'cutoff unmet';
-  // Radarr's whole-list search is a manual search, which skips its availability
-  // check: it searches the "Not released yet" films too.
+  // Helprr searches Radarr's missing films by id, leaving out the "Not released yet" ones.
   const searchAllNote = type === 'missing' && searchAllInstances.some((i) => i.source === 'radarr')
-    ? ' Radarr also searches films that are not released yet.'
+    ? ' Radarr searches only the films that are out: those not released yet are skipped.'
     : '';
 
   // Surface fetch failures instead of silently rendering "No missing items" (or

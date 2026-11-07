@@ -101,3 +101,30 @@ describe('Discover selected sort visibility', () => {
     expect(row().scrollLeft).toBe(210);
   });
 });
+
+describe('Discover sort chips during a search', () => {
+  it('turns the chips off with a hint, and a tap neither sorts nor ends the search', () => {
+    const handleSelectSort = vi.fn();
+    render(<DiscoverToolbar {...props} query="dune" handleSelectSort={handleSelectSort} />);
+
+    const chip = screen.getByRole('button', { name: 'Upcoming' });
+    expect((chip as HTMLButtonElement).disabled).toBe(true);
+    expect(chip.getAttribute('aria-pressed')).toBe('false');
+    expect(document.getElementById(chip.getAttribute('aria-describedby')!)?.textContent?.trim()).toBe('Clear the search to sort');
+    chip.click();
+    expect(handleSelectSort).not.toHaveBeenCalled();
+  });
+
+  it('turns them back on once the search is cleared', () => {
+    const handleSelectSort = vi.fn();
+    const view = render(<DiscoverToolbar {...props} query="dune" handleSelectSort={handleSelectSort} />);
+    view.rerender(<DiscoverToolbar {...props} query="" handleSelectSort={handleSelectSort} />);
+
+    expect(screen.queryByText('Clear the search to sort')).toBeNull();
+    const chip = screen.getByRole('button', { name: 'Upcoming' });
+    expect((chip as HTMLButtonElement).disabled).toBe(false);
+    expect(chip.getAttribute('aria-pressed')).toBe('true');
+    chip.click();
+    expect(handleSelectSort).toHaveBeenCalledWith('upcoming');
+  });
+});

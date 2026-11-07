@@ -263,15 +263,14 @@ export default function DiscoverPage() {
   }, [discoverContentType, gridMode, refetchGrid, updateView]);
 
   const handleSelectSort = useCallback((sort: string) => {
-    // No chip is chosen while searching, so picking one leaves the search for it.
-    if (query.trim()) {
-      setQuery('');
-    } else if (discoverSort === sort && gridMode) {
+    // Search ignores the sort: the chips are off until the search is cleared.
+    if (query.trim()) return;
+    if (discoverSort === sort && gridMode) {
       void refetchGrid();
       return;
     }
     updateView({ sort, section: null, manualBrowseMode: true });
-  }, [query, setQuery, discoverSort, gridMode, refetchGrid, updateView]);
+  }, [query, discoverSort, gridMode, refetchGrid, updateView]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {

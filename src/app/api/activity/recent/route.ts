@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 import { parseInt32 } from '@/lib/pagination';
 
@@ -38,7 +39,8 @@ async function getHandler(request: NextRequest) {
     const [sonarrClients, radarrClients, lidarrClients] = await Promise.all([
       getSonarrClients().catch(() => []),
       getRadarrClients().catch(() => []),
-      getLidarrClients().catch(() => []),
+      // Albums only for viewers who may see the music library.
+      can(auth.user, 'music.view') ? getLidarrClients().catch(() => []) : Promise.resolve([]),
     ]);
 
     await Promise.all([
