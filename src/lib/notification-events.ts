@@ -7,7 +7,7 @@ export const EVENT_TYPES = [
   'torrentAdded', 'torrentCompleted', 'torrentDeleted',
   'jellyfinPlaybackStart',
   'cleanupStrike', 'cleanupRemoved', 'cleanupFailed',
-  'watchlistReminder',
+  'watchlistReminder', 'watchlistAvailable',
   'scheduledAlert',
   'requestCreated', 'requestApproved', 'requestAvailable',
   'requestDeclined', 'requestFailed',
@@ -138,6 +138,12 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     label: 'Watchlist Reminder',
     description: 'A watchlist item reached its reminder date',
     iconName: 'Bell', colorClass: 'bg-amber-500/10 text-amber-400',
+  },
+  watchlistAvailable: {
+    type: 'watchlistAvailable', group: 'watchlist',
+    label: 'Now in Your Library',
+    description: 'When a movie or series on your watchlist is imported',
+    iconName: 'Check', colorClass: 'bg-green-500/10 text-green-500',
   },
   scheduledAlert: {
     type: 'scheduledAlert', group: 'scheduled',
@@ -272,7 +278,7 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
   {
     id: 'watchlist',
     title: 'Watchlist',
-    types: ['watchlistReminder'],
+    types: ['watchlistReminder', 'watchlistAvailable'],
   },
   {
     id: 'scheduled',

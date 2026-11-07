@@ -86,6 +86,7 @@ async function getHandler(): Promise<NextResponse> {
           addedAt: true,
           reminderAt: true,
           reminderNotifiedAt: true,
+          availableNotifiedAt: true,
           tags: { select: { name: true } },
         },
         orderBy: { addedAt: 'asc' },

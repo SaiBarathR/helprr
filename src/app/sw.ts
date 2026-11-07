@@ -365,7 +365,7 @@ self.addEventListener('push', (event) => {
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
     tag: data.tag || 'helprr-notification',
-    // Action buttons (Approve/Decline, Retry) render on Android/desktop Chrome.
+    // Action buttons (Approve/Decline, Retry, Remove from watchlist) render on Android/desktop Chrome.
     // iOS Web Push ignores `actions`, so iPhone users fall back to tapping the
     // notification body, which deep-links straight to the relevant action view.
     data: { url: data.url || '/notifications', ...(data.data ?? {}) },
@@ -508,6 +508,19 @@ async function handleRetryAction(data: Record<string, unknown>): Promise<void> {
   }
 }
 
+// Takes a title that just arrived in the library off the watchlist, from the
+// "Now in your library" notification. iOS shows no buttons; its tap opens
+// /watchlist?focus=<id>, which offers the same Remove.
+async function handleRemoveWatchlistAction(watchlistItemId: string): Promise<void> {
+  const tag = `watchlist-remove-${watchlistItemId}`;
+  try {
+    const res = await fetch(`/api/watchlist/${encodeURIComponent(watchlistItemId)}`, { method: 'DELETE', credentials: 'include' });
+    await confirm(res.ok ? 'Removed from watchlist' : 'Could not remove — open the app', tag);
+  } catch {
+    await confirm('Could not remove — open the app', tag);
+  }
+}
+
 function isSameOrigin(clientUrl: string): boolean {
   try {
     return new URL(clientUrl).origin === self.location.origin;
@@ -541,6 +554,10 @@ self.addEventListener('notificationclick', (event) => {
   }
   if (action === 'retry') {
     event.waitUntil(handleRetryAction(data));
+    return;
+  }
+  if (action === 'removeWatchlist' && typeof data.watchlistItemId === 'string') {
+    event.waitUntil(handleRemoveWatchlistAction(data.watchlistItemId));
     return;
   }
 
