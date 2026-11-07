@@ -43,8 +43,9 @@ count leaves out the optional one):
 5. Back up the database, as in [Back up and restore](/helprr/maintain/backup/), or your
    dashboard's guide ([Portainer](/helprr/install/portainer/#back-up),
    [CasaOS](/helprr/install/casaos/#back-up), [Runtipi](/helprr/install/runtipi/#back-up),
-   [TrueNAS](/helprr/install/truenas/#back-up)). A backup made with `backup.sh` ticks
-   this step, and **Settings → Backup & Restore** shows when the last one was; after a
+   [TrueNAS](/helprr/install/truenas/#back-up)), or turn on scheduled backups in
+   **Settings → Backup & Restore**. A backup made there or with `backup.sh` ticks this
+   step, and that page shows when the last one was; after a
    backup made another way, tick it with **Done**. The settings export on that page is a
    copy of your settings only, not a backup.
 

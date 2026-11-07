@@ -35,7 +35,9 @@ type SecurityAction =
   | 'CALENDAR_FEED_REVOKED'
   | 'MFA_ENABLED'
   | 'MFA_DISABLED'
-  | 'MFA_RECOVERY_CODE_USED';
+  | 'MFA_RECOVERY_CODE_USED'
+  | 'DATABASE_BACKUP_CREATED'
+  | 'DATABASE_BACKUP_FAILED';
 
 export interface SecurityAuditRecord {
   id: string;
@@ -79,6 +81,8 @@ const ACTION_BADGE: Record<SecurityAction, { label: string; variant: 'default' |
   MFA_ENABLED: { label: '2FA ON', variant: 'default' },
   MFA_DISABLED: { label: '2FA OFF', variant: 'destructive' },
   MFA_RECOVERY_CODE_USED: { label: 'RECOVERY CODE', variant: 'secondary' },
+  DATABASE_BACKUP_CREATED: { label: 'DATABASE BACKUP', variant: 'default' },
+  DATABASE_BACKUP_FAILED: { label: 'BACKUP FAILED', variant: 'destructive' },
 };
 
 const SIGN_IN_METHOD: Record<string, string> = {
@@ -153,6 +157,11 @@ function summary(record: SecurityAuditRecord): string {
       break;
     case 'INVITE_LINK_FAILED':
       parts.push(`${plural(record.count, 'attempt')} with a link that does not work`);
+      break;
+    case 'DATABASE_BACKUP_CREATED':
+    case 'DATABASE_BACKUP_FAILED':
+      // fields: the trigger, then the size or the reason it failed.
+      parts.push(record.fields?.[0] === 'scheduled' ? 'Scheduled' : 'Back up now', ...(record.fields?.slice(1) ?? []));
       break;
     default:
       if (record.fields?.length) parts.push(record.fields.join(', '));

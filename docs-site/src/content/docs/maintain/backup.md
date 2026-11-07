@@ -6,7 +6,8 @@ description: Back up Helprr, keep a copy elsewhere, restore it, or move it to a 
 Everything Helprr needs to recover lives in PostgreSQL, plus the `helprr-secrets`
 volume when Helprr made its own session secret and push keys (no `JWT_SECRET` or VAPID
 values in `.env`): without it, stored service sign-ins cannot be read and everyone must
-sign in again. `backup.sh` saves both. Redis holds only
+sign in again. `backup.sh` saves both; [backups made in Helprr](#back-up-from-helprr)
+save the database. Redis holds only
 cache, rate-limit, and other short-lived state and never needs to be backed up. The
 in-app settings export (**Settings → Backup & Restore**) is a *portable* subset —
 connections, preferences, rules, watchlists — useful for moving settings
@@ -25,7 +26,7 @@ Run it before every update and on a schedule:
 
 Each backup it makes is recorded in Helprr: **Settings → Backup & Restore** shows admins
 when the last one was, in amber when there is none or it is more than a week old. Backups
-made any other way are not shown there.
+made in Helprr are recorded there too; backups made any other way are not.
 
 To run it on a schedule, add a line like this to the crontab of the user that runs
 Docker (`crontab -e`), with your Helprr folder in place of the example; it backs up every
@@ -60,6 +61,68 @@ stored. Archive validation catches malformed or truncated output at creation tim
 but it is not a restore test. Periodically restore into an isolated environment and
 retain an off-host copy according to your own recovery needs.
 :::
+
+## Back up from Helprr
+
+Admins can also back up the database from **Settings → Backup & Restore**, without a
+shell: **Back up now**, or a daily or weekly backup under **Scheduled backups**, at an
+hour in the time zone set in Helprr's settings. Each one is a `pg_dump` custom-format
+file, checked with `pg_restore --list` before it is kept, named
+`helprr-backup-YYYYMMDD-HHMMSS.dump` (UTC) with mode `0600`. They go to the
+`helprr-backups` volume (`/app/backups` in the container), which the page lists by name
+and size. Helprr never offers them for download: copy them off the server as below.
+**Keep** keeps the newest 7 of them (by default) and removes older ones; other files in
+the folder are left alone. Each backup, and each one that failed, is in **Settings →
+Operation audit → Security**.
+
+While a schedule is on, admins get a push (the **Database Backup** event, under
+**Services** in each device's notification settings) when a scheduled backup fails, and
+when the last backup, from Helprr or `backup.sh`, is older than **Alert when older
+than** (7 days by default; at most one reminder a day). With the schedule off, nothing is
+sent, so an install that backs up only with `backup.sh` is never reminded.
+
+:::note
+A backup made in Helprr holds the database only. If Helprr made its own secrets (no
+`JWT_SECRET` or VAPID keys in `.env`), keep a copy of them too: run `backup.sh` once,
+which saves them beside its dump as a `.secrets.tar`. They are made once and never
+change, so that one copy stays good.
+:::
+
+The PostgreSQL client in Helprr's image is version 16, like the bundled database. With
+your own PostgreSQL server of a newer major version (`DATABASE_URL`), backups from Helprr
+fail: use that server's own backups.
+
+To copy a backup out of the container, for example to keep it off the host (Helprr may
+be running or stopped; the copy is yours, with mode `0600`):
+
+```bash
+docker compose cp helprr:/app/backups/helprr-backup-YYYYMMDD-HHMMSS.dump .
+```
+
+**Backup folder not mounted** on the page means the Compose file is older than backups
+in Helprr. Without the folder Helprr makes no backup, since it would be lost with the
+container on the next update. Take the release's `docker-compose.yml` as in
+[Update](/helprr/maintain/update/), or add these lines yourself: the volume under
+`helprr` and under `helprr-init` (which gives a new folder to the app's user), and its
+name at the end:
+
+```yaml
+services:
+  helprr-init:
+    volumes:
+      - helprr-backups:/app/backups
+  helprr:
+    volumes:
+      - helprr-backups:/app/backups
+volumes:
+  helprr-backups:
+    name: helprr-backups
+```
+
+To keep the backups in a folder on the host instead, such as a mounted share, put its
+path in place of `helprr-backups` in both service lines. An empty folder that Docker
+made is given to the app's user (`1001`) as Helprr starts; any other folder must be
+writable by that user, or the page says **Backup folder not writable**.
 
 ## Keep a copy off the host
 
@@ -98,8 +161,9 @@ environment as described above.
 
 For example, to roll back after a bad change.
 When rolling back an upgrade, first set `HELPRR_VERSION` in `.env` back to the
-version that wrote the dump. Then check that the backup reads in full, before anything
-changes:
+version that wrote the dump. For a backup made in Helprr, first copy it out of the
+container (above) and use that copy as `dump` below; it has no `.secrets.tar`. Then check
+that the backup reads in full, before anything changes:
 
 ```bash
 dump=backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump

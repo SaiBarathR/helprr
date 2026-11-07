@@ -34,6 +34,7 @@ import { pollYoutube } from '@/lib/polling/poll-youtube';
 import { checkDiskSpace as checkDiskSpacePoller } from '@/lib/polling/disk-space-alerts';
 import { checkUpcoming as checkUpcomingPoller } from '@/lib/polling/upcoming';
 import { checkActivityDigest as checkActivityDigestPoller } from '@/lib/polling/activity-digest';
+import { checkDatabaseBackup as checkDatabaseBackupPoller } from '@/lib/polling/database-backup';
 
 // How long daily disk-usage snapshots are kept (the trend only needs ~7 days,
 // but a longer tail makes the growth-rate fit more stable + survives gaps).
@@ -105,6 +106,8 @@ const POLL_SOURCE_TIMEOUT_MS: Record<string, number> = {
   refreshScheduledAlertOccurrences: 60_000,
   checkScheduledAlerts: 30_000,
   checkActivityDigest: 30_000,
+  // Only decides and starts: the backup itself runs outside the cycle.
+  checkDatabaseBackup: 30_000,
   applyBandwidthSchedule: 15_000,
   checkRetention: 60_000,
   checkAnimeAutoMap: 15_000,
@@ -304,6 +307,7 @@ export class PollingService {
         sourceTask('refreshScheduledAlertOccurrences', () => refreshScheduledAlertOccurrences()),
         sourceTask('checkScheduledAlerts', () => checkScheduledAlerts()),
         sourceTask('checkActivityDigest', () => this.checkActivityDigest(context)),
+        sourceTask('checkDatabaseBackup', () => this.checkDatabaseBackup(context)),
         sourceTask('applyBandwidthSchedule', () => this.applyBandwidthSchedule(context)),
         sourceTask('checkRetention', () => this.checkRetention(context)),
         sourceTask('checkAnimeAutoMap', () => this.checkAnimeAutoMap(context)),
@@ -895,6 +899,10 @@ export class PollingService {
 
   private checkActivityDigest(context: CycleContext) {
     return checkActivityDigestPoller(context);
+  }
+
+  private checkDatabaseBackup(context: CycleContext) {
+    return checkDatabaseBackupPoller(context);
   }
 
   // Restore qBit to unlimited (0) if — and only if — we previously applied a

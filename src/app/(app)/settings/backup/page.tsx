@@ -36,7 +36,7 @@ export default function BackupSettingsPage() {
         <h1 className="text-2xl font-semibold">Backup & Restore</h1>
         <p className="text-sm text-muted-foreground mt-1">
           {isAdmin
-            ? 'See when the database was last backed up, or move your settings between installs.'
+            ? 'Back up the database on the server, or move your settings between installs.'
             : 'Move your settings between devices or save them to a file.'}
         </p>
       </div>

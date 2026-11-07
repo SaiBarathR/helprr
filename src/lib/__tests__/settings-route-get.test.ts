@@ -12,15 +12,22 @@ vi.mock('@/lib/app-settings', () => ({
     id: 'singleton',
     pollingIntervalSecs: 30,
     lastDatabaseBackupAt: new Date('2026-11-04T03:00:00.000Z'),
+    databaseBackupSchedule: 'daily',
+    databaseBackupHour: 3,
+    databaseBackupDayOfWeek: 0,
+    databaseBackupKeep: 7,
+    databaseBackupAlertDays: 7,
+    databaseBackupScheduledAt: new Date('2026-11-04T03:00:00.000Z'),
+    databaseBackupAlertedAt: null,
   })),
 }));
 
 const { GET } = await import('@/app/api/settings/route');
 
 describe('GET /api/settings', () => {
-  it('leaves out the database backup time, which is for admins only', async () => {
+  it('leaves out the database backup time and schedule, which are for admins only', async () => {
     const body = await (await (GET as () => Promise<Response>)()).json();
     expect(body.pollingIntervalSecs).toBe(30);
-    expect(body).not.toHaveProperty('lastDatabaseBackupAt');
+    expect(Object.keys(body).filter((key) => /databaseBackup/i.test(key))).toEqual([]);
   });
 });

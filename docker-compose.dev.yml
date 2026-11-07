@@ -115,6 +115,8 @@ services:
     volumes:
       - helprr-dev-logs:/app/logs
       - helprr-dev-image-cache:/app/image-cache
+      # In-app database backups, apart from the stable ones.
+      - helprr-dev-backups:/app/backups
     # Lets an app on the same machine be reached as http://host.docker.internal:<port>.
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -186,3 +188,5 @@ volumes:
     name: helprr-dev-redis-data
   helprr-dev-logs:
     name: helprr-dev-logs
+  helprr-dev-backups:
+    name: helprr-dev-backups

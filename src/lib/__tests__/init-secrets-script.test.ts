@@ -268,4 +268,17 @@ describe('init-secrets.sh', () => {
     expect(init(dir).status).toBe(0);
     expect(existsSync(stale)).toBe(false);
   });
+
+  it('never fails over the backup folder, mounted or not, and leaves it alone when not root', () => {
+    const dir = volume();
+    const backups = mkdtempSync(path.join(tmpdir(), 'helprr-backups-'));
+    temporary.push(backups);
+    chmodSync(backups, 0o755);
+    for (const folder of [backups, path.join(backups, 'missing')]) {
+      const result = init(dir, { HELPRR_BACKUP_DIR: folder });
+      expect(result.status).toBe(0);
+      expect(result.stderr).not.toContain('backup folder');
+    }
+    expect(mode(backups)).toBe(0o755);
+  });
 });

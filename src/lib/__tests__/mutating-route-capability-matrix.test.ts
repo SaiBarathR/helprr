@@ -54,6 +54,9 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/whats-new',
   ],
   admin: [
+    // Back up now, and the backup schedule.
+    'POST /api/admin/database-backup',
+    'PUT /api/admin/database-backup',
     'POST /api/anilist/list-entry',
     'DELETE /api/anilist/list-entry',
     'POST /api/anime/automap/run',
@@ -570,7 +573,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(252);
+    expect(handlers.size).toBe(254);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

@@ -876,16 +876,42 @@ in a disposable database named exactly `helprr_migration_test`, seeds
 representative user/service/cleanup/audit data, deploys all current migrations,
 and verifies preservation and final migration state.
 
-Database backups are made outside the app: `scripts/backup.sh` runs `pg_dump` in
-the database container (the app image has no PostgreSQL client and no backup
-volume). After a dump is validated and its secrets are saved, the script records
-the time in `AppSettings.lastDatabaseBackupAt` with one `UPDATE` through the same
-container; that write is best effort and never fails the backup. The admin-only
-`/api/admin/database-backup` reads it for **Settings -> Backup & Restore** (amber
-when none is recorded or it is over seven days old; `GET /api/settings` leaves it
-out), and a recorded backup ticks the setup checklist's backup step.
-Backups made another way are not seen. The settings export is not a backup and no
-longer ticks that step.
+Database backups come from two places. `scripts/backup.sh` runs `pg_dump` in the
+database container and saves the generated secrets beside the dump. After a dump is
+validated and its secrets are saved, it records the time in
+`AppSettings.lastDatabaseBackupAt` with one `UPDATE` through the same container; that
+write is best effort and never fails the backup.
+
+Backups made in Helprr (`src/lib/database-backup.ts`) run `pg_dump` from the app image
+(`postgresql16-client`, the bundled server's major) into `BACKUP_DIR` (`/app/backups`,
+the `helprr-backups` volume; `helprr-dev-backups` for development). The password goes
+to the child in `PGPASSWORD`, never in argv, and the child's environment is only `PATH`
+and libpq settings. The dump is written to an exclusive 0600 partial file, checked with
+`pg_restore --list`, then hard-linked to `helprr-backup-<UTC stamp>.dump`, so nothing is
+overwritten. In the Docker image the folder must be a mount (read from
+`/proc/self/mountinfo`), or no backup is made: one in the container's own layer would be
+lost on the next update. One run at a time per process (a promise on `globalThis`), for
+**Back up now** (`POST /api/admin/database-backup`, 202, 409 while running) and the
+schedule alike. Success records `lastDatabaseBackupAt` and prunes to the newest
+`databaseBackupKeep` of its own names; each success or failure writes a security audit
+row (`DATABASE_BACKUP_CREATED`/`_FAILED`, fields: trigger, size or reason code). The
+dumps are listed by name and size and never served. `helprr-init` gives an empty,
+root-owned backup folder to the app's user, for a host folder Docker made.
+
+The poll source `checkDatabaseBackup` starts the scheduled backup (daily or weekly, on
+the first poll at or after `databaseBackupHour` in the app time zone, claimed in
+`databaseBackupScheduledAt` so a window is tried once) without waiting for it. While a
+schedule is on, it pushes admins (`databaseBackup`, `userIds` = active admins) when a
+scheduled run fails, and when `lastDatabaseBackupAt` is older than
+`databaseBackupAlertDays`, at most daily (`databaseBackupAlertedAt`). With the schedule
+off it never pushes, so a `backup.sh`-only install is not reminded.
+
+The admin-only `/api/admin/database-backup` serves all of this to **Settings -> Backup &
+Restore** (amber when no backup is recorded or it is over seven days old;
+`GET /api/settings` leaves out the backup time and schedule), and a recorded backup
+ticks the setup checklist's backup step. Backups made another way are not seen. The
+settings export is not a backup, does not carry the backup schedule, and does not tick
+that step.
 
 Persistent runtime data is bounded through the relevant subsystem:
 
