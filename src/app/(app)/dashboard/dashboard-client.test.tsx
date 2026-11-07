@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
   // Stable, as the app's router is: a new object per render would re-run the effect.
   return {
     isMobile: false, editMode: false, refresh, router: { refresh },
+    canCustomize: true, setEditMode: vi.fn(),
     widgetFetch: vi.fn(async () => 1),
     pullToRefresh: null as null | { onRefresh: () => unknown; disabled?: boolean },
   };
@@ -27,14 +28,18 @@ vi.mock('@/components/widgets/widget-grid', async () => {
   };
 });
 vi.mock('next/dynamic', () => ({ default: () => () => null }));
-vi.mock('@/components/widgets/bento-primitives', () => ({ BentoTopBar: () => null, FloatingEdit: () => null, HPR: { ink: '#000', hairline2: '#111', amber: '#f90' } }));
+vi.mock('@/components/widgets/bento-primitives', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/widgets/bento-primitives')>()),
+  BentoTopBar: () => null,
+}));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => cap === 'dashboard.customize' && mocks.canCustomize }));
 vi.mock('@/components/widgets/dashboard-layout-context', () => ({
   DashboardLayoutProvider: ({ children }: { children: React.ReactNode }) => children,
   useDashboardLayout: () => ({ widgets: [], isDirty: false, setWidgets: vi.fn() }),
 }));
 vi.mock('@/lib/widgets/widget-availability-context', () => ({ WidgetAvailabilityProvider: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock('@/components/widgets/layout-switcher', () => ({ LayoutSwitcher: () => null }));
-vi.mock('@/lib/store', () => ({ useUIStore: (select: (s: Record<string, unknown>) => unknown) => select({ dashboardEditMode: mocks.editMode, setDashboardEditMode: () => {} }) }));
+vi.mock('@/lib/store', () => ({ useUIStore: (select: (s: Record<string, unknown>) => unknown) => select({ dashboardEditMode: mocks.editMode, setDashboardEditMode: mocks.setEditMode }) }));
 vi.mock('@/components/ui/pull-to-refresh', () => ({
   PullToRefresh: (props: { onRefresh: () => unknown; disabled?: boolean }) => {
     mocks.pullToRefresh = props;
@@ -60,6 +65,8 @@ beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   mocks.refresh.mockClear();
   mocks.editMode = false;
+  mocks.canCustomize = true;
+  mocks.setEditMode.mockClear();
   // The real useIsMobile reads this; one object, as the hook caches it.
   const query = { get matches() { return mocks.isMobile; }, addEventListener() {}, removeEventListener() {} };
   vi.stubGlobal('matchMedia', () => query);
@@ -179,5 +186,42 @@ describe('DashboardClient pull to refresh', () => {
     mocks.editMode = true;
     render('mobile');
     expect(mocks.pullToRefresh!.disabled).toBe(true);
+  });
+});
+
+describe('DashboardClient Edit row', () => {
+  const editButton = () => document.querySelector<HTMLButtonElement>('button[aria-label="Edit dashboard"]');
+
+  it.each(['desktop', 'mobile'] as const)('puts a small inline Edit above the widgets on %s, with no heading text', (device) => {
+    mocks.isMobile = device === 'mobile';
+    render(device);
+    const button = editButton()!;
+    expect(button.textContent).toBe('Edit');
+    const row = button.parentElement!;
+    // Inline, right-aligned, 40px, and ahead of the widgets: not floating over them.
+    expect(row.style.height).toBe('40px');
+    expect(row.style.justifyContent).toBe('flex-end');
+    expect(row.textContent).toBe('Edit');
+    expect(button.style.position).toBe('');
+    expect(row.compareDocumentPosition(document.querySelector('[data-testid="grid"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelectorAll('h1, h2, h3')).toHaveLength(1);
+
+    act(() => button.click());
+    expect(mocks.setEditMode).toHaveBeenCalledWith(true);
+  });
+
+  it('is not shown to someone who cannot customize the layout', () => {
+    mocks.isMobile = false;
+    mocks.canCustomize = false;
+    render('desktop');
+    expect(editButton()).toBeNull();
+    expect(showsGrid()).toBe(true);
+  });
+
+  it('gives way to the editing bar while editing', () => {
+    mocks.isMobile = false;
+    mocks.editMode = true;
+    render('desktop');
+    expect(editButton()).toBeNull();
   });
 });

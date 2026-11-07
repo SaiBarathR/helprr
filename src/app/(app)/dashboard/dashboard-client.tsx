@@ -10,7 +10,7 @@ import { WidgetGrid } from '@/components/widgets/widget-grid';
 import dynamic from 'next/dynamic';
 const WidgetGallery = dynamic(() => import('@/components/widgets/widget-gallery').then((module) => module.WidgetGallery));
 const RefreshIntervalDrawer = dynamic(() => import('@/components/widgets/refresh-interval-drawer').then((module) => module.RefreshIntervalDrawer));
-import { BentoTopBar, FloatingEdit, HPR } from '@/components/widgets/bento-primitives';
+import { BentoTopBar, EditRow, HPR } from '@/components/widgets/bento-primitives';
 import {
   DashboardLayoutProvider,
   useDashboardLayout,
@@ -25,6 +25,7 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { writeDeviceCookie as setDeviceCookie } from '@/lib/client-sign-in';
 import type { SetupChecklistState } from '@/lib/setup-checklist-steps';
 import { PageTitle } from '@/components/layout/page-title';
+import { useCan } from '@/components/permission-provider';
 
 export interface InitialDashboardLayout {
   id: string;
@@ -157,6 +158,8 @@ function DashboardInner({ initialLayout, initialDevice, setupChecklist }: Dashbo
   }, [detectedDevice, initialDevice, router]);
 
   const editMode = useUIStore((s) => s.dashboardEditMode);
+  // UX only: the layout routes check dashboard.customize themselves.
+  const canCustomize = useCan('dashboard.customize');
   const setEditMode = useUIStore((s) => s.setDashboardEditMode);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -216,14 +219,6 @@ function DashboardInner({ initialLayout, initialDevice, setupChecklist }: Dashbo
     setEditMode(false);
   }, [isDirty, handleSave, setEditMode]);
 
-  const handleFloatingToggle = useCallback(() => {
-    if (editMode) {
-      void handleDone();
-      return;
-    }
-    setEditMode(true);
-  }, [editMode, handleDone, setEditMode]);
-
   const handleLayoutSwitched = useCallback(() => {
     router.refresh();
   }, [router]);
@@ -243,12 +238,11 @@ function DashboardInner({ initialLayout, initialDevice, setupChecklist }: Dashbo
         // Cancels <main>'s padding from its variables: a landscape phone uses a
         // smaller top padding than the md 1.5rem.
         margin: isMobile ? '-0.5rem -0.5rem -1rem' : 'calc(-1 * var(--main-pad-top)) calc(-1 * var(--main-pad-x)) -1.5rem',
-        // The bottom padding lets the last row scroll clear of the floating
-        // Edit button (48px at 16px/30px above the tab bar, lifted over the
-        // mini player when it is up) instead of resting under it.
+        // The bottom padding lets the last row scroll clear of the mini video
+        // player while it is up, instead of resting under it.
         padding: isMobile
-          ? '0.5rem 0.75rem calc(5rem + var(--mini-player-clearance, 0px))'
-          : '1.25rem 1.75rem calc(6.5rem + var(--mini-player-clearance, 0px))',
+          ? '0.5rem 0.75rem calc(1rem + var(--mini-player-clearance, 0px))'
+          : '1.25rem 1.75rem calc(1.5rem + var(--mini-player-clearance, 0px))',
         minHeight: isMobile
           ? 'calc(100dvh - var(--header-height, 0px) - var(--footer-height, 0px))'
           : '100%',
@@ -277,10 +271,10 @@ function DashboardInner({ initialLayout, initialDevice, setupChecklist }: Dashbo
           dirty={isDirty}
         />
       )}
+      {!editMode && canCustomize && <EditRow onClick={() => setEditMode(true)} />}
       {!editMode && setupChecklist && <SetupChecklist initial={setupChecklist} mobile={isMobile} />}
       <WidgetGrid isMobile={isMobile} onConfigureRefresh={() => setRefreshDrawerOpen(true)} />
 
-     {!editMode && <FloatingEdit edit={editMode} mobile={isMobile} onClick={handleFloatingToggle} />}
       {galleryOpen && <WidgetGallery open={galleryOpen} onOpenChange={setGalleryOpen} />}
       <LayoutSwitcher
         open={switcherOpen}

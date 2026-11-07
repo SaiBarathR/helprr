@@ -9,7 +9,7 @@
  */
 
 import * as React from 'react';
-import { ArrowLeftRight, ArrowUpDown, Check, LayoutGrid, List, Plus, Save, Settings } from 'lucide-react';
+import { ArrowLeftRight, ArrowUpDown, Check, LayoutGrid, List, Pencil, Plus, Save, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export const HPR = {
@@ -776,90 +776,38 @@ const btnDone: React.CSSProperties = {
   cursor: 'pointer',
 };
 
-// ─── FloatingEdit (bottom-right pencil / done toggle) ──────────────────
-export function FloatingEdit({
-  edit = false,
-  mobile = false,
-  onClick,
-}: {
-  edit?: boolean;
-  mobile?: boolean;
-  onClick?: () => void;
-}) {
-  // Slides away while scrolling down so it doesn't sit on widget headers, and
-  // comes back on any upward scroll or near the top of the page.
-  const [hidden, setHidden] = React.useState(false);
-  React.useEffect(() => {
-    let anchor = window.scrollY;
-    const onScroll = () => {
-      const y = window.scrollY;
-      if (y < 80) {
-        setHidden(false);
-        anchor = y;
-        return;
-      }
-      if (y - anchor > 24) {
-        setHidden(true);
-        anchor = y;
-      } else if (anchor - y > 24) {
-        setHidden(false);
-        anchor = y;
-      }
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
+// ─── EditRow (small inline Edit at the top of the dashboard) ───────────
+// A 40px right-aligned row above the widgets, in place of a floating button
+// that covered widget content. No heading text: the page has no visible title.
+export function EditRow({ onClick }: { onClick?: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={edit ? 'Done editing dashboard' : 'Edit dashboard'}
-      tabIndex={hidden ? -1 : undefined}
-      style={{
-        transform: hidden ? 'translateY(calc(100% + 24px))' : undefined,
-        opacity: hidden ? 0 : 1,
-        pointerEvents: hidden ? 'none' : undefined,
-        transition: 'transform 0.2s ease, opacity 0.2s ease',
-        position: 'fixed',
-        // Clear the tab bar, home indicator and now-playing bar like the other
-        // floating bars; a fixed offset sat on the iPhone tab bar. The mini
-        // video player shares this corner, so step over it too.
-        bottom: `calc(var(--footer-height) + var(--player-bar-height, 0px) + var(--mini-player-clearance, 0px) + ${mobile ? 16 : 30}px)`,
-        right: edit ? (mobile ? "40%" : "40%") : `calc(${mobile ? 50 : 36}px + env(safe-area-inset-right, 0px))`,
-        width: 48 ,
-        height: 48 ,
-        minHeight: mobile ? undefined : 42,
-        padding: mobile ? 0 : '9px 14px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        borderRadius:  9999,
-        background: edit ? HPR.amber : HPR.surface,
-        border: `1px solid ${edit ? HPR.amber : HPR.hairline2}`,
-        boxShadow: edit
-          ? `0 0 0 6px ${mix(HPR.amber, 18)}, 0 8px 24px ${mix(HPR.ink, 60)}`
-          : `0 8px 24px ${mix(HPR.ink, 50)}`,
-        color: edit ? HPR.ink : HPR.amber,
-        fontSize: mobile ? 18 : 12,
-        zIndex: 40,
-        fontFamily: FONT_BODY,
-        fontWeight: 500,
-        cursor: 'pointer',
-      }}
-    >
-      {mobile ? (
-        edit ? '✓' : '✎'
-      ) : (
-        <>
-          <span style={{ color: edit ? HPR.ink : HPR.amber, fontSize: 14 }}>
-            {edit ? '✓' : '✎'}
-          </span>
-          {/* {edit ? 'Done' : 'Customize'} */}
-        </>
-      )}
-    </button>
+    <div style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label="Edit dashboard"
+        // Its 44px hit area grows past the 30px pill.
+        className="relative touch-target"
+        style={{
+          height: 30,
+          padding: '0 12px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          borderRadius: 9999,
+          background: 'transparent',
+          border: `1px solid ${HPR.hairline2}`,
+          color: HPR.amber,
+          fontFamily: FONT_BODY,
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: 'pointer',
+        }}
+      >
+        <Pencil aria-hidden style={{ width: 13, height: 13 }} />
+        Edit
+      </button>
+    </div>
   );
 }
 

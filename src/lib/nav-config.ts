@@ -50,17 +50,9 @@ export type NavItemId =
   | 'notifications'
   | 'settings';
 
-/** Desktop sidebar sections. Items without a group are pinned to the sidebar footer. */
+/** Desktop sidebar groups: a plain divider marks where one ends. Items without a
+ * group are pinned to the sidebar footer. */
 export type NavGroupId = 'overview' | 'library' | 'discover' | 'downloads' | 'media' | 'creators';
-
-export const NAV_GROUP_LABELS: Record<NavGroupId, string> = {
-  overview: 'Overview',
-  library: 'Library',
-  discover: 'Discover',
-  downloads: 'Downloads',
-  media: 'Media server',
-  creators: 'Creators',
-};
 
 export interface NavItemDef {
   id: NavItemId;
@@ -224,15 +216,14 @@ export function getBottomNavLayout(enabledItems: NavItemDef[]) {
 
 export interface SidebarSection {
   group: NavGroupId;
-  label: string;
   items: NavItemDef[];
 }
 
 /**
- * Split enabled items into the desktop sidebar's labelled sections and its
- * always-visible footer. The input order (the user's saved order) is kept
- * inside each section, and sections appear in the order of their first item,
- * so moving an item to the top in Appearance also lifts its section.
+ * Split enabled items into the desktop sidebar's runs and its always-visible
+ * footer. The list keeps the input order (the user's saved order) exactly: a
+ * run ends wherever the next item belongs to another group, and the sidebar
+ * draws a plain divider there.
  */
 export function getSidebarLayout(enabledItems: NavItemDef[]): {
   sections: SidebarSection[];
@@ -245,12 +236,9 @@ export function getSidebarLayout(enabledItems: NavItemDef[]): {
       footer.push(item);
       continue;
     }
-    let section = sections.find((s) => s.group === item.group);
-    if (!section) {
-      section = { group: item.group, label: NAV_GROUP_LABELS[item.group], items: [] };
-      sections.push(section);
-    }
-    section.items.push(item);
+    const last = sections.at(-1);
+    if (last?.group === item.group) last.items.push(item);
+    else sections.push({ group: item.group, items: [item] });
   }
   return { sections, footer };
 }

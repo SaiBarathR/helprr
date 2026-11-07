@@ -39,11 +39,32 @@ beforeEach(() => {
 });
 
 describe('BottomNav', () => {
-  it('shows the default tabs, then More and a visible Search', () => {
+  // The four tabs and More fill the bar; Search is a round button beside them.
+  const slots = () => {
+    const search = within(screen.getByRole('navigation')).getByRole('button', { name: 'Search' });
+    return Array.from(search.previousElementSibling!.children).map((slot) => slot.textContent);
+  };
+
+  it('shows the default tabs and More in five slots, with Search as a round button beside them', () => {
     render(<BottomNav />);
     const bar = within(screen.getByRole('navigation'));
     expect(bar.getAllByRole('link').map((link) => link.textContent)).toEqual(['Dashboard', 'Movies', 'Series', 'Activity']);
-    expect(bar.getAllByRole('button').map((button) => button.textContent)).toEqual(['More', 'Search']);
+    expect(slots()).toEqual(['Dashboard', 'Movies', 'Series', 'Activity', 'More']);
+    const search = bar.getByRole('button', { name: 'Search' });
+    expect(search.textContent).toBe('');
+    expect(search.classList).toContain('rounded-full');
+    expect(search.classList).toContain('shrink-0');
+    // Last in the bar, so it sits at its right (bottom-right with the nav at the bottom).
+    expect(search.parentElement!.lastElementChild).toBe(search);
+    // At the bottom, globals.css floats the tabs and Search as two surfaces (see floating-tab-bar.test.ts).
+    expect(search.previousElementSibling!.classList).toContain('app-tab-surface');
+    expect([...search.classList]).toEqual(expect.arrayContaining(['app-tab-search', 'app-tab-surface']));
+  });
+
+  it("keeps an existing user's saved tabs in the four tab slots", () => {
+    useUIStore.setState({ navOrder: ['discover', 'anime', 'movies', 'torrents', 'dashboard'] });
+    render(<BottomNav />);
+    expect(slots()).toEqual(['Discover', 'Anime', 'Movies', 'Torrents', 'More']);
   });
 
   it('opens global search from the tab bar', async () => {

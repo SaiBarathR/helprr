@@ -64,111 +64,118 @@ export function BottomNav() {
       // Its edge, border and safe-area padding come from .app-tab-bar (globals.css).
       className="app-tab-bar md:hidden z-50 border-border app-chrome-bar bg-background/95 backdrop-blur-sm"
     >
-      <div className="flex items-center justify-around h-12">
-        {tabs.map(({ href, icon: Icon, shortLabel, badgeArea }) => {
-          const slice = badgeArea ? counts[badgeArea] : undefined;
-          const isActive = href === activeHref;
-          const isPending = pendingHref === href;
-          return (
-            <Link
-              key={href}
-              href={href}
-              prefetch={null}
-              className={cn(
-                'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-[48px] text-[11px] font-medium transition-colors',
-                isActive ? 'text-primary' : 'text-muted-foreground',
-                isPending && 'opacity-70'
-              )}
-            >
-              <span className="relative">
-                {isPending ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
-                )}
-                <NavBadge slice={slice} className="absolute -right-2.5 -top-1.5 h-4 min-w-[1rem] px-1 text-[10px]" />
-              </span>
-              {shortLabel}
-            </Link>
-          );
-        })}
-
-        {moreItems.length > 0 && (
-          <ResponsiveMenu
-            title="More"
-            open={moreOpen}
-            onOpenChange={setMoreOpen}
-            trigger={(
-              <button
+      {/* With the nav at the bottom of a phone, the tabs and the round Search
+          float as two surfaces of their own (app-tab-surface, globals.css). */}
+      <div className="flex items-center h-12">
+        <div className="app-tab-surface flex flex-1 min-w-0 items-center justify-around h-full">
+          {tabs.map(({ href, icon: Icon, shortLabel, badgeArea }) => {
+            const slice = badgeArea ? counts[badgeArea] : undefined;
+            const isActive = href === activeHref;
+            const isPending = pendingHref === href;
+            return (
+              <Link
+                key={href}
+                href={href}
+                prefetch={null}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-[48px] text-[11px] font-medium transition-colors',
-                  isMoreActive ? 'text-primary' : 'text-muted-foreground'
+                  'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-11 text-[11px] font-medium transition-colors',
+                  isActive ? 'text-primary' : 'text-muted-foreground',
+                  isPending && 'opacity-70'
                 )}
               >
                 <span className="relative">
-                  <MoreHorizontal className="h-5 w-5" strokeWidth={isMoreActive ? 2.5 : 2} />
-                  <NavBadge slice={moreBadge} className="absolute -right-2.5 -top-1.5 h-4 min-w-[1rem] px-1 text-[10px]" />
+                  {isPending ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
+                  )}
+                  <NavBadge slice={slice} className="absolute -right-2.5 -top-1.5 h-4 min-w-[1rem] px-1 text-[10px]" />
                 </span>
-                More
-              </button>
-            )}
-            footer={(
-              <ResponsiveMenuItem>
-                <Link
-                  href="/settings/appearance#navigation"
-                  prefetch={null}
-                  onClick={() => setMoreOpen(false)}
-                  className="flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent"
-                >
-                  <SlidersHorizontal className="h-5 w-5 shrink-0" />
-                  Customize tabs
-                </Link>
-              </ResponsiveMenuItem>
-            )}
-          >
-            <div className="space-y-0.5">
-              {moreItems.map(({ href, icon: Icon, label, badgeArea }) => {
-                const slice = badgeArea ? counts[badgeArea] : undefined;
-                const isActive = href === activeHref;
-                const isPending = pendingHref === href;
-                return (
-                  <ResponsiveMenuItem key={href}>
-                    <Link
-                      href={href}
-                      prefetch={null}
-                      onClick={(event) => {
-                        if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-                          return;
-                        }
-                        setMoreOpen(false);
-                      }}
-                      className={cn(
-                        'flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
-                        isActive
-                          ? 'bg-primary/10 text-primary'
-                          : 'text-foreground hover:bg-accent',
-                        isPending && 'opacity-70'
-                      )}
-                    >
-                      {isPending ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" /> : <Icon className="h-5 w-5 shrink-0" />}
-                      {label}
-                      <NavBadge slice={slice} className="ml-auto" />
-                    </Link>
-                  </ResponsiveMenuItem>
-                );
-              })}
-            </div>
-          </ResponsiveMenu>
-        )}
+                {shortLabel}
+              </Link>
+            );
+          })}
 
-        {/* Phone search: the sidebar's search and its shortcut hint are md+ only. */}
+          {moreItems.length > 0 && (
+            <ResponsiveMenu
+              title="More"
+              open={moreOpen}
+              onOpenChange={setMoreOpen}
+              trigger={(
+                <button
+                  className={cn(
+                    'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-11 text-[11px] font-medium transition-colors',
+                    isMoreActive ? 'text-primary' : 'text-muted-foreground'
+                  )}
+                >
+                  <span className="relative">
+                    <MoreHorizontal className="h-5 w-5" strokeWidth={isMoreActive ? 2.5 : 2} />
+                    <NavBadge slice={moreBadge} className="absolute -right-2.5 -top-1.5 h-4 min-w-[1rem] px-1 text-[10px]" />
+                  </span>
+                  More
+                </button>
+              )}
+              footer={(
+                <ResponsiveMenuItem>
+                  <Link
+                    href="/settings/appearance#navigation"
+                    prefetch={null}
+                    onClick={() => setMoreOpen(false)}
+                    className="flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent"
+                  >
+                    <SlidersHorizontal className="h-5 w-5 shrink-0" />
+                    Customize tabs
+                  </Link>
+                </ResponsiveMenuItem>
+              )}
+            >
+              <div className="space-y-0.5">
+                {moreItems.map(({ href, icon: Icon, label, badgeArea }) => {
+                  const slice = badgeArea ? counts[badgeArea] : undefined;
+                  const isActive = href === activeHref;
+                  const isPending = pendingHref === href;
+                  return (
+                    <ResponsiveMenuItem key={href}>
+                      <Link
+                        href={href}
+                        prefetch={null}
+                        onClick={(event) => {
+                          if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                            return;
+                          }
+                          setMoreOpen(false);
+                        }}
+                        className={cn(
+                          'flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
+                          isActive
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-foreground hover:bg-accent',
+                          isPending && 'opacity-70'
+                        )}
+                      >
+                        {isPending ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" /> : <Icon className="h-5 w-5 shrink-0" />}
+                        {label}
+                        <NavBadge slice={slice} className="ml-auto" />
+                      </Link>
+                    </ResponsiveMenuItem>
+                  );
+                })}
+              </div>
+            </ResponsiveMenu>
+          )}
+        </div>
+
+        {/* Phone search: the sidebar's search and its shortcut hint are md+ only.
+            A round button of its own beside the five slots, so it never takes a
+            tab's place: detached beside the bar at the bottom, as iOS 26 apps
+            place it, and inside the bar's right end when the nav is at the top. */}
         <button
           type="button"
+          aria-label="Search"
           onClick={() => openSearch(true)}
-          className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-[48px] text-[11px] font-medium text-muted-foreground transition-colors"
+          className="app-tab-search app-tab-surface mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-foreground/10 bg-foreground/[0.06] text-foreground shadow-sm transition-colors active:bg-foreground/[0.12]"
         >
           <Search className="h-5 w-5" />
-          Search
         </button>
       </div>
     </nav>
