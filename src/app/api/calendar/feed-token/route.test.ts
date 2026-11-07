@@ -4,9 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),
   requireUserCapability: vi.fn(),
-  findUnique: vi.fn(),
+  findMany: vi.fn(),
+  count: vi.fn(),
   create: vi.fn(),
-  upsert: vi.fn(),
   deleteMany: vi.fn(),
   recordSecurityEvent: vi.fn(),
 }));
@@ -18,111 +18,141 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/lib/db', () => ({
   prisma: {
     calendarFeedToken: {
-      findUnique: mocks.findUnique, create: mocks.create, upsert: mocks.upsert, deleteMany: mocks.deleteMany,
+      findMany: mocks.findMany, count: mocks.count, create: mocks.create, deleteMany: mocks.deleteMany,
     },
   },
 }));
 vi.mock('@/lib/security-audit', () => ({ recordSecurityEvent: mocks.recordSecurityEvent }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (fn: unknown) => fn }));
 
-import { DELETE, GET, POST } from './route';
-import { hashFeedToken, isWellFormedFeedToken } from '@/lib/calendar-feed/token';
+import { GET, POST } from './route';
+import { DELETE } from './[id]/route';
+import { hashFeedToken, isWellFormedFeedToken, MAX_FEED_LINKS } from '@/lib/calendar-feed/token';
 
 const USER = { id: 'u1', username: 'member' };
 const signedIn = { ok: true, user: USER, session: { id: 's1' } };
 const forbidden = { ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
 const unauthorized = { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
 
-function request(method: string) {
-  return new NextRequest('http://localhost/api/calendar/feed-token', { method });
+function post(body: unknown) {
+  return POST(new NextRequest('http://localhost/api/calendar/feed-token', { method: 'POST', body: JSON.stringify(body) }));
+}
+function revoke(id: string) {
+  return DELETE(new NextRequest(`http://localhost/api/calendar/feed-token/${id}`, { method: 'DELETE' }), { params: Promise.resolve({ id }) });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireUser.mockResolvedValue(signedIn);
   mocks.requireUserCapability.mockResolvedValue(signedIn);
-  mocks.create.mockResolvedValue({});
-  mocks.upsert.mockResolvedValue({});
+  mocks.count.mockResolvedValue(0);
+  mocks.create.mockResolvedValue({ id: 'link-1', createdAt: new Date('2026-11-08T00:00:00Z') });
 });
 
-const uniqueViolation = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
-
 describe('POST /api/calendar/feed-token', () => {
-  it('returns a new token once and stores only its hash', async () => {
-    const res = await POST(request('POST'));
+  it('makes a named link with its own filters, returns its token once and stores only the hash', async () => {
+    const res = await post({ name: '  Kids movies ', filters: { type: 'movie', instanceId: 'rad-1', monitoredOnly: true } });
     expect(res.status).toBe(200);
-    const { token } = await res.json();
-    expect(isWellFormedFeedToken(token)).toBe(true);
+    const body = await res.json();
+    expect(isWellFormedFeedToken(body.token)).toBe(true);
+    expect(body).toMatchObject({ id: 'link-1', name: 'Kids movies', filters: { type: 'movie', instanceId: 'rad-1', monitoredOnly: true } });
     expect(mocks.requireUserCapability).toHaveBeenCalledWith('calendar.view');
 
-    const args = mocks.create.mock.calls[0][0];
-    expect(args.data).toMatchObject({ userId: 'u1', tokenHash: hashFeedToken(token) });
-    expect(mocks.upsert).not.toHaveBeenCalled();
-    expect(JSON.stringify(mocks.create.mock.calls)).not.toContain(token);
-    expect(JSON.stringify(mocks.recordSecurityEvent.mock.calls)).not.toContain(token);
+    const { data } = mocks.create.mock.calls[0][0];
+    expect(data).toEqual({
+      userId: 'u1', name: 'Kids movies', type: 'movie', instanceId: 'rad-1', monitoredOnly: true, tokenHash: hashFeedToken(body.token),
+    });
+    expect(JSON.stringify(mocks.create.mock.calls)).not.toContain(body.token);
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      actor: USER, action: 'CALENDAR_FEED_CREATED', targetType: 'user', targetId: 'u1',
+      action: 'CALENDAR_FEED_CREATED', targetId: 'u1',
     }));
   });
 
-  it('replaces an existing token (so the old link stops working) and audits a rotation', async () => {
-    mocks.create.mockRejectedValue(uniqueViolation);
-    const first = await (await POST(request('POST'))).json();
-    const second = await (await POST(request('POST'))).json();
-    expect(first.token).not.toBe(second.token);
-    expect(mocks.upsert.mock.calls[1][0].where).toEqual({ userId: 'u1' });
-    expect(mocks.upsert.mock.calls[1][0].update).toMatchObject({ tokenHash: hashFeedToken(second.token), lastUsedAt: null });
-    expect(JSON.stringify(mocks.upsert.mock.calls)).not.toContain(second.token);
-    expect(mocks.recordSecurityEvent).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ action: 'CALENDAR_FEED_ROTATED' }));
+  it('makes a link that shows everything when no filters are sent', async () => {
+    await post({ name: 'Everything' });
+    expect(mocks.create.mock.calls[0][0].data).toMatchObject({ type: null, instanceId: null, monitoredOnly: false });
   });
 
-  it('refuses a user without calendar.view', async () => {
-    mocks.requireUserCapability.mockResolvedValue(forbidden);
-    const res = await POST(request('POST'));
-    expect(res.status).toBe(403);
+  it.each([
+    [{}, 'no name'],
+    [{ name: '   ' }, 'a blank name'],
+    [{ name: 'x'.repeat(61) }, 'a long name'],
+    [{ name: 'a\nb' }, 'a control character'],
+    [{ name: 'A', filters: { type: 'series' } }, 'an unknown type'],
+    [{ name: 'A', filters: { instanceId: 'a b' } }, 'a malformed instance'],
+    [{ name: 'A', filters: { monitoredOnly: 'yes' } }, 'a non-boolean monitored'],
+    [{ name: 'A', filters: [] }, 'filters that are not an object'],
+  ] as Array<[unknown, string]>)('refuses %j (%s) without making anything', async (body) => {
+    expect((await post(body)).status).toBe(400);
     expect(mocks.create).not.toHaveBeenCalled();
     expect(mocks.recordSecurityEvent).not.toHaveBeenCalled();
   });
 
-  it('answers 500 without auditing on another database error', async () => {
-    mocks.create.mockRejectedValue(Object.assign(new Error('boom'), { code: 'P1001' }));
-    expect((await POST(request('POST'))).status).toBe(500);
+  it(`stops at ${MAX_FEED_LINKS} links`, async () => {
+    mocks.count.mockResolvedValue(MAX_FEED_LINKS);
+    expect((await post({ name: 'One more' })).status).toBe(409);
+    expect(mocks.count).toHaveBeenCalledWith({ where: { userId: 'u1' } });
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses a user without calendar.view', async () => {
+    mocks.requireUserCapability.mockResolvedValue(forbidden);
+    expect((await post({ name: 'A' })).status).toBe(403);
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('answers 500 without auditing on a database error', async () => {
+    mocks.create.mockRejectedValue(new Error('db down'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await post({ name: 'A' })).status).toBe(500);
     expect(mocks.recordSecurityEvent).not.toHaveBeenCalled();
   });
 });
 
-describe('DELETE /api/calendar/feed-token', () => {
-  it('removes only the signed-in user’s token and audits it', async () => {
+describe('DELETE /api/calendar/feed-token/[id]', () => {
+  it('turns off only that link of the signed-in user, and audits it', async () => {
     mocks.deleteMany.mockResolvedValue({ count: 1 });
-    const res = await DELETE(request('DELETE'));
+    const res = await revoke('link-2');
     expect(await res.json()).toEqual({ revoked: true });
-    expect(mocks.deleteMany).toHaveBeenCalledWith({ where: { userId: 'u1' } });
+    expect(mocks.deleteMany).toHaveBeenCalledWith({ where: { id: 'link-2', userId: 'u1' } });
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'CALENDAR_FEED_REVOKED' }));
   });
 
-  it('records nothing when there was no token', async () => {
+  it("answers 404 for someone else's or an unknown link, and records nothing", async () => {
     mocks.deleteMany.mockResolvedValue({ count: 0 });
-    expect(await (await DELETE(request('DELETE'))).json()).toEqual({ revoked: false });
+    expect((await revoke('theirs')).status).toBe(404);
     expect(mocks.recordSecurityEvent).not.toHaveBeenCalled();
   });
 
   it('needs a session', async () => {
     mocks.requireUser.mockResolvedValue(unauthorized);
-    expect((await DELETE(request('DELETE'))).status).toBe(401);
+    expect((await revoke('link-1')).status).toBe(401);
     expect(mocks.deleteMany).not.toHaveBeenCalled();
   });
 });
 
 describe('GET /api/calendar/feed-token', () => {
-  it('says whether a link is on, without any token material', async () => {
-    mocks.findUnique.mockResolvedValue({ createdAt: new Date('2026-11-01T00:00:00Z'), lastUsedAt: null });
+  it('lists the links with their names and filters, without any token material', async () => {
+    mocks.findMany.mockResolvedValue([
+      { id: 'a', name: 'Calendar', type: null, instanceId: null, monitoredOnly: false, createdAt: new Date('2026-11-01T00:00:00Z'), lastUsedAt: null },
+      { id: 'b', name: 'Movies', type: 'movie', instanceId: null, monitoredOnly: true, createdAt: new Date('2026-11-02T00:00:00Z'), lastUsedAt: new Date('2026-11-03T00:00:00Z') },
+    ]);
     const body = await (await GET()).json();
-    expect(body).toEqual({ active: true, createdAt: '2026-11-01T00:00:00.000Z', lastUsedAt: null, origin: null });
-    expect(mocks.findUnique.mock.calls[0][0].select).toEqual({ createdAt: true, lastUsedAt: true });
+    expect(body).toEqual({
+      links: [
+        { id: 'a', name: 'Calendar', filters: { type: null, instanceId: null, monitoredOnly: false }, createdAt: '2026-11-01T00:00:00.000Z', lastUsedAt: null },
+        { id: 'b', name: 'Movies', filters: { type: 'movie', instanceId: null, monitoredOnly: true }, createdAt: '2026-11-02T00:00:00.000Z', lastUsedAt: '2026-11-03T00:00:00.000Z' },
+      ],
+      max: MAX_FEED_LINKS,
+      origin: null,
+    });
+    const args = mocks.findMany.mock.calls[0][0];
+    expect(args.where).toEqual({ userId: 'u1' });
+    expect(args.select).not.toHaveProperty('tokenHash');
   });
 
   it('gives the configured APP_ORIGIN for the link, and null for a malformed one', async () => {
-    mocks.findUnique.mockResolvedValue(null);
+    mocks.findMany.mockResolvedValue([]);
     vi.stubEnv('APP_ORIGIN', ' https://helprr.example ');
     try {
       expect((await (await GET()).json()).origin).toBe('https://helprr.example');

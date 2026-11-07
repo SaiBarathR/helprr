@@ -36,7 +36,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/account/jellyfin/link',
     'DELETE /api/account/jellyfin/link',
     // Turning off one's own calendar link needs no capability.
-    'DELETE /api/calendar/feed-token',
+    'DELETE /api/calendar/feed-token/[id]',
     'POST /api/logs/client',
     'DELETE /api/me',
     'POST /api/me/password',
