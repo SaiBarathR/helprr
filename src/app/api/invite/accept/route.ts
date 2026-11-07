@@ -12,9 +12,12 @@ import { invalidLinkResponse, readInviteRequest } from '@/lib/server/invite-requ
 /**
  * Public: use an invite or password-reset link. Sets the chosen password, makes
  * the account active, ends the link, revokes every session of the user, and
- * signs this browser in, unless the account has two-step sign-in on: then the
- * person signs in on /login with the new password and a code, so a reset link
- * is never a way around the second factor.
+ * signs this browser in, unless the account had two-step sign-in on. A reset
+ * link an admin made after it was turned on turns it off (the way back for a
+ * lost phone); an older link, one the user made for themselves, or an invite
+ * leaves it on. Either way the person
+ * then signs in on /login, so the link alone never makes a session for an
+ * account that had a second factor.
  */
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const input = await readInviteRequest(request);
@@ -54,9 +57,23 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     });
   }
 
-  // Fail closed: anything but a definite "off" makes no session.
+  if (user.mfaDisabled) {
+    await recordSecurityEvent(request, {
+      actor: { id: user.id, username: user.username },
+      action: 'MFA_DISABLED',
+      targetType: 'user',
+      targetId: user.id,
+      targetLabel: user.username,
+      fields: ['reset-link'],
+    });
+  }
+
+  // Fail closed: anything but a definite "off, and was off" makes no session.
   if (user.mfaEnabled !== false) {
     return NextResponse.json({ success: true, signInWithCode: true });
+  }
+  if (user.mfaDisabled !== false) {
+    return NextResponse.json({ success: true, twoStepTurnedOff: true });
   }
 
   const sessionToken = await createSession({

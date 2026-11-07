@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { ChevronRight, Copy, Download, Loader2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -91,6 +92,7 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
   const [password, setPassword] = useState('');
   const [setup, setSetup] = useState<{ secret: string; uri: string } | null>(null);
   const [code, setCode] = useState('');
+  const [signOutOthers, setSignOutOthers] = useState(true);
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,6 +100,7 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
     setPassword('');
     setSetup(null);
     setCode('');
+    setSignOutOthers(true);
     setRecoveryCodes(null);
     setError(null);
   }
@@ -115,7 +118,7 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
 
   const confirm = useMutation({
     mutationFn: () => postJson<{ recoveryCodes: string[] }>(
-      '/api/me/totp/enable', 'POST', { code }, 'Failed to turn on two-step sign-in',
+      '/api/me/totp/enable', 'POST', { code, signOutOtherDevices: signOutOthers }, 'Failed to turn on two-step sign-in',
     ),
     onSuccess: (data) => {
       setRecoveryCodes(data.recoveryCodes);
@@ -241,6 +244,11 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
                     }}
                   />
                 </div>
+                {/* Whoever may already be signed in elsewhere has to sign in again, with a code. */}
+                <label className="flex min-h-[44px] cursor-pointer items-center gap-3">
+                  <Checkbox checked={signOutOthers} onCheckedChange={(v) => setSignOutOthers(v === true)} />
+                  <span className="text-sm">Sign out your other devices</span>
+                </label>
               </>
             ) : (
               <div className="space-y-2">

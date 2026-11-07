@@ -47,21 +47,25 @@ authenticator app (1Password, Google Authenticator, Authy, or any app that reads
 TOTP QR code). In **Settings → Account → Two-step sign-in**, confirm your password,
 scan the QR code (or type the key into the app), and enter the 6-digit code it shows.
 Helprr then shows ten **recovery codes** once: save them somewhere safe. Each one
-signs you in once instead of a code, if you lose your phone.
+signs you in once instead of a code, if you lose your phone. **Sign out your other
+devices** (on by default) makes everywhere else you are signed in sign in again, with a code.
 
 From then on, every sign-in asks for a code after the password, including **Sign in
-with Jellyfin** and a password-reset link. A code works once, and wrong codes count
+with Jellyfin**. A code works once, and wrong codes count
 toward the same sign-in limits as wrong passwords; after 10 wrong codes in an hour the
-account waits for the rest of that hour. To turn it off, enter your password and a code (or a
+account waits for the rest of that hour (a recovery code still works then). To turn it off, enter your password and a code (or a
 recovery code). An account that signs in only with Jellyfin has no Helprr password and
 cannot turn it on.
 
 If whoever runs Helprr changes its `JWT_SECRET`, authenticator codes stop working:
 sign in with a recovery code, then turn two-step sign-in off and on again.
 
-Lost the phone and the recovery codes? The admin created from `APP_PASSWORD` can be
-recovered with `HELPRR_ADMIN_PASSWORD_RESET`, which also turns its two-step sign-in
-off. For other accounts there is no in-app reset yet: ask whoever runs Helprr.
+Lost the phone and the recovery codes? Ask an admin: in **Settings → Users**, they can
+open your account and **Turn off** two-step sign-in, which also signs you out everywhere,
+or send you a new password-reset link, which turns it off when you use it. Either way you then
+sign in with your password alone and can turn it on again. The admin created from
+`APP_PASSWORD` can also be recovered with `HELPRR_ADMIN_PASSWORD_RESET`, which turns its
+two-step sign-in off too.
 
 ## Your data
 

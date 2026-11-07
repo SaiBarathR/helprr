@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   recoveryDeleteMany: vi.fn(),
   recoveryCreateMany: vi.fn(),
   transaction: vi.fn(),
+  sessionUpdateMany: vi.fn(),
   recordFailedSignIn: vi.fn(),
   recordSecurityEvent: vi.fn(),
   redisEval: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock('@/lib/db', () => {
   const db = {
     user: { updateMany: mocks.userUpdateMany },
     recoveryCode: { count: mocks.recoveryCount, deleteMany: mocks.recoveryDeleteMany, createMany: mocks.recoveryCreateMany },
+    session: { updateMany: mocks.sessionUpdateMany },
     $transaction: mocks.transaction,
   };
   return { prisma: db };
@@ -73,6 +75,7 @@ beforeEach(() => {
   mocks.recoveryDeleteMany.mockResolvedValue({ count: 0 });
   mocks.recoveryCreateMany.mockResolvedValue({ count: 10 });
   mocks.recoveryCount.mockResolvedValue(10);
+  mocks.sessionUpdateMany.mockResolvedValue({ count: 2 });
   mocks.redisEval.mockResolvedValue(['ok', '0']);
   mocks.redisDel.mockResolvedValue(1);
   mocks.transaction.mockImplementation(async (arg: unknown) =>
@@ -172,6 +175,42 @@ describe('setup and enable', () => {
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'MFA_ENABLED' }));
   });
 
+  it('enable with signOutOtherDevices ends every other session of the user in the same transaction', async () => {
+    user = { ...user, totpSecret: secret.encryptedSecret };
+    mocks.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const result = await fn(prisma);
+      // Still inside the transaction: the codes were stored first.
+      expect(mocks.recoveryCreateMany).toHaveBeenCalled();
+      return result;
+    });
+    const response = await enablePost(req('POST', { code: code(), signOutOtherDevices: true }));
+    expect(response.status).toBe(200);
+    expect(mocks.sessionUpdateMany).toHaveBeenCalledWith({
+      where: { userId: 'user-1', revokedAt: null, NOT: { id: 'session-1' } },
+      data: { revokedAt: expect.any(Date) },
+    });
+    expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ action: 'SESSION_REVOKED', targetId: 'user-1', count: 2 }),
+    );
+  });
+
+  it('enable keeps the other sessions unless asked, and refuses a non-boolean choice', async () => {
+    user = { ...user, totpSecret: secret.encryptedSecret };
+    expect((await enablePost(req('POST', { code: code(), signOutOtherDevices: 'yes' }))).status).toBe(400);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect((await enablePost(req('POST', { code: code(), signOutOtherDevices: false }))).status).toBe(200);
+    expect(mocks.sessionUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.recordSecurityEvent).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'SESSION_REVOKED' }));
+  });
+
+  it('enable signs nothing out when the setup changed meanwhile', async () => {
+    user = { ...user, totpSecret: secret.encryptedSecret };
+    mocks.userUpdateMany.mockResolvedValue({ count: 0 });
+    expect((await enablePost(req('POST', { code: code(), signOutOtherDevices: true }))).status).toBe(409);
+    expect(mocks.sessionUpdateMany).not.toHaveBeenCalled();
+  });
+
   it('enable tries count toward the hourly code cap', async () => {
     user = { ...user, totpSecret: secret.encryptedSecret };
     mocks.redisEval.mockResolvedValue(['locked', '60000']);
@@ -242,6 +281,14 @@ describe('DELETE /api/me/totp', () => {
     const response = await DELETE(req('DELETE', { currentPassword: 'correct horse battery', code: code() }));
     expect(response.status).toBe(429);
     expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it('counts an authenticator code toward the hourly account cap, and a recovery code not', async () => {
+    await DELETE(req('DELETE', { currentPassword: 'correct horse battery', code: code() }));
+    mocks.recoveryDeleteMany.mockResolvedValueOnce({ count: 1 });
+    await DELETE(req('DELETE', { currentPassword: 'correct horse battery', code: 'ABCD-EFGH-IJKL-MNOP' }));
+    // ARGV[6]: '1' counts the attempt against login:mfa-account:<id>.
+    expect(mocks.redisEval.mock.calls.map((c) => c[1].arguments[5])).toEqual(['1', '0']);
   });
 
   it('is refused when already off', async () => {

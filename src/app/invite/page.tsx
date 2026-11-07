@@ -118,10 +118,16 @@ export default function InvitePage() {
         body: JSON.stringify({ token: tokenRef.current, password }),
       });
       if (res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { signInWithCode?: unknown };
+        const data = (await res.json().catch(() => ({}))) as { signInWithCode?: unknown; twoStepTurnedOff?: unknown };
         if (data.signInWithCode === true) {
           // Two-step sign-in is on: no session was made here.
           setNotice('Your password is set. Sign in with it and a code from your authenticator app.');
+          setStatus('done');
+          return;
+        }
+        if (data.twoStepTurnedOff === true) {
+          // The reset turned two-step sign-in off; still no session from the link alone.
+          setNotice('Your password is set and two-step sign-in is off. Sign in with your new password.');
           setStatus('done');
           return;
         }

@@ -104,6 +104,29 @@ describe('recordSecurityEvent', () => {
     });
   });
 
+  it('records a start-up event with no request: no address, user agent or request id', async () => {
+    await recordSecurityEvent(null, {
+      actor: null,
+      action: 'MFA_DISABLED',
+      targetType: 'user',
+      targetId: 'user-bootstrap-admin',
+      targetLabel: 'admin',
+      fields: ['admin-password-reset'],
+    });
+    expect(mocks.clientIp).not.toHaveBeenCalled();
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: null,
+        actorUsername: null,
+        action: 'MFA_DISABLED',
+        fields: ['admin-password-reset'],
+        ip: null,
+        userAgent: null,
+        requestId: null,
+      }),
+    });
+  });
+
   it('is fail-soft: a failed write resolves and logs no arguments', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const failure = Object.assign(new Error('Invalid value: secret-hash-123'), { code: 'P2021' });

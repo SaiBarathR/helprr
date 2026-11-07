@@ -808,7 +808,7 @@ enum SecurityAuditAction {
   CALENDAR_FEED_ROTATED
   CALENDAR_FEED_REVOKED
   MFA_ENABLED // the user turned on two-step sign-in
-  MFA_DISABLED // the user turned it off (password and a code)
+  MFA_DISABLED // turned off: by the user (password and a code), an admin, an admin's reset link, or the start-up admin reset
   MFA_RECOVERY_CODE_USED // a recovery code stood in for the authenticator
 }
 

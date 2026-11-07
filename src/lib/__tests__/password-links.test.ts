@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // transaction restores the snapshot when its callback throws, as PostgreSQL does.
 const db = vi.hoisted(() => {
   type Row = Record<string, unknown>;
-  const state = { users: [] as Row[], links: [] as Row[], sessions: [] as Row[], feeds: [] as Row[] };
+  const state = { users: [] as Row[], links: [] as Row[], sessions: [] as Row[], feeds: [] as Row[], codes: [] as Row[] };
   const matches = (row: Row, where: Row) => Object.entries(where).every(([k, v]) => row[k] === v);
   const client = {
     passwordLink: {
@@ -55,8 +55,15 @@ const db = vi.hoisted(() => {
         return { count: before - state.feeds.length };
       }),
     },
+    recoveryCode: {
+      deleteMany: vi.fn(async ({ where }: { where: Row }) => {
+        const before = state.codes.length;
+        state.codes = state.codes.filter((c) => !matches(c, where));
+        return { count: before - state.codes.length };
+      }),
+    },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => {
-      const snapshot = structuredClone({ users: state.users, links: state.links, sessions: state.sessions, feeds: state.feeds });
+      const snapshot = structuredClone({ users: state.users, links: state.links, sessions: state.sessions, feeds: state.feeds, codes: state.codes });
       try {
         return await fn(client);
       } catch (error) {
@@ -83,6 +90,7 @@ import type { Prisma } from '@prisma/client';
 
 const tx = db.client as unknown as Prisma.TransactionClient;
 const NOW = new Date('2026-11-07T12:00:00Z');
+const BEFORE = new Date('2026-11-07T11:00:00Z');
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 
 function addUser(id: string, status: string, passwordHash: string | null = 'old-hash') {
@@ -95,6 +103,7 @@ beforeEach(() => {
   db.state.links = [];
   db.state.sessions = [];
   db.state.feeds = [];
+  db.state.codes = [];
 });
 
 describe('issuing a link', () => {
@@ -164,29 +173,81 @@ describe('using a link', () => {
     db.state.feeds.push({ id: 'f1', userId: 'u1' }, { id: 'f2', userId: 'someone-else' });
 
     const used = await redeemPasswordLink(token, 'new-hash', NOW);
-    expect(used).toMatchObject({ purpose: 'reset', revokedSessions: 2, feedRevoked: true, mfaEnabled: false });
+    expect(used).toMatchObject({ purpose: 'reset', revokedSessions: 2, feedRevoked: true, mfaEnabled: false, mfaDisabled: false });
     expect(db.state.users[0].passwordHash).toBe('new-hash');
     expect(db.state.sessions.filter((s) => s.revokedAt !== null).map((s) => s.id)).toEqual(['s1', 's2']);
     // The calendar feed link ends with the sessions.
     expect(db.state.feeds.map((f) => f.id)).toEqual(['f2']);
   });
 
-  it('a reset link says when the account has two-step sign-in on', async () => {
+  function withTwoStep(userId: string) {
+    Object.assign(db.state.users.find((u) => u.id === userId)!, { totpSecret: 'enc:v1:x', totpEnabledAt: BEFORE, totpLastUsedStep: 9 });
+    db.state.codes.push({ id: `c-${userId}-1`, userId }, { id: `c-${userId}-2`, userId });
+  }
+
+  it("a reset link an admin made turns two-step sign-in off with the new password", async () => {
     addUser('u1', 'active');
-    db.state.users[0].totpEnabledAt = NOW;
+    addUser('u2', 'active');
+    withTwoStep('u1');
+    withTwoStep('u2');
     const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'reset', createdById: 'admin', now: NOW });
-    expect(await redeemPasswordLink(token, 'new-hash', NOW)).toMatchObject({ mfaEnabled: true });
+
+    expect(await redeemPasswordLink(token, 'new-hash', NOW)).toMatchObject({ mfaEnabled: false, mfaDisabled: true });
+    expect(db.state.users[0]).toMatchObject({ passwordHash: 'new-hash', totpSecret: null, totpEnabledAt: null, totpLastUsedStep: null });
+    expect(db.state.codes.map((c) => c.userId)).toEqual(['u2', 'u2']);
+    expect(db.state.users[1].totpEnabledAt).toBe(BEFORE);
   });
 
-  it('counts two-step sign-in turned on after the link was read', async () => {
+  it('a reset link the user made for themselves leaves two-step sign-in on', async () => {
     addUser('u1', 'active');
-    const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'reset', createdById: 'admin', now: NOW });
+    withTwoStep('u1');
+    const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'reset', createdById: 'u1', now: NOW });
+    expect(await redeemPasswordLink(token, 'new-hash', NOW)).toMatchObject({ mfaEnabled: true, mfaDisabled: false });
+    expect(db.state.users[0]).toMatchObject({ passwordHash: 'new-hash', totpEnabledAt: BEFORE });
+    expect(db.state.codes).toHaveLength(2);
+  });
+
+  it('a reset link made before two-step sign-in was turned on leaves it on', async () => {
+    addUser('u1', 'active');
+    const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'reset', createdById: 'admin', now: BEFORE });
+    withTwoStep('u1');
+    db.state.users[0].totpEnabledAt = NOW;
+    expect(await redeemPasswordLink(token, 'new-hash', NOW)).toMatchObject({ mfaEnabled: true, mfaDisabled: false });
+    expect(db.state.users[0]).toMatchObject({ passwordHash: 'new-hash', totpEnabledAt: NOW });
+    expect(db.state.codes).toHaveLength(2);
+  });
+
+  it('an invite leaves two-step sign-in on and says so', async () => {
+    addUser('u1', 'pending', null);
+    withTwoStep('u1');
+    const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'invite', createdById: 'admin', now: NOW });
+    expect(await redeemPasswordLink(token, 'new-hash', NOW)).toMatchObject({ mfaEnabled: true, mfaDisabled: false });
+    expect(db.state.users[0].totpEnabledAt).toBe(BEFORE);
+  });
+
+  it('counts two-step sign-in turned on after the link was read, and leaves it on', async () => {
+    addUser('u1', 'active');
+    const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'reset', createdById: 'admin', now: BEFORE });
     const read = await db.client.passwordLink.findUnique({ where: { tokenHash: sha256(token) } });
     db.client.passwordLink.findUnique.mockImplementationOnce(async () => {
+      withTwoStep('u1');
       db.state.users[0].totpEnabledAt = NOW;
       return read;
     });
-    expect(await redeemPasswordLink(token, 'new-hash', NOW)).toMatchObject({ mfaEnabled: true });
+    expect(await redeemPasswordLink(token, 'new-hash', NOW)).toMatchObject({ mfaEnabled: true, mfaDisabled: false });
+    expect(db.state.users[0].totpEnabledAt).toBe(NOW);
+    expect(db.state.codes).toHaveLength(2);
+  });
+
+  it('a reset that loses the race to another use leaves two-step sign-in on', async () => {
+    addUser('u1', 'active');
+    withTwoStep('u1');
+    const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'reset', createdById: 'admin', now: NOW });
+    // The link is consumed by the other request between the read and the delete.
+    db.client.passwordLink.deleteMany.mockResolvedValueOnce({ count: 0 });
+    expect(await redeemPasswordLink(token, 'new-hash', NOW)).toBeNull();
+    expect(db.state.users[0]).toMatchObject({ passwordHash: 'old-hash', totpEnabledAt: BEFORE });
+    expect(db.state.codes).toHaveLength(2);
   });
 
   it('a second use of a reset link racing the first writes nothing', async () => {

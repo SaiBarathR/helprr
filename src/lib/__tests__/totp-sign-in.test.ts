@@ -271,6 +271,8 @@ describe('the code step', () => {
     expect(keys[0]).toBe('login:mfa-account:user-1');
     expect(args.slice(1, 2)).toEqual(['10']);
     expect(args[3]).toBe('5');
+    // An authenticator code counts against the account's hourly cap.
+    expect(args[5]).toBe('1');
     expect(mocks.redisEval.mock.invocationCallOrder[0]).toBeLessThan(mocks.userUpdateMany.mock.invocationCallOrder[0]);
     expect(mocks.redisDel).toHaveBeenCalledWith('login:mfa-account:user-1');
   });
@@ -381,6 +383,21 @@ describe('the code step', () => {
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: 'LOGIN_SUCCEEDED', fields: ['password', 'recovery-code'],
     }));
+  });
+
+  it('a recovery code skips the hourly account cap but still counts for the pending token and the throttles', async () => {
+    const mfaToken = await firstStep();
+    mocks.recoveryDeleteMany.mockResolvedValue({ count: 0 });
+    const response = await codeLogin(post('/api/auth/login/totp', { mfaToken, code: 'ABCD-EFGH-IJKL-MNOP' }));
+    expect(response.status).toBe(401);
+    const [, { keys, arguments: args }] = mocks.redisEval.mock.calls[0];
+    expect(args[4]).toBe('1'); // per-token count on
+    expect(args[5]).toBe('0'); // account cap off
+    expect(keys[2]).toMatch(/^login:mfa-token-attempts:/);
+    expect(mocks.limits.enforceUsernameBackoff).toHaveBeenCalledWith('member');
+    expect(mocks.limits.enforceLoginRateLimit).toHaveBeenCalled();
+    expect(mocks.limits.recordUsernameFailure).toHaveBeenCalled();
+    expect(mocks.limits.recordGlobalLoginFailure).toHaveBeenCalled();
   });
 
   it('an unknown or used recovery code is a failed sign-in', async () => {

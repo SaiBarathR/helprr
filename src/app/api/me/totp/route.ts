@@ -11,7 +11,14 @@ import { confirmCurrentPassword } from '@/lib/server/confirm-password';
 import { withApiLogging } from '@/lib/api-logger';
 import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
 import { randomUUID } from 'crypto';
-import { clearMfaAttempts, consumeSecondFactor, isTotpEnabled, mfaLockedResponse, startMfaAttempt } from '@/lib/totp';
+import {
+  clearMfaAttempts,
+  consumeSecondFactor,
+  isTotpEnabled,
+  mfaLockedResponse,
+  secondFactorKind,
+  startMfaAttempt,
+} from '@/lib/totp';
 
 const BODY_MAX_BYTES = 8 * 1024;
 
@@ -63,7 +70,7 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
 
   let gate: Awaited<ReturnType<typeof startMfaAttempt>>;
   try {
-    gate = await startMfaAttempt(user.id);
+    gate = await startMfaAttempt(user.id, secondFactorKind(code));
   } catch {
     return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
   }

@@ -89,7 +89,7 @@ beforeEach(() => {
 
 describe('POST /api/invite/accept', () => {
   it('sets the password, signs the person in and records the use', async () => {
-    mocks.redeemPasswordLink.mockResolvedValue({ id: 'u1', username: 'newbie', role: 'member', purpose: 'invite', revokedSessions: 0, mfaEnabled: false });
+    mocks.redeemPasswordLink.mockResolvedValue({ id: 'u1', username: 'newbie', role: 'member', purpose: 'invite', revokedSessions: 0, mfaEnabled: false, mfaDisabled: false });
 
     const response = await acceptInvite(post('/api/invite/accept', { token: TOKEN, password: PASSWORD }));
 
@@ -115,8 +115,36 @@ describe('POST /api/invite/accept', () => {
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'RESET_LINK_USED' }));
   });
 
+  it('a reset that turned two-step sign-in off records it and still makes no session', async () => {
+    mocks.redeemPasswordLink.mockResolvedValue({
+      id: 'u1', username: 'member', role: 'member', purpose: 'reset', revokedSessions: 2, mfaEnabled: false, mfaDisabled: true,
+    });
+
+    const response = await acceptInvite(post('/api/invite/accept', { token: TOKEN, password: PASSWORD }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ success: true, twoStepTurnedOff: true });
+    expect(response.cookies.get('helprr-session')).toBeUndefined();
+    expect(mocks.createSession).not.toHaveBeenCalled();
+    expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), {
+      actor: { id: 'u1', username: 'member' },
+      action: 'MFA_DISABLED',
+      targetType: 'user',
+      targetId: 'u1',
+      targetLabel: 'member',
+      fields: ['reset-link'],
+    });
+  });
+
+  it('makes no session when the result does not say two-step sign-in was off all along', async () => {
+    mocks.redeemPasswordLink.mockResolvedValue({ id: 'u1', username: 'member', role: 'member', purpose: 'reset', revokedSessions: 0, mfaEnabled: false });
+    const response = await acceptInvite(post('/api/invite/accept', { token: TOKEN, password: PASSWORD }));
+    expect(response.status).toBe(200);
+    expect(mocks.createSession).not.toHaveBeenCalled();
+  });
+
   it('records a reset with the sessions it signed out', async () => {
-    mocks.redeemPasswordLink.mockResolvedValue({ id: 'u1', username: 'member', role: 'member', purpose: 'reset', revokedSessions: 3, mfaEnabled: false });
+    mocks.redeemPasswordLink.mockResolvedValue({ id: 'u1', username: 'member', role: 'member', purpose: 'reset', revokedSessions: 3, mfaEnabled: false, mfaDisabled: false });
     await acceptInvite(post('/api/invite/accept', { token: TOKEN, password: PASSWORD }));
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: 'RESET_LINK_USED', count: 3,
@@ -125,7 +153,7 @@ describe('POST /api/invite/accept', () => {
   });
 
   it('records the calendar feed link a reset ended', async () => {
-    mocks.redeemPasswordLink.mockResolvedValue({ id: 'u1', username: 'member', role: 'member', purpose: 'reset', revokedSessions: 0, feedRevoked: true, mfaEnabled: false });
+    mocks.redeemPasswordLink.mockResolvedValue({ id: 'u1', username: 'member', role: 'member', purpose: 'reset', revokedSessions: 0, feedRevoked: true, mfaEnabled: false, mfaDisabled: false });
     await acceptInvite(post('/api/invite/accept', { token: TOKEN, password: PASSWORD }));
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: 'CALENDAR_FEED_REVOKED', targetId: 'u1', fields: ['password'],

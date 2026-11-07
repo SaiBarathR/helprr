@@ -22,11 +22,13 @@ class AccountChangedError extends Error {}
  * holds the secret from /api/me/totp/setup. Makes ten recovery codes and
  * returns them once; only their hashes are kept. Tries count toward the same
  * hourly cap as codes at sign-in, so a session alone cannot guess its way in.
+ * With signOutOtherDevices: true, every other session of the user ends in the
+ * same transaction; this one stays.
  */
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
-  const { user } = auth;
+  const { user, session } = auth;
 
   let body: unknown;
   try {
@@ -36,9 +38,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     if (response) return response;
     throw error;
   }
-  const code = body && typeof body === 'object' && !Array.isArray(body) ? (body as { code?: unknown }).code : undefined;
+  const { code, signOutOtherDevices } = (body && typeof body === 'object' && !Array.isArray(body) ? body : {}) as {
+    code?: unknown;
+    signOutOtherDevices?: unknown;
+  };
   if (typeof code !== 'string' || code.length > 64) {
     return NextResponse.json({ error: 'Enter the code from your authenticator app' }, { status: 400 });
+  }
+  if (signOutOtherDevices !== undefined && typeof signOutOtherDevices !== 'boolean') {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
   if (isTotpEnabled(user)) {
@@ -50,7 +58,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   let gate: Awaited<ReturnType<typeof startMfaAttempt>>;
   try {
-    gate = await startMfaAttempt(user.id);
+    gate = await startMfaAttempt(user.id, 'totp');
   } catch {
     return NextResponse.json({ error: 'Service unavailable' }, { status: 503 });
   }
@@ -62,8 +70,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   const recovery = generateRecoveryCodes();
+  let revokedSessions = 0;
   try {
-    await prisma.$transaction(async (tx) => {
+    revokedSessions = await prisma.$transaction(async (tx) => {
       // Only the secret this code was checked against, and only if setup was not finished meanwhile.
       const updated = await tx.user.updateMany({
         where: { id: user.id, status: 'active', totpEnabledAt: null, totpSecret: user.totpSecret },
@@ -74,6 +83,12 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       await tx.recoveryCode.createMany({
         data: recovery.hashes.map((codeHash) => ({ userId: user.id, codeHash })),
       });
+      if (signOutOtherDevices !== true) return 0;
+      const revoked = await tx.session.updateMany({
+        where: { userId: user.id, revokedAt: null, NOT: { id: session.id } },
+        data: { revokedAt: new Date() },
+      });
+      return revoked.count;
     });
   } catch (error) {
     if (error instanceof AccountChangedError) {
@@ -91,6 +106,16 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     targetLabel: user.username,
     fields: ['totp'],
   });
+  if (revokedSessions > 0) {
+    await recordSecurityEvent(request, {
+      actor: user,
+      action: 'SESSION_REVOKED',
+      targetType: 'user',
+      targetId: user.id,
+      targetLabel: user.username,
+      count: revokedSessions,
+    });
+  }
 
   return NextResponse.json(
     { recoveryCodes: recovery.codes },
