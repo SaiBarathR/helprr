@@ -65,6 +65,11 @@ export class InstanceBackoff {
     this.entries.delete(instance.id);
   }
 
+  /** Forgets an instance's failures, e.g. after its connection test passes. */
+  clear(id: string): void {
+    this.entries.delete(id);
+  }
+
   recordFailure(instance: BackoffInstance, error: unknown, cycleStartedAtMs: number): void {
     const failures = this.failures(instance) + 1;
     const delayMs = failures < 2 ? 0 : Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** (failures - 2));
@@ -76,6 +81,12 @@ export class InstanceBackoff {
     });
   }
 }
+
+// On globalThis like the polling service: the poll loop and the connection-test
+// route are separate bundles in dev and must share one instance.
+const globalForBackoff = globalThis as unknown as { __helprrArrInstanceBackoff?: InstanceBackoff };
+export const arrInstanceBackoff = globalForBackoff.__helprrArrInstanceBackoff ?? new InstanceBackoff();
+globalForBackoff.__helprrArrInstanceBackoff = arrInstanceBackoff;
 
 interface PollingCycleOptions {
   instanceConcurrency?: number;

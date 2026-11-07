@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
@@ -24,7 +25,9 @@ import { expectServiceVersion, NotServiceApiError } from '@/lib/service-response
 import { findServiceByType } from '@/lib/settings/service-config';
 import { connectionFailure, currentHintContext } from '@/lib/connection-hints';
 import type { TroubleshootingSection } from '@/lib/docs-links';
-import { withDefaultScheme } from '@/lib/service-url';
+import { normalizeServiceUrl, withDefaultScheme } from '@/lib/service-url';
+import { prisma } from '@/lib/db';
+import { arrInstanceBackoff } from '@/lib/polling-cycle';
 
 /** What to say when an address answers, but with a web page instead of the API. */
 function notServiceApiMessage(type: ServiceType | null): string {
@@ -34,6 +37,33 @@ function notServiceApiMessage(type: ServiceType | null): string {
   const label = (type && findServiceByType(type)?.label) || 'the service';
   return `This address answered, but not like ${label}'s API. Remove anything after the port, `
     + `such as /settings/general, unless ${label} runs under a base path.`;
+}
+
+/**
+ * A passing test of a saved Sonarr/Radarr/Lidarr connection, exactly as stored,
+ * ends the polling skip it may be under after repeated failures. Best effort:
+ * it never changes the test's result.
+ */
+async function endPollingSkip(
+  type: ServiceType,
+  instanceId: string | undefined,
+  url: string,
+  apiKey: string,
+  headers: Record<string, string> | undefined,
+) {
+  if (!instanceId) return;
+  try {
+    const stored = await prisma.serviceConnection.findFirst({
+      where: { id: instanceId, type },
+      select: { url: true, apiKey: true, customHeaders: true },
+    });
+    const sameHeaders = !headers || isDeepStrictEqual(headers, parseCustomHeaders(stored?.customHeaders));
+    if (stored && stored.apiKey === apiKey && sameHeaders && normalizeServiceUrl(stored.url) === normalizeServiceUrl(url)) {
+      arrInstanceBackoff.clear(instanceId);
+    }
+  } catch (error) {
+    console.error('Could not end the polling skip after a passing test:', (error as Error)?.message);
+  }
 }
 
 /**
@@ -121,27 +151,33 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       case 'SONARR': {
         const client = new SonarrClient(cleanUrl, resolvedApiKey, customHeaders);
         const status = await client.getSystemStatus();
+        const version = expectServiceVersion(status?.version);
+        await endPollingSkip(type, instanceId, url, resolvedApiKey, customHeaders);
         return NextResponse.json({
           success: true,
-          version: expectServiceVersion(status?.version),
+          version,
         });
       }
 
       case 'RADARR': {
         const client = new RadarrClient(cleanUrl, resolvedApiKey, customHeaders);
         const status = await client.getSystemStatus();
+        const version = expectServiceVersion(status?.version);
+        await endPollingSkip(type, instanceId, url, resolvedApiKey, customHeaders);
         return NextResponse.json({
           success: true,
-          version: expectServiceVersion(status?.version),
+          version,
         });
       }
 
       case 'LIDARR': {
         const client = new LidarrClient(cleanUrl, resolvedApiKey, customHeaders);
         const status = await client.getSystemStatus();
+        const version = expectServiceVersion(status?.version);
+        await endPollingSkip(type, instanceId, url, resolvedApiKey, customHeaders);
         return NextResponse.json({
           success: true,
-          version: expectServiceVersion(status?.version),
+          version,
         });
       }
 
