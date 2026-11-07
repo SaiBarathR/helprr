@@ -287,16 +287,19 @@ describe('gatherLibraryFacts', () => {
       expect(titles[0]).toMatchObject({ watchlistUserIds: ['u1'], openRequest: true });
     });
 
-    it('compares a TMDB-only Seerr request by the TVDB id its details give', async () => {
+    it('compares a TMDB-only Seerr request by the TVDB id its details give, or by name', async () => {
       mocks.seerr.listRequests.mockResolvedValue({
         pageInfo: { results: 1 },
         results: [{ id: 5, type: 'tv', status: 2, createdAt: '2024-01-01T00:00:00Z', media: { tmdbId: 555, tvdbId: null, status: 3 }, requestedBy: { id: 1 } }],
       });
-      // Same name, but the TVDB id says it is another show.
-      mocks.mediaDetail.mockResolvedValue({ name: 'The Great Show', externalIds: { tvdbId: 901 } });
-      expect((await gatherLibraryFacts('series', 'keep')).titles[0].openRequest).toBe(false);
       mocks.mediaDetail.mockResolvedValue({ name: 'Other name', externalIds: { tvdbId: 900 } });
       expect((await gatherLibraryFacts('series', 'keep')).titles[0].openRequest).toBe(true);
+      // TMDB maps it to another TVDB entry, but the name is the same: it still protects.
+      mocks.mediaDetail.mockResolvedValue({ name: 'The Great Show', externalIds: { tvdbId: 901 } });
+      expect((await gatherLibraryFacts('series', 'keep')).titles[0].openRequest).toBe(true);
+      // Another TVDB entry and another name: not this show.
+      mocks.mediaDetail.mockResolvedValue({ name: 'Other name', externalIds: { tvdbId: 901 } });
+      expect((await gatherLibraryFacts('series', 'keep')).titles[0].openRequest).toBe(false);
     });
 
     it.each<[string, string, boolean]>([

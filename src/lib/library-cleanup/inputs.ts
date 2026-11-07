@@ -343,6 +343,8 @@ interface RequestRecord {
   tvdbId: number | null;
   /** The requested title's name, when known; null means "could be any title". */
   title: string | null;
+  /** The TVDB id came from Seerr's TV details (TMDB's mapping), not from the request itself. */
+  tvdbFromDetails?: boolean;
   open: boolean;
   at: Date | null;
   name: string;
@@ -433,6 +435,7 @@ async function readRequests(mediaType: LibraryMediaType, warnings: string[], tit
     records.push({
       tmdbId,
       tvdbId: tvdbId ?? detailTvdbId,
+      tvdbFromDetails: !tvdbId && detailTvdbId !== null,
       title,
       open: !finished,
       at: request.createdAt ? new Date(request.createdAt) : null,
@@ -463,7 +466,12 @@ async function readRequests(mediaType: LibraryMediaType, warnings: string[], tit
 function requestIsFor(r: RequestRecord & { loose: string[] | null }, t: ArrTitle['facts'], names: Set<string>): boolean {
   const byTmdb = r.tmdbId !== null && t.tmdbId !== null;
   const byTvdb = r.tvdbId !== null && t.tvdbId !== null;
-  if (byTmdb || byTvdb) return (byTmdb && r.tmdbId === t.tmdbId) || (byTvdb && r.tvdbId === t.tvdbId);
+  if (byTmdb || byTvdb) {
+    if ((byTmdb && r.tmdbId === t.tmdbId) || (byTvdb && r.tvdbId === t.tvdbId)) return true;
+    // TMDB's TVDB mapping can point at another TVDB entry than Sonarr's (anime is often
+    // split differently), so for an id from Seerr's details the name still counts.
+    if (!r.tvdbFromDetails) return false;
+  }
   return r.loose === null || r.loose.some((form) => names.has(form));
 }
 
