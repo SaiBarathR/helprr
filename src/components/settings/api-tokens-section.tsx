@@ -38,6 +38,8 @@ interface ApiToken {
 
 interface ApiTokens {
   tokens: ApiToken[];
+  /** May make tokens and have them work (api.tokens). */
+  allowed: boolean;
   grantableScopes: string[];
   max: number;
 }
@@ -84,6 +86,7 @@ export function ApiTokensSection() {
   const [now] = useState(() => Date.now());
 
   const tokens = status.data?.tokens ?? [];
+  const allowed = status.data?.allowed === true;
   const grantable = status.data?.grantableScopes ?? [];
   const full = tokens.length >= (status.data?.max ?? Infinity);
 
@@ -146,7 +149,9 @@ export function ApiTokensSection() {
         title={status.data ? `API tokens · ${tokens.length}` : 'API tokens'}
         footer={
           <>
-            Read-only access for Shortcuts and dashboards.{' '}
+            {allowed
+              ? 'Read-only access for Shortcuts and dashboards. '
+              : 'Making API tokens is not turned on for you. Ask whoever runs Helprr. '}
             <a href={STATUS_API_GUIDE_URL} target="_blank" rel="noreferrer" className="text-primary normal-case tracking-normal">
               How to use them
             </a>
@@ -172,7 +177,9 @@ export function ApiTokensSection() {
                     <div className="text-xs text-muted-foreground mt-0.5">
                       {token.scopes.map((scope) => SCOPE_LABEL.get(scope) ?? scope).join(', ')}
                     </div>
-                    {inactive.length > 0 && (
+                    {!allowed ? (
+                      <div className="text-xs text-amber-400 mt-0.5">Not working: API tokens are turned off for you</div>
+                    ) : inactive.length > 0 && (
                       <div className="text-xs text-amber-400 mt-0.5">
                         Not used now, as you no longer have access: {inactive.map((scope) => SCOPE_LABEL.get(scope) ?? scope).join(', ')}
                       </div>
@@ -191,15 +198,19 @@ export function ApiTokensSection() {
                 </div>
               );
             })}
-            <button
-              type="button"
-              className="grouped-row w-full gap-2 text-sm text-primary disabled:opacity-60"
-              onClick={openCreate}
-              disabled={busy || full || grantable.length === 0}
-            >
-              <Plus className="h-4 w-4" />
-              {full ? `Up to ${status.data?.max} tokens; turn one off first` : grantable.length === 0 ? 'Nothing you can share through a token' : 'New API token'}
-            </button>
+            {allowed ? (
+              <button
+                type="button"
+                className="grouped-row w-full gap-2 text-sm text-primary disabled:opacity-60"
+                onClick={openCreate}
+                disabled={busy || full || grantable.length === 0}
+              >
+                <Plus className="h-4 w-4" />
+                {full ? `Up to ${status.data?.max} tokens; turn one off first` : grantable.length === 0 ? 'Nothing you can share through a token' : 'New API token'}
+              </button>
+            ) : tokens.length === 0 && (
+              <div className="grouped-row text-sm text-muted-foreground">Not turned on for you</div>
+            )}
           </>
         )}
       </GroupedSection>

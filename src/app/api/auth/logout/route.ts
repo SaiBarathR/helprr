@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { COOKIE_NAME, getCurrentSid, revokeSession } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
+import { setSignedOutMarker } from '@/lib/signed-out-marker';
 
 function clearedCookieResponse(request: NextRequest, body: object, status: number): NextResponse {
   const response = NextResponse.json(body, { status });
@@ -33,7 +34,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  return clearedCookieResponse(request, { success: true }, 200);
+  const response = clearedCookieResponse(request, { success: true }, 200);
+  // So the login page does not sign straight back in through the sign-in proxy.
+  setSignedOutMarker(response, request);
+  return response;
 }
 
 export const POST = withApiLogging(postHandler, 'api/auth/logout');

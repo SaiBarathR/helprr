@@ -45,6 +45,10 @@ function post(headers: Record<string, string> = {}): NextRequest {
   });
 }
 
+function get(cookie?: string): NextRequest {
+  return new NextRequest('http://localhost/api/auth/trusted', cookie ? { headers: { cookie } } : undefined);
+}
+
 function fromProxy(user: string, extra: Record<string, string> = {}): NextRequest {
   return post({ 'Remote-User': user, 'X-Helprr-Proxy-Secret': SECRET, ...extra });
 }
@@ -77,7 +81,7 @@ function expectNoSession(response: Response) {
 
 describe('trusted-header sign-in', () => {
   it('is off by default: GET says so, POST is a 404 that touches nothing', async () => {
-    expect(await (await GET()).json()).toEqual({ enabled: false });
+    expect(await (await GET(get())).json()).toEqual({ enabled: false });
     const response = await POST(fromProxy('Alice'));
     expect(response.status).toBe(404);
     expectNoSession(response);
@@ -93,7 +97,7 @@ describe('trusted-header sign-in', () => {
     ['the same header twice', { HELPRR_TRUSTED_AUTH_SECRET_HEADER: 'remote-user' }],
   ])('stays off with %s', async (_label, env) => {
     enable(env);
-    expect(await (await GET()).json()).toEqual({ enabled: false });
+    expect(await (await GET(get())).json()).toEqual({ enabled: false });
     const response = await POST(fromProxy('Alice'));
     expect(response.status).toBe(404);
     expectNoSession(response);
@@ -102,7 +106,7 @@ describe('trusted-header sign-in', () => {
   it('signs an active user in with a normal session and an audit row', async () => {
     enable();
     mocks.findUnique.mockResolvedValue(ACTIVE);
-    expect(await (await GET()).json()).toEqual({ enabled: true });
+    expect(await (await GET(get())).json()).toEqual({ enabled: true, signedOut: false });
 
     const response = await POST(fromProxy('Alice', { 'user-agent': 'Safari' }));
     expect(response.status).toBe(200);
@@ -125,6 +129,22 @@ describe('trusted-header sign-in', () => {
     }));
     expect(mocks.limits.clearUsernameBackoff).toHaveBeenCalledWith('Alice');
     expect(mocks.limits.clearLoginAttempts).toHaveBeenCalledWith('203.0.113.9');
+  });
+
+  it('after a sign-out, GET says so, yet a deliberate POST still signs in and clears the marker', async () => {
+    enable();
+    mocks.findUnique.mockResolvedValue(ACTIVE);
+    expect(await (await GET(get('helprr-signed-out=1'))).json()).toEqual({ enabled: true, signedOut: true });
+
+    const response = await POST(fromProxy('Alice', { cookie: 'helprr-signed-out=1' }));
+    expect(response.status).toBe(200);
+    const cookies = response.headers.getSetCookie();
+    expect(cookies.some((c) => c.startsWith('helprr-session=session-token'))).toBe(true);
+    expect(cookies.some((c) => c.startsWith('helprr-signed-out=;') && c.includes('Max-Age=0'))).toBe(true);
+  });
+
+  it('says nothing about the marker while proxy sign-in is off', async () => {
+    expect(await (await GET(get('helprr-signed-out=1'))).json()).toEqual({ enabled: false });
   });
 
   it('skips two-step sign-in: the proxy is the second factor', async () => {

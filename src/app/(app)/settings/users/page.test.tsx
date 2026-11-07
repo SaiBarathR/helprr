@@ -208,6 +208,35 @@ describe('two-step sign-in', () => {
     expect(screen.queryByRole('button', { name: 'Turn off' })).toBeNull();
   });
 
+  it('says two-step off for an account with a Helprr password, and nothing for a Jellyfin-only one', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/users') {
+        return new Response(JSON.stringify([
+          { ...member, hasPassword: true, passwordLink: null, twoStepEnabled: false },
+          { ...member, id: 'u3', username: 'jelly', displayName: 'Jelly', hasPassword: false, hasJellyfinLink: true, passwordLink: null, twoStepEnabled: false },
+        ]));
+      }
+      return new Response(JSON.stringify([]));
+    }));
+    renderPage();
+    const local = await screen.findByRole('button', { name: /Iso/ });
+    expect(local.textContent).toContain('two-step off');
+    const jellyfinOnly = screen.getByRole('button', { name: /Jelly @jelly/ });
+    expect(jellyfinOnly.textContent).not.toContain('two-step');
+  });
+
+  it("says your own reset link turns your two-step sign-in off too", async () => {
+    mocks.me = { id: 'u2' };
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/users') return new Response(JSON.stringify([{ ...member, hasPassword: true, passwordLink: null, twoStepEnabled: true }]));
+      if (url === '/api/users/u2/permissions') return new Response(JSON.stringify(mocks.permissions));
+      return new Response(JSON.stringify([]));
+    }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    expect(await screen.findByText(/signs them out everywhere and turns off two-step sign-in/)).toBeDefined();
+  });
+
   it('offers no turn-off for your own account', async () => {
     mocks.me = { id: 'u2' };
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
@@ -219,5 +248,58 @@ describe('two-step sign-in', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
     expect(await screen.findByRole('link', { name: 'Account → Two-step sign-in' })).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Turn off' })).toBeNull();
+  });
+});
+
+describe('API tokens in the editor', () => {
+  const token = {
+    id: 'tok-1', name: 'Homepage', scopes: ['activity.view'], activeScopes: ['activity.view'],
+    expiresAt: null, createdAt: '2026-11-01T00:00:00.000Z', lastUsedAt: null,
+  };
+
+  function renderPage() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><UsersAdminPage /></QueryClientProvider>);
+  }
+
+  it("lists a user's tokens and turns one off after a confirm", async () => {
+    let tokens = [token];
+    const deletes: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/users/u2/api-tokens/tok-1' && init?.method === 'DELETE') {
+        deletes.push(url);
+        tokens = [];
+        return new Response(JSON.stringify({ revoked: true }));
+      }
+      if (url === '/api/users/u2/api-tokens') return new Response(JSON.stringify({ tokens, allowed: true }));
+      if (url === '/api/users') return new Response(JSON.stringify([{ ...member, hasPassword: true, passwordLink: null }]));
+      if (url === '/api/users/u2/permissions') return new Response(JSON.stringify(mocks.permissions));
+      return new Response(JSON.stringify([]));
+    }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    expect(await screen.findByText('Homepage')).toBeDefined();
+    expect(screen.getByText(/Made .* · not used yet · no expiry/)).toBeDefined();
+    expect(screen.getByText('Download queue (size and items)')).toBeDefined();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Turn off Homepage' }));
+    const confirm = await screen.findByRole('alertdialog');
+    expect(confirm.textContent).toContain('Turn off “Homepage” for Iso?');
+    expect(deletes).toEqual([]);
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Turn off' }));
+    await waitFor(() => expect(deletes).toEqual(['/api/users/u2/api-tokens/tok-1']));
+    await waitFor(() => expect(screen.queryByText('Homepage')).toBeNull());
+  });
+
+  it('says when their tokens do not work because api.tokens is off for them', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/users/u2/api-tokens') return new Response(JSON.stringify({ tokens: [token], allowed: false }));
+      if (url === '/api/users') return new Response(JSON.stringify([{ ...member, hasPassword: true, passwordLink: null }]));
+      if (url === '/api/users/u2/permissions') return new Response(JSON.stringify(mocks.permissions));
+      return new Response(JSON.stringify([]));
+    }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    expect(await screen.findByText(/These don.t work: “Make personal API tokens” is off for them/)).toBeDefined();
   });
 });

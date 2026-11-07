@@ -33,7 +33,8 @@ import {
 
 const NOW = new Date('2026-11-07T10:00:00Z');
 const TOKEN = generateApiToken();
-const MEMBER = { id: 'u1', username: 'member', role: 'member', template: 'member', permissions: {}, status: 'active' };
+// Members make tokens only when api.tokens is turned on for them.
+const MEMBER = { id: 'u1', username: 'member', role: 'member', template: 'member', permissions: { 'api.tokens': true }, status: 'active' };
 
 function row(overrides: Record<string, unknown> = {}, user: Record<string, unknown> = {}) {
   return {
@@ -46,7 +47,7 @@ function row(overrides: Record<string, unknown> = {}, user: Record<string, unkno
     createdAt: new Date('2026-11-01T00:00:00Z'),
     lastUsedAt: null,
     usedFrom: ['203.0.113.0/24'],
-    user: { ...MEMBER, ...user },
+    user: { ...MEMBER, ...user, permissions: { ...MEMBER.permissions, ...(user.permissions as object | undefined) } },
     ...overrides,
   };
 }
@@ -122,6 +123,19 @@ describe('authorizeApiTokenRequest', () => {
     expect(auth.ok).toBe(false);
     if (auth.ok) return;
     expect(auth.response.status).toBe(403);
+  });
+
+  it('is a 403 once the owner may no longer make API tokens, checked on every request', async () => {
+    mocks.findUnique.mockResolvedValue(row({}, { permissions: { 'api.tokens': false } }));
+    const auth = await authorizeApiTokenRequest(request(), NOW);
+    expect(auth.ok).toBe(false);
+    if (auth.ok) return;
+    expect(auth.response.status).toBe(403);
+  });
+
+  it('opens for an admin, who holds api.tokens by default', async () => {
+    mocks.findUnique.mockResolvedValue(row({}, { role: 'admin', template: 'admin', permissions: {} }));
+    expect((await authorizeApiTokenRequest(request(), NOW)).ok).toBe(true);
   });
 
   it.each([

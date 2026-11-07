@@ -14,7 +14,18 @@ const mocks = vi.hoisted(() => ({
   recordSecurityEvent: vi.fn(),
 }));
 
-vi.mock('@/lib/auth', () => ({ requireUser: mocks.requireUser, currentSessionIsTrusted: mocks.currentSessionIsTrusted }));
+vi.mock('@/lib/auth', () => ({
+  requireUser: mocks.requireUser,
+  // The real check, on the mocked session's user.
+  requireUserCapability: async (cap: Parameters<typeof import('@/lib/permissions').can>[1]) => {
+    const auth = await mocks.requireUser();
+    if (!auth.ok) return auth;
+    const { can } = await import('@/lib/permissions');
+    const { NextResponse: Response } = await import('next/server');
+    return can(auth.user, cap) ? auth : { ok: false, response: Response.json({ error: 'Forbidden' }, { status: 403 }) };
+  },
+  currentSessionIsTrusted: mocks.currentSessionIsTrusted,
+}));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (fn: unknown) => fn }));
 vi.mock('@/lib/security-audit', () => ({ recordSecurityEvent: mocks.recordSecurityEvent, coarseIp: () => null }));
 vi.mock('@/lib/db', () => {
@@ -33,8 +44,8 @@ import { hashApiToken, MAX_API_TOKENS } from '@/lib/api-tokens';
 const NOW = new Date('2026-11-07T10:00:00Z');
 const MEMBER = {
   id: 'u1', username: 'member', role: 'member', template: 'member',
-  // A member who may not see Jellyfin sessions.
-  permissions: { 'jellyfin.sessions': false }, status: 'active',
+  // A member allowed to make tokens, who may not see Jellyfin sessions.
+  permissions: { 'api.tokens': true, 'jellyfin.sessions': false }, status: 'active',
 };
 
 function post(body: unknown) {
@@ -144,6 +155,13 @@ describe('POST /api/me/api-tokens', () => {
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
+  it('refuses a member who may not make API tokens (the member default)', async () => {
+    mocks.requireUser.mockResolvedValue({ ok: true, user: { ...MEMBER, permissions: {} }, session: { id: 's1' } });
+    expect((await post({ name: 'x', scopes: ['activity.view'] })).status).toBe(403);
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.recordSecurityEvent).not.toHaveBeenCalled();
+  });
+
   it('needs a session', async () => {
     mocks.requireUser.mockResolvedValue({ ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) });
     expect((await post({ name: 'x', scopes: ['activity.view'] })).status).toBe(401);
@@ -164,6 +182,17 @@ describe('GET /api/me/api-tokens', () => {
     }]);
     expect(body.grantableScopes).not.toContain('jellyfin.sessions');
     expect(body.grantableScopes).toContain('activity.view');
+    expect(body.allowed).toBe(true);
+  });
+
+  it('says when the owner may not make or use tokens, and still lists theirs so they can turn them off', async () => {
+    mocks.requireUser.mockResolvedValue({ ok: true, user: { ...MEMBER, permissions: {} }, session: { id: 's1' } });
+    mocks.findMany.mockResolvedValue([{
+      id: 'tok-1', name: 'iPhone', scopes: ['activity.view'], expiresAt: null, createdAt: NOW, lastUsedAt: null,
+    }]);
+    const body = await (await GET()).json();
+    expect(body.allowed).toBe(false);
+    expect(body.tokens).toHaveLength(1);
   });
 });
 

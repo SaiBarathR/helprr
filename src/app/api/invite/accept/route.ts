@@ -6,6 +6,7 @@ import { hashPassword } from '@/lib/password';
 import { isWellFormedPasswordLinkToken, redeemPasswordLink } from '@/lib/password-links';
 import { localPasswordValidationError } from '@/lib/password-policy';
 import { isHttpsRequest } from '@/lib/request-utils';
+import { clearSignedOutMarker } from '@/lib/signed-out-marker';
 import { recordSecurityEvent } from '@/lib/security-audit';
 import { invalidLinkResponse, readInviteRequest } from '@/lib/server/invite-request';
 
@@ -13,9 +14,9 @@ import { invalidLinkResponse, readInviteRequest } from '@/lib/server/invite-requ
  * Public: use an invite or password-reset link. Sets the chosen password, makes
  * the account active, ends the link, revokes every session of the user, and
  * signs this browser in, unless the account had two-step sign-in on. A reset
- * link an admin made after it was turned on turns it off (the way back for a
- * lost phone); an older link, one the user made for themselves, or an invite
- * leaves it on. Either way the person
+ * link made after it was turned on turns it off (the way back for a lost
+ * phone), an admin's own link included; an older link or an invite leaves it
+ * on. Either way the person
  * then signs in on /login, so the link alone never makes a session for an
  * account that had a second factor.
  */
@@ -70,7 +71,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   if (user.mfaDisabled) {
     await recordSecurityEvent(request, {
-      actor: { id: user.id, username: user.username },
+      // The admin who made the link turned it off; nobody named when that account is gone.
+      actor: user.linkCreator,
       action: 'MFA_DISABLED',
       targetType: 'user',
       targetId: user.id,
@@ -102,6 +104,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     maxAge: SESSION_DURATION,
     path: '/',
   });
+  clearSignedOutMarker(response, request);
   return response;
 }
 

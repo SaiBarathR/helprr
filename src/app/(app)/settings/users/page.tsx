@@ -2,7 +2,8 @@
 
 import { Fragment, useState, useEffect, useRef } from 'react';
 import Link from '@/components/ui/app-link';
-import { ChevronLeft, Copy, Link2, Loader2, Pencil, Plus, Share, Trash2 } from 'lucide-react';
+import { ChevronLeft, Copy, KeyRound, Link2, Loader2, Pencil, Plus, Share, Trash2 } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
@@ -29,12 +30,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { CAPABILITY_GROUPS, type Capability } from '@/lib/capabilities';
+import { API_TOKEN_SCOPES } from '@/lib/api-token-scopes';
+import { API_TOKENS_KEY } from '@/components/settings/api-tokens-section';
 import {
   LOCAL_PASSWORD_MIN_LENGTH,
   localPasswordValidationError,
 } from '@/lib/password-policy';
 import { useMe } from '@/components/permission-provider';
-import { formatDateTime } from '@/lib/date-format';
+import { formatDate, formatDateTime } from '@/lib/date-format';
 
 interface SafeUser {
   id: string;
@@ -200,7 +203,7 @@ export default function UsersAdminPage() {
                     {u.role}
                     {u.status !== 'active' ? ` · ${u.status}` : ''}
                     {linkSummary(u.passwordLink)}
-                    {u.twoStepEnabled ? ' · two-step on' : ''}
+                    {u.twoStepEnabled ? ' · two-step on' : u.hasPassword ? ' · two-step off' : ''}
                     {u.hasJellyfinLink ? ' · Jellyfin linked' : ''}
                     {u.hasJellyfinLink && !u.hasJellyfinConnection ? ' · not connected (cannot watch)' : ''}
                   </div>
@@ -677,6 +680,8 @@ function EditUserDialog({
       setEffective(data.effective);
       effectiveRef.current = data.effective;
       toast.success('Template applied');
+      // Whether their API tokens work follows api.tokens.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.userApiTokens(user.id) });
     },
     onError: () => toast.error('Failed to apply template'),
   });
@@ -697,6 +702,7 @@ function EditUserDialog({
     onSuccess: (data) => {
       setEffective(data.effective);
       effectiveRef.current = data.effective;
+      void queryClient.invalidateQueries({ queryKey: queryKeys.userApiTokens(user.id) });
     },
   });
 
@@ -824,6 +830,8 @@ function EditUserDialog({
         <PasswordLinkSection key={linkSectionKey} user={user} isSelf={isSelf} />
 
         <TwoStepSection user={user} isSelf={isSelf} />
+
+        <UserApiTokensSection user={user} />
 
         <div className="mt-4 border-t border-border pt-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -965,7 +973,7 @@ function PasswordLinkSection({ user, isSelf }: { user: SafeUser; isSelf: boolean
               : 'The last link expired.'
             : purpose === 'invite'
               ? 'They choose their own password from the link, then the account becomes active.'
-              : user.twoStepEnabled && !isSelf
+              : user.twoStepEnabled
                 ? 'They choose a new password from the link; it signs them out everywhere and turns off two-step sign-in.'
                 : 'They choose a new password from the link; it signs them out everywhere.'}
         </p>
@@ -1065,6 +1073,124 @@ function TwoStepSection({ user, isSelf }: { user: SafeUser; isSelf: boolean }) {
           </>
         )
       )}
+    </div>
+  );
+}
+
+interface UserApiToken {
+  id: string;
+  name: string;
+  scopes: string[];
+  activeScopes: string[];
+  expiresAt: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+const API_SCOPE_LABEL = new Map<string, string>(API_TOKEN_SCOPES.map((def) => [def.scope, def.label]));
+
+function describeUserApiToken(token: UserApiToken, now: number): string {
+  const expired = token.expiresAt !== null && new Date(token.expiresAt).getTime() <= now;
+  const lastUsed = token.lastUsedAt ? new Date(token.lastUsedAt) : null;
+  return [
+    `Made ${formatDate(token.createdAt)}`,
+    lastUsed && !Number.isNaN(lastUsed.getTime())
+      ? `last used ${formatDistanceToNow(lastUsed, { addSuffix: true })}`
+      : 'not used yet',
+    expired ? 'expired' : token.expiresAt ? `expires ${formatDate(token.expiresAt)}` : 'no expiry',
+  ].join(' · ');
+}
+
+/**
+ * The saved user's personal API tokens (never their values or hashes), and
+ * turning one off, for a token on a lost phone or one they forgot about.
+ */
+function UserApiTokensSection({ user }: { user: SafeUser }) {
+  const queryClient = useQueryClient();
+  const [turningOff, setTurningOff] = useState<UserApiToken | null>(null);
+  const [now] = useState(() => Date.now());
+  const tokensQuery = useQuery({
+    queryKey: queryKeys.userApiTokens(user.id),
+    queryFn: jsonFetcher<{ tokens: UserApiToken[]; allowed: boolean }>(`/api/users/${user.id}/api-tokens`),
+  });
+
+  const turnOffMutation = useMutation({
+    mutationFn: async (token: UserApiToken) => {
+      const res = await fetch(`/api/users/${user.id}/api-tokens/${encodeURIComponent(token.id)}`, { method: 'DELETE' });
+      // Already gone (turned off meanwhile) is what was asked for.
+      if (!res.ok && res.status !== 404) throw new Error('Failed to turn off the API token');
+      return token;
+    },
+    onSuccess: (token) => {
+      toast.success(`“${token.name}” turned off`);
+      setTurningOff(null);
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to turn off the API token'),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.userApiTokens(user.id) });
+      // An admin's own tokens are on Settings → Sessions too.
+      void queryClient.invalidateQueries({ queryKey: API_TOKENS_KEY });
+    },
+  });
+
+  const tokens = tokensQuery.data?.tokens ?? [];
+  return (
+    <div className="mt-4 border-t border-border pt-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <Label>API tokens</Label>
+        {tokensQuery.data && <span className="text-sm text-muted-foreground">{tokens.length}</span>}
+      </div>
+      {tokensQuery.isPending ? (
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      ) : tokensQuery.isError ? (
+        <p className="text-xs text-destructive">Couldn&apos;t load their API tokens.</p>
+      ) : (
+        <>
+          {!tokensQuery.data.allowed && (
+            <p className="text-xs text-muted-foreground">
+              {tokens.length > 0
+                ? 'These don’t work: “Make personal API tokens” is off for them.'
+                : 'They can’t make API tokens: “Make personal API tokens” is off for them.'}
+            </p>
+          )}
+          {tokens.length === 0 && tokensQuery.data.allowed && (
+            <p className="text-xs text-muted-foreground">None.</p>
+          )}
+          {tokens.map((token) => (
+            <div key={token.id} className="flex items-start gap-2">
+              <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium truncate">{token.name}</div>
+                <div className="text-xs text-muted-foreground">{describeUserApiToken(token, now)}</div>
+                <div className="text-xs text-muted-foreground">
+                  {token.scopes.map((scope) => API_SCOPE_LABEL.get(scope) ?? scope).join(', ')}
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="shrink-0 text-destructive hover:text-destructive"
+                aria-label={`Turn off ${token.name}`}
+                onClick={() => setTurningOff(token)}
+                disabled={turnOffMutation.isPending}
+              >
+                Turn off
+              </Button>
+            </div>
+          ))}
+        </>
+      )}
+      <ConfirmDialog
+        open={turningOff !== null}
+        onOpenChange={(o) => !o && !turnOffMutation.isPending && setTurningOff(null)}
+        title={turningOff ? `Turn off “${turningOff.name}” for ${user.displayName}?` : 'Turn off token?'}
+        description="Anything using it is refused from its next request. They can make a new one if they are allowed to."
+        confirmLabel="Turn off"
+        destructive
+        busy={turnOffMutation.isPending}
+        onConfirm={() => (turningOff ? turnOffMutation.mutateAsync(turningOff).then(() => undefined, () => undefined) : undefined)}
+      />
     </div>
   );
 }

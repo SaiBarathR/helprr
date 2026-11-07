@@ -118,9 +118,10 @@ describe('POST /api/invite/accept', () => {
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'RESET_LINK_USED' }));
   });
 
-  it('a reset that turned two-step sign-in off records it and still makes no session', async () => {
+  it('a reset that turned two-step sign-in off records it, by the admin who made the link, and still makes no session', async () => {
     mocks.redeemPasswordLink.mockResolvedValue({
       id: 'u1', username: 'member', role: 'member', purpose: 'reset', revokedSessions: 2, mfaEnabled: false, mfaDisabled: true,
+      linkCreator: { id: 'admin-1', username: 'boss' },
     });
 
     const response = await acceptInvite(post('/api/invite/accept', { token: TOKEN, password: PASSWORD }));
@@ -130,13 +131,24 @@ describe('POST /api/invite/accept', () => {
     expect(response.cookies.get('helprr-session')).toBeUndefined();
     expect(mocks.createSession).not.toHaveBeenCalled();
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), {
-      actor: { id: 'u1', username: 'member' },
+      actor: { id: 'admin-1', username: 'boss' },
       action: 'MFA_DISABLED',
       targetType: 'user',
       targetId: 'u1',
       targetLabel: 'member',
       fields: ['reset-link'],
     });
+  });
+
+  it('records the turn-off with nobody named when the admin who made the link is gone', async () => {
+    mocks.redeemPasswordLink.mockResolvedValue({
+      id: 'u1', username: 'member', role: 'member', purpose: 'reset', revokedSessions: 0, mfaEnabled: false, mfaDisabled: true,
+      linkCreator: null,
+    });
+    await acceptInvite(post('/api/invite/accept', { token: TOKEN, password: PASSWORD }));
+    expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      actor: null, action: 'MFA_DISABLED', targetId: 'u1', fields: ['reset-link'],
+    }));
   });
 
   it('makes no session when the result does not say two-step sign-in was off all along', async () => {

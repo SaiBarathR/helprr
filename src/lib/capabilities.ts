@@ -139,6 +139,8 @@ export const CAPABILITY_GROUPS = [
       { cap: 'settings.sessions', label: 'Sessions' },
       { cap: 'settings.account', label: 'Account' },
       { cap: 'settings.dashboardRefresh', label: 'Dashboard refresh settings' },
+      // Members only when turned on for them; a token stops working once it is turned off.
+      { cap: 'api.tokens', label: 'Make personal API tokens' },
     ],
   },
   {

@@ -59,6 +59,8 @@ export const queryKeys = {
   /** One person's group on Settings → Sessions; under sessions() so its invalidation reaches it. */
   userSessions: (userId: string) => ['sessions', 'user', userId] as const,
   users: () => ['users'] as const,
+  /** An admin's view of one user's personal API tokens; under users() so its invalidation reaches it. */
+  userApiTokens: (userId: string) => ['users', userId, 'api-tokens'] as const,
   /** /api/me/totp: whether two-step sign-in is on for the signed-in user. */
   twoFactor: () => ['me', 'totp'] as const,
 

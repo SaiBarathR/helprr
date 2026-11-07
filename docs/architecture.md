@@ -327,11 +327,13 @@ enable and disable share it; cleared when a code passes; recovery codes skip it,
 with only the password cannot lock the owner out of them) and 5 per pending token, and it
 answers "expired" for a token already used, so a retry after a lost response burns no code.
 A password-reset link for such an account sets the password and makes no session; a reset
-link an admin made after two-step sign-in was turned on (not an older one, and not one the
-user made for themselves) also turns it off in the same transaction (`MFA_DISABLED`,
-`reset-link`). An admin can turn off another
+link made after two-step sign-in was turned on (not an older one; an admin's own link for
+their own account counts too, owner decision 2026-11-07) also turns it off in the same
+transaction (`MFA_DISABLED`, `reset-link`, with the admin who made the link as the actor,
+or none when that account is gone, and the owner as the target). An admin can turn off another
 user's two-step sign-in (`DELETE /api/users/[id]/totp`), which ends every session of that
-user in the same transaction; their own needs the password and a code. Turning it on can
+user in the same transaction; that route refuses their own, which needs the password and a
+code (or a reset link of their own, which also sets a new password and ends every session). Turning it on can
 also end the user's other sessions (`signOutOtherDevices`). Ten
 80-bit recovery codes are stored as SHA-256 (`RecoveryCode`, deleted on use) and still work
 after a `JWT_SECRET` change, when the secret no longer decrypts. Setup needs the current
@@ -346,7 +348,12 @@ off with a startup warning naming the variable, never stopping startup. Addresse
 trusted (route handlers cannot see the connecting address, and `X-Forwarded-For` is the
 visitor's): the proof is the shared secret in `HELPRR_TRUSTED_AUTH_SECRET_HEADER`
 (default `X-Helprr-Proxy-Secret`), compared with `timingSafeEqual` on SHA-256 digests.
-The login page asks `GET /api/auth/trusted` (`{ enabled }`) and then POSTs once. The POST
+The login page asks `GET /api/auth/trusted` (`{ enabled, signedOut }`) and then POSTs once.
+After a sign-out it does not: `POST /api/auth/logout` sets `helprr-signed-out` (HttpOnly, a
+day, not a secret; `src/lib/signed-out-marker.ts`), so the page shows "Signed out" and waits
+for a tap on Sign in, which POSTs once. The marker only stops the automatic attempt: the
+POST never reads it, and every successful sign-in (password, code, Jellyfin, proxy, first
+admin, invite or reset link) clears it. The POST
 is same-origin JSON only (a JSON content type needs a CORS preflight Helprr never grants,
 and a `Sec-Fetch-Site` other than `same-origin` is refused), behind the sign-in throttles: a
 missing secret header counts as a malformed request (401, so the page quietly shows its
@@ -470,7 +477,8 @@ Personal API tokens (`ApiToken`, `src/lib/api-tokens.ts`; Settings -> Sessions -
 API tokens) open the read-only status API and nothing else. A token is `hlp_` and
 32 random bytes (base64url); only its SHA-256 is stored, so it is shown once when
 made (`POST /api/me/api-tokens` with a name, scopes and an optional expiry of 1 to
-365 days; up to 10 per user). Its scopes are read capabilities from a fixed list
+365 days; up to 10 per user). Making one needs the `api.tokens` capability ("Make personal
+API tokens": admins, and members only when turned on for them in Settings -> Users). Its scopes are read capabilities from a fixed list
 (`src/lib/api-token-scopes.ts`), and each must be one the owner holds when it is
 made (403 otherwise). It is sent as `Authorization: Bearer hlp_…`, which the proxy
 lets through only for `GET /api/v1/summary` and `GET /api/v1/queue` (exact paths)
@@ -486,8 +494,8 @@ proxy: after 30 refusals in 15 minutes that IP's refused tokens get 429 instead
 applied only to refusals, after the lookup, so a stale widget's old token never
 locks a live token on the same IP out. A live token is rate-limited by its hash
 (300 per 5 minutes, failing closed), and only the scopes the owner still holds
-are used; none left is 403. A role or capability change therefore narrows a token on its
-next request without ending it (Settings shows which scopes are not used now). A
+are used; none left, or an owner who no longer has `api.tokens`, is 403. A role or
+capability change therefore narrows or stops a token on its next request without ending it (Settings shows which scopes are not used now). A
 password change (own, an admin reset, a reset link used, or the
 `HELPRR_ADMIN_PASSWORD_RESET` startup reset), an admin disabling the user, a
 settings import that restores a different password hash or status, and deleting
@@ -501,7 +509,11 @@ off a token are `API_TOKEN_CREATED` (with the scopes) and `API_TOKEN_REVOKED`,
 with the token as the target (type `api-token`, its id and name). A password
 change, reset or disable that ended some, and the startup reset, are one
 `API_TOKEN_REVOKED` row on the user with the count; a settings import that ends
-them is covered by its `SETTINGS_IMPORTED` row. The status API
+them is covered by its `SETTINGS_IMPORTED` row. Admins see a user's tokens (never a
+hash) in Settings -> Users (`GET /api/users/[id]/api-tokens`) and turn one off there
+(`DELETE /api/users/[id]/api-tokens/[tokenId]`, 404 for another user's token): an
+`API_TOKEN_REVOKED` row with the admin as actor, the owner as target and fields
+`['admin', <token name>]`. The status API
 (`src/lib/status-api.ts`) is a public contract, versioned in the body: the summary
 holds one section per scope the token may use (downloads from qBittorrent, the
 queue size, free space on the disks of the apps whose view scope it has, the next

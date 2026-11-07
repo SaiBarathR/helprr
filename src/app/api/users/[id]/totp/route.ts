@@ -10,7 +10,8 @@ import { recordSecurityEvent } from '@/lib/security-audit';
  * recovery codes and ends every session of the user, so they sign in again
  * with their password alone. Not for your own account: there it takes your
  * password and a code (Settings -> Account), so a signed-in session alone
- * cannot remove it.
+ * cannot remove it. (A reset link you make for yourself also turns it off, but
+ * only with a new password, and it signs out every session.)
  */
 async function deleteHandler(
   request: NextRequest,

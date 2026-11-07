@@ -97,4 +97,19 @@ describe('SecurityAuditList', () => {
     expect(titles()).toEqual(['label-u1']);
     expect(loadMore()).toBeUndefined();
   });
+
+  it("says which token an admin turned off, and by whom", async () => {
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({
+      page: 1,
+      total: 1,
+      records: [row('t1', 'API_TOKEN_REVOKED', { targetLabel: 'iso', targetId: 'u2', actorUsername: 'boss', fields: ['admin', 'Homepage'] })],
+    })));
+    act(() => root.unmount());
+    root = createRoot(container);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    act(() => root.render(<QueryClientProvider client={client}><SecurityAuditList /></QueryClientProvider>));
+    await flush();
+    expect(titles()).toEqual(['iso']);
+    expect(container.textContent).toContain('“Homepage” turned off by an admin · by boss');
+  });
 });

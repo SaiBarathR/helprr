@@ -13,6 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own sign-in, Helprr can sign in the matching existing account from a header the proxy
   sends, proven by a shared secret (`HELPRR_TRUSTED_AUTH_HEADER`,
   `HELPRR_TRUSTED_AUTH_SECRET`). Off unless both are set. See the HTTPS guide.
+- Admins see each person's API tokens in Settings → Users and can turn any of them off.
+
+### Changed
+
+- With sign-in at the proxy on, signing out of Helprr no longer signs you straight back in:
+  the sign-in page says *Signed out* and waits for a tap on **Sign in**.
+- Making personal API tokens is a permission, **Make personal API tokens**: admins have
+  it; members only when an admin turns it on. A member's tokens stop working while it is off.
+- An admin's own password-reset link turns their two-step sign-in off too, as it does for
+  everyone else (when the link was made after two-step sign-in was turned on).
+- Settings → Users shows *two-step off* as well as *two-step on* for accounts with a
+  Helprr password. The security log records the role a new user was given ("made
+  admin"), and names the admin who made the reset link that turned two-step sign-in off.
 
 ## [1.14.0] - 2026-11-06
 

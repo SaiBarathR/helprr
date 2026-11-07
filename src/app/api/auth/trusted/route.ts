@@ -13,12 +13,14 @@ import {
 } from '@/lib/login-rate-limit';
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
+import { clearSignedOutMarker, hasSignedOutMarker } from '@/lib/signed-out-marker';
 import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
 import { getTrustedAuthConfig, trustedAuthSecretMatches } from '@/lib/trusted-auth';
 import { localUsernameValidationError, normalizeLocalUsername } from '@/lib/username-policy';
 
 // Trusted-header sign-in (see trusted-auth.ts and the HTTPS guide). The login
-// page asks GET whether it is on, then POSTs once. Two-step sign-in is not
+// page asks GET whether it is on, then POSTs once; after a sign-out (GET says
+// signedOut) it waits for a tap on Sign in instead. POST never reads that marker. Two-step sign-in is not
 // asked for here: the proxy's own sign-in is the second factor.
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
@@ -32,8 +34,9 @@ function json(body: unknown, status = 200): NextResponse {
   return NextResponse.json(body, { status, headers: NO_STORE });
 }
 
-async function getHandler(): Promise<NextResponse> {
-  return json({ enabled: getTrustedAuthConfig() !== null });
+async function getHandler(request: NextRequest): Promise<NextResponse> {
+  const enabled = getTrustedAuthConfig() !== null;
+  return json(enabled ? { enabled, signedOut: hasSignedOutMarker(request) } : { enabled });
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
@@ -136,6 +139,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     maxAge: SESSION_DURATION,
     path: '/',
   });
+  clearSignedOutMarker(response, request);
   return response;
 }
 
