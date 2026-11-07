@@ -548,7 +548,8 @@ function LibraryEntryCard({
 
   const total = isManga ? media.chapters ?? null : media.episodes ?? null;
   const progressLabel = total != null ? `${entry.progress}/${total}` : `${entry.progress}`;
-  const siteUrl = 'siteUrl' in media && typeof media.siteUrl === 'string' ? media.siteUrl : null;
+  // The list query doesn't fetch siteUrl (it would grow every entry); AniList's URLs follow the id.
+  const siteUrl = `https://anilist.co/${isManga ? 'manga' : 'anime'}/${media.id}`;
   const actions: ContextAction[] = [
     {
       id: 'open',
@@ -565,13 +566,13 @@ function LibraryEntryCard({
       icon: <Pencil className="h-4 w-4" />,
       onSelect: onEdit,
     },
-    ...(siteUrl ? [{
+    {
       id: 'anilist',
       label: 'View on AniList',
       icon: <ExternalLink className="h-4 w-4" />,
       href: siteUrl,
       external: true,
-    }] : []),
+    },
   ];
 
   return (
