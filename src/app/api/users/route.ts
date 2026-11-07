@@ -88,9 +88,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: INVALID_APP_ORIGIN_LINK_ERROR }, { status: 500 });
   }
 
-  // A new admin needs the acting admin's password (and code), not just a session.
+  // A new admin, or a member with the Admin template (every capability), needs
+  // the acting admin's password (and code), not just a session.
   if (role === 'admin') {
     const stepUp = await confirmAdminStepUp(request, admin.user, body, 'create-admin');
+    if (stepUp) return stepUp;
+  } else if (template === 'admin') {
+    const stepUp = await confirmAdminStepUp(request, admin.user, body, 'admin-template', 'Giving the Admin template');
     if (stepUp) return stepUp;
   }
 

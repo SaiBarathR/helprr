@@ -453,3 +453,164 @@ describe('giving admin asks for your password, and a code while your two-step si
     expect(sent).toEqual([{}, { currentPassword: 'my password' }]);
   });
 });
+
+describe('round 10: the Admin template, turning an admin back on, and another admin’s two-step', () => {
+  const me = { ...member, id: 'me', username: 'boss', displayName: 'Boss', role: 'admin', hasPassword: true, passwordLink: null, twoStepEnabled: true };
+
+  function renderPage() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><UsersAdminPage /></QueryClientProvider>);
+  }
+
+  function stub(target: Record<string, unknown>, sent: Array<{ url: string; method: string; body: unknown }>) {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method && init.method !== 'GET') {
+        sent.push({ url, method: init.method, body: init.body ? JSON.parse(init.body as string) : undefined });
+        if (url.endsWith('/permissions')) {
+          const body = JSON.parse(init.body as string);
+          return new Response(JSON.stringify({ template: body.template, effective: { 'movies.add': true } }));
+        }
+        return new Response(JSON.stringify({ ok: true, ...member }));
+      }
+      if (url === '/api/users') return new Response(JSON.stringify([me, target]));
+      if (url.endsWith('/permissions')) return new Response(JSON.stringify(mocks.permissions));
+      return new Response(JSON.stringify([]));
+    }));
+  }
+
+  it('the Admin template waits for your password and code; the Member template applies at once', async () => {
+    mocks.me = { id: 'me' };
+    const sent: Array<{ url: string; method: string; body: unknown }> = [];
+    stub({ ...member, hasPassword: true, passwordLink: null, twoStepEnabled: false }, sent);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    await screen.findByRole('switch', { name: 'Add movies to library' });
+
+    await userEvent.click(screen.getAllByRole('combobox').at(-1)!);
+    await userEvent.click(await screen.findByRole('option', { name: 'Admin template' }));
+    expect(sent).toEqual([]);
+    const apply = screen.getByRole('button', { name: 'Apply Admin template' });
+    expect(apply.hasAttribute('disabled')).toBe(true);
+    await userEvent.type(screen.getByLabelText('Your current password'), 'my password');
+    await userEvent.type(screen.getByLabelText('Authenticator or recovery code'), '123456');
+    await userEvent.click(apply);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]).toMatchObject({
+      url: '/api/users/u2/permissions', method: 'PUT',
+      body: { template: 'admin', currentPassword: 'my password', code: '123456' },
+    });
+    await waitFor(() => expect(screen.queryByLabelText('Your current password')).toBeNull());
+
+    await userEvent.click(screen.getAllByRole('combobox').at(-1)!);
+    await userEvent.click(await screen.findByRole('option', { name: 'Member template' }));
+    await waitFor(() => expect(sent).toHaveLength(2));
+    expect(sent[1].body).toEqual({ template: 'member' });
+  });
+
+  it('backing out of the Admin template through the menu sends nothing (it would clear their overrides)', async () => {
+    mocks.me = { id: 'me' };
+    const sent: Array<{ url: string; method: string; body: unknown }> = [];
+    stub({ ...member, hasPassword: true, passwordLink: null, twoStepEnabled: false }, sent);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    await screen.findByRole('switch', { name: 'Add movies to library' });
+    await userEvent.click(screen.getAllByRole('combobox').at(-1)!);
+    await userEvent.click(await screen.findByRole('option', { name: 'Admin template' }));
+    await userEvent.click(screen.getAllByRole('combobox').at(-1)!);
+    await userEvent.click(await screen.findByRole('option', { name: 'Member template' }));
+    expect(screen.queryByRole('button', { name: 'Apply Admin template' })).toBeNull();
+    expect(sent).toEqual([]);
+  });
+
+  it('a toggle the server refuses for every capability shows the fields, and the next one sends them', async () => {
+    mocks.me = { id: 'me' };
+    const sent: Array<{ url: string; method: string; body: unknown }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        const body = JSON.parse(init.body as string);
+        sent.push({ url, method: 'PUT', body });
+        if (!body.currentPassword) {
+          return new Response(JSON.stringify({ error: 'Giving every capability needs your current password.', needsStepUp: true, needsCode: false }), { status: 403 });
+        }
+        return new Response(JSON.stringify({ template: 'member', effective: { 'movies.add': true } }));
+      }
+      if (url === '/api/users') return new Response(JSON.stringify([{ ...me, twoStepEnabled: false }, { ...member, hasPassword: true, passwordLink: null, twoStepEnabled: false }]));
+      if (url.endsWith('/permissions')) return new Response(JSON.stringify(mocks.permissions));
+      return new Response(JSON.stringify([]));
+    }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    const toggle = await screen.findByRole('switch', { name: 'Add movies to library' });
+    await userEvent.click(toggle);
+    await userEvent.type(await screen.findByLabelText('Your current password'), 'my password');
+    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'));
+    await userEvent.click(toggle);
+    await waitFor(() => expect(sent).toHaveLength(2));
+    expect(sent[1].body).toMatchObject({ permissions: { 'movies.add': true }, currentPassword: 'my password' });
+    await waitFor(() => expect(screen.queryByLabelText('Your current password')).toBeNull());
+  });
+
+  it('turning a disabled admin back on asks for your password and code; a disabled member does not', async () => {
+    mocks.me = { id: 'me' };
+    const sent: Array<{ url: string; method: string; body: unknown }> = [];
+    stub({ ...member, role: 'admin', status: 'disabled', hasPassword: true, passwordLink: null, twoStepEnabled: false }, sent);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    expect(screen.queryByLabelText('Your current password')).toBeNull();
+    await userEvent.click(screen.getAllByRole('combobox')[1]);
+    await userEvent.click(await screen.findByRole('option', { name: 'Active' }));
+    const save = screen.getByRole('button', { name: 'Save details' });
+    expect(save.hasAttribute('disabled')).toBe(true);
+    await userEvent.type(screen.getByLabelText('Your current password'), 'my password');
+    await userEvent.type(screen.getByLabelText('Authenticator or recovery code'), '123456');
+    await userEvent.click(save);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0].body).toMatchObject({ status: 'active', currentPassword: 'my password', code: '123456' });
+  });
+
+  it('a disabled member turns back on with no password asked', async () => {
+    mocks.me = { id: 'me' };
+    const sent: Array<{ url: string; method: string; body: unknown }> = [];
+    stub({ ...member, status: 'disabled', hasPassword: true, passwordLink: null, twoStepEnabled: false }, sent);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    await userEvent.click(screen.getAllByRole('combobox')[1]);
+    await userEvent.click(await screen.findByRole('option', { name: 'Active' }));
+    expect(screen.queryByLabelText('Your current password')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Save details' }));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0].body).not.toHaveProperty('currentPassword');
+  });
+
+  it("turning off another admin's two-step sends your password and code; a member's sends nothing", async () => {
+    mocks.me = { id: 'me' };
+    const sent: Array<{ url: string; method: string; body: unknown }> = [];
+    stub({ ...member, role: 'admin', hasPassword: true, passwordLink: null, twoStepEnabled: true }, sent);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    const turnOff = await screen.findByRole('button', { name: 'Turn off' });
+    expect(turnOff.hasAttribute('disabled')).toBe(true);
+    // The two-step section's own fields (the reset link asks for its own too).
+    const passwords = screen.getAllByLabelText('Your current password');
+    const codes = screen.getAllByLabelText('Authenticator or recovery code');
+    await userEvent.type(passwords.at(-1)!, 'my password');
+    await userEvent.type(codes.at(-1)!, '123456');
+    await userEvent.click(turnOff);
+    const confirm = await screen.findByRole('alertdialog');
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Turn off' }));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]).toEqual({ url: '/api/users/u2/totp', method: 'DELETE', body: { currentPassword: 'my password', code: '123456' } });
+  });
+
+  it("a member's two-step turns off with no body", async () => {
+    mocks.me = { id: 'me' };
+    const sent: Array<{ url: string; method: string; body: unknown }> = [];
+    stub({ ...member, hasPassword: true, passwordLink: null, twoStepEnabled: true }, sent);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Turn off' }));
+    await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Turn off' }));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]).toEqual({ url: '/api/users/u2/totp', method: 'DELETE', body: undefined });
+  });
+});

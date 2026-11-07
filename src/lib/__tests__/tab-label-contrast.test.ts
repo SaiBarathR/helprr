@@ -46,11 +46,49 @@ describe('the active tab label', () => {
     expect(contrast(tokens.fg, tokens.ink)).toBeGreaterThanOrEqual(4.5);
   });
 
-  // The icon stays cyan: 6.6-7.3:1 on the dark palettes. On Cream it is
-  // 2.3 (bar) / 2.6 (sidebar), under the 3:1 for icons, as it was before.
-  it.each(['warm', 'slate', 'pure'])('the cyan icon reaches 3:1 on the dark %s palette', (name) => {
+  // The icon stays cyan: 6.6-7.3:1 on the dark palettes.
+  it.each(['warm', 'slate', 'pure'])('the cyan icon reaches 3:1 on the dark %s palette, unchanged', (name) => {
     const { tokens } = PALETTES[name];
+    expect(style('cyan', name)['--hpr-amber']).toBe(ACCENT_COLORS.cyan.color);
     expect(contrast(ACCENT_COLORS.cyan.color, tokens.inkSoft)).toBeGreaterThanOrEqual(3);
     expect(contrast(ACCENT_COLORS.cyan.color, tokens.ink)).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('the cyan accent on a light palette', () => {
+  // Cream was 2.3:1 (bar) / 2.6:1 (sidebar). Darkened, it reads as text,
+  // 4.5:1, on the bar, the sidebar and the cards, so the icon passes 3:1.
+  it('is darkened on Cream to #006e93: 4.59 on the bar, 5.15 on the sidebar, 5.52 on cards', () => {
+    const { tokens } = PALETTES.cream;
+    const cyan = style('cyan', 'cream')['--hpr-amber'];
+    expect(cyan).toBe('#006e93');
+    for (const bg of [tokens.inkSoft, tokens.ink, tokens.surface, tokens.surfaceHi]) {
+      expect(contrast(cyan, bg)).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(contrast(cyan, tokens.inkSoft).toFixed(2)).toBe('4.59');
+    expect(contrast(cyan, tokens.ink).toFixed(2)).toBe('5.15');
+    // A primary button's label (the page colour on cyan) reads too.
+    expect(contrast(tokens.ink, cyan)).toBeGreaterThanOrEqual(4.5);
+    // The label still keeps the text colour.
+    expect(style('cyan', 'cream')['--hpr-tab-label']).toBe(tokens.fg);
+  });
+
+  it.each(['#f0f0f0', '#d0d8e0', '#fff4e0'])('is darkened on a custom light palette built from %s', (base) => {
+    const vars = style('cyan', base);
+    for (const key of ['--hpr-ink', '--hpr-inkSoft', '--hpr-surface', '--hpr-surfaceHi']) {
+      expect(contrast(vars['--hpr-amber'], vars[key])).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(vars['--hpr-tab-label']).toBe(vars['--hpr-fg']);
+  });
+
+  it('stays darkened on Cream with a custom text colour', () => {
+    const vars = buildDashboardThemeStyle({ ...DEFAULT_DASHBOARD_THEME, accent: 'cyan', palette: 'cream', fg: '#fafafa' }) as Record<string, string>;
+    expect(vars['--hpr-amber']).toBe('#006e93');
+  });
+
+  it('leaves a custom dark palette, and the other accents on Cream, alone', () => {
+    expect(style('cyan', '#101418')['--hpr-amber']).toBe(ACCENT_COLORS.cyan.color);
+    expect(style('amber', 'cream')['--hpr-amber']).toBe(ACCENT_COLORS.amber.color);
+    expect(style('#3366ff', 'cream')['--hpr-amber']).toBe('#3366ff');
   });
 });

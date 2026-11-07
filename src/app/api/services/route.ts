@@ -20,6 +20,8 @@ import { clearConnectionMemo, ensureDefaultForType, isArrType } from '@/lib/arr-
 import { findServiceByType } from '@/lib/settings/service-config';
 import { withDefaultScheme } from '@/lib/service-url';
 import { changedFieldNames, recordSecurityEvent, serviceTargetLabel } from '@/lib/security-audit';
+import { confirmAdminStepUp } from '@/lib/server/confirm-password';
+import { revokeJellyfinLinkedSessions } from '@/lib/jellyfin-linked-sessions';
 
 function getErrorInfo(error: unknown): { message?: string; code?: string | number; responseStatus?: number } {
   return {
@@ -161,6 +163,34 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: REENTER_SECRET_MESSAGE }, { status: 400 });
     }
 
+    // Resolve the target row:
+    //  - id present        → edit that exact instance
+    //  - arr type, no id    → CREATE a new instance (multi-instance)
+    //  - non-arr, no id     → upsert the single instance of that type
+    const existing = idValue
+      ? await prisma.serviceConnection.findUnique({ where: { id: idValue } })
+      : isArrType(type)
+        ? null
+        : await prisma.serviceConnection.findFirst({ where: { type } });
+
+    if (idValue && (!existing || existing.type !== type)) {
+      return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
+    }
+
+    // "Sign in with Jellyfin" trusts whichever server this points at, so adding
+    // Jellyfin or changing its address or key is for an admin who confirms it is
+    // them, whatever capabilities a member holds. A new address signs out every
+    // Jellyfin-linked account (below).
+    const jellyfinAddressChanged = type === 'JELLYFIN'
+      && (!existing || normalizeServiceUrl(existing.url) !== normalizeServiceUrl(url));
+    const jellyfinGated = jellyfinAddressChanged || (type === 'JELLYFIN' && existing?.apiKey !== apiKeyToStore);
+    if (jellyfinGated && auth.user.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Only an admin can add Jellyfin or change its address or API key.' },
+        { status: 403 }
+      );
+    }
+
     if (type === 'JELLYFIN') {
       const client = new JellyfinClient(url, apiKeyToStore, '', customHeaders);
       const [currentUser, hasAdminAccess] = await Promise.all([
@@ -208,20 +238,6 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       ? rawExternalUrl.trim().replace(/\/+$/, '')
       : undefined;
 
-    // Resolve the target row:
-    //  - id present        → edit that exact instance
-    //  - arr type, no id    → CREATE a new instance (multi-instance)
-    //  - non-arr, no id     → upsert the single instance of that type
-    const existing = idValue
-      ? await prisma.serviceConnection.findUnique({ where: { id: idValue } })
-      : isArrType(type)
-        ? null
-        : await prisma.serviceConnection.findFirst({ where: { type } });
-
-    if (idValue && (!existing || existing.type !== type)) {
-      return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
-    }
-
     // Label: arr instances require a user-supplied name; single-instance types
     // default to the service's display label.
     const rawLabel = typeof body.label === 'string' ? body.label.trim() : '';
@@ -238,19 +254,43 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       ? {}
       : customHeaders;
 
+    // Checked last, after the server answered, so a code is not used up on a
+    // connection that then fails its test.
+    if (jellyfinGated) {
+      const stepUp = await confirmAdminStepUp(request, auth.user, body, 'jellyfin-connection', 'Changing the Jellyfin connection');
+      if (stepUp) return stepUp;
+    }
+
+    const updateData = { url, apiKey: apiKeyToStore, username, label, ...(externalUrl !== undefined && { externalUrl }), ...(headersToStore !== undefined && { customHeaders: headersToStore }) };
+    const createData = { type, label, url, apiKey: apiKeyToStore, username, ...(externalUrl !== undefined && { externalUrl }), ...(customHeaders !== undefined && { customHeaders }) };
     let connection;
+    let jellyfinSignOut: { sessions: number; accounts: number } | null = null;
     try {
-      connection = existing
-        ? await prisma.serviceConnection.update({
-            where: { id: existing.id },
-            data: { url, apiKey: apiKeyToStore, username, label, ...(externalUrl !== undefined && { externalUrl }), ...(headersToStore !== undefined && { customHeaders: headersToStore }) },
-          })
-        : await prisma.serviceConnection.create({
-            data: { type, label, url, apiKey: apiKeyToStore, username, ...(externalUrl !== undefined && { externalUrl }), ...(customHeaders !== undefined && { customHeaders }) },
-          });
+      if (type === 'JELLYFIN') {
+        // Applies only to the address and key it read, as whether it needed the
+        // step-up depends on them; the sign-out commits with the new address.
+        const saved = await prisma.$transaction(async (tx) => ({
+          connection: existing
+            ? await tx.serviceConnection.update({
+                where: { id: existing.id, url: existing.url, apiKey: existing.apiKey },
+                data: updateData,
+              })
+            : await tx.serviceConnection.create({ data: createData }),
+          signOut: jellyfinAddressChanged ? await revokeJellyfinLinkedSessions(tx, auth.session.id) : null,
+        }));
+        connection = saved.connection;
+        jellyfinSignOut = saved.signOut;
+      } else {
+        connection = existing
+          ? await prisma.serviceConnection.update({ where: { id: existing.id }, data: updateData })
+          : await prisma.serviceConnection.create({ data: createData });
+      }
     } catch (err) {
       if ((err as { code?: string }).code === 'P2002') {
         return NextResponse.json({ error: `An instance named "${label}" already exists for this service` }, { status: 409 });
+      }
+      if ((err as { code?: string }).code === 'P2025') {
+        return NextResponse.json({ error: 'This connection changed while saving. Reload and try again.' }, { status: 409 });
       }
       throw err;
     }
@@ -272,6 +312,18 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         targetId: connection.id,
         targetLabel: serviceTargetLabel(type, connection.label),
         fields,
+      });
+    }
+    if (jellyfinSignOut && jellyfinSignOut.sessions > 0) {
+      // Every Jellyfin-linked account signs in again after a new Jellyfin address.
+      await recordSecurityEvent(request, {
+        actor: auth.user,
+        action: 'SESSION_REVOKED',
+        targetType: 'service',
+        targetId: connection.id,
+        targetLabel: serviceTargetLabel(type, connection.label),
+        fields: ['url', `accounts: ${jellyfinSignOut.accounts}`],
+        count: jellyfinSignOut.sessions,
       });
     }
 

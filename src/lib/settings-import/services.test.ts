@@ -126,3 +126,31 @@ describe('the generic service routes', () => {
     expect(isServiceType('YOUTUBE')).toBe(false);
   });
 });
+
+describe('a Jellyfin address change, for the sign-out of Jellyfin-linked accounts', () => {
+  const jellyfin = { ...stored, id: 'jf', type: 'JELLYFIN', label: 'Jellyfin', url: 'http://jellyfin.lan:8096' } satisfies ServiceConnection;
+  const entry = (url: string, apiKey: string | null = 'k') => connection({ type: 'JELLYFIN', label: 'Jellyfin', url, apiKey });
+
+  it('is flagged for a new address, and for Jellyfin added where there was none', async () => {
+    row = { ...jellyfin };
+    const moved = { jellyfinAddress: false };
+    await applyServiceConnectionInTxn(tx, entry('http://new.lan:8096'), [], moved);
+    expect(moved.jellyfinAddress).toBe(true);
+
+    findFirst.mockResolvedValueOnce(null as unknown as ServiceConnection);
+    const added = { jellyfinAddress: false };
+    await applyServiceConnectionInTxn(tx, entry('http://new.lan:8096'), [], added);
+    expect(added.jellyfinAddress).toBe(true);
+  });
+
+  it('is not flagged for the same address, another service, or a skipped entry', async () => {
+    row = { ...jellyfin };
+    const changes = { jellyfinAddress: false };
+    await applyServiceConnectionInTxn(tx, entry('http://jellyfin.lan:8096/', null), [], changes);
+    row = { ...stored };
+    await applyServiceConnectionInTxn(tx, connection({ url: 'https://other.example.invalid', apiKey: 'fresh' }), [], changes);
+    row = { ...jellyfin };
+    await applyServiceConnectionInTxn(tx, entry('http://new.lan:8096', null), [], changes);
+    expect(changes.jellyfinAddress).toBe(false);
+  });
+});

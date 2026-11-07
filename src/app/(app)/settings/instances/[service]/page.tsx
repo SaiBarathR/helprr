@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { StepUpFields, useStepUp } from '@/components/settings/step-up-fields';
 import { findServiceBySlug, type ServiceConfigType } from '@/lib/settings/service-config';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 import { invalidateInstances } from '@/lib/query-invalidation';
@@ -222,6 +223,12 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
       && headers.findLast((row) => row.name.trim() === name) === h;
   };
   const savedHeadersKept = urlChanged && canEditHeaders && headers.some(isSavedHeaderValue);
+  // Adding Jellyfin or changing its address or key is for an admin, with their
+  // password (and code): it decides who "Sign in with Jellyfin" signs in.
+  const isAdminUser = useMe()?.role === 'admin';
+  const stepUp = useStepUp(isJellyfin ? undefined : false);
+  const jellyfinGated = isJellyfin && Boolean(servicesQuery.data) && (!existingConn || urlChanged || apiKey.trim() !== existingConn.apiKey);
+  const showStepUp = jellyfinGated || stepUp.asked;
   const secretNoun = isQbt ? 'password' : 'API key';
 
   // Seed the form from the matching connection. Re-seeds when the edited entity
@@ -365,11 +372,13 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
+        if (data && typeof data === 'object') stepUp.onRefused(data);
         throw new ApiError(res.status, data?.error || 'Failed to save connection');
       }
       return res.json().catch(() => null);
     },
     onSuccess: (saved, body) => {
+      stepUp.clear();
       const wasNew = !body.id;
       if (saved?.id) setEditingConnId(saved.id);
       setConfigured(true);
@@ -526,6 +535,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     if (canEditHeaders) {
       body.customHeaders = buildHeadersObject();
     }
+    if (showStepUp && isAdminUser) Object.assign(body, stepUp.body());
 
     saveMutation.mutate(body);
   }
@@ -804,6 +814,23 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
           </div>
         )}
 
+        {showStepUp && (
+          <div className="px-4 py-3 border-b border-foreground/[0.06]">
+            {isAdminUser ? (
+              <StepUpFields
+                stepUp={stepUp}
+                reason={existingConn && urlChanged
+                  ? 'A new address signs out every account linked to a Jellyfin user, and decides who can sign in with Jellyfin.'
+                  : 'Jellyfin decides who can sign in with Jellyfin.'}
+              />
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Only an admin can add Jellyfin or change its address or API key.
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="px-4 py-3 flex gap-2">
           <Button
             variant="outline"
@@ -825,7 +852,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
             size="sm"
             className="flex-1 h-9"
             onClick={handleSave}
-            disabled={testing || saving}
+            disabled={testing || saving || (showStepUp && (!isAdminUser || !stepUp.ready))}
           >
             {saving ? (
               <>

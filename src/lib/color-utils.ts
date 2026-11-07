@@ -139,3 +139,38 @@ export function generatePaletteFromBase(baseHex: string, accentHex: string): Pal
     };
   }
 }
+
+const HEX6 = /^#([0-9a-f]{6})$/i;
+
+/** WCAG relative luminance of a #rrggbb colour. */
+export function relativeLuminance(hex: string): number {
+  const x = parseInt(hex.slice(1), 16);
+  const f = (v: number) => {
+    const c = v / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * f((x >> 16) & 255) + 0.7152 * f((x >> 8) & 255) + 0.0722 * f(x & 255);
+}
+
+/** WCAG contrast ratio of two #rrggbb colours. */
+export function contrastRatio(a: string, b: string): number {
+  const [x, y] = [relativeLuminance(a), relativeLuminance(b)];
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+
+/**
+ * `hex` darkened (same hue, each channel scaled down) until it reaches `min`
+ * contrast on every #rrggbb background, or black if none does. Unchanged when
+ * it already does, or `hex` is not #rrggbb.
+ */
+export function darkenToContrast(hex: string, backgrounds: string[], min: number): string {
+  if (!HEX6.test(hex)) return hex;
+  const solid = backgrounds.filter((b) => HEX6.test(b));
+  const x = parseInt(hex.slice(1), 16);
+  const rgb = [(x >> 16) & 255, (x >> 8) & 255, x & 255];
+  for (let scale = 1; scale > 0; scale -= 0.01) {
+    const candidate = `#${rgb.map((c) => Math.round(c * scale).toString(16).padStart(2, '0')).join('')}`;
+    if (solid.every((b) => contrastRatio(candidate, b) >= min)) return scale === 1 ? hex : candidate;
+  }
+  return '#000000';
+}

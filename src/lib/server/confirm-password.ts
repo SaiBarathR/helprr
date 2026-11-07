@@ -107,13 +107,16 @@ type StepUpUser = Pick<User, 'id' | 'username' | 'passwordHash' | 'totpSecret' |
  * off. Null when confirmed. Missing factors are a 403 with `needsStepUp` (and
  * `needsCode`), so the page can ask for them; an admin with no Helprr password
  * (Jellyfin-only) is refused, closed. `step` names the action in the audit
- * row of a used recovery code.
+ * row of a used recovery code. Also guards other steps a session alone must
+ * not take (importing user accounts, changing the Jellyfin connection,
+ * turning an admin back on); `action` starts the message that asks for them.
  */
 export async function confirmAdminStepUp(
   request: NextRequest,
   admin: StepUpUser,
   body: unknown,
   step: string,
+  action = 'Giving admin access',
 ): Promise<NextResponse | null> {
   const needsCode = isTotpEnabled(admin);
   if (!admin.passwordHash) {
@@ -132,8 +135,8 @@ export async function confirmAdminStepUp(
     return NextResponse.json(
       {
         error: needsCode
-          ? 'Giving admin access needs your current password and a code from your authenticator app (or a recovery code).'
-          : 'Giving admin access needs your current password.',
+          ? `${action} needs your current password and a code from your authenticator app (or a recovery code).`
+          : `${action} needs your current password.`,
         needsStepUp: true,
         needsCode,
       },

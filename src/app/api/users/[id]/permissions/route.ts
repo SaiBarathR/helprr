@@ -8,9 +8,10 @@ import {
   deltaFromTemplate,
   type CapabilityMap,
 } from '@/lib/permissions';
-import { isCapability } from '@/lib/capabilities';
+import { CAPABILITIES, isCapability } from '@/lib/capabilities';
 import { withApiLogging } from '@/lib/api-logger';
 import { recordSecurityEvent } from '@/lib/security-audit';
+import { confirmAdminStepUp } from '@/lib/server/confirm-password';
 
 const TEMPLATES = new Set(['admin', 'member']);
 
@@ -78,14 +79,51 @@ async function putHandler(
     );
   }
 
+  // The Admin template gives a member every capability (settings.instances
+  // and backups among them), so it asks for the acting admin's password (and
+  // code), as making them admin does: applying it, and reaching every
+  // capability another way (re-applying it over turned-off ones, or turning
+  // the last ones on).
+  const everyCapability = (target: Parameters<typeof effectiveCapabilities>[0]) => {
+    const caps = effectiveCapabilities(target);
+    return CAPABILITIES.every((cap) => caps[cap] === true);
+  };
+  const givingAdminTemplate = user.role !== 'admin' && (
+    (data.template === 'admin' && user.template !== 'admin')
+    || (!everyCapability(user) && everyCapability({ ...user, ...data }))
+  );
+  if (givingAdminTemplate) {
+    const stepUp = await confirmAdminStepUp(
+      request,
+      admin.user,
+      body,
+      'admin-template',
+      data.template === 'admin' ? 'Giving the Admin template' : 'Giving every capability',
+    );
+    if (stepUp) return stepUp;
+  }
+
   // Losing calendar.view also ends the calendar feed link, so giving the
   // capability back later does not bring an old link back.
-  const { updated, feedRevoked } = await prisma.$transaction(async (tx) => {
-    const updated = await tx.user.update({ where: { id }, data });
+  // A write applies only to the role and template it read, as whether it
+  // needed the step-up above depends on them. (Overrides are written whole, so
+  // the result is always the set the check above saw.)
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.user.update({
+      where: { id, role: user.role, template: user.template },
+      data,
+    });
     const feedRevoked = !can(updated, 'calendar.view')
       && (await tx.calendarFeedToken.deleteMany({ where: { userId: id } })).count > 0;
     return { updated, feedRevoked };
+  }).catch((error: unknown) => {
+    if (error && typeof error === 'object' && (error as { code?: string }).code === 'P2025') return null;
+    throw error;
   });
+  if (!result) {
+    return NextResponse.json({ error: 'This user changed while saving. Reload and try again.' }, { status: 409 });
+  }
+  const { updated, feedRevoked } = result;
   // The capabilities whose effective value changed, by name.
   const before = effectiveCapabilities(user);
   const after = effectiveCapabilities(updated);
@@ -121,4 +159,5 @@ async function putHandler(
 }
 
 export const GET = withApiLogging(getHandler, 'api/users/[id]/permissions');
-export const PUT = withApiLogging(putHandler, 'api/users/[id]/permissions');
+// The body can hold the acting admin's password and code.
+export const PUT = withApiLogging(putHandler, 'api/users/[id]/permissions', { logBodies: false });

@@ -425,3 +425,79 @@ describe('importing a cleanup section', () => {
     root = createRoot(document.getElementById('root')!);
   });
 });
+
+describe('importing user accounts asks for your password, and a code while your two-step sign-in is on', () => {
+  const withUsers = () => ({
+    ...exportFile(off, off),
+    users: { accounts: [{ username: 'other', displayName: 'Other', role: 'admin', status: 'active', template: 'admin', permissions: {} }] },
+  });
+  const field = (label: string) => document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
+  const confirmButton = () =>
+    [...document.querySelectorAll('[role="dialog"] button')].find((el) => el.textContent?.trim() === 'Continue') as HTMLButtonElement;
+
+  async function stubTwoStep(enabled: boolean, refuseFirst = false) {
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    let refused = false;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/me/totp') return new Response(JSON.stringify({ available: true, enabled, recoveryCodesLeft: 8 }));
+      if (url === '/api/settings/import' && refuseFirst && !refused) {
+        refused = true;
+        imports.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({ error: 'Importing user accounts needs your current password.', needsStepUp: true, needsCode: false }), { status: 403 });
+      }
+      return base(url, init);
+    }));
+  }
+
+  it('asks in the confirm step, and sends them with the users', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event');
+    await stubTwoStep(true);
+    await open(withUsers());
+    await click('Replace everything');
+    await vi.waitFor(() => expect(field('Authenticator or recovery code')).not.toBeNull());
+    expect(confirmButton().disabled).toBe(true);
+    await userEvent.type(field('Your current password')!, 'my password');
+    expect(confirmButton().disabled).toBe(true);
+    await userEvent.type(field('Authenticator or recovery code')!, '123456');
+    await act(async () => { confirmButton().click(); });
+    await vi.waitFor(() => expect(imports).toHaveLength(1));
+    expect(imports[0]).toMatchObject({ users: expect.any(Object), currentPassword: 'my password', code: '123456' });
+  });
+
+  it('a Jellyfin change the server asks about brings the confirm step back with the fields', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event');
+    await stubTwoStep(false, true);
+    await open({ ...exportFile(off, off), serviceConnections: [{ type: 'JELLYFIN', label: 'Jellyfin', url: 'http://new.lan:8096', apiKey: null }] });
+    await click('Apply selected');
+    await vi.waitFor(() => expect(imports).toHaveLength(1));
+    await vi.waitFor(() => expect(field('Your current password')).not.toBeNull());
+    await userEvent.type(field('Your current password')!, 'my password');
+    await act(async () => { confirmButton().click(); });
+    await vi.waitFor(() => expect(imports).toHaveLength(2));
+    expect(imports[1]).toMatchObject({ serviceConnections: [expect.objectContaining({ type: 'JELLYFIN' })], currentPassword: 'my password' });
+  });
+
+  it('asks for nothing when the users are left out', async () => {
+    await stubTwoStep(true);
+    await open(withUsers());
+    await click('Apply selected');
+    await vi.waitFor(() => expect(imports).toHaveLength(1));
+    expect(imports[0]).not.toHaveProperty('users');
+    expect(imports[0]).not.toHaveProperty('currentPassword');
+  });
+
+  it('asks for the password alone when the server says so (a stale two-step state)', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event');
+    await stubTwoStep(true, true);
+    await open(withUsers());
+    await click('Replace everything');
+    await vi.waitFor(() => expect(field('Your current password')).not.toBeNull());
+    await userEvent.type(field('Your current password')!, 'wrong');
+    await userEvent.type(field('Authenticator or recovery code')!, '123456');
+    await act(async () => { confirmButton().click(); });
+    await vi.waitFor(() => expect(imports).toHaveLength(1));
+    // The server's answer wins: the confirm step comes back, asking for the password only.
+    await vi.waitFor(() => expect(field('Your current password')).not.toBeNull());
+    expect(field('Authenticator or recovery code')).toBeNull();
+  });
+});

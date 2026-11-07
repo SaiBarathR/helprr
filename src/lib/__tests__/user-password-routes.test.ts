@@ -287,8 +287,9 @@ describe('user local-password boundaries', () => {
     const response = await updateUser(jsonRequest('/api/users/user-1', 'PATCH', { status: 'disabled' }), params);
 
     expect(response.status).toBe(409);
+    // And only to the role it saw: turning an admin back on needs the step-up.
     expect(mocks.tx.user.update).toHaveBeenCalledWith({
-      where: { id: 'user-1', status: 'pending' },
+      where: { id: 'user-1', status: 'pending', role: existingUser.role },
       data: { status: 'disabled' },
     });
   });

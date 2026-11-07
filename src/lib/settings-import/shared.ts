@@ -48,6 +48,9 @@ export interface ImportRequestBody {
   scheduledAlerts?: ExportedScheduledAlerts;
   animeMappings?: ExportedAnimeMappings;
   users?: ExportedUsers;
+  /** The step-up for users or a Jellyfin change (the route checks and drops them). */
+  currentPassword?: unknown;
+  code?: unknown;
 }
 
 /** Coerce to an integer, or null for null/undefined/non-integer values. */

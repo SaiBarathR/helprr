@@ -69,7 +69,8 @@ for (const { type, port, ...extra } of CONNECTIONS) {
     await check(await fetch(`${BASE}/api/services`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ type, url: `${UPSTREAMS}:${port}`, apiKey: KEY, ...extra }),
+      // Adding Jellyfin asks for the admin's password (the demo admin has no two-step).
+      body: JSON.stringify({ type, url: `${UPSTREAMS}:${port}`, apiKey: KEY, ...extra, ...(type === 'JELLYFIN' ? { currentPassword: PASSWORD } : {}) }),
     }), type);
   }, 15);
   console.log(`demo seed: ${type} connected`);

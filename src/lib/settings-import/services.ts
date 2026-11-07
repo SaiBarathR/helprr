@@ -10,7 +10,9 @@ import type { ExportedServiceConnection } from '@/lib/settings-export';
 export async function applyServiceConnectionInTxn(
   tx: Prisma.TransactionClient,
   conn: ExportedServiceConnection,
-  skipped: string[]
+  skipped: string[],
+  /** Set when Jellyfin is added or moved to another address (its linked accounts then sign in again). */
+  changes?: { jellyfinAddress: boolean },
 ): Promise<ServiceType | null> {
   // YouTube stays out of isServiceType, which also opens the generic routes that would
   // store its key unencrypted.
@@ -115,5 +117,6 @@ export async function applyServiceConnectionInTxn(
       },
     });
   }
+  if (changes && conn.type === 'JELLYFIN' && (existing === null || urlChanged)) changes.jellyfinAddress = true;
   return conn.type;
 }

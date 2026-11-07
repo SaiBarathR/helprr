@@ -361,8 +361,30 @@ someone admin ends their outstanding link (made without the step-up) in the same
 transaction (`passwordLink` in `USER_UPDATED`). A role, password or Jellyfin change writes
 only to the role it read (`where: { role }`, else 409), and a link for someone else is made
 holding their row (`FOR UPDATE`) and refused (409) if they became admin meanwhile, so a
-concurrent promotion or demotion cannot skip the check. Settings import (`users`) does
-not ask for the step-up (open owner question). Turning it on can
+concurrent promotion or demotion cannot skip the check. Round 10 (owner decision
+2026-11-07) adds, through the same helper (its `action` names the step in the message):
+giving a member the Admin template (`PUT /api/users/[id]/permissions` with
+`template: 'admin'`, or reaching every capability another way: re-applying it over
+turned-off ones, a reset, or toggles; or `POST /api/users` with a member role and that
+template; `admin-template`), turning an admin back on from disabled or pending
+(`enable-admin`), turning off another
+admin's two-step sign-in (`DELETE /api/users/[id]/totp`, body `currentPassword`/`code`;
+`admin-two-step-off`; a member's is unchanged), a settings import with a `users` section
+(`import-users`, any section present) or a Jellyfin entry that adds Jellyfin or gives it
+another address or key (`import-jellyfin`), and adding Jellyfin or changing its address or
+key in `POST /api/services` (`jellyfin-connection`), which is admin-only whatever
+capabilities a member holds (a member may still re-save it unchanged). Each write applies
+only to the role (and template, or Jellyfin address and key) it read, else 409. Any status
+change ends every session of the user in the same transaction (a disable, so turning the
+account back on does not revive them; turning it on, for sessions left from an older
+disable), counted in `USER_UPDATED`. A new Jellyfin address (or Jellyfin added) ends every
+session of each Jellyfin-linked account except the acting admin's, and clears every
+member's stored `User.jellyfinToken`, which was for the old server
+(`revokeJellyfinLinkedSessions`, in the same transaction as the write, last in an import):
+a session does not record whether it came from Jellyfin sign-in, and Jellyfin sign-in only
+signs in linked accounts, so this is the precise set the session model supports. It is
+audited as `SESSION_REVOKED` on the service, `count` sessions, `fields: ['url', 'accounts: N']`.
+Turning it on can
 also end the user's other sessions (`signOutOtherDevices`). Ten
 80-bit recovery codes are stored as SHA-256 (`RecoveryCode`, deleted on use) and still work
 after a `JWT_SECRET` change, when the secret no longer decrypts. Setup needs the current
