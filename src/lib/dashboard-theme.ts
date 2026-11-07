@@ -8,7 +8,7 @@
  */
 
 import type * as React from 'react';
-import { generatePaletteFromBase, type PaletteTokens } from './color-utils';
+import { darkenToContrast, generatePaletteFromBase, relativeLuminance, type PaletteTokens } from './color-utils';
 
 export type DashboardAccent = string;
 export type DashboardPalette = string;
@@ -331,13 +331,14 @@ export const THEME_VAR_KEYS: readonly string[] = Array.from(
 
 /** Resolve theme prefs into concrete token values (palette + per-tone overrides). */
 function resolveThemeTokens(prefs: DashboardThemePrefs) {
-  const accent = prefs.accent in ACCENT_COLORS
+  const chosenAccent = prefs.accent in ACCENT_COLORS
     ? ACCENT_COLORS[prefs.accent].color
     : prefs.accent;
+  const isCyan = chosenAccent.toLowerCase() === ACCENT_COLORS.cyan.color;
 
   const basePalette = prefs.palette in PALETTES
     ? PALETTES[prefs.palette].tokens
-    : generatePaletteFromBase(prefs.palette, accent);
+    : generatePaletteFromBase(prefs.palette, chosenAccent);
 
   const palette: PaletteTokens = {
     ...basePalette,
@@ -349,17 +350,29 @@ function resolveThemeTokens(prefs: DashboardThemePrefs) {
   const font = prefs.font in FONTS ? FONTS[prefs.font] : FONTS.system;
   const gradient = prefs.gradient in GRADIENTS ? GRADIENTS[prefs.gradient].value : GRADIENTS.none.value;
 
-  return { accent, palette, font, gradient };
+  // Cyan is too light on a light palette (Cream: 2.3:1), so there it is
+  // darkened until it reads as text, 4.5:1, on the page, sidebar and cards,
+  // which also takes the active tab icon past 3:1. A light palette is one
+  // with a light page (as data-scheme decides it), or text darker than its page.
+  const isLight = schemeFromBackground(palette.inkSoft) === 'light' || (
+    /^#[0-9a-f]{6}$/i.test(palette.fg) && /^#[0-9a-f]{6}$/i.test(palette.inkSoft)
+    && relativeLuminance(palette.fg) < relativeLuminance(palette.inkSoft)
+  );
+  const accent = isCyan && isLight
+    ? darkenToContrast(chosenAccent, [palette.ink, palette.inkSoft, palette.surface, palette.surfaceHi], 4.5)
+    : chosenAccent;
+
+  return { accent, isCyan, palette, font, gradient };
 }
 
 /** Build a React style object containing every --hpr-* variable. */
 export function buildDashboardThemeStyle(prefs: DashboardThemePrefs): React.CSSProperties {
-  const { accent, palette, font, gradient } = resolveThemeTokens(prefs);
+  const { accent, isCyan, palette, font, gradient } = resolveThemeTokens(prefs);
   // The active tab's label (phone tabs, More, sidebar): with the cyan accent
   // only the icon takes it and the label keeps the text colour, as under
   // Liquid Glass. Every other accent tints the label. A var, so the pre-paint
   // replay has it too.
-  const tabLabel = accent.toLowerCase() === ACCENT_COLORS.cyan.color ? palette.fg : accent;
+  const tabLabel = isCyan ? palette.fg : accent;
 
   return {
     ['--hpr-ink' as string]: palette.ink,

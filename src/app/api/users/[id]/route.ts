@@ -117,8 +117,13 @@ async function patchHandler(
     (typeof body.password === 'string' && body.password.length > 0)
     || (data.jellyfinUserId !== undefined && data.jellyfinUserId !== existing.jellyfinUserId)
   );
-  if (promoting || intoOtherAdmin) {
-    const stepUp = await confirmAdminStepUp(request, admin.user, body, promoting ? 'make-admin' : 'admin-credentials');
+  // Turning an admin back on (from disabled, or pending, which a disable can
+  // pass through) gives admin access again, so it asks too.
+  const reenablingAdmin = existing.role === 'admin' && existing.status !== 'active' && data.status === 'active';
+  if (promoting || intoOtherAdmin || reenablingAdmin) {
+    const stepUp = promoting || intoOtherAdmin
+      ? await confirmAdminStepUp(request, admin.user, body, promoting ? 'make-admin' : 'admin-credentials')
+      : await confirmAdminStepUp(request, admin.user, body, 'enable-admin', 'Turning an admin back on');
     if (stepUp) return stepUp;
   }
 
@@ -152,10 +157,11 @@ async function patchHandler(
       }
       // A status change applies only to the status the admin saw, so an invite
       // accepted meanwhile is not turned back to pending (or a disable undone).
-      // A role, password or Jellyfin change applies only to the role it saw, as
-      // whether it needed the step-up above depends on it.
+      // A role, password, Jellyfin or status change applies only to the role it
+      // saw, as whether it needed the step-up above depends on it.
       const statusChanges = data.status !== undefined && data.status !== existing.status;
-      const roleDecides = data.role !== undefined || data.passwordHash !== undefined || data.jellyfinUserId !== undefined;
+      const roleDecides = data.role !== undefined || data.passwordHash !== undefined || data.jellyfinUserId !== undefined
+        || statusChanges;
       const updated = await tx.user.update({
         where: {
           id,
@@ -166,9 +172,12 @@ async function patchHandler(
       });
       // Admin password resets do not prove possession of any existing session,
       // so revoke every live session for the target in the same transaction.
+      // Any status change ends them too: a disable, so turning the account back
+      // on does not bring them back, and turning it on, for a session left
+      // from a disable made before this rule.
       let revokedSessions = 0;
       let endedLink = false;
-      if (data.passwordHash !== undefined) {
+      if (data.passwordHash !== undefined || statusChanges) {
         const revoked = await tx.session.updateMany({
           where: { userId: id, revokedAt: null },
           data: { revokedAt: new Date() },
@@ -195,7 +204,7 @@ async function patchHandler(
       if (credentialsReset || (data.jellyfinUserId !== undefined && data.jellyfinUserId !== existing.jellyfinUserId)) {
         apiTokensRevoked = (await tx.apiToken.deleteMany({ where: { userId: id } })).count;
       }
-      return { ok: true as const, updated, revokedSessions, endedLink, feedRevoked, apiTokensRevoked };
+      return { ok: true as const, updated, revokedSessions, endedLink, feedRevoked, apiTokensRevoked, statusChanged: statusChanges };
     });
     if (!result.ok) {
       return NextResponse.json(
@@ -226,8 +235,8 @@ async function patchHandler(
         targetId: id,
         targetLabel: result.updated.username,
         fields,
-        // Sessions the password reset revoked; 1 for any other change.
-        ...(data.passwordHash !== undefined ? { count: result.revokedSessions } : {}),
+        // Sessions the password reset or status change revoked; 1 for any other change.
+        ...(data.passwordHash !== undefined || result.statusChanged ? { count: result.revokedSessions } : {}),
       });
     }
     if (result.feedRevoked) {

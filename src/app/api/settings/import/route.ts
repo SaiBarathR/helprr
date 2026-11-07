@@ -8,7 +8,22 @@ import { validateImportSectionLimits } from '@/lib/settings-import/limits';
 import { runImportFollowUps, type ImportWarning } from '@/lib/settings-import/follow-ups';
 import { applySettingsImport, type ImportApplied, type ImportOutcome } from '@/lib/settings-import/run-import';
 import type { ImportRequestBody } from '@/lib/settings-import/shared';
-import { recordSecurityEvent } from '@/lib/security-audit';
+import { recordSecurityEvent, serviceTargetLabel } from '@/lib/security-audit';
+import { confirmAdminStepUp } from '@/lib/server/confirm-password';
+import { prisma } from '@/lib/db';
+import { isNonEmptyString, normalizeServiceUrl } from '@/lib/service-connection-secrets';
+
+/** A Jellyfin entry in the file that adds Jellyfin or gives it another address or key. */
+async function changesJellyfin(connections: ImportRequestBody['serviceConnections']): Promise<boolean> {
+  const entries = Array.isArray(connections)
+    ? connections.filter((c) => c && typeof c === 'object' && c.type === 'JELLYFIN' && typeof c.url === 'string')
+    : [];
+  if (entries.length === 0) return false;
+  const existing = await prisma.serviceConnection.findFirst({ where: { type: 'JELLYFIN' }, select: { url: true, apiKey: true } });
+  return entries.some((c) => !existing
+    || normalizeServiceUrl(c.url) !== normalizeServiceUrl(existing.url)
+    || (isNonEmptyString(c.apiKey) && c.apiKey !== existing.apiKey));
+}
 
 interface ImportResult {
   applied: ImportApplied;
@@ -92,9 +107,27 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
   }
 
+  // User accounts (admins, roles, password hashes, Jellyfin links) and a new
+  // Jellyfin address or key (which decides who "Sign in with Jellyfin" signs
+  // in) are ways into accounts, so they need the importer's password, and a
+  // code while their two-step sign-in is on. Only admins reach here with them.
+  const importsUsers = body.users != null;
+  if (importsUsers || await changesJellyfin(body.serviceConnections)) {
+    const stepUp = await confirmAdminStepUp(
+      request,
+      auth.user,
+      body,
+      importsUsers ? 'import-users' : 'import-jellyfin',
+      importsUsers ? 'Importing user accounts' : 'Importing the Jellyfin connection',
+    );
+    if (stepUp) return stepUp;
+  }
+  delete body.currentPassword;
+  delete body.code;
+
   let outcome: ImportOutcome;
   try {
-    outcome = await applySettingsImport(body, importerId);
+    outcome = await applySettingsImport(body, importerId, auth.session.id);
   } catch (error) {
     console.error('Failed to import settings', error);
     return NextResponse.json(
@@ -115,6 +148,18 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     targetType: 'settings',
     fields: sections,
   });
+
+  if (outcome.jellyfinSignOut && outcome.jellyfinSignOut.sessions > 0) {
+    // The new Jellyfin address signed out every Jellyfin-linked account.
+    await recordSecurityEvent(request, {
+      actor: auth.user,
+      action: 'SESSION_REVOKED',
+      targetType: 'service',
+      targetLabel: serviceTargetLabel('JELLYFIN', ''),
+      fields: ['url', `accounts: ${outcome.jellyfinSignOut.accounts}`],
+      count: outcome.jellyfinSignOut.sessions,
+    });
+  }
 
   // Everything is committed. Bring this server in line with it; a step that
   // fails comes back as a warning the operator can retry

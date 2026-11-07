@@ -12,10 +12,10 @@ const db = vi.hoisted(() => {
     user: {
       findUnique: vi.fn(async ({ where }: { where: Row }) => {
         const row = state.users.find((u) => u.id === where.id);
-        return row ? { id: row.id, username: row.username } : null;
+        return row ? { id: row.id, username: row.username, role: row.role ?? 'member', totpEnabledAt: row.totpEnabledAt } : null;
       }),
       updateMany: vi.fn(async ({ where, data }: { where: Row; data: Row }) => {
-        const rows = state.users.filter((u) => u.id === where.id && u.totpEnabledAt !== null);
+        const rows = state.users.filter((u) => u.id === where.id && (u.role ?? 'member') === where.role && u.totpEnabledAt !== null);
         rows.forEach((u) => Object.assign(u, data));
         return { count: rows.length };
       }),

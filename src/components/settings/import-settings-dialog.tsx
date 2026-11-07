@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useMe } from '@/components/permission-provider';
+import { StepUpFields, useStepUp } from '@/components/settings/step-up-fields';
 import { useUIStore, migrateUiPrefs, STORE_VERSION } from '@/lib/store';
 import { validateDiscoverLayout } from '@/lib/discover-layout-config';
 import {
@@ -158,9 +159,15 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const applyImportedUiPrefs = useUIStore((s) => s.applyImportedUiPrefs);
   const setDiscoverLayout = useUIStore((s) => s.setDiscoverLayout);
   const queryClient = useQueryClient();
+  // Importing user accounts asks for your password (and code); so does a new
+  // Jellyfin address or key, which only the server can tell (it then asks).
+  // Asked only while open for an admin (members cannot import either).
+  const stepUp = useStepUp(open && isAdmin ? undefined : false);
+  const clearStepUp = stepUp.clear;
 
   useEffect(() => {
     if (!open) {
+      clearStepUp();
       // eslint-disable-next-line react-hooks/set-state-in-effect -- clear the previous import selections and confirmations when the dialog closes
       setParsed(null);
       setFileError(null);
@@ -205,9 +212,10 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     ]);
     // Leaving the page ends this opening too, so a run still waiting stops.
     return () => { lookupGeneration.current += 1; };
-  }, [open]);
+  }, [open, clearStepUp]);
 
   async function handleFile(file: File) {
+    clearStepUp();
     setFileError(null);
     setParsed(null);
     if (file.size > MAX_IMPORT_BYTES) {
@@ -336,6 +344,14 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     )
   ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedTwitch, selectedYoutube, selectedDashboardLayouts, selectedWatchlist, selectedScheduledAlerts, selectedAnimeMappings, selectedUsers, selectedServices, selectedSourceDevice, availableNotifDevices, currentEndpoint]);
 
+  function importsUsers(replaceAll: boolean): boolean {
+    return isAdmin && !!parsed?.payload.users && (replaceAll || selectedUsers);
+  }
+  /** Whether this import sends user accounts, or the server asked for the step-up. */
+  function needsStepUp(replaceAll: boolean): boolean {
+    return importsUsers(replaceAll) || stepUp.asked;
+  }
+
   function requestImport(replaceAll: boolean) {
     if (!parsed) return;
     const willOverwriteServiceSecrets = isAdmin && parsed.payload.includesSecrets && (
@@ -351,7 +367,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     const willOverwriteUsers = isAdmin && hasUsers && (
       replaceAll ? !!parsed.payload.users : selectedUsers
     );
-    if (willOverwriteServiceSecrets || willOverwriteUsers) {
+    if (willOverwriteServiceSecrets || willOverwriteUsers || needsStepUp(replaceAll)) {
       setPendingConfirm({ replaceAll });
       return;
     }
@@ -494,6 +510,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       if (useUsers && parsed.payload.users) {
         body.users = parsed.payload.users;
       }
+      if (body.users || stepUp.asked) Object.assign(body, stepUp.body());
 
       const needsServerCall = body.appSettings || body.serviceConnections || body.notificationDevice || body.cleanup || body.twitch || body.youtube || body.discoverLayout || body.dashboardLayouts || body.watchlist || body.scheduledAlerts || body.animeMappings || body.users;
       if (needsServerCall) {
@@ -504,8 +521,13 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         });
         const json = await res.json().catch(() => null);
         if (!res.ok) {
+          if (json && typeof json === 'object') stepUp.onRefused(json);
+          // Asked for the step-up it did not know it needed (a new Jellyfin
+          // address): back to the confirm step, which now shows the fields.
+          if (json?.needsStepUp === true) setPendingConfirm({ replaceAll });
           throw new Error(json?.error || 'Import failed');
         }
+        stepUp.clear();
         if (mergedUiPrefs) applyImportedUiPrefs(mergedUiPrefs);
         if (json?.discoverLayoutApplied && parsed.payload.discoverLayout) {
           const validatedLayout = validateDiscoverLayout(parsed.payload.discoverLayout);
@@ -884,6 +906,12 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               This will overwrite existing data with values from the import file — service connection API keys and/or user accounts (roles, status, permissions, and any included passwords). Continue?
             </DialogDescription>
           </DialogHeader>
+          {pendingConfirm && needsStepUp(pendingConfirm.replaceAll) && (
+            <StepUpFields
+              stepUp={stepUp}
+              reason={importsUsers(pendingConfirm.replaceAll) ? 'User accounts can include admins and their passwords.' : 'A new Jellyfin address decides who can sign in with Jellyfin.'}
+            />
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setPendingConfirm(null)} disabled={importing}>
               Cancel
@@ -894,7 +922,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
                 setPendingConfirm(null);
                 confirmCleanupThenImport(replaceAll);
               }}
-              disabled={importing}
+              disabled={importing || (pendingConfirm !== null && needsStepUp(pendingConfirm.replaceAll) && !stepUp.ready)}
             >
               {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Continue

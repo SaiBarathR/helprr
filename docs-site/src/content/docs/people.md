@@ -22,6 +22,15 @@ them right there. Making someone admin ends any invite or reset link they had. M
 are unchanged. An admin who signs in only with Jellyfin sets a Helprr password in
 **Settings → Account** first.
 
+The same check guards a few more steps: giving a member the **Admin template**, turning a
+disabled admin back on, turning off another admin's two-step sign-in, importing a backup
+that has user accounts in it, and adding Jellyfin or changing its address or API key. Only
+an admin can change the Jellyfin connection, even a member who may manage the other apps.
+Disabling an account signs it out everywhere, so turning it back on does not bring old
+sessions back. A new Jellyfin address signs out every account linked to a Jellyfin user
+(except you), so each signs in again, and ends everyone's Jellyfin connection for
+watching (see below), so it is made again with the new server.
+
 ## Signing in
 
 - **With a Helprr password**. It needs at least 15 characters. By default **Add** makes

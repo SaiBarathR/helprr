@@ -37,6 +37,7 @@ import {
   localPasswordValidationError,
 } from '@/lib/password-policy';
 import { useMe } from '@/components/permission-provider';
+import { StepUpFields, useStepUp } from '@/components/settings/step-up-fields';
 import { formatDate, formatDateTime } from '@/lib/date-format';
 
 interface SafeUser {
@@ -416,67 +417,6 @@ function IssuedLinkPanel({ link, username }: { link: IssuedLink; username: strin
   );
 }
 
-/** What a step that gives admin needs from you: your password, and a code while your two-step sign-in is on. */
-function useStepUp(myTwoStep: boolean) {
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [code, setCode] = useState('');
-  // The server's answer wins over the list's copy (it may be stale).
-  const [serverNeedsCode, setServerNeedsCode] = useState<boolean | null>(null);
-  const needsCode = serverNeedsCode ?? myTwoStep;
-  return {
-    currentPassword,
-    setCurrentPassword,
-    code,
-    setCode,
-    needsCode,
-    /** The server asked for them (the list's copy of a role may be stale). */
-    asked: serverNeedsCode !== null,
-    ready: currentPassword.length > 0 && (!needsCode || code.trim().length > 0),
-    body: () => ({ currentPassword, ...(needsCode ? { code: code.trim() } : {}) }),
-    /** Reads a refusal: true when the server asked for these. */
-    onRefused: (data: { needsStepUp?: boolean; needsCode?: boolean }) => {
-      if (data.needsStepUp === true && typeof data.needsCode === 'boolean') setServerNeedsCode(data.needsCode);
-    },
-    clear: () => {
-      setCurrentPassword('');
-      setCode('');
-      setServerNeedsCode(null);
-    },
-  };
-}
-
-function StepUpFields({ stepUp, reason }: { stepUp: ReturnType<typeof useStepUp>; reason: string }) {
-  return (
-    <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">
-        {reason} Confirm it is you with your password{stepUp.needsCode ? ' and a code' : ''}.
-      </p>
-      <Input
-        type="password"
-        aria-label="Your current password"
-        placeholder="Your current password"
-        autoComplete="current-password"
-        value={stepUp.currentPassword}
-        onChange={(e) => stepUp.setCurrentPassword(e.target.value)}
-      />
-      {stepUp.needsCode && (
-        <Input
-          type="text"
-          aria-label="Authenticator or recovery code"
-          placeholder="Code or recovery code"
-          autoComplete="one-time-code"
-          autoCapitalize="characters"
-          autoCorrect="off"
-          spellCheck={false}
-          maxLength={24}
-          value={stepUp.code}
-          onChange={(e) => stepUp.setCode(e.target.value)}
-        />
-      )}
-    </div>
-  );
-}
-
 function CreateUserDialog({
   myTwoStep,
   onClose,
@@ -675,7 +615,10 @@ function EditUserDialog({
   // Making them admin, or a password or Jellyfin link for another admin, asks for your password (and code).
   const stepUp = useStepUp(myTwoStep);
   const promoting = role === 'admin' && user.role !== 'admin';
+  // Turning a disabled admin back on asks too.
+  const reenablingAdmin = user.role === 'admin' && user.status === 'disabled' && status === 'active';
   const needsStepUp = promoting
+    || reenablingAdmin
     || (user.role === 'admin' && !isSelf && (password.length > 0 || jellyfinUserId !== user.jellyfinUserId))
     || stepUp.asked;
 
@@ -747,14 +690,23 @@ function EditUserDialog({
   });
   const busy = saveIdentityMutation.isPending;
 
+  // The Admin template (every capability) for a member asks for your password
+  // (and code) first, so picking it waits for them instead of applying at once.
+  const templateStepUp = useStepUp(myTwoStep);
+  const [pendingAdminTemplate, setPendingAdminTemplate] = useState(false);
+
   const applyTemplateMutation = useMutation({
     mutationFn: async (next: string) => {
       const res = await fetch(`/api/users/${user.id}/permissions`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ template: next }),
+        body: JSON.stringify({ template: next, ...(next === 'admin' ? templateStepUp.body() : {}) }),
       });
-      if (!res.ok) throw new Error('Failed to apply template');
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string; needsStepUp?: boolean; needsCode?: boolean };
+        templateStepUp.onRefused(data);
+        throw new Error(data.error ?? 'Failed to apply template');
+      }
       return (await res.json()) as {
         template: string;
         effective: Partial<Record<Capability, boolean>>;
@@ -764,11 +716,13 @@ function EditUserDialog({
       setTemplate(data.template);
       setEffective(data.effective);
       effectiveRef.current = data.effective;
+      setPendingAdminTemplate(false);
+      templateStepUp.clear();
       toast.success('Template applied');
       // Whether their API tokens work follows api.tokens.
       void queryClient.invalidateQueries({ queryKey: queryKeys.userApiTokens(user.id) });
     },
-    onError: () => toast.error('Failed to apply template'),
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to apply template'),
   });
 
   const toggleCapMutation = useMutation({
@@ -779,14 +733,21 @@ function EditUserDialog({
       const res = await fetch(`/api/users/${user.id}/permissions`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ permissions: next }),
+        // Turning on every capability is the Admin template by another way: the
+        // server asks for your password (and code), and the next toggle sends them.
+        body: JSON.stringify({ permissions: next, ...(templateStepUp.asked ? templateStepUp.body() : {}) }),
       });
-      if (!res.ok) throw new Error('Failed to update permission');
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string; needsStepUp?: boolean; needsCode?: boolean };
+        templateStepUp.onRefused(data);
+        throw new Error(data.error ?? 'Failed to update permission');
+      }
       return (await res.json()) as { effective: Partial<Record<Capability, boolean>> };
     },
     onSuccess: (data) => {
       setEffective(data.effective);
       effectiveRef.current = data.effective;
+      if (templateStepUp.asked) templateStepUp.clear();
       void queryClient.invalidateQueries({ queryKey: queryKeys.userApiTokens(user.id) });
     },
   });
@@ -802,7 +763,16 @@ function EditUserDialog({
   }
 
   function applyTemplate(next: string) {
-    applyTemplateMutation.mutate(next);
+    if (next === 'admin' && template !== 'admin') {
+      setPendingAdminTemplate(true);
+      return;
+    }
+    const backingOut = pendingAdminTemplate && next === template;
+    setPendingAdminTemplate(false);
+    templateStepUp.clear();
+    // Picking the template it has while the Admin one waits only backs out of
+    // that: applying it would clear their overrides.
+    if (!backingOut) applyTemplateMutation.mutate(next);
   }
 
   function toggleCap(cap: Capability, value: boolean) {
@@ -814,8 +784,8 @@ function EditUserDialog({
     effectiveRef.current = next;
     setEffective(next); // optimistic
     toggleCapMutation.mutate(next, {
-      onError: () => {
-        toast.error('Failed to update permission');
+      onError: (err) => {
+        toast.error(err instanceof Error ? err.message : 'Failed to update permission');
         // Revert only this cap functionally so a failed toggle can't drop a
         // concurrent successful one.
         effectiveRef.current = effectiveRef.current
@@ -909,7 +879,7 @@ function EditUserDialog({
           {needsStepUp && (
             <StepUpFields
               stepUp={stepUp}
-              reason={promoting ? 'An admin can do everything you can.' : 'This is a way into another admin’s account.'}
+              reason={promoting || reenablingAdmin ? 'An admin can do everything you can.' : 'This is a way into another admin’s account.'}
             />
           )}
           <Button
@@ -924,14 +894,18 @@ function EditUserDialog({
 
         <PasswordLinkSection key={linkSectionKey} user={user} isSelf={isSelf} myTwoStep={myTwoStep} />
 
-        <TwoStepSection user={user} isSelf={isSelf} />
+        <TwoStepSection user={user} isSelf={isSelf} myTwoStep={myTwoStep} />
 
         <UserApiTokensSection user={user} />
 
         <div className="mt-4 border-t border-border pt-4 space-y-3">
           <div className="flex items-center justify-between">
             <Label>Permissions</Label>
-            <Select value={template} onValueChange={(v) => void applyTemplate(v)} disabled={permBusy || isAdmin}>
+            <Select
+              value={pendingAdminTemplate ? 'admin' : template}
+              onValueChange={(v) => void applyTemplate(v)}
+              disabled={permBusy || isAdmin}
+            >
               <SelectTrigger className="w-36">
                 <SelectValue />
               </SelectTrigger>
@@ -941,6 +915,40 @@ function EditUserDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {!pendingAdminTemplate && templateStepUp.asked && !isAdmin && (
+            <StepUpFields
+              stepUp={templateStepUp}
+              reason="Every capability is the same as the Admin template. Then switch it on again."
+            />
+          )}
+
+          {pendingAdminTemplate && !isAdmin && (
+            <div className="space-y-2">
+              <StepUpFields stepUp={templateStepUp} reason="The Admin template gives every capability, as admin does." />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => applyTemplateMutation.mutate('admin')}
+                  disabled={permBusy || !templateStepUp.ready}
+                >
+                  {applyTemplateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Apply Admin template
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setPendingAdminTemplate(false);
+                    templateStepUp.clear();
+                  }}
+                  disabled={permBusy}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
 
           {isAdmin ? (
             <p className="text-xs text-muted-foreground">
@@ -1160,21 +1168,29 @@ function PasswordLinkSection({ user, isSelf, myTwoStep }: { user: SafeUser; isSe
  * someone who lost their phone. Your own is turned off in Settings -> Account,
  * with your password and a code.
  */
-function TwoStepSection({ user, isSelf }: { user: SafeUser; isSelf: boolean }) {
+function TwoStepSection({ user, isSelf, myTwoStep }: { user: SafeUser; isSelf: boolean; myTwoStep: boolean }) {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
+  // Another admin's asks for your password, and a code while your two-step sign-in is on.
+  const stepUp = useStepUp(myTwoStep);
+  const needsStepUp = user.role === 'admin' || stepUp.asked;
 
   const turnOffMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/users/${user.id}/totp`, { method: 'DELETE' });
+      const res = await fetch(`/api/users/${user.id}/totp`, {
+        method: 'DELETE',
+        ...(needsStepUp && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stepUp.body()) }),
+      });
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        const data = (await res.json().catch(() => ({}))) as { error?: string; needsStepUp?: boolean; needsCode?: boolean };
+        stepUp.onRefused(data);
         throw new Error(data.error ?? 'Failed to turn off two-step sign-in');
       }
     },
     onSuccess: () => {
       toast.success(`Two-step sign-in is off for ${user.displayName}`);
       setConfirming(false);
+      stepUp.clear();
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to turn off two-step sign-in'),
     // Also after a 409: it may already be off (a reset link, another admin).
@@ -1201,13 +1217,14 @@ function TwoStepSection({ user, isSelf }: { user: SafeUser; isSelf: boolean }) {
             <p className="text-xs text-muted-foreground">
               Lost their phone and recovery codes? Turn it off; they then sign in with their password alone.
             </p>
+            {needsStepUp && <StepUpFields stepUp={stepUp} reason="This is a way into another admin’s account." />}
             <Button
               type="button"
               size="sm"
               variant="outline"
               className="text-destructive hover:text-destructive"
               onClick={() => setConfirming(true)}
-              disabled={turnOffMutation.isPending}
+              disabled={turnOffMutation.isPending || (needsStepUp && !stepUp.ready)}
             >
               Turn off
             </Button>

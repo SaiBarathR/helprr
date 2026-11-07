@@ -19,6 +19,7 @@ import { applyPreparedScheduledAlerts, prepareScheduledAlerts } from './alerts';
 import { applyPreparedWatchlist, prepareWatchlist } from './watchlist';
 import { applyPreparedAnimeMappings, prepareAnimeMappings } from './anime-mappings';
 import { applyUsersInTxn, prepareAccountContent } from './users';
+import { revokeJellyfinLinkedSessions } from '@/lib/jellyfin-linked-sessions';
 
 // A near-limit import (the benchmark in settings-import.integration.test.ts)
 // commits in a few seconds; the timeout leaves room for slower storage while
@@ -68,10 +69,20 @@ export interface ImportOutcome {
   skipped: string[];
   discoverLayoutApplied: boolean;
   followUps: ImportFollowUpPlan;
+  /** The Jellyfin address changed: the sessions of Jellyfin-linked accounts ended with it. */
+  jellyfinSignOut: { sessions: number; accounts: number } | null;
 }
 
-/** Throws when the transaction fails; nothing is then saved. */
-export async function applySettingsImport(body: ImportRequestBody, importerId: string): Promise<ImportOutcome> {
+/**
+ * Throws when the transaction fails; nothing is then saved. `keepSessionId`
+ * is the importer's session, kept when a new Jellyfin address signs out the
+ * Jellyfin-linked accounts.
+ */
+export async function applySettingsImport(
+  body: ImportRequestBody,
+  importerId: string,
+  keepSessionId: string | null = null,
+): Promise<ImportOutcome> {
   const skipped: string[] = [];
   const appliedServices: ServiceType[] = [];
   let appliedAppSettings = false;
@@ -90,6 +101,8 @@ export async function applySettingsImport(body: ImportRequestBody, importerId: s
   // after commit (resolution hits Sonarr/Radarr/AniList — too slow for the txn).
   const createdReleaseRelative: ScheduledAlert[] = [];
   const updatedUserIds: string[] = [];
+  const serviceChanges = { jellyfinAddress: false };
+  let jellyfinSignOut: ImportOutcome['jellyfinSignOut'] = null;
 
   // Validate and normalize the large sections before the transaction opens,
   // so it spends its time, and holds its locks, only on writes.
@@ -123,7 +136,7 @@ export async function applySettingsImport(body: ImportRequestBody, importerId: s
 
       if (Array.isArray(body.serviceConnections)) {
         for (const conn of body.serviceConnections) {
-          const applied = await applyServiceConnectionInTxn(tx, conn, skipped);
+          const applied = await applyServiceConnectionInTxn(tx, conn, skipped, serviceChanges);
           if (applied) appliedServices.push(applied);
         }
       }
@@ -188,6 +201,11 @@ export async function applySettingsImport(body: ImportRequestBody, importerId: s
         appliedUsers = await applyUsersInTxn(tx, body.users, skipped, importerId, createdReleaseRelative, accountContent, updatedUserIds);
       }
 
+      // Last, so accounts linked by this import are signed out too.
+      if (serviceChanges.jellyfinAddress) {
+        jellyfinSignOut = await revokeJellyfinLinkedSessions(tx, keepSessionId);
+      }
+
       return innerAppSettings;
     }, { timeout: IMPORT_TRANSACTION_TIMEOUT_MS, maxWait: IMPORT_TRANSACTION_MAX_WAIT_MS });
   } catch (error) {
@@ -242,5 +260,6 @@ export async function applySettingsImport(body: ImportRequestBody, importerId: s
     skipped,
     discoverLayoutApplied,
     followUps,
+    jellyfinSignOut,
   };
 }

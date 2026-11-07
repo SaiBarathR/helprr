@@ -655,6 +655,34 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     expect(user.permissions).toEqual({ 'music.delete': true });
   });
 
+  it("a new Jellyfin address signs out every Jellyfin-linked account but the importer's session; the same one signs out nobody", async () => {
+    await prisma.serviceConnection.create({ data: { type: 'JELLYFIN', label: 'Jellyfin', url: 'http://jellyfin.lan:8096', apiKey: 'old-key' } });
+    await prisma.user.update({ where: { id: IMPORTER_ID }, data: { jellyfinUserId: 'jf-importer' } });
+    await prisma.user.create({ data: { id: 'linked', username: 'linked', displayName: 'Linked', jellyfinUserId: 'jf-linked', jellyfinToken: 'enc:v1:old-server-token' } });
+    await prisma.user.create({ data: { id: 'local', username: 'local', displayName: 'Local' } });
+    await prisma.session.createMany({ data: [
+      { id: 'keep', userId: IMPORTER_ID }, { id: 'importer-other', userId: IMPORTER_ID },
+      { id: 'linked-1', userId: 'linked' }, { id: 'linked-2', userId: 'linked' }, { id: 'local-1', userId: 'local' },
+    ] });
+    const revoked = async () => (await prisma.session.findMany({ where: { revokedAt: { not: null } }, orderBy: { id: 'asc' } })).map((r) => r.id);
+
+    const same = await runImport.applySettingsImport({
+      serviceConnections: [{ type: 'JELLYFIN', label: 'Jellyfin', url: 'http://jellyfin.lan:8096/' }],
+    } as never, IMPORTER_ID, 'keep');
+    expect(same.jellyfinSignOut).toBeNull();
+    expect(await revoked()).toEqual([]);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: 'linked' } })).jellyfinToken).toBe('enc:v1:old-server-token');
+
+    const moved = await runImport.applySettingsImport({
+      serviceConnections: [{ type: 'JELLYFIN', label: 'Jellyfin', url: 'http://other.lan:8096', apiKey: 'new-key' }],
+    } as never, IMPORTER_ID, 'keep');
+    expect(moved.jellyfinSignOut).toEqual({ sessions: 3, accounts: 2 });
+    expect(await revoked()).toEqual(['importer-other', 'linked-1', 'linked-2']);
+    expect((await prisma.serviceConnection.findFirstOrThrow({ where: { type: 'JELLYFIN' } })).url).toBe('http://other.lan:8096');
+    // Its Jellyfin token was for the old server.
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: 'linked' } })).jellyfinToken).toBeNull();
+  });
+
   it('imports as many user accounts as the document limits allow within the transaction timeout', async () => {
     const { validateSettingsImportComplexity } = await import('@/lib/settings-import-validation');
     const account = (i: number) => ({
