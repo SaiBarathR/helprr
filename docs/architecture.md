@@ -357,12 +357,15 @@ as at password sign-in (Prisma's `mode: 'insensitive'` is an unescaped `ILIKE`, 
 folding would let a proxy's `Admin` in as `admin`); the per-name backoff is skipped, since
 the proxy vouched for the name. A disabled or pending account or none is `LOGIN_FAILED`
 method `trusted-header-no-account`, and nothing is ever provisioned. Header names HTTP,
-Next.js or Helprr already use (`Cookie`, `User-Agent`, `X-Forwarded-For`, `sec-*`, …) are
+Next.js or Helprr already use (`Cookie`, `User-Agent`, `X-Forwarded-For`, `Range`, `If-*`, `sec-*`, …) are
 refused at config time. Success makes a normal session (`LOGIN_SUCCEEDED`, fields
 `['trusted-header']`) without two-step sign-in: the proxy's sign-in is the second factor.
-Its JWT carries the username in claim `tu` (`src/lib/trusted-session.ts`): the request proxy
-and `decodeToken` refuse it unless the user header still names exactly that user, so a
-sign-out at the proxy, or another user signing in there, ends it on the next request.
+Its JWT carries the username in claim `tu` and an HMAC stamp of the proxy secret in `ts`
+(`src/lib/trusted-session.ts`): the request proxy and `decodeToken` refuse it unless
+trusted-header sign-in is still validly on with the same secret and the user header still
+names exactly that user, so a sign-out at the proxy, another user signing in there, a
+changed secret or the feature turned off ends it on the next request. Only sessions made
+this way are bound; a password session on the same browser is not.
 The logger redacts the configured secret wherever it appears and the default header name
 as a key; request headers are never logged.
 

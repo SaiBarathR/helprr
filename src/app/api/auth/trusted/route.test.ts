@@ -116,7 +116,7 @@ describe('trusted-header sign-in', () => {
       role: 'member',
       userAgent: 'Safari',
       ip: '203.0.113.9',
-      trustedUsername: 'Alice',
+      trusted: { username: 'Alice', sessionStamp: expect.stringMatching(/^[\w-]{22}$/) },
     });
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: 'LOGIN_SUCCEEDED',

@@ -111,7 +111,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   const userAgent = request.headers.get('user-agent');
-  const token = await createSession({ userId: user.id, role: user.role, userAgent, ip, trustedUsername: user.username });
+  const token = await createSession({
+    userId: user.id,
+    role: user.role,
+    userAgent,
+    ip,
+    trusted: { username: user.username, sessionStamp: config.sessionStamp },
+  });
   await recordSecurityEvent(request, {
     actor: user,
     action: 'LOGIN_SUCCEEDED',

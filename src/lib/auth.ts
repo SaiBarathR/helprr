@@ -11,7 +11,12 @@ import { verifyPasswordHash } from '@/lib/password';
 import { can } from '@/lib/permissions';
 import type { Capability } from '@/lib/capabilities';
 import { SESSION_DURATION_SECONDS, SESSION_IDLE_TIMEOUT_SECONDS } from '@/lib/session-policy';
-import { TRUSTED_SESSION_CLAIM, trustedSessionStillVouched } from '@/lib/trusted-session';
+import {
+  TRUSTED_SESSION_STAMP_CLAIM,
+  TRUSTED_SESSION_USER_CLAIM,
+  trustedSessionClaims,
+  trustedSessionStillVouched,
+} from '@/lib/trusted-session';
 
 const SESSION_DURATION = SESSION_DURATION_SECONDS;
 const COOKIE_NAME = 'helprr-session';
@@ -39,8 +44,8 @@ export interface CreateSessionInput {
   role: UserRole;
   userAgent?: string | null;
   ip?: string | null;
-  /** Trusted-header sign-in: the username the proxy named, which it must keep naming. */
-  trustedUsername?: string;
+  /** Trusted-header sign-in: the username the proxy named, which it must keep naming, and the secret's stamp. */
+  trusted?: { username: string; sessionStamp: string };
 }
 
 export async function createSession(input: CreateSessionInput): Promise<string> {
@@ -61,7 +66,7 @@ export async function createSession(input: CreateSessionInput): Promise<string> 
     sid: session.id,
     uid: input.userId,
     role: input.role,
-    ...(input.trustedUsername ? { [TRUSTED_SESSION_CLAIM]: input.trustedUsername } : {}),
+    ...(input.trusted ? trustedSessionClaims(input.trusted.username, input.trusted.sessionStamp) : {}),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -82,8 +87,8 @@ async function decodeToken(token: string): Promise<DecodedToken | null> {
     // pending token) do, and must never count as a session.
     if (payload.aud !== undefined) return null;
     // Read only for a trusted-header session, so other sessions never need the request headers.
-    const claim = payload[TRUSTED_SESSION_CLAIM];
-    if (claim !== undefined && !trustedSessionStillVouched(claim, await headers())) return null;
+    const trusted = payload[TRUSTED_SESSION_USER_CLAIM] !== undefined || payload[TRUSTED_SESSION_STAMP_CLAIM] !== undefined;
+    if (trusted && !trustedSessionStillVouched(payload, await headers())) return null;
     const sid = typeof payload.sid === 'string' ? payload.sid : null;
     return { sid };
   } catch {

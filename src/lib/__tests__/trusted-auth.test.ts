@@ -37,6 +37,7 @@ describe('trusted-header sign-in configuration', () => {
       userHeader: 'remote-user',
       secretHeader: 'x-helprr-proxy-secret',
       secretDigest: expect.any(Buffer),
+      sessionStamp: expect.stringMatching(/^[\w-]{22}$/),
     });
     expect(trustedAuthConfigProblem(BASE)).toBeNull();
   });
@@ -56,6 +57,9 @@ describe('trusted-header sign-in configuration', () => {
     [{ ...BASE, HELPRR_TRUSTED_AUTH_HEADER: 'Cookie' }, 'HELPRR_TRUSTED_AUTH_HEADER names a header with another use'],
     [{ ...BASE, HELPRR_TRUSTED_AUTH_HEADER: 'Authorization' }, 'HELPRR_TRUSTED_AUTH_HEADER names a header with another use'],
     [{ ...BASE, HELPRR_TRUSTED_AUTH_HEADER: 'sec-fetch-site' }, 'HELPRR_TRUSTED_AUTH_HEADER names a header with another use'],
+    [{ ...BASE, HELPRR_TRUSTED_AUTH_SECRET_HEADER: 'Range' }, 'SECRET_HEADER names a header with another use'],
+    [{ ...BASE, HELPRR_TRUSTED_AUTH_SECRET_HEADER: 'If-None-Match' }, 'SECRET_HEADER names a header with another use'],
+    [{ ...BASE, HELPRR_TRUSTED_AUTH_SECRET_HEADER: 'x-matched-path' }, 'SECRET_HEADER names a header with another use'],
   ])('is off with a warning that names the variable, never the value (%#)', (env, problem) => {
     expect(getTrustedAuthConfig(env)).toBeNull();
     const message = trustedAuthConfigProblem(env)!;

@@ -240,7 +240,8 @@ for anyone who reaches it some other way.
 - Sign-ins show in **Settings → Operation audit → Security** as *through the sign-in
   proxy*. A request with a wrong secret is recorded and counts toward the sign-in limits,
   like a wrong password: about 30 in 15 minutes pause every sign-in, password ones too.
-  When you change the secret, change it in the proxy and in `.env` together.
+  When you change the secret, change it in the proxy and in `.env` together; that also
+  ends every session made with the old one, as does turning the feature off.
 
 The examples use Authelia's `Remote-User` header; Authentik's proxy outpost sends
 `X-authentik-username`. Replace `the-secret` with your `HELPRR_TRUSTED_AUTH_SECRET`.

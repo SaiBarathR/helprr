@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { isKnownPlaceholderSecret } from '@/lib/runtime-config';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -19,8 +19,9 @@ export const TRUSTED_AUTH_SECRET_MIN_LENGTH = 32;
 // An HTTP field name (RFC 9110 token).
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 // Headers that HTTP, Next.js or Helprr already give a meaning, or store (the
-// user agent is kept on the session and in the audit trail): never usable here.
-const RESERVED_HEADER = /^(?:host|cookie|authorization|proxy-authorization|user-agent|origin|referer|content-[a-z-]+|connection|upgrade|keep-alive|transfer-encoding|te|trailer|expect|accept(?:-[a-z-]+)?|forwarded|x-forwarded-(?:for|proto|host|port|prefix|uri|method|ssl|scheme|server)|x-real-ip|x-request-id|x-nonce|content-security-policy|rsc|next-[a-z-]+|x-middleware-[a-z-]+|x-nextjs-[a-z-]+|sec-[a-z-]+)$/i;
+// user agent is kept on the session and in the audit trail; Range and If-*
+// are passed on to Jellyfin): never usable here.
+const RESERVED_HEADER = /^(?:host|cookie|authorization|proxy-authorization|user-agent|origin|referer|content-[a-z-]+|connection|upgrade|keep-alive|transfer-encoding|te|trailer|expect|accept(?:-[a-z-]+)?|forwarded|x-forwarded-(?:for|proto|host|port|prefix|uri|method|ssl|scheme|server)|x-real-ip|x-request-id|x-nonce|content-security-policy|rsc|next-[a-z-]+|x-middleware-[a-z-]+|x-nextjs-[a-z-]+|x-matched-path|x-invoke-[a-z-]+|sec-[a-z-]+|range|if-[a-z-]+)$/i;
 // Printable ASCII without spaces: proxies trim and may re-encode anything else,
 // so such a secret could never match.
 const SECRET_VALUE = /^[\x21-\x7e]+$/;
@@ -30,6 +31,12 @@ export interface TrustedAuthConfig {
   userHeader: string;
   secretHeader: string;
   secretDigest: Buffer;
+  /**
+   * Stamped into each session this sign-in makes. Derived from the secret
+   * (an HMAC, so the token, which its holder can read, reveals nothing of it):
+   * changing the secret ends those sessions.
+   */
+  sessionStamp: string;
 }
 
 type TrustedAuthState =
@@ -74,6 +81,7 @@ function readTrustedAuth(env: RuntimeEnvironment): TrustedAuthState {
       userHeader: userHeader.toLowerCase(),
       secretHeader: secretHeader.toLowerCase(),
       secretDigest: digest(secret),
+      sessionStamp: createHmac('sha256', secret).update('helprr:trusted-session').digest('base64url').slice(0, 22),
     },
   };
 }
