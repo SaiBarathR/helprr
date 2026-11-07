@@ -373,7 +373,11 @@ admin's two-step sign-in (`DELETE /api/users/[id]/totp`, body `currentPassword`/
 (`import-users`, any section present) or a Jellyfin entry that adds Jellyfin or gives it
 another address or key (`import-jellyfin`), and adding Jellyfin or changing its address or
 key in `POST /api/services` (`jellyfin-connection`), which is admin-only whatever
-capabilities a member holds (a member may still re-save it unchanged). Each write applies
+capabilities a member holds (a member may still re-save it unchanged). Deleting the
+Jellyfin connection (`DELETE /api/services/[id]`) and setting or changing its external URL
+(`POST /api/services`, `PUT /api/services/external-url`, which also clears it) are
+admin-only too, with no step-up; a member's save carrying the stored external URL writes
+nothing. Each write applies
 only to the role (and template, or Jellyfin address and key) it read, else 409. Any status
 change ends every session of the user in the same transaction (a disable, so turning the
 account back on does not revive them; turning it on, for sessions left from an older

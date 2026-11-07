@@ -121,9 +121,39 @@ describe('a member with settings.instances', () => {
     }));
     expect(mocks.tx.session.updateMany).not.toHaveBeenCalled();
   });
+
+  // The external URL builds the "Open in Jellyfin" links everyone follows.
+  it.each([
+    ['set', null],
+    ['change', 'https://jf.example.com'],
+  ])('cannot %s the external URL', async (_label, current) => {
+    mocks.findFirst.mockResolvedValue({ ...stored, externalUrl: current });
+    const res = await save({ url: OLD_URL, apiKey: maskApiKey(STORED_KEY), externalUrl: 'https://evil.example' });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/Only an admin/);
+    expect(mocks.jfUser).not.toHaveBeenCalled();
+    expectNothingSaved();
+  });
+
+  it('re-saving with the stored external URL leaves it unwritten', async () => {
+    mocks.findFirst.mockResolvedValue({ ...stored, externalUrl: 'https://jf.example.com' });
+    const res = await save({ url: OLD_URL, apiKey: maskApiKey(STORED_KEY), externalUrl: 'https://jf.example.com/' });
+    expect(res.status).toBe(200);
+    const { data } = mocks.tx.serviceConnection.update.mock.calls[0][0];
+    expect(data).not.toHaveProperty('externalUrl');
+  });
 });
 
 describe('an admin', () => {
+  it('sets the external URL with no step-up', async () => {
+    const res = await save({ url: OLD_URL, apiKey: maskApiKey(STORED_KEY), externalUrl: 'https://jf.example.com/' });
+    expect(res.status).toBe(200);
+    expect(mocks.stepUp).not.toHaveBeenCalled();
+    expect(mocks.tx.serviceConnection.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ externalUrl: 'https://jf.example.com' }),
+    }));
+  });
+
   it('passes the step-up a refusal from the password check, and saves nothing', async () => {
     mocks.stepUp.mockResolvedValue(NextResponse.json({ error: 'needs password', needsStepUp: true, needsCode: true }, { status: 403 }));
     const res = await save({ url: 'http://new.lan:8096', apiKey: 'new-key' });

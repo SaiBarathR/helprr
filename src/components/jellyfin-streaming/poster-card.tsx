@@ -106,7 +106,7 @@ function ClassicPosterCard({
         <span className="pointer-events-none absolute inset-0 z-20 bg-black/0 transition-colors group-hover:bg-black/35" />
 
         {upcoming && (
-          <span className="absolute top-2 left-2 z-20 rounded-md border border-white/15 bg-black/45 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[var(--hpr-green)] uppercase backdrop-blur-md">
+          <span className="absolute top-2 left-2 z-20 hpr-on-dark rounded-md border border-white/15 bg-black/45 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[var(--hpr-green)] uppercase backdrop-blur-md">
             Upcoming
           </span>
         )}
@@ -117,14 +117,14 @@ function ClassicPosterCard({
         )}
         {item.UserData?.Played && (
           <span
-            className="absolute top-2 right-2 z-20 flex size-5 items-center justify-center rounded-full border border-white/15 bg-black/45 text-[var(--hpr-green)] backdrop-blur-md"
+            className="absolute top-2 right-2 z-20 hpr-on-dark flex size-5 items-center justify-center rounded-full border border-white/15 bg-black/45 text-[var(--hpr-green)] backdrop-blur-md"
             title="Watched"
           >
             <Check className="size-3.5" strokeWidth={3} />
           </span>
         )}
         {typeof unplayed === 'number' && unplayed > 0 && (
-          <span className="absolute top-2 right-2 z-20 min-w-5 rounded-full border border-white/15 bg-black/45 px-1.5 text-center text-[11px] font-semibold text-[var(--hpr-blue)] backdrop-blur-md">
+          <span className="absolute top-2 right-2 z-20 hpr-on-dark min-w-5 rounded-full border border-white/15 bg-black/45 px-1.5 text-center text-[11px] font-semibold text-[var(--hpr-blue)] backdrop-blur-md">
             {unplayed}
           </span>
         )}

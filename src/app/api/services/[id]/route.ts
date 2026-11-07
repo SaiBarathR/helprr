@@ -14,6 +14,11 @@ async function deleteHandler(request: NextRequest, ctx: { params: Promise<{ id: 
   const { id } = await ctx.params;
   const existing = await prisma.serviceConnection.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  // Removing Jellyfin turns "Sign in with Jellyfin" off for everyone, so it is
+  // for an admin, as adding it is (POST /api/services).
+  if (existing.type === 'JELLYFIN' && auth.user.role !== 'admin') {
+    return NextResponse.json({ error: 'Only an admin can delete the Jellyfin connection.' }, { status: 403 });
+  }
 
   await prisma.serviceConnection.delete({ where: { id } }); // PollingState cascades
   await recordSecurityEvent(request, {
