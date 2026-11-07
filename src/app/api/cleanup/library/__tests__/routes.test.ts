@@ -173,6 +173,14 @@ describe('Leaving soon shelf and Keep', () => {
     expect(mocks.service.keepLeavingSoonItem).not.toHaveBeenCalled();
   });
 
+  it('answers 409 while Delete now holds the title', async () => {
+    mocks.user = member();
+    mocks.findItem.mockResolvedValue({ id: 'ls1', mediaType: 'movie' });
+    const { LeavingSoonClaimedError } = await import('@/lib/library-cleanup/service');
+    mocks.service.keepLeavingSoonItem.mockRejectedValue(new LeavingSoonClaimedError());
+    expect((await keep.POST(req('/x', 'POST'), keepCtx('ls1'))).status).toBe(409);
+  });
+
   it('reports an arr failure and leaves the title listed', async () => {
     mocks.user = member();
     mocks.findItem.mockResolvedValue({ id: 'ls1', mediaType: 'movie' });

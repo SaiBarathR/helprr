@@ -71,15 +71,22 @@ function plural(n: number, word: string): string {
  * Anything that cannot be confirmed safe is excluded (unknown dates, no match in
  * Jellyfin, no files).
  */
-export function exclusionsFor(t: TitleFacts, unwatchedDays: number, keepTag: string, now: number): string[] {
+export function exclusionsFor(
+  t: TitleFacts,
+  unwatchedDays: number,
+  keepTag: string,
+  now: number,
+  /** For a marked title: when it was marked, so a watch or request during the countdown always protects it. */
+  markedAt?: Date,
+): string[] {
   const out: string[] = [];
-  const windowStart = now - unwatchedDays * DAY_MS;
+  const windowStart = Math.min(now - unwatchedDays * DAY_MS, markedAt?.getTime() ?? Infinity);
   if (t.keepTagged) out.push(`Tagged "${keepTag}"`);
   if (t.watchlistUserIds.length > 0) out.push('On a watchlist');
   if (t.openRequest) out.push('Open request');
-  if (t.latestRequestAt && t.latestRequestAt.getTime() >= windowStart) out.push(`Requested in the last ${plural(unwatchedDays, 'day')}`);
+  if (t.latestRequestAt && t.latestRequestAt.getTime() >= windowStart) out.push(markedAt ? 'Requested recently' : `Requested in the last ${plural(unwatchedDays, 'day')}`);
   if (t.downloading) out.push('Downloading');
-  if (t.lastWatchedAt && t.lastWatchedAt.getTime() >= windowStart) out.push(`Watched in the last ${plural(unwatchedDays, 'day')}`);
+  if (t.lastWatchedAt && t.lastWatchedAt.getTime() >= windowStart) out.push(markedAt ? 'Watched recently' : `Watched in the last ${plural(unwatchedDays, 'day')}`);
   if (t.watchedWithoutDate) out.push('Watched, date unknown');
   if (!t.inJellyfin) out.push('Not found in Jellyfin');
   if (!(t.sizeBytes > 0)) out.push('No files on disk');

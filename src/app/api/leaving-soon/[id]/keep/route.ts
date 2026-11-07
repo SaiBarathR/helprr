@@ -4,7 +4,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/permissions';
 import type { Capability } from '@/lib/capabilities';
-import { keepLeavingSoonItem } from '@/lib/library-cleanup/service';
+import { keepLeavingSoonItem, LeavingSoonClaimedError } from '@/lib/library-cleanup/service';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 // Who may keep a title: anyone who may view that library. Unknown types fail closed.
@@ -26,6 +26,9 @@ async function postHandler(_req: NextRequest, { params }: { params: Promise<{ id
     await keepLeavingSoonItem(item, { id: auth.user.id, username: auth.user.username });
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (error instanceof LeavingSoonClaimedError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     return upstreamErrorResponse(error, 'Could not set the keep tag');
   }
 }

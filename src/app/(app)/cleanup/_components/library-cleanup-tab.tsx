@@ -59,6 +59,8 @@ interface DeletePreviewResponse {
 }
 
 const CONFIG_KEY = ['cleanup', 'library', 'config'] as const;
+// The most titles one mark request takes (MAX_MARK_ITEMS on the server).
+const MAX_MARK = 500;
 const PROTECTED = [
   'The keep tag in Sonarr/Radarr',
   'Anything on anyone’s watchlist',
@@ -155,9 +157,11 @@ export function LibraryCleanupTab({ onDirtyChange }: { onDirtyChange?: (dirty: b
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [marking, setMarking] = useState(false);
 
-  const leaving = useQuery({ queryKey: leavingSoonQueryKey(), queryFn: () => fetchLeavingSoon() });
+  const leaving = useQuery({ queryKey: leavingSoonQueryKey(), queryFn: () => fetchLeavingSoon(), refetchInterval: 60_000 });
   const keep = useKeepLeavingSoon();
-  const [now] = useState(() => Date.now());
+  // Countdowns and "Delete now" go by when the list was last read, so a title
+  // that becomes due while the page is open shows up on the next read.
+  const now = leaving.dataUpdatedAt;
   const dueCount = (leaving.data ?? []).filter((item) => Date.parse(item.deleteAfter) <= now).length;
 
   const [deletePreview, setDeletePreview] = useState<DeletePreviewResponse | null>(null);
@@ -167,6 +171,14 @@ export function LibraryCleanupTab({ onDirtyChange }: { onDirtyChange?: (dirty: b
   const selectable = useMemo(() => (preview?.candidates ?? []).filter((c) => !c.leavingSoon), [preview]);
   const selectedBytes = selectable.filter((c) => selected.has(c.key)).reduce((sum, c) => sum + c.sizeBytes, 0);
 
+  if (configQuery.isError) {
+    return (
+      <div className="py-12 text-center text-sm text-muted-foreground">
+        <p>Couldn’t load the library cleanup settings.</p>
+        <Button variant="outline" size="sm" className="mt-3" onClick={() => void configQuery.refetch()}>Retry</Button>
+      </div>
+    );
+  }
   if (configQuery.isLoading || !draft) {
     return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   }
@@ -300,7 +312,7 @@ export function LibraryCleanupTab({ onDirtyChange }: { onDirtyChange?: (dirty: b
           <div className="grouped-row">
             <div className="min-w-0 flex-1">
               <Label htmlFor="library-keep-tag">Keep tag</Label>
-              <p className="text-xs text-muted-foreground mt-0.5">Sonarr/Radarr tag that protects a title. Keep adds it.</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Sonarr/Radarr tag that protects a title. Keep adds it. Changing it stops protecting titles kept with the old tag.</p>
             </div>
             <Input id="library-keep-tag" className="w-28 sm:w-36 shrink-0" value={draft.keepTag}
               onChange={(e) => setDraft({ ...draft, keepTag: e.target.value.toLowerCase() })} />
@@ -344,10 +356,10 @@ export function LibraryCleanupTab({ onDirtyChange }: { onDirtyChange?: (dirty: b
         <div className="grouped-section-title">Preview</div>
         <div className="grouped-section-content">
           <div className="grouped-row grouped-row-stack-mobile gap-2">
-            <Tabs value={previewType} onValueChange={(v) => { setPreviewType(v as LibraryMediaType); setPreview(null); setSelected(new Set()); }}>
+            <Tabs value={previewType} onValueChange={(v) => { if (previewing || marking) return; setPreviewType(v as LibraryMediaType); setPreview(null); setSelected(new Set()); }}>
               <TabsList variant="segmented">
-                <TabsTrigger value="movie">Movies</TabsTrigger>
-                <TabsTrigger value="series">Series</TabsTrigger>
+                <TabsTrigger value="movie" disabled={previewing || marking}>Movies</TabsTrigger>
+                <TabsTrigger value="series" disabled={previewing || marking}>Series</TabsTrigger>
               </TabsList>
             </Tabs>
             <Button variant="secondary" onClick={() => void runPreview()} disabled={previewing || dirty}>
@@ -375,11 +387,11 @@ export function LibraryCleanupTab({ onDirtyChange }: { onDirtyChange?: (dirty: b
                 <div className="grouped-row">
                   <label className="flex items-center gap-2 text-sm">
                     <Checkbox
-                      checked={selected.size > 0 && selected.size === selectable.length}
-                      onCheckedChange={(v) => setSelected(v ? new Set(selectable.map((c) => c.key)) : new Set())}
+                      checked={selected.size > 0 && selected.size === Math.min(selectable.length, MAX_MARK)}
+                      onCheckedChange={(v) => setSelected(v ? new Set(selectable.slice(0, MAX_MARK).map((c) => c.key)) : new Set())}
                       aria-label="Select all"
                     />
-                    Select all
+                    {selectable.length > MAX_MARK ? `Select the largest ${MAX_MARK}` : 'Select all'}
                   </label>
                   <Button size="sm" onClick={() => void mark()} disabled={selected.size === 0 || marking}>
                     {marking && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -395,7 +407,7 @@ export function LibraryCleanupTab({ onDirtyChange }: { onDirtyChange?: (dirty: b
                     checked={c.leavingSoon || selected.has(c.key)}
                     onCheckedChange={(v) => setSelected((prev) => {
                       const next = new Set(prev);
-                      if (v) next.add(c.key); else next.delete(c.key);
+                      if (v && next.size < MAX_MARK) next.add(c.key); else if (!v) next.delete(c.key);
                       return next;
                     })}
                     aria-label={`Select ${c.title}`}

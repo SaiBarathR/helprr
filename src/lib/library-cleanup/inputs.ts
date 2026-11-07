@@ -31,6 +31,8 @@ export class LibraryCleanupUnavailableError extends Error {
 
 export interface GatheredFacts {
   titles: TitleFacts[];
+  /** Per instance read: the keep tag's id there (null when the tag does not exist yet). */
+  keepTagIds: Map<string, number | null>;
   /** Non-blocking notes, e.g. Seerr is not connected so no requests were checked. */
   warnings: string[];
 }
@@ -41,8 +43,8 @@ function fail(what: string, error?: unknown): never {
 }
 
 function posterOf(images: MediaImage[] | undefined): string | null {
-  const poster = images?.find((image) => image.coverType === 'poster');
-  return poster?.remoteUrl || poster?.url || null;
+  // Only the remote URL: the local one is a path on the arr that the browser cannot load.
+  return images?.find((image) => image.coverType === 'poster')?.remoteUrl || null;
 }
 
 function positive(value: unknown): number | null {
@@ -53,6 +55,8 @@ function positive(value: unknown): number | null {
 
 interface ArrTitle {
   connection: ServiceConnection;
+  /** Every name the arr knows the title by, for matching watchlist saves by title. */
+  names: string[];
   facts: Omit<TitleFacts, 'inJellyfin' | 'lastWatchedAt' | 'watchedWithoutDate' | 'watchlistUserIds' | 'openRequest' | 'latestRequestAt' | 'requestedBy' | 'requesterUserIds'>;
 }
 
@@ -91,7 +95,13 @@ async function readArrInstance<T>(
   }
 }
 
-async function readArrTitles(mediaType: LibraryMediaType, keepTag: string): Promise<ArrTitle[]> {
+type AltTitles = { alternateTitles?: Array<{ title?: string }> };
+
+function namesOf(title: string, ...more: Array<string | undefined>): string[] {
+  return [title, ...more].filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
+}
+
+async function readArrTitles(mediaType: LibraryMediaType, keepTag: string, keepTagIds: Map<string, number | null>): Promise<ArrTitle[]> {
   const out: ArrTitle[] = [];
   if (mediaType === 'movie') {
     const instances = await getRadarrClients();
@@ -100,9 +110,11 @@ async function readArrTitles(mediaType: LibraryMediaType, keepTag: string): Prom
       const { items, keepTagId, downloading } = await readArrInstance<RadarrMovie>(
         'Radarr', connection, client, () => client.getMovies(), (r) => positive(r.movieId) ?? undefined, keepTag,
       );
+      keepTagIds.set(connection.id, keepTagId);
       for (const movie of items) {
         out.push({
           connection,
+          names: namesOf(movie.title, movie.originalTitle, ...((movie as AltTitles).alternateTitles ?? []).map((a) => a.title)),
           facts: {
             mediaType: 'movie',
             service: 'RADARR',
@@ -131,10 +143,12 @@ async function readArrTitles(mediaType: LibraryMediaType, keepTag: string): Prom
       const { items, keepTagId, downloading } = await readArrInstance<SonarrSeries>(
         'Sonarr', connection, client, () => client.getSeries(), (r) => positive(r.seriesId) ?? undefined, keepTag,
       );
+      keepTagIds.set(connection.id, keepTagId);
       for (const series of items) {
         const rating = series.ratings?.value;
         out.push({
           connection,
+          names: namesOf(series.title, ...((series as AltTitles).alternateTitles ?? []).map((a) => a.title)),
           facts: {
             mediaType: 'series',
             service: 'SONARR',
@@ -182,11 +196,10 @@ function itemsOf(response: JellyfinItemsResponse | undefined, what: string): Jel
   return response.Items;
 }
 
-function addPlay(map: Map<string, WatchState>, key: string, item: JellyfinItem) {
+function addPlay(map: Map<string, WatchState>, key: string, item: JellyfinItem, fromPlayedFilter: boolean) {
   const data = item.UserData;
-  if (!data) return;
-  const played = Boolean(data.Played) || (data.PlayCount ?? 0) > 0 || (data.PlaybackPositionTicks ?? 0) > 0;
-  const at = data.LastPlayedDate ? new Date(data.LastPlayedDate) : null;
+  const played = fromPlayedFilter || Boolean(data?.Played) || (data?.PlayCount ?? 0) > 0 || (data?.PlaybackPositionTicks ?? 0) > 0;
+  const at = data?.LastPlayedDate ? new Date(data.LastPlayedDate) : null;
   const validAt = at && Number.isFinite(at.getTime()) ? at : null;
   if (!played && !validAt) return;
   const state = map.get(key) ?? { lastWatchedAt: null, watchedWithoutDate: false };
@@ -198,11 +211,52 @@ function addPlay(map: Map<string, WatchState>, key: string, item: JellyfinItem) 
   map.set(key, state);
 }
 
+const PLAY_PAGE = 500;
+const MAX_PLAY_PAGES = 200;
+
+/**
+ * Every play by one Jellyfin user. Two reads: everything marked played (also
+ * catches a play Jellyfin kept no date for), and every item with a play date,
+ * newest first, paged until the first undated item. The second one is what
+ * catches a play in progress or stopped early: Jellyfin counts it (PlayCount,
+ * LastPlayedDate) without marking it played or resumable.
+ */
+async function readUserPlays(client: JellyfinClient, playType: string, userName: string): Promise<Array<{ item: JellyfinItem; fromPlayedFilter: boolean }>> {
+  const out: Array<{ item: JellyfinItem; fromPlayedFilter: boolean }> = [];
+  const played = await client.queryItems({ IncludeItemTypes: playType, Recursive: true, Filters: 'IsPlayed', EnableUserData: true, EnableImages: false });
+  for (const item of itemsOf(played, `plays for ${userName}`)) out.push({ item, fromPlayedFilter: true });
+  for (let page = 0; page < MAX_PLAY_PAGES; page++) {
+    const response = await client.queryItems({
+      IncludeItemTypes: playType,
+      Recursive: true,
+      SortBy: 'DatePlayed',
+      SortOrder: 'Descending',
+      StartIndex: page * PLAY_PAGE,
+      Limit: PLAY_PAGE,
+      EnableUserData: true,
+      EnableImages: false,
+    });
+    if (!response || !Array.isArray(response.Items)) fail(`Jellyfin plays for ${userName}`);
+    for (const item of response.Items) {
+      if (!item.UserData?.LastPlayedDate) return out;
+      out.push({ item, fromPlayedFilter: false });
+    }
+    const total = typeof response.TotalRecordCount === 'number' ? response.TotalRecordCount : null;
+    if (response.Items.length < PLAY_PAGE) {
+      if (total !== null && (page * PLAY_PAGE + response.Items.length) < total) fail(`Jellyfin plays for ${userName} (incomplete)`);
+      return out;
+    }
+  }
+  fail(`Jellyfin plays for ${userName} (too many pages)`);
+}
+
 /**
  * Plays by every Jellyfin user (not only those linked to Helprr), keyed by the
- * Jellyfin movie or series id, plus the provider-id index of the library.
+ * Jellyfin movie or series id, plus the provider-id index of the library as
+ * every user sees it (a library one user cannot see is still indexed). What is
+ * playing right now counts as watched now.
  */
-async function readJellyfin(mediaType: LibraryMediaType): Promise<{
+async function readJellyfin(mediaType: LibraryMediaType, now: number): Promise<{
   byProvider: Map<string, string[]>;
   plays: Map<string, WatchState>;
 }> {
@@ -219,42 +273,35 @@ async function readJellyfin(mediaType: LibraryMediaType): Promise<{
   const headers = getConnectionHeaders(connection);
   try {
     const libraryType = mediaType === 'movie' ? 'Movie' : 'Series';
-    const [users, library] = await Promise.all([
-      client.getUsers(),
-      client.queryItems({ IncludeItemTypes: libraryType, Recursive: true, Fields: 'ProviderIds', EnableUserData: false, EnableImages: false }),
-    ]);
-    if (!Array.isArray(users) || users.length === 0) fail('Jellyfin users');
-
-    const byProvider = new Map<string, string[]>();
-    for (const item of itemsOf(library, 'library')) {
-      const ids = item.ProviderIds ?? {};
-      for (const [provider, value] of [['tmdb', ids.Tmdb], ['tvdb', ids.Tvdb], ['imdb', ids.Imdb?.toLowerCase()]] as const) {
-        if (!value) continue;
-        const key = `${provider}:${value}`;
-        byProvider.set(key, [...(byProvider.get(key) ?? []), item.Id]);
-      }
-    }
-
-    const plays = new Map<string, WatchState>();
     const playType = mediaType === 'movie' ? 'Movie' : 'Episode';
+    const [users, sessions] = await Promise.all([client.getUsers(), client.getSessions()]);
+    if (!Array.isArray(users) || users.length === 0) fail('Jellyfin users');
+    if (!Array.isArray(sessions)) fail('Jellyfin sessions');
+
+    const byProvider = new Map<string, Set<string>>();
+    const plays = new Map<string, WatchState>();
     for (const user of users) {
       const userClient = new JellyfinClient(connection.url, connection.apiKey, user.Id, headers);
-      // Finished plays and partly watched ones; Jellyfin ANDs filters, so two reads.
-      for (const filter of ['IsPlayed', 'IsResumable']) {
-        const response = await userClient.queryItems({
-          IncludeItemTypes: playType,
-          Recursive: true,
-          Filters: filter,
-          EnableUserData: true,
-          EnableImages: false,
-        });
-        for (const item of itemsOf(response, `plays for ${user.Name}`)) {
-          const key = mediaType === 'movie' ? item.Id : item.SeriesId;
-          if (key) addPlay(plays, key, item);
+      const library = await userClient.queryItems({ IncludeItemTypes: libraryType, Recursive: true, Fields: 'ProviderIds', EnableUserData: false, EnableImages: false });
+      for (const item of itemsOf(library, `library for ${user.Name}`)) {
+        const ids = item.ProviderIds ?? {};
+        for (const [provider, value] of [['tmdb', ids.Tmdb], ['tvdb', ids.Tvdb], ['imdb', ids.Imdb?.toLowerCase()]] as const) {
+          if (!value) continue;
+          const key = `${provider}:${value}`;
+          byProvider.set(key, (byProvider.get(key) ?? new Set()).add(item.Id));
         }
       }
+      for (const { item, fromPlayedFilter } of await readUserPlays(userClient, playType, user.Name)) {
+        const key = mediaType === 'movie' ? item.Id : item.SeriesId;
+        if (key) addPlay(plays, key, item, fromPlayedFilter);
+      }
     }
-    return { byProvider, plays };
+    for (const session of sessions) {
+      const playing = session.NowPlayingItem;
+      const key = playing && (mediaType === 'movie' ? (playing.Type === 'Movie' ? playing.Id : null) : playing.SeriesId);
+      if (key) addPlay(plays, key, { ...playing, UserData: { ...playing.UserData, LastPlayedDate: new Date(now).toISOString() } } as JellyfinItem, false);
+    }
+    return { byProvider: new Map([...byProvider].map(([k, v]) => [k, [...v]])), plays };
   } catch (error) {
     if (error instanceof LibraryCleanupUnavailableError) throw error;
     fail('Jellyfin', error);
@@ -294,17 +341,18 @@ async function readSeerrRequests(warnings: string[]): Promise<SeerrRequest[]> {
     }
     fail('Seerr', error);
   }
-  const all: SeerrRequest[] = [];
+  // By id: a request added while paging shifts the pages, so one can be read twice.
+  const all = new Map<number, SeerrRequest>();
   try {
     for (let page = 0; page < MAX_SEERR_PAGES; page++) {
       const response = await client.listRequests({ take: SEERR_PAGE, skip: page * SEERR_PAGE, filter: 'all', sort: 'added' });
       if (!response || !Array.isArray(response.results)) fail('Seerr requests');
-      all.push(...response.results);
+      for (const request of response.results) all.set(request.id, request);
       const total = response.pageInfo?.results;
-      if (typeof total === 'number' && all.length >= total) return all;
+      if (typeof total === 'number' && all.size >= total) return [...all.values()];
       if (response.results.length < SEERR_PAGE) {
-        if (typeof total === 'number' && all.length < total) fail('Seerr requests (incomplete)');
-        return all;
+        if (typeof total === 'number' && all.size < total) fail('Seerr requests (incomplete)');
+        return [...all.values()];
       }
     }
   } catch (error) {
@@ -355,11 +403,13 @@ async function readRequests(mediaType: LibraryMediaType, warnings: string[]): Pr
       positive(request.media.tmdbId) ? `tmdb:${request.media.tmdbId}` : null,
       positive(request.media.tvdbId) ? `tvdb:${request.media.tvdbId}` : null,
     ].filter((key): key is string => key !== null);
-    // Declined and completed requests are finished; anything else is still wanted,
-    // unless Seerr already shows the title available.
+    // Declined and completed requests are finished, and so is an approved one Seerr
+    // shows fully available (in the quality asked for). One waiting for approval is
+    // always open. A partly available series stays open: someone is still waiting.
+    const available = (request.is4k ? request.media.status4k : request.media.status) === SEERR_MEDIA_STATUS.AVAILABLE;
     const finished = request.status === SEERR_REQUEST_STATUS.DECLINED
       || request.status === SEERR_REQUEST_STATUS.COMPLETED
-      || request.media.status === SEERR_MEDIA_STATUS.AVAILABLE;
+      || (request.status !== SEERR_REQUEST_STATUS.PENDING_APPROVAL && available);
     const helprrUser = request.requestedBy ? userBySeerrId.get(String(request.requestedBy.id)) ?? null : null;
     note(keys, !finished, request.createdAt ? new Date(request.createdAt) : null, requesterName(request), helprrUser);
   }
@@ -377,19 +427,26 @@ function requestKeys(t: ArrTitle['facts']): string[] {
 
 // ── Watchlists ──────────────────────────────────────────────────────────────
 
-async function readWatchlists(mediaType: LibraryMediaType, titles: ArrTitle['facts'][]): Promise<Map<string, Set<string>>> {
+/** Loose title form: case, accents, punctuation and spacing ignored. */
+function looseTitle(value: string): string {
+  return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+async function readWatchlists(mediaType: LibraryMediaType, arrTitles: ArrTitle[]): Promise<Map<string, Set<string>>> {
   const items = await prisma.watchlistItem.findMany({
     where: { userId: { not: null }, mediaType: mediaType === 'movie' ? { in: ['movie', 'anime'] } : { in: ['series', 'anime'] } },
     select: { userId: true, source: true, externalId: true, mediaType: true, title: true },
   });
   const anilistBySeries = mediaType === 'series' ? await loadAnilistIdsBySeries() : new Map<string, number[]>();
   const out = new Map<string, Set<string>>();
-  for (const t of titles) {
+  for (const { facts: t, names } of arrTitles) {
     const anilistIds = anilistBySeries.get(`${t.instanceId}:${t.arrId}`) ?? [];
+    const loose = new Set(names.map(looseTitle).filter(Boolean));
     for (const item of items) {
       const hit = item.source === 'ANILIST'
-        // An AniList save matches its mapped Sonarr series, or by title when unmapped (errs towards keeping).
-        ? anilistIds.includes(Number(item.externalId)) || item.title.trim().toLowerCase() === t.title.trim().toLowerCase()
+        // An AniList save matches its mapped Sonarr series, or any name the arr knows
+        // the title by (AniList movies have no mapping). Errs towards keeping.
+        ? anilistIds.includes(Number(item.externalId)) || loose.has(looseTitle(item.title))
         : watchlistItemMatches(item, {
           kind: t.mediaType,
           instanceId: t.instanceId,
@@ -410,15 +467,16 @@ async function readWatchlists(mediaType: LibraryMediaType, titles: ArrTitle['fac
 
 // ── All together ────────────────────────────────────────────────────────────
 
-export async function gatherLibraryFacts(mediaType: LibraryMediaType, keepTag: string): Promise<GatheredFacts> {
+export async function gatherLibraryFacts(mediaType: LibraryMediaType, keepTag: string, now = Date.now()): Promise<GatheredFacts> {
   const warnings: string[] = [];
-  const arrTitles = await readArrTitles(mediaType, keepTag);
+  const keepTagIds = new Map<string, number | null>();
+  const arrTitles = await readArrTitles(mediaType, keepTag, keepTagIds);
   const [jellyfin, requests] = await Promise.all([
-    readJellyfin(mediaType),
+    readJellyfin(mediaType, now),
     readRequests(mediaType, warnings),
   ]);
   const facts = arrTitles.map((t) => t.facts);
-  const watchlists = await readWatchlists(mediaType, facts);
+  const watchlists = await readWatchlists(mediaType, arrTitles);
 
   const titles = facts.map((t): TitleFacts => {
     const jellyfinIds = jellyfinIdsFor(t, jellyfin.byProvider);
@@ -446,5 +504,5 @@ export async function gatherLibraryFacts(mediaType: LibraryMediaType, keepTag: s
       requesterUserIds: [...new Set(requestStates.flatMap((s) => [...s.helprrUserIds]))],
     };
   });
-  return { titles, warnings };
+  return { titles, keepTagIds, warnings };
 }

@@ -74,7 +74,7 @@ function toCandidate(t: TitleFacts, reasons: string[], leavingSoon: boolean): Ca
 export async function previewLibraryCandidates(mediaType: LibraryMediaType, now = Date.now()) {
   const settings = await loadLibraryCleanupSettings();
   const rule = ruleFor(settings, mediaType);
-  const { titles, warnings } = await gatherLibraryFacts(mediaType, settings.keepTag);
+  const { titles, warnings } = await gatherLibraryFacts(mediaType, settings.keepTag, now);
   const marked = await prisma.leavingSoonItem.findMany({
     where: { mediaType },
     select: { service: true, instanceId: true, arrId: true },
@@ -121,7 +121,7 @@ export async function markLeavingSoon(
 ): Promise<MarkResult> {
   const settings = await loadLibraryCleanupSettings();
   const rule = ruleFor(settings, mediaType);
-  const { titles } = await gatherLibraryFacts(mediaType, settings.keepTag);
+  const { titles } = await gatherLibraryFacts(mediaType, settings.keepTag, now);
   const byKey = new Map(titles.map((t) => [titleKey(t), t]));
   const deleteAfter = new Date(now + settings.countdownDays * 24 * 60 * 60 * 1000);
   const result: MarkResult = { marked: [], skipped: [] };
@@ -221,10 +221,34 @@ async function notifyMarked(item: LeavingSoonItem, facts: TitleFacts): Promise<v
  * the tag when it does not exist yet), audits it, and only then takes the title
  * off Leaving soon. Throws when the arr call fails; the title stays listed.
  */
+export class LeavingSoonClaimedError extends Error {
+  constructor() {
+    super('This title is already being kept or deleted.');
+    this.name = 'LeavingSoonClaimedError';
+  }
+}
+
 export async function keepLeavingSoonItem(item: LeavingSoonItem, actor: AuditActor): Promise<void> {
   const settings = await loadLibraryCleanupSettings();
   const keepTag = settings.keepTag;
   const client = item.service === 'RADARR' ? await getRadarrClient(item.instanceId) : await getSonarrClient(item.instanceId);
+  // Claim first, so a Delete now running at the same moment cannot also take it.
+  if (!await claimRow(item.id)) throw new LeavingSoonClaimedError();
+  try {
+    await tagKeep(item, actor, keepTag, client);
+  } catch (error) {
+    await restoreRow(item);
+    throw error;
+  }
+  await invalidateTaggedLibrary(item.service === 'RADARR' ? 'radarr' : 'sonarr', item.instanceId);
+}
+
+async function tagKeep(
+  item: LeavingSoonItem,
+  actor: AuditActor,
+  keepTag: string,
+  client: Awaited<ReturnType<typeof getRadarrClient>> | Awaited<ReturnType<typeof getSonarrClient>>,
+): Promise<void> {
   await runWithOperationAudit({
     user: actor,
     service: item.service === 'RADARR' ? 'RADARR' : 'SONARR',
@@ -245,8 +269,6 @@ export async function keepLeavingSoonItem(item: LeavingSoonItem, actor: AuditAct
       await (client as Awaited<ReturnType<typeof getSonarrClient>>).seriesEditor({ seriesIds: [item.arrId], tags: [tag.id], applyTags: 'add' });
     }
   });
-  await prisma.leavingSoonItem.deleteMany({ where: { id: item.id } });
-  await invalidateTaggedLibrary(item.service === 'RADARR' ? 'radarr' : 'sonarr', item.instanceId);
 }
 
 // ── Delete now ──────────────────────────────────────────────────────────────
@@ -264,13 +286,46 @@ export interface DueItemView {
   exclusions: string[];
 }
 
+/** The arr title still carries the provider ids it had when it was marked. */
+function sameTitle(item: LeavingSoonItem, facts: { tmdbId: number | null; tvdbId: number | null; imdbId: string | null }): boolean {
+  const differs = <T>(a: T | null, b: T | null) => a !== null && b !== null && a !== b;
+  if (differs(item.tmdbId, facts.tmdbId) || differs(item.tvdbId, facts.tvdbId)) return false;
+  if (differs(item.imdbId?.toLowerCase() ?? null, facts.imdbId?.toLowerCase() ?? null)) return false;
+  // With no id to compare at all, refuse rather than guess.
+  return Boolean((item.tmdbId && facts.tmdbId) || (item.tvdbId && facts.tvdbId) || (item.imdbId && facts.imdbId));
+}
+
+/**
+ * Takes the row for one actor. Keep and Delete now both claim it before calling
+ * the arr, so exactly one of them acts on a title; the loser sees count 0.
+ */
+async function claimRow(id: string): Promise<boolean> {
+  const { count } = await prisma.leavingSoonItem.deleteMany({ where: { id } });
+  return count === 1;
+}
+
+/** Puts a claimed row back after the arr call did not go through. */
+async function restoreRow(item: LeavingSoonItem): Promise<void> {
+  try {
+    await prisma.leavingSoonItem.create({
+      data: {
+        ...item,
+        reasons: item.reasons as Prisma.InputJsonValue,
+        requestedBy: item.requestedBy as Prisma.InputJsonValue,
+      },
+    });
+  } catch (error) {
+    logger.error('Could not put a Leaving soon title back', { id: item.id, reason: errorText(error) }, { scope: LOG });
+  }
+}
+
 export function libraryConfigFingerprint(settings: LibraryCleanupSettings): string {
   return sha256Hex(stableStringify(settings));
 }
 
 interface DueEvaluation {
   items: DueItemView[];
-  ready: Array<{ item: LeavingSoonItem; facts: TitleFacts }>;
+  ready: Array<{ item: LeavingSoonItem; facts: TitleFacts; keepTagId: number | null }>;
   gone: LeavingSoonItem[];
   binding: CleanupExecutionBinding;
   warnings: string[];
@@ -294,26 +349,35 @@ async function evaluateDue(addImportListExclusion: boolean, now: number): Promis
   for (const mediaType of LIBRARY_MEDIA_TYPES) {
     const ofType = due.filter((item) => item.mediaType === mediaType);
     if (ofType.length === 0) continue;
-    const gathered = await gatherLibraryFacts(mediaType, settings.keepTag);
+    const gathered = await gatherLibraryFacts(mediaType, settings.keepTag, now);
     warnings.push(...gathered.warnings);
     const byKey = new Map(gathered.titles.map((t) => [titleKey(t), t]));
     const rule = ruleFor(settings, mediaType);
     for (const item of ofType) {
       const key = titleKey(item);
       const facts = byKey.get(key);
-      const exclusions = facts ? exclusionsFor(facts, rule.unwatchedDays, settings.keepTag, now) : [];
-      const status: DueStatus = !facts ? 'gone' : exclusions.length > 0 ? 'protected' : 'ready';
+      let exclusions: string[] = [];
+      if (!gathered.keepTagIds.has(item.instanceId)) {
+        // The instance is no longer connected: the title may well still exist there.
+        exclusions = ['Its Sonarr/Radarr instance is no longer connected'];
+      } else if (facts && !sameTitle(item, facts)) {
+        // Same id, different title (the arr was rebuilt or restored): never delete what was not marked.
+        exclusions = [`Sonarr/Radarr id ${item.arrId} is now "${facts.title}"`];
+      } else if (facts) {
+        exclusions = exclusionsFor(facts, rule.unwatchedDays, settings.keepTag, now, item.markedAt);
+      }
+      const status: DueStatus = exclusions.length > 0 ? 'protected' : !facts ? 'gone' : 'ready';
       items.push({
         id: item.id,
         key,
         mediaType,
-        title: item.title,
+        title: facts?.title ?? item.title,
         sizeBytes: Number(item.sizeBytes),
         deleteAfter: item.deleteAfter.toISOString(),
         status,
         exclusions,
       });
-      if (status === 'ready' && facts) ready.push({ item, facts });
+      if (status === 'ready' && facts) ready.push({ item, facts, keepTagId: gathered.keepTagIds.get(item.instanceId) ?? null });
       if (status === 'gone') gone.push(item);
     }
   }
@@ -426,18 +490,53 @@ async function writeHistory(
   }
 }
 
+function idOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function skippedResult(item: LeavingSoonItem, message: string): DeletionItemResult {
+  return { id: item.id, title: item.title, outcome: 'skipped', message };
+}
+
 async function deleteOne(
   item: LeavingSoonItem,
   facts: TitleFacts,
+  keepTagId: number | null,
   addImportListExclusion: boolean,
   actor: AuditActor,
   previewId: string,
 ): Promise<DeletionItemResult> {
-  // Someone may have pressed Keep while this run was going: their choice wins.
-  const stillMarked = await prisma.leavingSoonItem.findUnique({ where: { id: item.id }, select: { id: true } });
-  if (!stillMarked) {
+  // Claim the title. If someone pressed Keep while this run was going, they hold it: their choice wins.
+  if (!await claimRow(item.id)) {
     await writeHistory(item, 'skipped', 'Kept while the run was going', actor, previewId, null);
-    return { id: item.id, title: item.title, outcome: 'skipped', message: 'Kept while the run was going' };
+    return skippedResult(item, 'Kept while the run was going');
+  }
+
+  // A last look at this one title right before the call: a keep tag added in
+  // Sonarr/Radarr since the run started, or a different title under the id, stops it.
+  let current: { tags?: number[]; tmdbId?: number; tvdbId?: number; imdbId?: string };
+  try {
+    current = item.service === 'RADARR'
+      ? await (await getRadarrClient(item.instanceId)).getMovieById(item.arrId)
+      : await (await getSonarrClient(item.instanceId)).getSeriesById(item.arrId);
+  } catch (error) {
+    if (isAxiosError(error) && error.response?.status === 404) {
+      await writeHistory(item, 'skipped', 'No longer in Sonarr/Radarr', actor, previewId, null);
+      return skippedResult(item, 'No longer in Sonarr/Radarr');
+    }
+    await restoreRow(item);
+    await writeHistory(item, 'skipped', 'Could not re-read the title', actor, previewId, errorText(error));
+    return skippedResult(item, 'Could not re-read the title');
+  }
+  if (keepTagId !== null && (current.tags ?? []).includes(keepTagId)) {
+    // Kept in the arr itself: it leaves Leaving soon.
+    await writeHistory(item, 'skipped', 'Tagged keep in Sonarr/Radarr', actor, previewId, null);
+    return skippedResult(item, 'Tagged keep in Sonarr/Radarr');
+  }
+  if (!sameTitle(item, { tmdbId: idOrNull(current.tmdbId), tvdbId: idOrNull(current.tvdbId), imdbId: current.imdbId || null })) {
+    await restoreRow(item);
+    await writeHistory(item, 'skipped', 'A different title has this id now', actor, previewId, null);
+    return skippedResult(item, 'A different title has this id now');
   }
 
   const reasons = Array.isArray(item.reasons) ? (item.reasons as string[]).join(', ') : '';
@@ -481,10 +580,10 @@ async function deleteOne(
     errorMessage: deleted ? null : errorMessage,
   });
   if (deleted) {
-    await prisma.leavingSoonItem.deleteMany({ where: { id: item.id } });
     await writeHistory(item, 'deleted', reasons || 'Leaving soon countdown ended', actor, previewId, null);
     return { id: item.id, title: item.title, outcome: 'deleted' };
   }
+  await restoreRow(item);
   await writeHistory(item, 'failed', reasons || 'Leaving soon countdown ended', actor, previewId, errorMessage);
   return { id: item.id, title: item.title, outcome: 'failed', message: errorMessage ?? undefined };
 }
@@ -506,8 +605,8 @@ export async function executeLibraryDeletion(
   assertExecutionBinding(expected, current.binding);
 
   const results: DeletionItemResult[] = [];
-  for (const { item, facts } of current.ready) {
-    results.push(await deleteOne(item, facts, addImportListExclusion, actor, previewId));
+  for (const { item, facts, keepTagId } of current.ready) {
+    results.push(await deleteOne(item, facts, keepTagId, addImportListExclusion, actor, previewId));
   }
   // Titles already removed outside Helprr leave the list (the arr was read in full, so absent is gone).
   for (const item of current.gone) {

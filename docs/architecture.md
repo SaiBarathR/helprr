@@ -804,28 +804,44 @@ explicit, token-bound **Delete now**. Rules, preview, marking and deletion are
 admin-role only (`requireAdmin`; `cleanup.manage` alone is not enough). The
 shelf (`GET /api/leaving-soon`) lists only the types the caller may view, and
 **Keep** (`POST /api/leaving-soon/[id]/keep`) needs view access to the stored
-title's type; it adds the configured keep tag through the arr's editor
-(`KEEP_MEDIA` audit row) before removing the `LeavingSoonItem`, so a failed tag
-leaves the title listed.
+title's type. Keep and Delete now both claim the `LeavingSoonItem` row
+(`deleteMany` by id, count 1) before calling the arr, so only one of them acts;
+Keep then adds the configured keep tag through the arr's editor (`KEEP_MEDIA`
+audit row), puts the row back when the arr call fails, and answers 409 when a
+run holds the title. Changing the keep tag stops protecting titles kept with
+the old one.
 
 - **Inputs** (`inputs.ts`), gathered fresh for every preview, mark and delete,
   fail closed with `LibraryCleanupUnavailableError` (503) when any configured
   Radarr/Sonarr instance (titles, tags, the complete queue), Jellyfin or Seerr
   cannot be read completely. Seerr not being connected is a warning (Helprr's
-  pending requests still count); Jellyfin not being connected blocks. Plays are
-  read for **every** Jellyfin user (`Filters=IsPlayed` and `IsResumable`;
-  series from their episodes, since series items carry no `LastPlayedDate`)
-  and matched by provider id to every matching Jellyfin item.
+  pending requests still count); Jellyfin not being connected blocks. For
+  **every** Jellyfin user Helprr reads the library as that user sees it (the
+  provider-id index is their union), everything marked played, and every item
+  with a `LastPlayedDate` (`SortBy=DatePlayed`, newest first, paged until the
+  first undated item: a play in progress or stopped early has a date and a
+  `PlayCount` but is neither played nor resumable). Series use their episodes,
+  since series items carry no `LastPlayedDate`. Whatever `/Sessions` shows
+  playing counts as watched now. A Seerr request waiting for approval is always
+  open; 4K requests are judged by `status4k`; a partly available series stays
+  protected.
 - **Exclusions** (`evaluate.ts`, always on): keep tag, any watchlist (TMDB/TVDB,
-  library-id saves on any instance, AniList via mapping or title), an open Seerr
-  or Helprr request or one created in the last N days, in the queue, watched in
-  the last N days, a play without a date, not matched in Jellyfin, no files.
+  library-id saves on any instance, AniList via mapping or any name the arr
+  knows the title by), an open Seerr or Helprr request or one created in the
+  last N days, in the queue, watched in the last N days, a play without a date,
+  not matched in Jellyfin, no files. For a marked title the window starts at the
+  earlier of `markedAt` and N days ago, so a watch or request during the
+  countdown always protects it.
 - **Delete now** reuses the cleanup preview-token store with cleaner
   `library`; the binding holds the settings fingerprint, the arr connections,
   the import-list choice and the ready titles. Execution re-gathers everything
-  and refuses the whole run (409, nothing deleted) when the ready set differs;
-  right before each call it re-reads the item so a Keep during the run wins. A
-  failed call is checked against the arr (404 means it is gone). Every attempted
+  and refuses the whole run (409, nothing deleted) when the ready set differs.
+  A title whose instance is no longer connected, or whose arr id now carries
+  other provider ids than when it was marked, is never deleted. Right before
+  each call the run claims the row (a Keep that got there first wins) and
+  re-reads that one title: a keep tag added in the arr, or other provider ids,
+  stop it. A failed call is checked against the arr (404 means it is gone) and
+  otherwise puts the row back. Every attempted
   title writes one `DELETE_MEDIA` audit row and one `CleanupHistory` row
   (`cleaner: library`, `removedFromLibrary` / `failed` / `skipped`); titles
   already absent from the arr leave the list with a `skipped` row. One run per
