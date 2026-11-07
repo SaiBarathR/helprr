@@ -3,11 +3,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   updateMany: vi.fn(),
+  claimEpisodes: vi.fn(),
   notify: vi.fn(async () => 1),
   noteJobFailure: vi.fn(),
 }));
 
-vi.mock('@/lib/db', () => ({ prisma: { watchlistItem: { findMany: mocks.findMany, updateMany: mocks.updateMany } } }));
+vi.mock('@/lib/db', () => ({
+  prisma: {
+    watchlistItem: { findMany: mocks.findMany, updateMany: mocks.updateMany },
+    announcedEpisode: { createManyAndReturn: mocks.claimEpisodes },
+  },
+}));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn() } }));
 vi.mock('@/lib/polling-job-report', () => ({ noteJobFailure: mocks.noteJobFailure }));
 vi.mock('./shared', () => ({ notifyAndLog: mocks.notify }));
@@ -54,6 +60,7 @@ beforeEach(() => {
     fresh.forEach((id) => marked.add(id));
     return { count: fresh.length };
   });
+  mocks.claimEpisodes.mockImplementation(async ({ data }: { data: Array<{ episodeKey: string }> }) => data.map((row) => ({ episodeKey: row.episodeKey })));
 });
 
 describe('which imports count as an arrival', () => {
@@ -95,6 +102,10 @@ describe('which imports count as an arrival', () => {
     expect(seriesArrivals(records, records, 'sonarr-main', false)).toEqual([{
       kind: 'series', instanceId: 'sonarr-main', arrId: 7, soleInstance: false, title: 'Severance', tvdbId: 371980, tmdbId: 95396,
       episodes: ['S02E01', 'S02E02'],
+      episodeRefs: [
+        { episodeId: 70, seasonNumber: 2, episodeNumber: 1, label: 'S02E01' },
+        { episodeId: 71, seasonNumber: 2, episodeNumber: 2, label: 'S02E02' },
+      ],
     }]);
   });
 });
@@ -123,6 +134,55 @@ describe('alerting the people who have it on their watchlist', () => {
     mocks.findMany.mockResolvedValue([watchlistRow({ id: 'w2', source: 'TVDB', externalId: '371980', mediaType: 'series', title: 'Severance' })]);
     await notifyWatchlistArrivals([severance]);
     expect(calls()[0][0]).toMatchObject({ url: '/watchlist?focus=w2', body: 'From your watchlist: S02E01 is ready to watch.' });
+    // Claimed under the key "New episode" alerts use, so they never announce S02E01 again.
+    expect(mocks.claimEpisodes).toHaveBeenCalledWith(expect.objectContaining({
+      data: [{ userId: 'u-member', episodeKey: 'series-tvdb-371980:S02E01' }],
+      skipDuplicates: true,
+    }));
+  });
+
+  it('stays quiet when a "New episode" alert already announced every episode, and gives the item back', async () => {
+    mocks.findMany.mockResolvedValue([watchlistRow({ id: 'w2', source: 'TVDB', externalId: '371980', mediaType: 'series', title: 'Severance' })]);
+    mocks.claimEpisodes.mockResolvedValue([]);
+    await notifyWatchlistArrivals([severance]);
+    expect(mocks.notify).not.toHaveBeenCalled();
+    // Released only where this run's own claim stands.
+    const [, release] = mocks.updateMany.mock.calls;
+    expect(release[0]).toEqual({
+      where: { id: { in: ['w2'] }, availableNotifiedAt: mocks.updateMany.mock.calls[0][0].data.availableNotifiedAt },
+      data: { availableNotifiedAt: null },
+    });
+  });
+
+  it('gives the item back when the episode claim fails', async () => {
+    mocks.findMany.mockResolvedValue([watchlistRow({ id: 'w2', source: 'TVDB', externalId: '371980', mediaType: 'series', title: 'Severance' })]);
+    mocks.claimEpisodes.mockRejectedValue(new Error('db down'));
+    await expect(notifyWatchlistArrivals([severance])).resolves.toBeUndefined();
+    expect(mocks.notify).not.toHaveBeenCalled();
+    expect(mocks.updateMany).toHaveBeenCalledTimes(2);
+    expect(mocks.noteJobFailure).toHaveBeenCalled();
+  });
+
+  it('lists only the episodes not announced yet', async () => {
+    mocks.findMany.mockResolvedValue([watchlistRow({ id: 'w2', source: 'TVDB', externalId: '371980', mediaType: 'series', title: 'Severance' })]);
+    mocks.claimEpisodes.mockResolvedValue([{ episodeKey: 'series-tvdb-371980:S02E02' }]);
+    await notifyWatchlistArrivals([{ ...severance, episodes: ['S02E01', 'S02E02'] }]);
+    expect(calls()[0][0].body).toBe('From your watchlist: S02E02 is ready to watch.');
+  });
+
+  it('claims episodes in a fixed order, once each, so overlapping claims cannot deadlock', async () => {
+    mocks.findMany.mockResolvedValue([watchlistRow({ id: 'w2', source: 'TVDB', externalId: '371980', mediaType: 'series', title: 'Severance' })]);
+    await notifyWatchlistArrivals([{ ...severance, episodes: ['S02E03', 'S02E01', 'S02E03'] }]);
+    expect(mocks.claimEpisodes.mock.calls[0][0].data.map((r: { episodeKey: string }) => r.episodeKey)).toEqual([
+      'series-tvdb-371980:S02E01', 'series-tvdb-371980:S02E03',
+    ]);
+  });
+
+  it('claims no episodes for a movie', async () => {
+    mocks.findMany.mockResolvedValue([watchlistRow()]);
+    await notifyWatchlistArrivals([dune]);
+    expect(mocks.claimEpisodes).not.toHaveBeenCalled();
+    expect(mocks.notify).toHaveBeenCalledTimes(1);
   });
 
   it('with several instances, matches a library-id item only when the title matches too', async () => {

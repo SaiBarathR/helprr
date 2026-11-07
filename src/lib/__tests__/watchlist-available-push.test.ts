@@ -109,3 +109,42 @@ describe('Now in your library push', () => {
     });
   });
 });
+
+describe('New episode push', () => {
+  const episode = {
+    eventType: 'watchingNewEpisode',
+    title: "New episode: Severance S02E05 · Trojan's Horse",
+    body: "From a show you're watching: ready to watch.",
+    url: '/series/7/season/2/episode/75?instance=sonarr-main',
+    userIds: ['u-member'],
+    ownerUserId: 'u-member',
+    metadata: { source: 'sonarr', seriesId: 7, seasonNumber: 2, episodeId: 75, redirect: '/series/7/season/2/episode/75?instance=sonarr-main' },
+  };
+
+  it('is on by default, opens the episode and is the owner\'s copy', async () => {
+    mocks.findMany.mockResolvedValue([device()]);
+    expect(await notifyEvent(episode)).toBe(1);
+    expect(sentPayload()).toMatchObject({ url: '/series/7/season/2/episode/75?instance=sonarr-main', tag: 'watchingNewEpisode-75' });
+    expect(mocks.createHistory).toHaveBeenCalledWith({
+      data: expect.objectContaining({ eventType: 'watchingNewEpisode', userId: 'u-member' }),
+    });
+  });
+
+  it('respects the device toggle and quiet hours', async () => {
+    mocks.findMany.mockResolvedValue([device({ preferences: [{ eventType: 'watchingNewEpisode', enabled: false }] })]);
+    expect(await notifyEvent(episode)).toBe(0);
+    const quiet = device();
+    const hour = new Date().getUTCHours();
+    quiet.user.settings = { quietHoursEnabled: true, quietHoursStart: hour, quietHoursEnd: (hour + 1) % 24, timeZone: 'UTC' } as never;
+    mocks.findMany.mockResolvedValue([quiet]);
+    expect(await notifyEvent(episode)).toBe(0);
+    expect(mocks.sendNotification).not.toHaveBeenCalled();
+  });
+
+  it('sits with the watchlist toggles and is kept out of an admin\'s list', () => {
+    expect(EVENT_GROUPS.find((g) => g.id === 'watchlist')?.types).toContain('watchingNewEpisode');
+    expect(historyScope({ id: 'u-admin', role: 'admin' })).toMatchObject({
+      OR: [{ eventType: { notIn: expect.arrayContaining(['watchingNewEpisode']) } }, { userId: 'u-admin' }, { userId: null }],
+    });
+  });
+});

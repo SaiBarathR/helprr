@@ -3,9 +3,10 @@ import { prisma } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { DATE_FORMATS, TIME_FORMATS, parseDateFormat, parseTimeFormat } from '@/lib/date-format';
+import { WATCHING_EPISODE_DAYS_DEFAULT, WATCHING_EPISODE_DAY_OPTIONS } from '@/lib/notification-events';
 
-// Genuinely-personal settings for the current user: the push quiet-hours window
-// and the date/time display format; the global AppSettings (admin) are served
+// Genuinely-personal settings for the current user: the push quiet-hours window,
+// the "New episode" window and the date/time display format; the global AppSettings (admin) are served
 // separately by /api/settings.
 const SELECT = {
   quietHoursEnabled: true,
@@ -13,6 +14,7 @@ const SELECT = {
   quietHoursEnd: true,
   timeFormat: true,
   dateFormat: true,
+  watchingEpisodeDays: true,
 } as const;
 
 type SavedSettings = {
@@ -21,16 +23,20 @@ type SavedSettings = {
   quietHoursEnd: number | null;
   timeFormat: string | null;
   dateFormat: string | null;
+  watchingEpisodeDays: number;
 } | null;
 
-// Stored null means 'auto' (follow the browser locale).
-function toResponse(settings: SavedSettings) {
+// Stored null means 'auto' (follow the browser locale). New episode alerts need
+// the person's own Jellyfin link, so the page can say when it is missing.
+function toResponse(settings: SavedSettings, jellyfinUserId: string | null) {
   return {
     quietHoursEnabled: settings?.quietHoursEnabled ?? false,
     quietHoursStart: settings?.quietHoursStart ?? null,
     quietHoursEnd: settings?.quietHoursEnd ?? null,
     timeFormat: parseTimeFormat(settings?.timeFormat),
     dateFormat: parseDateFormat(settings?.dateFormat),
+    watchingEpisodeDays: settings?.watchingEpisodeDays ?? WATCHING_EPISODE_DAYS_DEFAULT,
+    jellyfinLinked: Boolean(jellyfinUserId),
   };
 }
 
@@ -43,7 +49,7 @@ async function getHandler(): Promise<NextResponse> {
     select: SELECT,
   });
 
-  return NextResponse.json(toResponse(settings));
+  return NextResponse.json(toResponse(settings, auth.user.jellyfinUserId));
 }
 
 function parseHour(value: unknown): number | null | undefined {
@@ -70,6 +76,7 @@ async function patchHandler(request: NextRequest): Promise<NextResponse> {
     quietHoursEnd?: number | null;
     timeFormat?: string | null;
     dateFormat?: string | null;
+    watchingEpisodeDays?: number;
   } = {};
 
   if ('quietHoursEnabled' in body) {
@@ -102,6 +109,13 @@ async function patchHandler(request: NextRequest): Promise<NextResponse> {
     data.dateFormat = body.dateFormat === 'auto' ? null : body.dateFormat;
   }
 
+  if ('watchingEpisodeDays' in body) {
+    if (!(WATCHING_EPISODE_DAY_OPTIONS as readonly unknown[]).includes(body.watchingEpisodeDays)) {
+      return NextResponse.json({ error: `watchingEpisodeDays must be one of ${WATCHING_EPISODE_DAY_OPTIONS.join(', ')}` }, { status: 400 });
+    }
+    data.watchingEpisodeDays = body.watchingEpisodeDays as number;
+  }
+
   const saved = await prisma.userSettings.upsert({
     where: { userId: auth.user.id },
     update: data,
@@ -109,7 +123,7 @@ async function patchHandler(request: NextRequest): Promise<NextResponse> {
     select: SELECT,
   });
 
-  return NextResponse.json(toResponse(saved));
+  return NextResponse.json(toResponse(saved, auth.user.jellyfinUserId));
 }
 
 export const GET = withApiLogging(getHandler, 'api/me/settings');

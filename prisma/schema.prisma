@@ -70,6 +70,7 @@ model User {
   calendarFeedTokens CalendarFeedToken[]
   apiTokens      ApiToken[]
   recoveryCodes  RecoveryCode[]
+  announcedEpisodes AnnouncedEpisode[]
 
   @@index([jellyfinUserId])
   @@index([status])
@@ -217,6 +218,19 @@ model WatchlistItem {
   @@unique([userId, source, externalId, mediaType])
   @@index([userId, addedAt])
   @@index([reminderAt, reminderNotifiedAt])
+}
+
+// One row per person per episode a personal alert ("Now in your library" or
+// "New episode") announced. Inserting it is the atomic claim before sending, so
+// a second Sonarr instance, a re-download or a cleared notification list never
+// announce the same episode again. episodeKey is "<title key>:S01E05".
+model AnnouncedEpisode {
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episodeKey String
+  createdAt  DateTime @default(now())
+
+  @@id([userId, episodeKey])
 }
 
 model WatchlistTag {
@@ -521,6 +535,7 @@ model UserSettings {
   setupChecklistDismissedAt DateTime?                // the admin hid the dashboard setup checklist; follows them across devices
   setupStepsDone         String[] @default([])       // checklist steps marked done that the server cannot see (install, backup, people)
   lastSeenVersion        String?                     // the release whose "What's new" this user last saw or dismissed; null until their first visit
+  watchingEpisodeDays    Int      @default(14)       // "New episode" alerts for series this user played in Jellyfin within this many days; 0 = off
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 }

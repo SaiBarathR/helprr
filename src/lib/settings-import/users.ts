@@ -5,6 +5,7 @@ import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
 import { lockActiveAdminGuard } from '@/lib/user-deletion';
 import { isValidTimeZone } from '@/lib/timezone';
 import { parseDateFormat, parseTimeFormat } from '@/lib/date-format';
+import { WATCHING_EPISODE_DAYS_DEFAULT, WATCHING_EPISODE_DAY_OPTIONS } from '@/lib/notification-events';
 import { can, parsePermissions } from '@/lib/permissions';
 import {
   USER_ROLE_VALUES,
@@ -232,6 +233,10 @@ export async function applyUsersInTxn(
         quietHoursEnd: clampHourOrNull(s.quietHoursEnd),
         timeFormat: timeFormat === 'auto' ? null : timeFormat,
         dateFormat: dateFormat === 'auto' ? null : dateFormat,
+        // Older exports have none: the default window.
+        watchingEpisodeDays: (WATCHING_EPISODE_DAY_OPTIONS as readonly unknown[]).includes(s.watchingEpisodeDays)
+          ? (s.watchingEpisodeDays as number)
+          : WATCHING_EPISODE_DAYS_DEFAULT,
       };
       await tx.userSettings.upsert({
         where: { userId },

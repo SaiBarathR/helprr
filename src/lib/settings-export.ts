@@ -309,6 +309,8 @@ export interface ExportedUserSettings {
   // Absent in exports made before the date/time format preference existed.
   timeFormat?: string | null;
   dateFormat?: string | null;
+  // Absent in exports made before "New episode" alerts existed.
+  watchingEpisodeDays?: number;
   // v2: the user's chosen default layouts by name (IDs are install-local).
   // Resolved against their own layouts first, then the global ones.
   defaultDesktopLayoutName?: string | null;

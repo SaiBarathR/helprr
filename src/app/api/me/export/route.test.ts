@@ -241,6 +241,7 @@ describe('my-data export coverage', () => {
     calendarFeedTokens: 'feed links: token hashes, with the names and filters shown in Calendar',
     recoveryCodes: 'two-step sign-in recovery codes; holds only code hashes',
     apiTokens: 'personal API tokens: token hashes, with the names and scopes shown in Sessions',
+    announcedEpisodes: 'which episodes personal alerts already announced (dedupe keys); the alerts are in notificationHistory',
   };
 
   it('exports or explicitly excludes every relation of User', async () => {

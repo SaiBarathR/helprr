@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
+import type React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+// The New episode row links to Account settings; there is no app router here.
+vi.mock('@/components/ui/app-link', () => ({
+  default: ({ children, ...props }: { children: React.ReactNode }) => <a {...props}>{children}</a>,
+}));
 vi.mock('@/components/permission-provider', () => ({
   useMe: () => ({ role: 'admin', capabilities: {} }),
   hasCapability: () => true,

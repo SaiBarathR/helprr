@@ -553,6 +553,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
               quietHoursEnd: u.settings.quietHoursEnd ?? null,
               timeFormat: u.settings.timeFormat ?? null,
               dateFormat: u.settings.dateFormat ?? null,
+              watchingEpisodeDays: u.settings.watchingEpisodeDays,
               defaultDesktopLayoutName: u.settings.defaultDesktopLayoutId
                 ? layoutNameById.get(u.settings.defaultDesktopLayoutId) ?? null
                 : null,

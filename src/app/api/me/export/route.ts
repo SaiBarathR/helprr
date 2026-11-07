@@ -62,6 +62,7 @@ async function getHandler(): Promise<NextResponse> {
           setupChecklistDismissedAt: true,
           setupStepsDone: true,
           lastSeenVersion: true,
+          watchingEpisodeDays: true,
           createdAt: true,
           updatedAt: true,
         },
