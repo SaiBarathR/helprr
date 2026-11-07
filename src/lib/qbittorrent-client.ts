@@ -28,6 +28,8 @@ export interface TorrentTracker {
   msg: string;
 }
 
+export type QueueMove = 'topPrio' | 'increasePrio' | 'decreasePrio' | 'bottomPrio';
+
 interface TorrentProperties {
   save_path: string;
   creation_date: number;
@@ -398,6 +400,47 @@ export class QBittorrentClient {
     params.append('hash', hash);
     params.append('name', name);
     await this.post('/api/v2/torrents/rename', params.toString());
+  }
+
+  /** Moves the torrents' files; qBittorrent also turns their automatic management off. */
+  async setLocation(hashes: string, location: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hashes', hashes);
+    params.append('location', location);
+    await this.post('/api/v2/torrents/setLocation', params.toString());
+  }
+
+  async getTags(): Promise<string[]> {
+    return this.get<string[]>('/api/v2/torrents/tags');
+  }
+
+  /** qBittorrent creates a tag it does not know yet. */
+  async addTags(hashes: string, tags: string[]): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hashes', hashes);
+    params.append('tags', tags.join(','));
+    await this.post('/api/v2/torrents/addTags', params.toString());
+  }
+
+  /** `tags` must not be empty: qBittorrent removes every tag when it is. */
+  async removeTags(hashes: string, tags: string[]): Promise<void> {
+    if (tags.length === 0) throw new Error('removeTags needs at least one tag');
+    const params = new URLSearchParams();
+    params.append('hashes', hashes);
+    params.append('tags', tags.join(','));
+    await this.post('/api/v2/torrents/removeTags', params.toString());
+  }
+
+  async isQueueingEnabled(): Promise<boolean> {
+    const preferences = await this.get<{ queueing_enabled?: unknown }>('/api/v2/app/preferences');
+    return preferences.queueing_enabled === true;
+  }
+
+  /** qBittorrent refuses these (409) while torrent queueing is off. */
+  async moveInQueue(hashes: string, move: QueueMove): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hashes', hashes);
+    await this.post(`/api/v2/torrents/${move}`, params.toString());
   }
 
   // Transfer

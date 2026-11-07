@@ -20,6 +20,7 @@ import { useUIStore, type TorrentsSortKeyPreference as SortKey } from '@/lib/sto
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 import { setSpeedLimitTargets } from './_components/speed-limit-targets';
+import { setOrganizeTargets } from './_components/organize-targets';
 import { torrentsEmptyMessage } from './_components/empty-message';
 import {
   OPTIMISTIC_OVERRIDE_FIELD,
@@ -352,6 +353,13 @@ export default function TorrentsPage() {
     router.push('/torrents/speed-limits');
   }, [router, selectedTorrents, torrents]);
 
+  const openOrganize = useCallback(() => {
+    setOrganizeTargets(torrents
+      .filter((t) => selectedTorrents.has(t.hash))
+      .map(({ hash, name, save_path, tags }) => ({ hash, name, save_path, tags })));
+    router.push('/torrents/organize');
+  }, [router, selectedTorrents, torrents]);
+
   const toggleAltSpeedMode = useCallback(async () => {
     // Optimistic flip with a pending override so a racing poll can't bounce the
     // toggle; the captured pre-action value (not a blind re-flip, which could
@@ -507,6 +515,7 @@ export default function TorrentsPage() {
           bulkAction={bulkAction}
           canBandwidthTorrents={canBandwidthTorrents}
           openBulkSpeedLimits={openBulkSpeedLimits}
+          openOrganize={openOrganize}
           canDeleteTorrents={canDeleteTorrents}
           setDeleteDrawer={setDeleteDrawer}
           setSelectedTorrents={setSelectedTorrents}

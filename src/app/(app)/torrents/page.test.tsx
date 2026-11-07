@@ -100,6 +100,7 @@ import { useUIStore } from '@/lib/store';
 import { resetRouteViewStateForTests } from '@/lib/hooks/use-route-view-state';
 import TorrentsPage from './page';
 import { getSpeedLimitTargets } from './_components/speed-limit-targets';
+import { getOrganizeTargets } from './_components/organize-targets';
 
 const torrent = (hash: string, name: string, extra: Record<string, unknown> = {}) => ({
   hash, name, size: 1024 ** 3, progress: 1, dlspeed: 0, upspeed: 0, num_seeds: 3, num_leechs: 1, state: 'stalledUP', eta: 8640000,
@@ -344,6 +345,25 @@ describe('torrents page (characterization)', () => {
     expect(mocks.push).toHaveBeenCalledWith('/torrents/speed-limits');
     await user.click(screen.getByRole('button', { name: 'Clear' }));
     expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
+  });
+
+  it('hands the selection to the location, tags and queue page', async () => {
+    const { user } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Bravo.Show' }));
+    await user.click(screen.getByRole('button', { name: 'Location, Tags & Queue' }));
+
+    expect(mocks.push).toHaveBeenCalledWith('/torrents/organize');
+    expect(getOrganizeTargets()).toEqual([{ hash: 'bbb', name: 'Bravo.Show', save_path: '/data', tags: '' }]);
+  });
+
+  it('offers location, tags and queue only to those who may manage torrents', async () => {
+    mocks.caps = new Set(['torrents.delete']);
+    const { user } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Bravo.Show' }));
+
+    expect(screen.queryByRole('button', { name: 'Location, Tags & Queue' })).toBeNull();
   });
 
   it('deletes through the drawer, with the files only when asked, and takes the row off the badge', async () => {

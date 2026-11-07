@@ -12,6 +12,8 @@ import { Switch } from '@/components/ui/switch';
 import { useCan } from '@/components/permission-provider';
 import type { QBittorrentTorrent } from '@/types';
 import { SpeedLimitInput } from '../../_components/speed-limit-input';
+import { TorrentLocationSection, TorrentQueueSection, TorrentTagsSection } from '../../_components/torrent-organize-sections';
+import { parseTorrentTags } from '../../_components/torrent-tags';
 import { torrentQueryKey, useTorrent, useTorrentAction } from '../../_components/use-torrent';
 
 type TorrentOption = 'seq_dl' | 'f_l_piece_prio' | 'auto_tmm';
@@ -92,6 +94,8 @@ export default function TorrentSettingsPage() {
     );
   }
 
+  const tags = parseTorrentTags(torrent.tags);
+
   return (
     <div className="animate-content-in">
       <PageHeader title="Torrent Settings" subtitle={torrent.name} />
@@ -126,6 +130,33 @@ export default function TorrentSettingsPage() {
               </div>
             ))}
           </GroupedSection>
+        )}
+
+        {canManage && (
+          <>
+            <TorrentLocationSection
+              hash={hash}
+              savePath={torrent.save_path}
+              onSaved={(location) => {
+                setTorrentField('save_path', location);
+                // qBittorrent turns automatic management off when it moves a torrent.
+                setTorrentField('auto_tmm', false);
+              }}
+            />
+            <TorrentTagsSection
+              hash={hash}
+              tagsByTorrent={[tags]}
+              onChanged={(action, tag) => {
+                const next = action === 'addTags' ? [...new Set([...tags, tag])] : tags.filter((t) => t !== tag);
+                setTorrentField('tags', next.join(', '));
+              }}
+            />
+            <TorrentQueueSection
+              hash={hash}
+              position={torrent.priority}
+              onMoved={() => void torrentQuery.refetch()}
+            />
+          </>
         )}
 
         {!canBandwidth && !canManage && (

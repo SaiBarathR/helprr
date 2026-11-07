@@ -23,6 +23,24 @@ export function useTorrent(hash: string) {
   });
 }
 
+export interface TorrentOptions {
+  tags: string[];
+  queueingEnabled: boolean;
+}
+
+/** qBittorrent's tags and whether its queueing is on, for the settings pages. */
+export function useTorrentOptions() {
+  return useQuery({
+    queryKey: ['qbittorrent', 'options'] as const,
+    queryFn: async ({ signal }): Promise<TorrentOptions> => {
+      const res = await fetch('/api/qbittorrent/options', { signal });
+      if (!res.ok) throw new ApiError(res.status, `GET /api/qbittorrent/options → ${res.status}`);
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+}
+
 async function postTorrentAction(body: Record<string, unknown>): Promise<void> {
   const res = await fetch('/api/qbittorrent', {
     method: 'POST',
