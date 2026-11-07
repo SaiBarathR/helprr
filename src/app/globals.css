@@ -238,6 +238,58 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* On a phone with the nav at the bottom, the tabs and the round Search float
+   side by side as two surfaces of the bar's material, as iOS 26 places them.
+   The bar keeps its box, so the safe areas, the keyboard and the cinematic
+   skin's hiding work as before, but it paints nothing itself and lets taps
+   through around the two surfaces. It sits on the home indicator, or 0.5rem
+   off the screen's edge where there is none (--tab-bar-foot). */
+@media (max-width: 767.98px) {
+  :root[data-nav-position="bottom"] .app-tab-bar {
+    background: transparent;
+    border-width: 0;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    pointer-events: none;
+    padding-left: calc(0.5rem + env(safe-area-inset-left, 0px));
+    padding-right: calc(0.5rem + env(safe-area-inset-right, 0px));
+    padding-bottom: var(--tab-bar-foot);
+  }
+
+  :root[data-nav-position="bottom"] .app-tab-surface {
+    pointer-events: auto;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--background) 95%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  }
+
+  /* The bar's full height, a gap from the tabs. */
+  :root[data-nav-position="bottom"] .app-tab-search {
+    width: 3rem;
+    height: 3rem;
+    margin-right: 0;
+    margin-left: 0.5rem;
+    transition: transform 0.15s ease;
+  }
+
+  :root[data-nav-position="bottom"] .app-tab-search:active {
+    transform: scale(0.94);
+  }
+
+  /* A full-width bar resting on the tabs (the now-playing bar, an import bar)
+     needs a solid foot, so the bar's box takes its surface, and its taps, back
+     while one is up. */
+  :root[data-nav-position="bottom"]:has([data-now-playing-bar], [data-footer-bar]) .app-tab-bar {
+    background: color-mix(in oklab, var(--background) 95%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    pointer-events: auto;
+  }
+}
+
 .app-status-scrim {
   display: none;
 }
@@ -277,8 +329,9 @@
 
 @media (max-width: 767.98px) {
   :root[data-nav-position="bottom"] {
-    --footer-height: calc(3rem + env(safe-area-inset-bottom, 0px));
-    --footer-bar-bottom: calc(3rem + env(safe-area-inset-bottom, 0px));
+    --tab-bar-foot: max(env(safe-area-inset-bottom, 0px), 0.5rem);
+    --footer-height: calc(3rem + var(--tab-bar-foot));
+    --footer-bar-bottom: calc(3rem + var(--tab-bar-foot));
     --footer-bar-inset: 0px;
   }
 }
@@ -1612,6 +1665,22 @@ html[data-glass] .app-chrome-bar {
   border-color: var(--hpr-glass-border);
 }
 
+/* The floating phone tabs and round Search (nav at the bottom) take the same
+   material, with the overlays' top highlight. */
+html[data-glass][data-nav-position='bottom'] .app-tab-surface {
+  background: var(--hpr-glass-bg);
+  -webkit-backdrop-filter: blur(var(--hpr-glass-blur)) saturate(var(--hpr-glass-saturate));
+  backdrop-filter: blur(var(--hpr-glass-blur)) saturate(var(--hpr-glass-saturate));
+  border-color: var(--hpr-glass-border);
+  box-shadow: inset 0 1px 0 0 var(--hpr-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+
+html[data-glass][data-nav-position='bottom']:has([data-now-playing-bar], [data-footer-bar]) .app-tab-bar {
+  background: var(--hpr-glass-bg);
+  -webkit-backdrop-filter: blur(var(--hpr-glass-blur)) saturate(var(--hpr-glass-saturate));
+  backdrop-filter: blur(var(--hpr-glass-blur)) saturate(var(--hpr-glass-saturate));
+}
+
 /* Floating overlays get the stronger material (alpha floor for legibility). */
 html[data-glass] [data-slot='dialog-content'],
 html[data-glass] [data-slot='alert-dialog-content'],
@@ -1681,6 +1750,8 @@ html[data-glass] [data-bento-cell] {
    opaque hexes even in glass mode, which is what makes this work). */
 @media (prefers-reduced-transparency: reduce) {
   html[data-glass] .app-chrome-bar,
+  html[data-glass][data-nav-position='bottom'] .app-tab-surface,
+  html[data-glass][data-nav-position='bottom']:has([data-now-playing-bar], [data-footer-bar]) .app-tab-bar,
   html[data-glass] [data-slot='dialog-content'],
   html[data-glass] [data-slot='alert-dialog-content'],
   html[data-glass] [data-slot='sheet-content'],
@@ -1709,6 +1780,8 @@ html[data-glass] [data-bento-cell] {
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   html[data-glass] .app-chrome-bar,
+  html[data-glass][data-nav-position='bottom'] .app-tab-surface,
+  html[data-glass][data-nav-position='bottom']:has([data-now-playing-bar], [data-footer-bar]) .app-tab-bar,
   html[data-glass] [data-slot='dialog-content'],
   html[data-glass] [data-slot='alert-dialog-content'],
   html[data-glass] [data-slot='sheet-content'],

@@ -508,7 +508,8 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
       {/* Bottom action bar — always visible; actions enable once files are selected */}
       {/* On the tab bar when the nav is at the bottom, else on the screen's foot
           with the home indicator inside its padding. */}
-      <div className="page-bleed sticky bottom-[var(--footer-bar-bottom)] z-30 flex items-center gap-2 border-t border-border app-chrome-bar bg-background/95 pt-3 pb-[calc(0.75rem+var(--footer-bar-inset))] backdrop-blur-sm">
+      {/* data-footer-bar: the phone tab bar backs it while it rests there (globals.css). */}
+      <div data-footer-bar className="page-bleed sticky bottom-[var(--footer-bar-bottom)] z-30 flex items-center gap-2 border-t border-border app-chrome-bar bg-background/95 pt-3 pb-[calc(0.75rem+var(--footer-bar-inset))] backdrop-blur-sm">
         {canDelete && (
           <Button variant="destructive" size="sm" disabled={submitting || deletableSelected.length === 0} onClick={() => setDeleteOpen(true)}>
             <Trash2 className="mr-1.5 h-4 w-4" />Delete

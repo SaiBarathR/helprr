@@ -64,8 +64,10 @@ export function BottomNav() {
       // Its edge, border and safe-area padding come from .app-tab-bar (globals.css).
       className="app-tab-bar md:hidden z-50 border-border app-chrome-bar bg-background/95 backdrop-blur-sm"
     >
-      <div className="flex items-center h-12 pr-2">
-        <div className="flex flex-1 min-w-0 items-center justify-around h-full">
+      {/* With the nav at the bottom of a phone, the tabs and the round Search
+          float as two surfaces of their own (app-tab-surface, globals.css). */}
+      <div className="flex items-center h-12">
+        <div className="app-tab-surface flex flex-1 min-w-0 items-center justify-around h-full">
           {tabs.map(({ href, icon: Icon, shortLabel, badgeArea }) => {
             const slice = badgeArea ? counts[badgeArea] : undefined;
             const isActive = href === activeHref;
@@ -76,7 +78,7 @@ export function BottomNav() {
                 href={href}
                 prefetch={null}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-[48px] text-[11px] font-medium transition-colors',
+                  'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-11 text-[11px] font-medium transition-colors',
                   isActive ? 'text-primary' : 'text-muted-foreground',
                   isPending && 'opacity-70'
                 )}
@@ -102,7 +104,7 @@ export function BottomNav() {
               trigger={(
                 <button
                   className={cn(
-                    'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-[48px] text-[11px] font-medium transition-colors',
+                    'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-11 text-[11px] font-medium transition-colors',
                     isMoreActive ? 'text-primary' : 'text-muted-foreground'
                   )}
                 >
@@ -164,13 +166,14 @@ export function BottomNav() {
         </div>
 
         {/* Phone search: the sidebar's search and its shortcut hint are md+ only.
-            A round button of its own beside the five slots, as iOS 26 apps
-            place it, so it never takes a tab's place. */}
+            A round button of its own beside the five slots, so it never takes a
+            tab's place: detached beside the bar at the bottom, as iOS 26 apps
+            place it, and inside the bar's right end when the nav is at the top. */}
         <button
           type="button"
           aria-label="Search"
           onClick={() => openSearch(true)}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-foreground/10 bg-foreground/[0.06] text-foreground shadow-sm transition-colors active:bg-foreground/[0.12]"
+          className="app-tab-search app-tab-surface mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-foreground/10 bg-foreground/[0.06] text-foreground shadow-sm transition-colors active:bg-foreground/[0.12]"
         >
           <Search className="h-5 w-5" />
         </button>

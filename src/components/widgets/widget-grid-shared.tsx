@@ -5,7 +5,7 @@ import { Settings2, TimerReset, Trash2 } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
 import type { WidgetInstance } from '@/lib/widgets/types';
-import { useMe, hasCapabilities } from '@/components/permission-provider';
+import { useMe, useCan, hasCapabilities } from '@/components/permission-provider';
 import { BentoCell, BentoEditChrome } from './bento-cell';
 import { WidgetRenderer } from './widget-renderer';
 import { HPR, mix } from './bento-primitives';
@@ -63,6 +63,9 @@ export function WidgetGridItem({
 }) {
   const discoverLayout = useUIStore((s) => s.discoverLayout);
   const setEditMode = useUIStore((s) => s.setDashboardEditMode);
+  // UX only, like the dashboard's Edit row: the layout routes check
+  // dashboard.customize themselves.
+  const canCustomize = useCan('dashboard.customize');
   const definition = getWidgetDefinition(instance.widgetId, discoverLayout);
   if (!definition) return null;
   const effectiveCol = colSpan ?? instance.colSpan;
@@ -78,12 +81,12 @@ export function WidgetGridItem({
     {
       id: 'dashboard',
       actions: [
-        {
+        ...(canCustomize ? [{
           id: 'customize',
           label: 'Customize dashboard',
           icon: <Settings2 />,
           onSelect: () => setEditMode(true),
-        },
+        }] : []),
         {
           id: 'refresh',
           label: 'Configure refresh intervals',
@@ -94,7 +97,8 @@ export function WidgetGridItem({
     },
     {
       id: 'danger',
-      actions: [{
+      // Left empty without the capability, so the menu drops the group.
+      actions: canCustomize ? [{
         id: 'remove',
         label: 'Remove widget',
         icon: <Trash2 />,
@@ -103,7 +107,7 @@ export function WidgetGridItem({
           setEditMode(true);
           onRemove(instance.id);
         },
-      }],
+      }] : [],
     },
   ];
 

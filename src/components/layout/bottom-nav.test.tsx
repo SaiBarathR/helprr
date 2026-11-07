@@ -56,6 +56,9 @@ describe('BottomNav', () => {
     expect(search.classList).toContain('shrink-0');
     // Last in the bar, so it sits at its right (bottom-right with the nav at the bottom).
     expect(search.parentElement!.lastElementChild).toBe(search);
+    // At the bottom, globals.css floats the tabs and Search as two surfaces (see floating-tab-bar.test.ts).
+    expect(search.previousElementSibling!.classList).toContain('app-tab-surface');
+    expect([...search.classList]).toEqual(expect.arrayContaining(['app-tab-search', 'app-tab-surface']));
   });
 
   it("keeps an existing user's saved tabs in the four tab slots", () => {
