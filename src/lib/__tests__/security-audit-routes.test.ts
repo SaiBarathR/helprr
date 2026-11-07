@@ -78,6 +78,11 @@ vi.mock('@/lib/login-rate-limit', () => ({
   recordMalformedLoginRequest: vi.fn(async () => null),
 }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
+// Giving admin needs the acting admin's password (and code); its own tests cover that.
+vi.mock('@/lib/server/confirm-password', async (original) => ({
+  ...(await original<typeof import('@/lib/server/confirm-password')>()),
+  confirmAdminStepUp: async () => null,
+}));
 vi.mock('@/lib/request-utils', () => ({ isHttpsRequest: () => false }));
 vi.mock('@/lib/recommendations/engine', () => ({ refreshRecommendationsAfterLink: vi.fn(async () => {}) }));
 vi.mock('@/lib/arr-instances', () => ({

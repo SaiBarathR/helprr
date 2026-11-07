@@ -1,6 +1,6 @@
 'use client';
 
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { GroupedSection } from '@/components/settings/grouped-section';
@@ -37,8 +37,8 @@ const SAMPLE = new Date(2026, 10, 7, 20, 26);
 
 const noopSubscribe = () => () => {};
 
-/** Per-user date and time display format, saved to the account. */
-export function DateTimeFormatSection() {
+/** Per-user date and time display format, saved to the account; `children` are rows above it. */
+export function DateTimeFormatSection({ children }: { children?: ReactNode }) {
   // 'auto' during SSR and hydration, then the seeded preference.
   const prefs = useSyncExternalStore(subscribeDateTimePrefs, getDateTimePrefs, () => DEFAULT_DATE_TIME_PREFS);
   // 'Automatic' follows the browser locale, which the server can't know, so the
@@ -71,6 +71,7 @@ export function DateTimeFormatSection() {
 
   return (
     <GroupedSection title="Date & Time" footer="Saved to your account">
+      {children}
       <div className="grouped-row">
         <span className="text-sm">Time format</span>
         <Select

@@ -36,7 +36,11 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('@/lib/db', () => ({
-  prisma: { ...mocks.db, $transaction: (fn: (tx: typeof mocks.db) => unknown) => fn(mocks.db) },
+  prisma: {
+    ...mocks.db,
+    // The link route re-reads the target's role under a row lock: a member here.
+    $transaction: (fn: (tx: unknown) => unknown) => fn({ ...mocks.db, $queryRaw: async () => [{ role: 'member' }] }),
+  },
 }));
 vi.mock('@/lib/auth', () => ({
   COOKIE_NAME: 'helprr-session',

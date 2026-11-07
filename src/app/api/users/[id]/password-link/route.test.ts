@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   txLinkUpsert: vi.fn(),
   queryRaw: vi.fn(),
   lockedTwoStep: vi.fn(),
+  lockedRole: vi.fn(),
   recordFailedSignIn: vi.fn(),
   recordSecurityEvent: vi.fn(),
   redisEval: vi.fn(),
@@ -37,7 +38,7 @@ vi.mock('@/lib/db', () => {
     // The row lock on your own account: answers its two-step state as it is now.
     $queryRaw: async (sql: TemplateStringsArray, ...values: unknown[]) => {
       mocks.queryRaw(sql.join('?'), values);
-      return [{ totpEnabledAt: mocks.lockedTwoStep() }];
+      return [{ totpEnabledAt: mocks.lockedTwoStep(), role: mocks.lockedRole() }];
     },
     passwordLink: { upsert: mocks.txLinkUpsert },
   };
@@ -112,6 +113,7 @@ beforeEach(() => {
   };
   mocks.requireAdmin.mockImplementation(async () => ({ ok: true, user: admin }));
   mocks.lockedTwoStep.mockImplementation(() => admin.totpEnabledAt);
+  mocks.lockedRole.mockReturnValue('member');
   mocks.userFindUnique.mockImplementation(async ({ where }: { where: { id: string } }) => account(where.id));
 });
 
@@ -227,15 +229,22 @@ describe('POST /api/users/[id]/password-link, unchanged cases', () => {
     expectNoLink();
   });
 
-  it("makes someone else's link with no password or code, even with the admin's two-step sign-in on", async () => {
+  it("makes a member's link with no password or code, even with the admin's two-step sign-in on, holding their row", async () => {
     const response = await issue('u2');
     expect(response.status).toBe(201);
-    expect(mocks.queryRaw).not.toHaveBeenCalled();
-    expect(mocks.txLinkUpsert).not.toHaveBeenCalled();
-    expect(mocks.linkUpsert).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.queryRaw).toHaveBeenCalledWith(expect.stringMatching(/SELECT "role" FROM "User" WHERE "id" = \? FOR UPDATE/), ['u2']);
+    expect(mocks.linkUpsert).not.toHaveBeenCalled();
+    expect(mocks.txLinkUpsert).toHaveBeenCalledWith(expect.objectContaining({
       create: expect.objectContaining({ userId: 'u2', createdById: 'admin-1' }),
     }));
     expect(mocks.verifyUserPassword).not.toHaveBeenCalled();
     expect(mocks.redisEval).not.toHaveBeenCalled();
+  });
+
+  it('refuses, under the lock, a member made admin after this request read them', async () => {
+    mocks.lockedRole.mockReturnValue('admin');
+    const response = await issue('u2');
+    expect(response.status).toBe(409);
+    expectNoLink();
   });
 });

@@ -345,8 +345,24 @@ second factor. The self link is made holding the user row (`FOR UPDATE`) and re-
 `totpEnabledAt` there, and turning two-step sign-in on (`/api/me/totp/enable`) deletes any
 reset link the user made for themselves in its transaction (`RESET_LINK_REVOKED`, `totp`),
 so a link racing the turn-on cannot outlive it; under the lock the link also needs the same
-`totpEnabledAt` the password and code were checked against. Links for other people need neither (lead decision 2026-11-07, conservative;
-the owner can relax it). Turning it on can
+`totpEnabledAt` the password and code were checked against. Links for members need neither.
+Giving admin needs a step-up (owner decision 2026-11-07, round 9): creating a user with role
+`admin` (`POST /api/users`), making a user admin, or setting another admin's password or
+Jellyfin link (`PATCH /api/users/[id]`), and a reset or invite link for another admin
+(`POST /api/users/[id]/password-link`) need the acting admin's `currentPassword`, plus a
+`code` (authenticator or recovery code) while the acting admin's two-step sign-in is on.
+`confirmAdminStepUp` checks them with `confirmCurrentPassword` /
+`confirmPasswordAndSecondFactor`: the same throttles, code cap, failed sign-in records and
+`MFA_RECOVERY_CODE_USED` row (`create-admin`, `make-admin`, `admin-credentials`,
+`admin-link`). Missing ones are 403 with `needsStepUp` and `needsCode`, so Settings -> Users
+asks for them inline; an acting admin with no Helprr password (Jellyfin-only) is refused.
+Members, demotions, other edits of an admin and your own account are unchanged. Making
+someone admin ends their outstanding link (made without the step-up) in the same
+transaction (`passwordLink` in `USER_UPDATED`). A role, password or Jellyfin change writes
+only to the role it read (`where: { role }`, else 409), and a link for someone else is made
+holding their row (`FOR UPDATE`) and refused (409) if they became admin meanwhile, so a
+concurrent promotion or demotion cannot skip the check. Settings import (`users`) does
+not ask for the step-up (open owner question). Turning it on can
 also end the user's other sessions (`signOutOtherDevices`). Ten
 80-bit recovery codes are stored as SHA-256 (`RecoveryCode`, deleted on use) and still work
 after a `JWT_SECRET` change, when the secret no longer decrypts. Setup needs the current
@@ -460,8 +476,9 @@ in the security audit. The single link from before named links became one named
 "Calendar" with no stored filters; its URL's `?type=&instance=&monitored=` still
 apply, and on any link they can only narrow its own filters. Movie and album
 releases are all-day events on the local date of the upstream instant in the
-link owner's time zone (`UserSettings.timeZone` when set and valid, else the app's,
-`AppSettings.timeZone`, Settings -> Preferences -> Timezone), not its UTC date (the Calendar page itself uses the browser's zone); episodes
+link owner's time zone (`UserSettings.timeZone`, Settings -> Preferences -> Your time zone,
+when set and valid, else the app's, `AppSettings.timeZone`, Settings -> Preferences ->
+Timezone; `getUserTimeZone` in `src/lib/app-settings.ts`), not its UTC date (the Calendar page itself uses the browser's zone); episodes
 stay timed in UTC. A password change (own, an
 admin reset, a reset link used, or the `HELPRR_ADMIN_PASSWORD_RESET` startup
 reset), an admin disabling the user, and a settings import that restores a

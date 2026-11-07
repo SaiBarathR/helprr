@@ -10,24 +10,33 @@ import {
 describe('matchesRandomFilters', () => {
   it('matches any of the chosen genres, and everything with none chosen', () => {
     const comedy = { genres: ['Comedy', 'Romance'], runtime: 100 };
-    expect(matchesRandomFilters(comedy, { genres: [] })).toBe(true);
-    expect(matchesRandomFilters(comedy, { genres: ['Drama', 'Romance'] })).toBe(true);
-    expect(matchesRandomFilters(comedy, { genres: ['Drama'] })).toBe(false);
-    expect(matchesRandomFilters({ genres: undefined }, { genres: ['Drama'] })).toBe(false);
+    expect(matchesRandomFilters(comedy, { genres: [] }, 'movie')).toBe(true);
+    expect(matchesRandomFilters(comedy, { genres: ['Drama', 'Romance'] }, 'series')).toBe(true);
+    expect(matchesRandomFilters(comedy, { genres: ['Drama'] }, 'movie')).toBe(false);
+    expect(matchesRandomFilters({ genres: undefined }, { genres: ['Drama'] }, 'series')).toBe(false);
   });
 
   it.each([
     [89, 'under90', true], [90, 'under90', false],
     [90, '90to120', true], [120, '90to120', true], [121, '90to120', false],
     [120, 'over120', false], [121, 'over120', true],
-  ] as const)('a %i-minute title is %s: %s', (runtime, preset, expected) => {
-    expect(matchesRandomFilters({ runtime }, { runtime: preset })).toBe(expected);
+  ] as const)('a %i-minute movie is %s: %s', (runtime, preset, expected) => {
+    expect(matchesRandomFilters({ runtime }, { runtime: preset }, 'movie')).toBe(expected);
   });
 
-  it('matches an unknown length only with any length', () => {
+  it('ignores the length for a series, whatever its episode length', () => {
+    for (const runtime of [25, 60, 150, 0, null]) {
+      for (const preset of ['under90', '90to120', 'over120'] as const) {
+        expect(matchesRandomFilters({ runtime }, { runtime: preset }, 'series')).toBe(true);
+      }
+    }
+    expect(matchesRandomFilters({ genres: ['Drama'], runtime: 25 }, { genres: ['Comedy'], runtime: 'under90' }, 'series')).toBe(false);
+  });
+
+  it('matches a movie of unknown length only with any length', () => {
     for (const runtime of [0, null, undefined]) {
-      expect(matchesRandomFilters({ runtime }, { runtime: 'any' })).toBe(true);
-      expect(matchesRandomFilters({ runtime }, { runtime: 'under90' })).toBe(false);
+      expect(matchesRandomFilters({ runtime }, { runtime: 'any' }, 'movie')).toBe(true);
+      expect(matchesRandomFilters({ runtime }, { runtime: 'under90' }, 'movie')).toBe(false);
     }
   });
 });

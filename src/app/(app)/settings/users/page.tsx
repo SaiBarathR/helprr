@@ -92,6 +92,7 @@ export default function UsersAdminPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<SafeUser | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<SafeUser | null>(null);
+  const me = useMe();
 
   const {
     data: users = null,
@@ -124,6 +125,9 @@ export default function UsersAdminPage() {
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to delete user'),
   });
+
+  // Your own two-step sign-in, from the list: giving admin asks for a code while it is on.
+  const myTwoStep = users?.find((u) => u.id === me?.id)?.twoStepEnabled === true;
 
   function handleDelete(user: SafeUser) {
     return deleteMutation.mutateAsync(user).catch(() => {});
@@ -222,6 +226,7 @@ export default function UsersAdminPage() {
       {creating && (
         <CreateUserDialog
           onClose={() => setCreating(false)}
+          myTwoStep={myTwoStep}
           onCreated={() => {
             setCreating(false);
             void queryClient.invalidateQueries({ queryKey: queryKeys.users() });
@@ -233,6 +238,7 @@ export default function UsersAdminPage() {
         <EditUserDialog
           // The list's copy, so a link made or revoked here shows at once.
           user={users?.find((u) => u.id === editing.id) ?? editing}
+          myTwoStep={myTwoStep}
           onClose={() => setEditing(null)}
           onSaved={() => {
             void queryClient.invalidateQueries({ queryKey: queryKeys.users() });
@@ -410,10 +416,73 @@ function IssuedLinkPanel({ link, username }: { link: IssuedLink; username: strin
   );
 }
 
+/** What a step that gives admin needs from you: your password, and a code while your two-step sign-in is on. */
+function useStepUp(myTwoStep: boolean) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [code, setCode] = useState('');
+  // The server's answer wins over the list's copy (it may be stale).
+  const [serverNeedsCode, setServerNeedsCode] = useState<boolean | null>(null);
+  const needsCode = serverNeedsCode ?? myTwoStep;
+  return {
+    currentPassword,
+    setCurrentPassword,
+    code,
+    setCode,
+    needsCode,
+    /** The server asked for them (the list's copy of a role may be stale). */
+    asked: serverNeedsCode !== null,
+    ready: currentPassword.length > 0 && (!needsCode || code.trim().length > 0),
+    body: () => ({ currentPassword, ...(needsCode ? { code: code.trim() } : {}) }),
+    /** Reads a refusal: true when the server asked for these. */
+    onRefused: (data: { needsStepUp?: boolean; needsCode?: boolean }) => {
+      if (data.needsStepUp === true && typeof data.needsCode === 'boolean') setServerNeedsCode(data.needsCode);
+    },
+    clear: () => {
+      setCurrentPassword('');
+      setCode('');
+      setServerNeedsCode(null);
+    },
+  };
+}
+
+function StepUpFields({ stepUp, reason }: { stepUp: ReturnType<typeof useStepUp>; reason: string }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        {reason} Confirm it is you with your password{stepUp.needsCode ? ' and a code' : ''}.
+      </p>
+      <Input
+        type="password"
+        aria-label="Your current password"
+        placeholder="Your current password"
+        autoComplete="current-password"
+        value={stepUp.currentPassword}
+        onChange={(e) => stepUp.setCurrentPassword(e.target.value)}
+      />
+      {stepUp.needsCode && (
+        <Input
+          type="text"
+          aria-label="Authenticator or recovery code"
+          placeholder="Code or recovery code"
+          autoComplete="one-time-code"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={24}
+          value={stepUp.code}
+          onChange={(e) => stepUp.setCode(e.target.value)}
+        />
+      )}
+    </div>
+  );
+}
+
 function CreateUserDialog({
+  myTwoStep,
   onClose,
   onCreated,
 }: {
+  myTwoStep: boolean;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -427,6 +496,8 @@ function CreateUserDialog({
   const [jellyfinUserId, setJellyfinUserId] = useState<string | null>(null);
   const [seerrUserId, setSeerrUserId] = useState<string | null>(null);
   const passwordError = !invite && password ? localPasswordValidationError(password) : null;
+  const stepUp = useStepUp(myTwoStep);
+  const needsStepUp = role === 'admin';
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -442,10 +513,12 @@ function CreateUserDialog({
           template: role,
           jellyfinUserId,
           seerrUserId,
+          ...(needsStepUp ? stepUp.body() : {}),
         }),
       });
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        const data = (await res.json().catch(() => ({}))) as { error?: string; needsStepUp?: boolean; needsCode?: boolean };
+        stepUp.onRefused(data);
         throw new Error(data.error ?? 'Failed to create user');
       }
       return (await res.json()) as SafeUser & { linkToken?: string; linkOrigin?: string | null };
@@ -546,6 +619,7 @@ function CreateUserDialog({
                 <SelectItem value="admin">Admin</SelectItem>
               </SelectContent>
             </Select>
+            {needsStepUp && <StepUpFields stepUp={stepUp} reason="A new admin can do everything you can." />}
           </div>
           <ExternalLinkFields
             jellyfinUserId={jellyfinUserId}
@@ -562,7 +636,7 @@ function CreateUserDialog({
           <Button variant="outline" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy || passwordError !== null}>
+          <Button onClick={submit} disabled={busy || passwordError !== null || (needsStepUp && !stepUp.ready)}>
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {invite ? 'Create and get link' : 'Create'}
           </Button>
@@ -574,11 +648,13 @@ function CreateUserDialog({
 
 function EditUserDialog({
   user,
+  myTwoStep,
   onClose,
   onSaved,
   onRequestDelete,
 }: {
   user: SafeUser;
+  myTwoStep: boolean;
   onClose: () => void;
   onSaved: () => void;
   onRequestDelete: (u: SafeUser) => void;
@@ -596,6 +672,12 @@ function EditUserDialog({
   // A reset here revokes every session of the user, so editing yourself signs this device out too.
   const me = useMe();
   const isSelf = me?.id === user.id;
+  // Making them admin, or a password or Jellyfin link for another admin, asks for your password (and code).
+  const stepUp = useStepUp(myTwoStep);
+  const promoting = role === 'admin' && user.role !== 'admin';
+  const needsStepUp = promoting
+    || (user.role === 'admin' && !isSelf && (password.length > 0 || jellyfinUserId !== user.jellyfinUserId))
+    || stepUp.asked;
 
   // Permissions editor state. Seeded from the permissions query, then driven by
   // the template/toggle mutations (which return the authoritative effective set).
@@ -640,17 +722,20 @@ function EditUserDialog({
           jellyfinUserId,
           seerrUserId,
           password: password || undefined,
+          ...(needsStepUp ? stepUp.body() : {}),
         }),
       });
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        const data = (await res.json().catch(() => ({}))) as { error?: string; needsStepUp?: boolean; needsCode?: boolean };
+        stepUp.onRefused(data);
         throw new Error(data.error ?? 'Failed to save user');
       }
     },
     onSuccess: () => {
       toast.success('Saved');
-      // A saved password or status ends any link; drop one still on screen.
-      if (password || status !== user.status) setLinkSectionKey((key) => key + 1);
+      stepUp.clear();
+      // A saved password or status, or making them admin, ends any link; drop one still on screen.
+      if (password || status !== user.status || promoting) setLinkSectionKey((key) => key + 1);
       setPassword('');
       onSaved();
       // Role change realigns template/overrides server-side; reload the editor.
@@ -821,13 +906,23 @@ function EditUserDialog({
             onJellyfin={setJellyfinUserId}
             onSeerr={setSeerrUserId}
           />
-          <Button onClick={saveIdentity} disabled={busy || passwordError !== null} className="w-full">
+          {needsStepUp && (
+            <StepUpFields
+              stepUp={stepUp}
+              reason={promoting ? 'An admin can do everything you can.' : 'This is a way into another admin’s account.'}
+            />
+          )}
+          <Button
+            onClick={saveIdentity}
+            disabled={busy || passwordError !== null || (needsStepUp && !stepUp.ready)}
+            className="w-full"
+          >
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save details
           </Button>
         </div>
 
-        <PasswordLinkSection key={linkSectionKey} user={user} isSelf={isSelf} />
+        <PasswordLinkSection key={linkSectionKey} user={user} isSelf={isSelf} myTwoStep={myTwoStep} />
 
         <TwoStepSection user={user} isSelf={isSelf} />
 
@@ -919,27 +1014,37 @@ function EditUserDialog({
  * Uses the saved user, not the unsaved form: the server decides which link
  * applies, and a saved status or password change ends any link.
  */
-function PasswordLinkSection({ user, isSelf }: { user: SafeUser; isSelf: boolean }) {
+function PasswordLinkSection({ user, isSelf, myTwoStep }: { user: SafeUser; isSelf: boolean; myTwoStep: boolean }) {
   const queryClient = useQueryClient();
   const [issued, setIssued] = useState<IssuedLink | null>(null);
   const purpose = user.status === 'pending' ? 'invite' : user.status === 'active' && user.hasPassword ? 'reset' : null;
   // Your own reset link while your two-step sign-in is on turns it off, so the
   // server asks for your password and a code (also when this list was stale).
   const [serverAsked, setServerAsked] = useState(false);
-  const needsFactors = isSelf && purpose === 'reset' && (user.twoStepEnabled || serverAsked);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [code, setCode] = useState('');
+  const selfFactors = isSelf && purpose === 'reset' && (user.twoStepEnabled || serverAsked);
+  // A link for another admin asks for your password, and a code while your two-step sign-in is on.
+  const otherAdminStepUp = useStepUp(myTwoStep);
+  const otherAdmin = !isSelf && (user.role === 'admin' || otherAdminStepUp.asked);
+  const needsFactors = selfFactors || otherAdmin;
+  const needsCode = selfFactors || otherAdminStepUp.needsCode;
+  const { currentPassword, setCurrentPassword, code, setCode } = otherAdminStepUp;
 
   const issueMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/users/${user.id}/password-link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: needsFactors ? JSON.stringify({ currentPassword, code: code.trim() }) : '{}',
+        body: needsFactors ? JSON.stringify({ currentPassword, ...(needsCode ? { code: code.trim() } : {}) }) : '{}',
       });
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string; needsSecondFactor?: boolean };
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          needsSecondFactor?: boolean;
+          needsStepUp?: boolean;
+          needsCode?: boolean;
+        };
         if (data.needsSecondFactor === true) setServerAsked(true);
+        otherAdminStepUp.onRefused(data);
         throw new Error(data.error ?? 'Failed to make the link');
       }
       return (await res.json()) as IssuedLink;
@@ -993,7 +1098,9 @@ function PasswordLinkSection({ user, isSelf }: { user: SafeUser; isSelf: boolean
       {needsFactors && (
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">
-            Your two-step sign-in is on, and the link turns it off. Confirm it is you first.
+            {selfFactors
+              ? 'Your two-step sign-in is on, and the link turns it off. Confirm it is you first.'
+              : `This link is a way into another admin’s account. Confirm it is you with your password${needsCode ? ' and a code' : ''}.`}
           </p>
           <Input
             type="password"
@@ -1003,18 +1110,20 @@ function PasswordLinkSection({ user, isSelf }: { user: SafeUser; isSelf: boolean
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
           />
-          <Input
-            type="text"
-            aria-label="Authenticator or recovery code"
-            placeholder="Code or recovery code"
-            autoComplete="one-time-code"
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-            maxLength={24}
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-          />
+          {needsCode && (
+            <Input
+              type="text"
+              aria-label="Authenticator or recovery code"
+              placeholder="Code or recovery code"
+              autoComplete="one-time-code"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={24}
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+            />
+          )}
         </div>
       )}
       {issued && <IssuedLinkPanel link={issued} username={user.username} />}
@@ -1024,7 +1133,7 @@ function PasswordLinkSection({ user, isSelf }: { user: SafeUser; isSelf: boolean
           size="sm"
           variant="outline"
           onClick={() => issueMutation.mutate()}
-          disabled={busy || (needsFactors && (currentPassword.length === 0 || code.trim().length === 0))}
+          disabled={busy || (needsFactors && (currentPassword.length === 0 || (needsCode && code.trim().length === 0)))}
         >
           {issueMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
           {outstanding || issued ? 'New link' : 'Make link'}

@@ -4,9 +4,12 @@ import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { DATE_FORMATS, TIME_FORMATS, parseDateFormat, parseTimeFormat } from '@/lib/date-format';
 import { WATCHING_EPISODE_DAYS_DEFAULT, WATCHING_EPISODE_DAY_OPTIONS } from '@/lib/notification-events';
+import { isValidTimeZone } from '@/lib/timezone';
+import { getOrCreateAppSettings } from '@/lib/app-settings';
 
 // Genuinely-personal settings for the current user: the push quiet-hours window,
-// the "New episode" window and the date/time display format; the global AppSettings (admin) are served
+// the "New episode" window, the date/time display format and their own time
+// zone (null: the server's); the global AppSettings (admin) are served
 // separately by /api/settings.
 const SELECT = {
   quietHoursEnabled: true,
@@ -15,7 +18,11 @@ const SELECT = {
   timeFormat: true,
   dateFormat: true,
   watchingEpisodeDays: true,
+  timeZone: true,
 } as const;
+
+/** Longest IANA name is about 30 characters; anything far past it is not one. */
+const TIME_ZONE_MAX_LENGTH = 64;
 
 type SavedSettings = {
   quietHoursEnabled: boolean;
@@ -24,11 +31,13 @@ type SavedSettings = {
   timeFormat: string | null;
   dateFormat: string | null;
   watchingEpisodeDays: number;
+  timeZone: string | null;
 } | null;
 
 // Stored null means 'auto' (follow the browser locale). New episode alerts need
 // the person's own Jellyfin link, so the page can say when it is missing.
-function toResponse(settings: SavedSettings, jellyfinUserId: string | null) {
+// serverTimeZone is what "Same as the server" means now.
+async function toResponse(settings: SavedSettings, jellyfinUserId: string | null) {
   return {
     quietHoursEnabled: settings?.quietHoursEnabled ?? false,
     quietHoursStart: settings?.quietHoursStart ?? null,
@@ -37,6 +46,8 @@ function toResponse(settings: SavedSettings, jellyfinUserId: string | null) {
     dateFormat: parseDateFormat(settings?.dateFormat),
     watchingEpisodeDays: settings?.watchingEpisodeDays ?? WATCHING_EPISODE_DAYS_DEFAULT,
     jellyfinLinked: Boolean(jellyfinUserId),
+    timeZone: settings?.timeZone ?? null,
+    serverTimeZone: (await getOrCreateAppSettings()).timeZone,
   };
 }
 
@@ -49,7 +60,7 @@ async function getHandler(): Promise<NextResponse> {
     select: SELECT,
   });
 
-  return NextResponse.json(toResponse(settings, auth.user.jellyfinUserId));
+  return NextResponse.json(await toResponse(settings, auth.user.jellyfinUserId));
 }
 
 function parseHour(value: unknown): number | null | undefined {
@@ -77,6 +88,7 @@ async function patchHandler(request: NextRequest): Promise<NextResponse> {
     timeFormat?: string | null;
     dateFormat?: string | null;
     watchingEpisodeDays?: number;
+    timeZone?: string | null;
   } = {};
 
   if ('quietHoursEnabled' in body) {
@@ -116,6 +128,23 @@ async function patchHandler(request: NextRequest): Promise<NextResponse> {
     data.watchingEpisodeDays = body.watchingEpisodeDays as number;
   }
 
+  // null: "Same as the server". Otherwise an IANA name this server's Intl knows.
+  if ('timeZone' in body) {
+    if (body.timeZone === null) {
+      data.timeZone = null;
+    } else if (
+      typeof body.timeZone !== 'string'
+      || body.timeZone.length > TIME_ZONE_MAX_LENGTH
+      // A bare offset ("+05:30") is not a zone: it never follows daylight saving.
+      || /^[+-]/.test(body.timeZone)
+      || !isValidTimeZone(body.timeZone)
+    ) {
+      return NextResponse.json({ error: 'timeZone must be a time zone name (like Europe/London) or null' }, { status: 400 });
+    } else {
+      data.timeZone = body.timeZone;
+    }
+  }
+
   const saved = await prisma.userSettings.upsert({
     where: { userId: auth.user.id },
     update: data,
@@ -123,7 +152,7 @@ async function patchHandler(request: NextRequest): Promise<NextResponse> {
     select: SELECT,
   });
 
-  return NextResponse.json(toResponse(saved, auth.user.jellyfinUserId));
+  return NextResponse.json(await toResponse(saved, auth.user.jellyfinUserId));
 }
 
 export const GET = withApiLogging(getHandler, 'api/me/settings');

@@ -124,9 +124,10 @@ export function Sidebar() {
           // footer at 1440x900, but never under 44px on a touch screen (a tablet's rail).
           'relative flex items-center gap-3 rounded-md px-3 py-2 [@media(max-height:960px)]:py-1 pointer-coarse:min-h-11 text-sm font-medium transition-colors',
           // In dark Liquid Glass only the icon takes the blue tint; the label
-          // stays white. Light Glass and other themes keep a tinted label.
+          // stays white. Light Glass and other themes tint the label through
+          // --hpr-tab-label (the text colour for the cyan accent).
           isActive
-            ? 'bg-primary/10 text-primary [html[data-glass][data-scheme=dark]_&]:text-foreground'
+            ? 'bg-primary/10 text-[color:var(--hpr-tab-label,var(--primary))] [html[data-glass][data-scheme=dark]_&]:text-foreground'
             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
           isPending && 'opacity-70',
           sidebarCollapsed && 'justify-center px-2'

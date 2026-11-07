@@ -64,8 +64,8 @@ describe('BottomNav', () => {
   it("under Liquid Glass tints only the active tab's icon, keeping its label the primary text colour", () => {
     render(<BottomNav />);
     const active = within(screen.getByRole('navigation')).getByRole('link', { name: 'Dashboard' });
-    // Other themes keep the tinted label; Glass (either scheme) turns it to the text colour.
-    expect([...active.classList]).toEqual(expect.arrayContaining(['text-primary', '[html[data-glass]_&]:text-foreground']));
+    // Other themes tint the label through --hpr-tab-label; Glass (either scheme) turns it to the text colour.
+    expect([...active.classList]).toEqual(expect.arrayContaining(['text-[color:var(--hpr-tab-label,var(--primary))]', '[html[data-glass]_&]:text-foreground']));
     expect(active.querySelector('svg')!.classList).toContain('text-primary');
     const idle = within(screen.getByRole('navigation')).getByRole('link', { name: 'Movies' });
     expect(idle.classList).toContain('text-muted-foreground');

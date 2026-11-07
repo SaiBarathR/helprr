@@ -5,7 +5,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { issuePasswordLink, passwordLinkPurposeFor, revokePasswordLink } from '@/lib/password-links';
 import { recordSecurityEvent } from '@/lib/security-audit';
 import { boundedBodyErrorResponse, readBoundedJson } from '@/lib/server/bounded-body';
-import { confirmPasswordAndSecondFactor } from '@/lib/server/confirm-password';
+import { confirmAdminStepUp, confirmPasswordAndSecondFactor } from '@/lib/server/confirm-password';
 import { isTotpEnabled } from '@/lib/totp';
 import { configuredAppOrigin, INVALID_APP_ORIGIN_LINK_ERROR, isAppOriginInvalid } from '@/lib/request-utils';
 
@@ -14,6 +14,7 @@ const SELF_LINK_NEEDS_FACTORS =
 const BODY_MAX_BYTES = 8 * 1024;
 
 class TwoStepTurnedOnError extends Error {}
+class BecameAdminError extends Error {}
 
 /**
  * Make a new invite link (pending user) or password-reset link (active local
@@ -25,8 +26,10 @@ class TwoStepTurnedOnError extends Error {}
  * A reset link for your own account while your two-step sign-in is on needs
  * your current password and a code (or a recovery code), checked as turning
  * two-step sign-in off checks them: using the link turns it off, so a
- * signed-in session alone must not be able to make one. Links for other
- * people need neither.
+ * signed-in session alone must not be able to make one. A link (reset or
+ * invite) for another admin needs your current password, plus a code while
+ * your two-step sign-in is on, as making someone admin does. Links for members
+ * need neither.
  */
 async function postHandler(
   request: NextRequest,
@@ -35,7 +38,7 @@ async function postHandler(
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
   // JSON only, so a same-site form cannot replace a link. The body is read only
-  // for your own reset link (the password and code).
+  // for your own reset link and another admin's link (the password and code).
   let body: unknown;
   try {
     body = await readBoundedJson<unknown>(request, BODY_MAX_BYTES);
@@ -48,7 +51,7 @@ async function postHandler(
   const { id } = await params;
   const user = await prisma.user.findUnique({
     where: { id },
-    select: { id: true, username: true, status: true, passwordHash: true, passwordLink: { select: { purpose: true } } },
+    select: { id: true, username: true, role: true, status: true, passwordHash: true, passwordLink: { select: { purpose: true } } },
   });
   if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
@@ -98,6 +101,12 @@ async function postHandler(
     }
   }
 
+  const otherAdmin = user.role === 'admin' && user.id !== admin.user.id;
+  if (otherAdmin) {
+    const stepUp = await confirmAdminStepUp(request, admin.user, body, 'admin-link');
+    if (stepUp) return stepUp;
+  }
+
   let link: Awaited<ReturnType<typeof issuePasswordLink>>;
   if (isSelf) {
     // Holding your user row, as turning two-step sign-in on does: if it was
@@ -118,7 +127,23 @@ async function postHandler(
       return NextResponse.json({ error: SELF_LINK_NEEDS_FACTORS, needsSecondFactor: true }, { status: 403 });
     }
   } else {
-    link = await issuePasswordLink(prisma, { userId: user.id, purpose, createdById: admin.user.id });
+    // Holding their user row, as making them admin does: a member made admin
+    // since this request read them needs the step-up too (and making someone
+    // admin ends their link, users/[id]).
+    try {
+      link = await prisma.$transaction(async (tx) => {
+        const [row] = await tx.$queryRaw<Array<{ role: string }>>`
+          SELECT "role" FROM "User" WHERE "id" = ${user.id} FOR UPDATE`;
+        if (row?.role === 'admin' && !otherAdmin) throw new BecameAdminError();
+        return issuePasswordLink(tx, { userId: user.id, purpose, createdById: admin.user.id });
+      });
+    } catch (error) {
+      if (!(error instanceof BecameAdminError)) throw error;
+      return NextResponse.json(
+        { error: 'This account was made admin meanwhile. Reload and try again.' },
+        { status: 409 },
+      );
+    }
   }
   await recordSecurityEvent(request, {
     actor: admin.user,

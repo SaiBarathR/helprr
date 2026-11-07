@@ -355,6 +355,11 @@ function resolveThemeTokens(prefs: DashboardThemePrefs) {
 /** Build a React style object containing every --hpr-* variable. */
 export function buildDashboardThemeStyle(prefs: DashboardThemePrefs): React.CSSProperties {
   const { accent, palette, font, gradient } = resolveThemeTokens(prefs);
+  // The active tab's label (phone tabs, More, sidebar): with the cyan accent
+  // only the icon takes it and the label keeps the text colour, as under
+  // Liquid Glass. Every other accent tints the label. A var, so the pre-paint
+  // replay has it too.
+  const tabLabel = accent.toLowerCase() === ACCENT_COLORS.cyan.color ? palette.fg : accent;
 
   return {
     ['--hpr-ink' as string]: palette.ink,
@@ -367,6 +372,7 @@ export function buildDashboardThemeStyle(prefs: DashboardThemePrefs): React.CSSP
     ['--hpr-fgMute' as string]: palette.fgMute,
     ['--hpr-fgSubtle' as string]: palette.fgSubtle,
     ['--hpr-amber' as string]: accent,
+    ['--hpr-tab-label' as string]: tabLabel,
     ['--hpr-font-body' as string]: font.body,
     ['--hpr-font-display' as string]: font.display,
     ['--hpr-font-mono' as string]: font.mono,

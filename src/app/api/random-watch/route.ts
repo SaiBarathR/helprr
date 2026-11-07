@@ -84,8 +84,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   // genre already chosen never removes the others from the list.
   const genres = poolGenres([...filteredMovies, ...filteredSeries]);
   const pool: RandomPick[] = [
-    ...filteredMovies.filter((m) => matchesRandomFilters(m, filters)).map(pickMovie),
-    ...filteredSeries.filter((s) => matchesRandomFilters(s, filters)).map(pickSeries),
+    ...filteredMovies.filter((m) => matchesRandomFilters(m, filters, 'movie')).map(pickMovie),
+    ...filteredSeries.filter((s) => matchesRandomFilters(s, filters, 'series')).map(pickSeries),
   ];
   if (pool.length === 0) {
     return NextResponse.json({ pick: null, poolSize: 0, genres }, RANDOM_RESPONSE_OPTIONS);

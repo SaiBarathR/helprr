@@ -21,7 +21,11 @@ function filterSummary(filters: TonightFilters): string {
   const kind = filters.type === 'movie' ? 'Movies' : filters.type === 'series' ? 'Series' : 'Movies and series';
   const parts = [kind];
   if (filters.watch === 'unwatched') parts.push('Unwatched');
-  if (filters.runtime && filters.runtime !== 'any') parts.push(RANDOM_RUNTIME_LABELS[filters.runtime]);
+  // The length is for movies only: said so beside series, and left out with series alone.
+  if (filters.runtime && filters.runtime !== 'any' && filters.type !== 'series') {
+    const length = RANDOM_RUNTIME_LABELS[filters.runtime];
+    parts.push(filters.type === 'movie' ? length : `${length} (movies)`);
+  }
   const genres = filters.genres ?? [];
   if (genres.length > 0) parts.push(genres.length > 2 ? `${genres.slice(0, 2).join(', ')} +${genres.length - 2}` : genres.join(', '));
   return parts.join(' · ');

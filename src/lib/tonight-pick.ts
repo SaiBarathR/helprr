@@ -357,13 +357,13 @@ export async function buildTonightTitles(
   let starterCount = 0;
   const shared: TonightTitle[] = [];
   for (const m of movies) {
-    if (!matchesRandomFilters(m, filters) || !isEligibleUnwatched(starterMap, 'radarr', m.instanceId, m.id)) continue;
+    if (!matchesRandomFilters(m, filters, 'movie') || !isEligibleUnwatched(starterMap, 'radarr', m.instanceId, m.id)) continue;
     starterCount++;
     if (!allMovies || !maps.every((map) => isEligibleUnwatched(map, 'radarr', m.instanceId, m.id))) continue;
     shared.push({ ...pickMovie(m), imdbId: m.imdbId || null, tmdbId: m.tmdbId || null, tvdbId: null });
   }
   for (const s of series) {
-    if (!matchesRandomFilters(s, filters) || !isEligibleUnwatched(starterMap, 'sonarr', s.instanceId, s.id)) continue;
+    if (!matchesRandomFilters(s, filters, 'series') || !isEligibleUnwatched(starterMap, 'sonarr', s.instanceId, s.id)) continue;
     starterCount++;
     if (!allSeries || !maps.every((map) => isEligibleUnwatched(map, 'sonarr', s.instanceId, s.id))) continue;
     shared.push({ ...pickSeries(s), imdbId: s.imdbId || null, tmdbId: s.tmdbId || null, tvdbId: s.tvdbId || null });

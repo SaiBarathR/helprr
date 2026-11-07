@@ -58,3 +58,15 @@ export async function getOrCreateAppSettings() {
     timeZone: normalizeTimeZone(settings.timeZone),
   };
 }
+
+/**
+ * The time zone for a person's own times: theirs from Settings -> Preferences,
+ * or the server's (AppSettings) when they chose "Same as the server".
+ */
+export async function getUserTimeZone(userId: string): Promise<string> {
+  const [personal, app] = await Promise.all([
+    prisma.userSettings.findUnique({ where: { userId }, select: { timeZone: true } }),
+    getOrCreateAppSettings(),
+  ]);
+  return normalizeTimeZone(personal?.timeZone, app.timeZone);
+}

@@ -332,9 +332,10 @@ describe('the shared pool', () => {
     const ids = async (filters: Parameters<typeof buildTonightTitles>[2]) =>
       (await buildTonightTitles(member('sai'), [member('mum')], filters)).titles.map((t) => t.id).sort();
     expect(await ids({ type: 'any', watch: 'all', genres: ['Comedy'], runtime: 'any' })).toEqual([1, 3, 4]);
-    expect(await ids({ type: 'any', watch: 'all', genres: ['Comedy'], runtime: '90to120' })).toEqual([1]);
-    // A series is matched by its episode length.
-    expect(await ids({ type: 'any', watch: 'all', genres: [], runtime: 'under90' })).toEqual([4]);
+    // The length is for movies only: the Comedy series stays in.
+    expect(await ids({ type: 'any', watch: 'all', genres: ['Comedy'], runtime: '90to120' })).toEqual([1, 4]);
+    expect(await ids({ type: 'any', watch: 'all', genres: [], runtime: 'over120' })).toEqual([3, 4]);
+    expect(await ids({ type: 'series', watch: 'all', genres: [], runtime: 'over120' })).toEqual([4]);
     expect(await ids({ type: 'any', watch: 'all' })).toEqual([1, 2, 3, 4]);
   });
 
