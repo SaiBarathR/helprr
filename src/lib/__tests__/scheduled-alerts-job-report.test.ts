@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({ resolve: vi.fn(), upsert: vi.fn(), update: vi.
 
 vi.mock('@/lib/db', () => ({
   prisma: {
-    scheduledAlert: { findMany: vi.fn(async () => [{ id: 'alert-1', offsetMinutes: 30 }]), update: mocks.update },
+    scheduledAlert: { findMany: vi.fn(async () => [{ id: 'alert-1', offsetMinutes: 30 }]), update: mocks.update, updateMany: mocks.update },
     scheduledAlertOccurrence: { findMany: vi.fn(async () => []), upsert: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn() },
   },
 }));

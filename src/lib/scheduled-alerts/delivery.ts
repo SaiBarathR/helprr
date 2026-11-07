@@ -88,6 +88,10 @@ const MAX_KNOWN_ALBUM_KEYS = 500;
  * ahead: each album not seen at an earlier resolve gets a push now. The first
  * resolve only records the albums Lidarr already knows. Seen albums are kept
  * even when an instance does not answer, so its albums are not announced twice.
+ *
+ * The seen list and the pushes are written together, and only while the alert
+ * is unchanged since it was read: an edit and a background refresh resolving
+ * at the same time cannot both announce the same album.
  */
 export async function announceNewAlbums(
   alert: ScheduledAlert,
@@ -97,27 +101,33 @@ export async function announceNewAlbums(
   const metadata = (alert.metadata ?? {}) as ScheduledAlertMetadata;
   const known = metadata.knownAlbumKeys ? new Set(metadata.knownAlbumKeys) : null;
   const fresh = known ? upcoming.filter((album) => !known.has(album.key)) : [];
-  const now = new Date();
-  const day = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeZone: alert.timeZone });
-  for (const album of fresh) {
-    await db.scheduledAlertOccurrence.create({
-      data: {
-        alertId: alert.id,
-        releaseAt: album.releaseAt,
-        notifyAt: now,
-        releaseKind: 'album',
-        targetKey: `lidarr:${album.key}:announced`,
-        title: album.artistName,
-        body: `New album: ${album.title}, out ${day.format(album.releaseAt)}`,
-      },
-    });
-  }
   if (known && fresh.length === 0) return;
   const knownAlbumKeys = [...new Set([...(known ?? []), ...upcoming.map((album) => album.key)])].slice(-MAX_KNOWN_ALBUM_KEYS);
-  await db.scheduledAlert.update({
-    where: { id: alert.id },
-    data: { metadata: { ...metadata, knownAlbumKeys } as Prisma.InputJsonValue },
-  });
+  const now = new Date();
+  const day = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeZone: alert.timeZone });
+
+  const write = async (tx: DbClient) => {
+    const { count } = await tx.scheduledAlert.updateMany({
+      where: { id: alert.id, updatedAt: alert.updatedAt },
+      data: { metadata: { ...metadata, knownAlbumKeys } as Prisma.InputJsonValue },
+    });
+    if (count === 0) return; // Changed since it was read: that resolve announces instead.
+    for (const album of fresh) {
+      await tx.scheduledAlertOccurrence.create({
+        data: {
+          alertId: alert.id,
+          releaseAt: album.releaseAt,
+          notifyAt: now,
+          releaseKind: 'album',
+          targetKey: `lidarr:${album.key}:announced`,
+          title: album.artistName,
+          body: `New album: ${album.title}, out ${day.format(album.releaseAt)}`,
+        },
+      });
+    }
+  };
+  // Inside a caller's transaction, write there; otherwise in one of our own.
+  await (db === prisma ? prisma.$transaction(write) : write(db));
 }
 
 /** A Lidarr alert reads the music library, so its owner must still have music.view. */
@@ -157,16 +167,26 @@ export async function refreshScheduledAlertOccurrences(): Promise<void> {
   for (const { user, ...alert } of alerts) {
     try {
       // An owner who lost music.view gets no more music reminders; Lidarr is not asked.
-      const { candidates, resolved, upcomingAlbums } = ownerMaySee({ ...alert, user })
+      const maySee = ownerMaySee({ ...alert, user });
+      const { candidates, resolved, upcomingAlbums } = maySee
         ? await resolveAlertOccurrencesResult(alert, ctx)
         : { candidates: [], resolved: true, upcomingAlbums: undefined };
       // Unresolved means a release source it needs did not answer.
       if (!resolved) noteJobFailure(new Error('A release source for a scheduled alert did not answer'));
       await upsertOccurrencesForAlert(alert, candidates, { resolved });
       if (resolved && upcomingAlbums) await announceNewAlbums(alert, upcomingAlbums);
-      await prisma.scheduledAlert.update({
-        where: { id: alert.id },
-        data: { updatedAt: new Date() },
+      // Only while unchanged since read: an edit or announcement already moved it,
+      // and bumping over an edit would stop the edit's own announcement.
+      const metadata = (alert.metadata ?? {}) as ScheduledAlertMetadata;
+      const { knownAlbumKeys, ...withoutKnown } = metadata;
+      await prisma.scheduledAlert.updateMany({
+        where: { id: alert.id, updatedAt: alert.updatedAt },
+        data: {
+          updatedAt: new Date(),
+          // Without music.view the seen albums go stale: start afresh, so regaining
+          // it records what Lidarr knows instead of announcing it all at once.
+          ...(!maySee && knownAlbumKeys ? { metadata: withoutKnown as Prisma.InputJsonValue } : {}),
+        },
       });
     } catch (error) {
       noteJobFailure(error);

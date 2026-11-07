@@ -14,6 +14,8 @@ import { restartDownloadCleaner, restartQueueCleaner } from '@/lib/cleanup/sched
 import { pruneStrikesForMissingRules } from '@/lib/cleanup/strikes';
 import { createResolverContext, resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
 import { upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
+import { pinMusicInstance } from '@/lib/scheduled-alerts/helpers';
+import { can } from '@/lib/permissions';
 import { invalidateRecommendations } from '@/lib/recommendations/engine';
 import type { ImportFollowUp, ImportWarning } from './follow-up-tasks';
 
@@ -132,13 +134,27 @@ export async function runImportFollowUps(plan: ImportFollowUpPlan): Promise<Impo
           status: 'active',
           ...(plan.alertOwnerId ? { userId: plan.alertOwnerId } : {}),
         },
+        include: { user: { select: { role: true, template: true, permissions: true } } },
       });
       if (alerts.length > 0) {
         const ctx = createResolverContext({
           maxOffsetMinutes: Math.max(...alerts.map((alert) => alert.offsetMinutes)),
         });
-        for (const alert of alerts) {
+        for (const { user, ...row } of alerts) {
+          let alert = row;
           try {
+            // Music alerts: only for an owner who may see music (the background
+            // refresh treats them the same), and tied to the default Lidarr when
+            // the file's instance is not on this install.
+            if (alert.source === 'LIDARR') {
+              if (!can(user, 'music.view')) continue;
+              if (!alert.instanceId) {
+                const { instanceId } = await pinMusicInstance({
+                  source: 'LIDARR', externalId: alert.externalId, mediaType: 'music', title: alert.title,
+                });
+                if (instanceId) alert = await prisma.scheduledAlert.update({ where: { id: alert.id }, data: { instanceId } });
+              }
+            }
             const { candidates, resolved } = await resolveAlertOccurrencesResult(alert, ctx);
             await upsertOccurrencesForAlert(alert, candidates, { resolved });
             // Unresolved: a source it needs did not answer and nothing was found.

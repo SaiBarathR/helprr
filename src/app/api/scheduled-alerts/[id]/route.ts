@@ -78,7 +78,14 @@ async function patchHandler(
   const metadata = { ...((existing.metadata ?? {}) as ScheduledAlertMetadata) };
   if (typeof body.seasonNumber === 'number') metadata.seasonNumber = body.seasonNumber;
   if (typeof body.episodeId === 'number') metadata.episodeId = body.episodeId;
-  if (body.seasonNumber !== undefined || body.episodeId !== undefined) {
+  // A cancelled artist alert was not refreshed: start its seen albums afresh
+  // rather than announce every album Lidarr learned of meanwhile at once.
+  if (data.status === 'active' && existing.status !== 'active' && metadata.knownAlbumKeys) {
+    delete metadata.knownAlbumKeys;
+    data.metadata = metadata as Prisma.InputJsonValue;
+  }
+  // Season and episode mean nothing to music, whose metadata holds the seen albums.
+  if (existing.mediaType !== 'music' && (body.seasonNumber !== undefined || body.episodeId !== undefined)) {
     data.metadata = metadata as Prisma.InputJsonValue;
   }
 

@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   alertFindMany: vi.fn(),
+  alertUpdate: vi.fn(),
+  resolveConnection: vi.fn(),
   pollingRestart: vi.fn(),
   setCachedCacheImagesEnabled: vi.fn(),
   setCachedAnilistTtlSettings: vi.fn(),
@@ -25,7 +27,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/db', () => ({
-  prisma: { scheduledAlert: { findMany: mocks.alertFindMany }, serviceConnection: { findMany: mocks.connectionFindMany } },
+  prisma: { scheduledAlert: { findMany: mocks.alertFindMany, update: mocks.alertUpdate }, serviceConnection: { findMany: mocks.connectionFindMany } },
 }));
 vi.mock('@/lib/cache/reference-labels', () => ({ invalidateReferenceLabels: mocks.invalidateReferenceLabels }));
 vi.mock('@/lib/polling-service', () => ({ pollingService: { restart: mocks.pollingRestart } }));
@@ -42,6 +44,7 @@ vi.mock('@/lib/app-settings', () => ({ getOrCreateAppSettings: mocks.getOrCreate
 vi.mock('@/lib/arr-instances', () => ({
   ensureDefaultForType: mocks.ensureDefaultForType,
   clearConnectionMemo: mocks.clearConnectionMemo,
+  resolveConnection: mocks.resolveConnection,
   isArrType: (type: string) => ['SONARR', 'RADARR', 'LIDARR'].includes(type),
 }));
 vi.mock('@/lib/cleanup/scheduler', () => ({
@@ -220,7 +223,25 @@ describe('settings import follow-ups', () => {
 
     expect(mocks.alertFindMany).toHaveBeenCalledWith({
       where: { id: { in: ['a', 'b'] }, scheduleMode: 'release_relative', status: 'active', userId: 'member-1' },
+      include: { user: { select: { role: true, template: true, permissions: true } } },
     });
+  });
+
+  it('resolves imported music alerts only for owners with music.view, tied to the default Lidarr', async () => {
+    const noMusic = { role: 'member', template: 'member', permissions: { 'music.view': false } };
+    mocks.alertFindMany.mockResolvedValue([
+      { id: 'hidden', source: 'LIDARR', externalId: '9', title: 'Artist', instanceId: null, offsetMinutes: 0, user: noMusic },
+      { id: 'music', source: 'LIDARR', externalId: '9', title: 'Artist', instanceId: null, offsetMinutes: 0, user: { role: 'admin' } },
+    ]);
+    mocks.resolveConnection.mockResolvedValue({ id: 'lid-default' });
+    mocks.alertUpdate.mockImplementation(async ({ where, data }: { where: { id: string }; data: object }) => ({ id: where.id, source: 'LIDARR', ...data }));
+
+    await expect(runImportFollowUps({ alertIds: ['hidden', 'music'] })).resolves.toEqual([]);
+
+    expect(mocks.alertUpdate).toHaveBeenCalledTimes(1);
+    expect(mocks.alertUpdate).toHaveBeenCalledWith({ where: { id: 'music' }, data: { instanceId: 'lid-default' } });
+    expect(mocks.resolveAlertOccurrencesResult).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveAlertOccurrencesResult.mock.calls[0][0]).toMatchObject({ id: 'music', instanceId: 'lid-default' });
   });
 
   it('reports every requested alert when the alerts cannot be read', async () => {

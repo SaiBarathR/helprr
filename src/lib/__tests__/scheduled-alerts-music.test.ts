@@ -13,8 +13,11 @@ const mocks = vi.hoisted(() => ({
   getLidarrClients: vi.fn(),
   user: { id: 'u1', role: 'admin' } as Record<string, unknown>,
   create: vi.fn(),
+  inPost: false,
   alertFindMany: vi.fn(),
   alertUpdate: vi.fn(),
+  alertUpdateMany: vi.fn(),
+  alertFindFirst: vi.fn(),
   occFindMany: vi.fn(),
   occCreate: vi.fn(),
   occUpdate: vi.fn(),
@@ -35,9 +38,16 @@ vi.mock('@/lib/app-settings', async (importOriginal) => ({ ...(await importOrigi
 vi.mock('@/lib/db', () => ({
   prisma: {
     userSettings: { findUnique: async () => null },
-    $transaction: async () => { mocks.create(); throw new Error('stop after the checks'); },
+    // POST stops here; announcements run their writes against the same mocks.
+    $transaction: async (fn: unknown) => {
+      if (typeof fn !== 'function') throw new Error('unexpected batch');
+      if (fn.length === 1 && mocks.inPost) { mocks.create(); throw new Error('stop after the checks'); }
+      const { prisma } = await import('@/lib/db');
+      return fn(prisma);
+    },
     serviceConnection: { findFirst: async () => null, findMany: async () => [] },
-    scheduledAlert: { findMany: mocks.alertFindMany, update: mocks.alertUpdate },
+    scheduledAlert: { findMany: mocks.alertFindMany, update: mocks.alertUpdate, updateMany: mocks.alertUpdateMany,
+      findFirst: mocks.alertFindFirst, findUnique: async () => null },
     scheduledAlertOccurrence: {
       findMany: mocks.occFindMany, create: mocks.occCreate, update: mocks.occUpdate,
       updateMany: mocks.occUpdateMany, upsert: mocks.occUpsert,
@@ -52,6 +62,7 @@ import { prepareScheduledAlerts } from '@/lib/settings-import/alerts';
 import { announceNewAlbums, checkScheduledAlerts, refreshScheduledAlertOccurrences } from '@/lib/scheduled-alerts/delivery';
 import { POST as createAlert } from '@/app/api/scheduled-alerts/route';
 import { POST as previewAlert } from '@/app/api/scheduled-alerts/preview/route';
+import { PATCH as editAlert } from '@/app/api/scheduled-alerts/[id]/route';
 
 const DAY = 24 * 60 * 60 * 1000;
 const lidarrDate = (offsetDays: number) => `${new Date(Date.now() + offsetDays * DAY).toISOString().slice(0, 10)}T00:00:00Z`;
@@ -77,6 +88,8 @@ const client = { getAlbumById: vi.fn(), getAlbums: vi.fn() };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.inPost = false;
+  mocks.alertUpdateMany.mockResolvedValue({ count: 1 });
   mocks.user = { id: 'u1', role: 'admin' };
   mocks.getLidarrClients.mockResolvedValue([
     { connection: { id: 'lid-1', label: 'Lidarr' }, client },
@@ -158,6 +171,7 @@ describe('music alert access', () => {
 
   it('refuses a member without music.view before reaching Lidarr or the database', async () => {
     mocks.user = member(false);
+    mocks.inPost = true;
     expect((await post(createAlert, '/api/scheduled-alerts', { draft: artistDraft })).status).toBe(403);
     expect((await post(previewAlert, '/api/scheduled-alerts/preview', { draft: artistDraft })).status).toBe(403);
     expect(mocks.getLidarrClients).not.toHaveBeenCalled();
@@ -191,13 +205,14 @@ describe('importing music alerts', () => {
 
 describe('announcing an artist\'s new album', () => {
   const upcoming = (...ids: number[]) => ids.map((id) => ({ key: `lid-1:${id}`, title: `Album ${id}`, artistName: 'Massive Attack', releaseAt: new Date(Date.now() + 40 * DAY) }));
+  const readAt = new Date('2026-11-07T08:00:00Z');
   const alert = (knownAlbumKeys?: string[]) =>
-    ({ ...alertRow('artist', '9'), id: 'a1', metadata: knownAlbumKeys ? { knownAlbumKeys } : {} }) as unknown as ScheduledAlert;
+    ({ ...alertRow('artist', '9'), id: 'a1', updatedAt: readAt, metadata: knownAlbumKeys ? { knownAlbumKeys } : {} }) as unknown as ScheduledAlert;
 
   it('only records what Lidarr already knows the first time', async () => {
     await announceNewAlbums(alert(), upcoming(2, 4));
     expect(mocks.occCreate).not.toHaveBeenCalled();
-    expect(mocks.alertUpdate).toHaveBeenCalledWith({ where: { id: 'a1' }, data: { metadata: { knownAlbumKeys: ['lid-1:2', 'lid-1:4'] } } });
+    expect(mocks.alertUpdateMany).toHaveBeenCalledWith({ where: { id: 'a1', updatedAt: readAt }, data: { metadata: { knownAlbumKeys: ['lid-1:2', 'lid-1:4'] } } });
   });
 
   it('pushes now for an album Lidarr learned of since, once', async () => {
@@ -207,12 +222,19 @@ describe('announcing an artist\'s new album', () => {
     expect(data).toMatchObject({ alertId: 'a1', targetKey: 'lidarr:lid-1:6:announced', releaseKind: 'album', title: 'Massive Attack' });
     expect(data.body).toMatch(/^New album: Album 6, out /);
     expect(Math.abs(data.notifyAt.getTime() - Date.now())).toBeLessThan(5_000);
-    expect(mocks.alertUpdate.mock.calls[0][0].data.metadata.knownAlbumKeys).toEqual(['lid-1:2', 'lid-1:6']);
+    expect(mocks.alertUpdateMany.mock.calls[0][0].data.metadata.knownAlbumKeys).toEqual(['lid-1:2', 'lid-1:6']);
 
     vi.clearAllMocks();
     await announceNewAlbums(alert(['lid-1:2', 'lid-1:6']), upcoming(6));
     expect(mocks.occCreate).not.toHaveBeenCalled();
-    expect(mocks.alertUpdate).not.toHaveBeenCalled();
+    expect(mocks.alertUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('leaves the push to the other resolve when the alert changed since it was read', async () => {
+    // An edit and the background refresh resolved together: only the first write announces.
+    mocks.alertUpdateMany.mockResolvedValue({ count: 0 });
+    await announceNewAlbums(alert(['lid-1:2']), upcoming(2, 6));
+    expect(mocks.occCreate).not.toHaveBeenCalled();
   });
 
   it('is part of the background refresh', async () => {
@@ -232,12 +254,15 @@ describe('an owner who lost music.view', () => {
   const noMusic = { role: 'member', template: 'member', permissions: { 'music.view': false } };
 
   it('gets no more music reminders, and Lidarr is not asked', async () => {
-    mocks.alertFindMany.mockResolvedValue([{ ...alertRow('artist', '9'), id: 'a1', user: noMusic }]);
+    const readAt = new Date('2026-11-07T08:00:00Z');
+    mocks.alertFindMany.mockResolvedValue([{ ...alertRow('artist', '9'), id: 'a1', updatedAt: readAt, metadata: { knownAlbumKeys: ['lid-1:2'] }, user: noMusic }]);
     mocks.occFindMany.mockResolvedValue([{ id: 'o1', targetKey: 'lidarr:lid-1:2', notifyAt: new Date(Date.now() + DAY), status: 'pending' }]);
 
     await refreshScheduledAlertOccurrences();
 
     expect(client.getAlbums).not.toHaveBeenCalled();
+    // Its seen albums start afresh, so regaining music.view does not announce a backlog.
+    expect(mocks.alertUpdateMany).toHaveBeenCalledWith({ where: { id: 'a1', updatedAt: readAt }, data: { updatedAt: expect.any(Date), metadata: {} } });
     expect(mocks.occUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ['o1'] } }, data: expect.objectContaining({ status: 'cancelled' }) }));
   });
 
@@ -251,5 +276,26 @@ describe('an owner who lost music.view', () => {
 
     expect(mocks.notifyEvent).not.toHaveBeenCalled();
     expect(mocks.occUpdate).toHaveBeenCalledWith({ where: { id: 'o2' }, data: expect.objectContaining({ status: 'cancelled' }) });
+  });
+});
+
+describe('reactivating a cancelled artist alert', () => {
+  it('starts its seen albums afresh, so albums added meanwhile are not announced at once', async () => {
+    const existing = { ...alertRow('artist', '9'), id: 'a1', userId: 'u1', status: 'cancelled', cancelledAt: null, createdAt: new Date(), updatedAt: new Date(), metadata: { knownAlbumKeys: ['lid-1:2'] } };
+    mocks.alertFindFirst.mockResolvedValue(existing);
+    mocks.alertUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...existing, ...data, updatedAt: new Date() }));
+    mocks.occFindMany.mockResolvedValue([]);
+    client.getAlbums.mockResolvedValue([album(2, lidarrDate(5)), album(6, lidarrDate(60))]);
+
+    const res = await editAlert(
+      new NextRequest('http://helprr.test/api/scheduled-alerts/a1', { method: 'PATCH', body: JSON.stringify({ status: 'active' }) }),
+      { params: Promise.resolve({ id: 'a1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(mocks.alertUpdate.mock.calls[0][0].data.metadata).toEqual({});
+    // The resolve after it only records what Lidarr knows now.
+    expect(mocks.occCreate).not.toHaveBeenCalled();
+    expect(mocks.alertUpdateMany.mock.calls[0][0].data.metadata.knownAlbumKeys).toEqual(['lid-1:2', 'lid-1:6']);
   });
 });
