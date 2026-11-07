@@ -1,7 +1,7 @@
 import { measureServer } from '@/lib/server-perf';
 import { cache } from 'react';
 import { SignJWT, jwtVerify } from 'jose';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { timingSafeEqual } from 'crypto';
 import type { User, UserRole } from '@prisma/client';
@@ -11,6 +11,12 @@ import { verifyPasswordHash } from '@/lib/password';
 import { can } from '@/lib/permissions';
 import type { Capability } from '@/lib/capabilities';
 import { SESSION_DURATION_SECONDS, SESSION_IDLE_TIMEOUT_SECONDS } from '@/lib/session-policy';
+import {
+  TRUSTED_SESSION_STAMP_CLAIM,
+  TRUSTED_SESSION_USER_CLAIM,
+  trustedSessionClaims,
+  trustedSessionStillVouched,
+} from '@/lib/trusted-session';
 
 const SESSION_DURATION = SESSION_DURATION_SECONDS;
 const COOKIE_NAME = 'helprr-session';
@@ -38,6 +44,8 @@ export interface CreateSessionInput {
   role: UserRole;
   userAgent?: string | null;
   ip?: string | null;
+  /** Trusted-header sign-in: the username the proxy named, which it must keep naming, and the secret's stamp. */
+  trusted?: { username: string; sessionStamp: string };
 }
 
 export async function createSession(input: CreateSessionInput): Promise<string> {
@@ -58,6 +66,7 @@ export async function createSession(input: CreateSessionInput): Promise<string> 
     sid: session.id,
     uid: input.userId,
     role: input.role,
+    ...(input.trusted ? trustedSessionClaims(input.trusted.username, input.trusted.sessionStamp) : {}),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -69,16 +78,28 @@ export async function createSession(input: CreateSessionInput): Promise<string> 
 
 interface DecodedToken {
   sid: string | null;
+  /** Trusted-header sign-in: the username the session was made for, which the account must still have. */
+  trustedUsername?: string;
 }
 
-async function decodeToken(token: string): Promise<DecodedToken | null> {
+/**
+ * Verify a session token. checkProxyBinding: false skips only the
+ * trusted-header binding, for revoking the session the token names (always
+ * safe for its holder, so a session the proxy no longer vouches for can still
+ * be signed out).
+ */
+async function decodeToken(token: string, checkProxyBinding = true): Promise<DecodedToken | null> {
   try {
     const { payload } = await measureServer('auth', () => jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] }));
     // Session tokens never carry an audience; other signed tokens (the two-step
     // pending token) do, and must never count as a session.
     if (payload.aud !== undefined) return null;
+    // Read only for a trusted-header session, so other sessions never need the request headers.
+    const trusted = payload[TRUSTED_SESSION_USER_CLAIM] !== undefined || payload[TRUSTED_SESSION_STAMP_CLAIM] !== undefined;
+    if (trusted && checkProxyBinding && !trustedSessionStillVouched(payload, await headers())) return null;
     const sid = typeof payload.sid === 'string' ? payload.sid : null;
-    return { sid };
+    const trustedUser = payload[TRUSTED_SESSION_USER_CLAIM];
+    return trusted && typeof trustedUser === 'string' ? { sid, trustedUsername: trustedUser } : { sid };
   } catch {
     return null;
   }
@@ -89,7 +110,7 @@ async function decodeToken(token: string): Promise<DecodedToken | null> {
 // resolve auth once with requireUserCapability/requireUser and reuse that result.
 // There is intentionally no cross-request session cache; every new request can
 // observe revocations, disabled users, and role/capability changes.
-const loadAndTouchSession = cache(async (sid: string): Promise<SessionRow | null> => {
+const loadAndTouchSession = cache(async (sid: string, trustedUsername?: string): Promise<SessionRow | null> => {
   const session = await measureServer('session', () => prisma.session.findUnique({
     where: { id: sid },
     include: { user: true },
@@ -102,6 +123,8 @@ const loadAndTouchSession = cache(async (sid: string): Promise<SessionRow | null
   // (userId null) shouldn't exist post-reset (createSession always links one),
   // so treat it as invalid rather than fail-open.
   if (!session.user || session.user.status !== 'active') return null;
+  // A trusted-header session is for the account the proxy named: renamed since, it ends.
+  if (trustedUsername !== undefined && session.user.username !== trustedUsername) return null;
 
   // Idle expiry reads the stored lastSeenAt, not this process's debounce map,
   // so a failed touch can only end a session sooner, never keep it alive.
@@ -138,14 +161,15 @@ async function readToken(): Promise<string | null> {
 export async function verifySession(token: string): Promise<boolean> {
   const decoded = await decodeToken(token);
   if (!decoded || !decoded.sid) return false;
-  const session = await loadAndTouchSession(decoded.sid);
+  const session = await loadAndTouchSession(decoded.sid, decoded.trustedUsername);
   return session !== null;
 }
 
+/** The id of the session this request's signed token names, for signing it out. */
 export async function getCurrentSid(): Promise<string | null> {
   const token = await readToken();
   if (!token) return null;
-  const decoded = await decodeToken(token);
+  const decoded = await decodeToken(token, false);
   return decoded?.sid ?? null;
 }
 
@@ -154,7 +178,7 @@ export async function getCurrentSession(): Promise<SessionRow | null> {
   if (!token) return null;
   const decoded = await decodeToken(token);
   if (!decoded || !decoded.sid) return null;
-  return loadAndTouchSession(decoded.sid);
+  return loadAndTouchSession(decoded.sid, decoded.trustedUsername);
 }
 
 export async function getSession(): Promise<boolean> {
@@ -170,7 +194,7 @@ export async function requireAuth(): Promise<NextResponse | null> {
   if (!decoded || !decoded.sid) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const session = await loadAndTouchSession(decoded.sid);
+  const session = await loadAndTouchSession(decoded.sid, decoded.trustedUsername);
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -188,7 +212,7 @@ export async function requireSession(): Promise<
   if (!decoded || !decoded.sid) {
     return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   }
-  const session = await loadAndTouchSession(decoded.sid);
+  const session = await loadAndTouchSession(decoded.sid, decoded.trustedUsername);
   if (!session) {
     return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   }

@@ -339,6 +339,41 @@ password; turning it off needs the password and a code. Settings export never ca
 either. Audit: `MFA_ENABLED`, `MFA_DISABLED`, `MFA_RECOVERY_CODE_USED`, and a wrong code as
 `LOGIN_FAILED` with method `totp`.
 
+Trusted-header sign-in (`src/lib/trusted-auth.ts`, `POST /api/auth/trusted`): off unless
+`HELPRR_TRUSTED_AUTH_HEADER` and a valid `HELPRR_TRUSTED_AUTH_SECRET` (32+ printable
+non-space ASCII, not a placeholder, not `JWT_SECRET`) are both set; a bad value turns it
+off with a startup warning naming the variable, never stopping startup. Addresses are never
+trusted (route handlers cannot see the connecting address, and `X-Forwarded-For` is the
+visitor's): the proof is the shared secret in `HELPRR_TRUSTED_AUTH_SECRET_HEADER`
+(default `X-Helprr-Proxy-Secret`), compared with `timingSafeEqual` on SHA-256 digests.
+The login page asks `GET /api/auth/trusted` (`{ enabled }`) and then POSTs once. The POST
+is same-origin JSON only (a JSON content type needs a CORS preflight Helprr never grants,
+and a `Sec-Fetch-Site` other than `same-origin` is refused), behind the sign-in throttles: a
+missing secret header counts as a malformed request (401, so the page quietly shows its
+form), a wrong one as a global failure plus `LOGIN_FAILED` method `trusted-header-secret`
+with the name masked. A missing secret is checked before the IP bucket, so the login page reached some other
+way spends no attempts. With the right secret the named user must be the exact username,
+as at password sign-in (Prisma's `mode: 'insensitive'` is an unescaped `ILIKE`, and case
+folding would let a proxy's `Admin` in as `admin`); the per-name backoff is skipped, since
+the proxy vouched for the name. A disabled or pending account or none is `LOGIN_FAILED`
+method `trusted-header-no-account`, and nothing is ever provisioned. Header names HTTP,
+Next.js or Helprr already use (`Cookie`, `User-Agent`, `X-Forwarded-For`, `Range`, `If-*`, `sec-*`, …) are
+refused at config time. Success makes a normal session (`LOGIN_SUCCEEDED`, fields
+`['trusted-header']`) without two-step sign-in: the proxy's sign-in is the second factor.
+Its JWT carries the username in claim `tu` and an HMAC stamp of the proxy secret in `ts`
+(`src/lib/trusted-session.ts`): the request proxy and `decodeToken` refuse it unless
+trusted-header sign-in is still validly on with the same secret and the user header still
+names exactly that user, so a sign-out at the proxy, another user signing in there, a
+changed secret or the feature turned off refuses it on the next request (the row is not
+revoked: restoring the same config makes it work again). The stamp is an HMAC under
+`JWT_SECRET`, so a holder cannot test guesses at the proxy secret against it. Server auth
+also refuses it once the account's username is no longer `tu`. Logout still revokes such a
+session: the request proxy lets `/api/auth/logout` through without the binding, and
+`getCurrentSid` checks only the signature. Only sessions made this way are bound; a
+password session on the same browser is not.
+The logger redacts the configured secret wherever it appears and the default header name
+as a key; request headers are never logged.
+
 Generated secrets: with the bundled Compose file, a short-lived `helprr-init`
 service (`docker/init-secrets.sh`, the app image run as root with no network) makes
 what `.env` does not set, once, on the fixed-name `helprr-secrets` volume: a root-only

@@ -63,6 +63,9 @@ cannot turn it on.
 If whoever runs Helprr changes its `JWT_SECRET`, authenticator codes stop working:
 sign in with a recovery code, then turn two-step sign-in off and on again.
 
+With [sign-in at the proxy](/helprr/https/#sign-in-once-at-the-proxy) on, signing in
+through the proxy skips the code: the proxy's own sign-in stands in for it.
+
 Lost the phone and the recovery codes? Ask an admin: in **Settings → Users**, they can
 open your account and **Turn off** two-step sign-in, which also signs you out everywhere,
 or send you a new password-reset link, which turns it off when you use it. Either way you then

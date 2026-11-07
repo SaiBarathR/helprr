@@ -23,6 +23,8 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/auth/login',
     // The signed MFA pending token from the first step is the credential; rate-limited like sign-in.
     'POST /api/auth/login/totp',
+    // The sign-in proxy's shared secret header is the credential; off unless configured, rate-limited like sign-in.
+    'POST /api/auth/trusted',
     // Only while no user exists and APP_PASSWORD is unset; same-origin JSON, rate-limited.
     'POST /api/setup/admin',
     // The single-use link token is the credential; rate-limited like sign-in.
@@ -573,7 +575,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(254);
+    expect(handlers.size).toBe(255);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 import { getJwtSecret } from '@/lib/jwt-secret';
+import { trustedSessionStillVouched } from '@/lib/trusted-session';
 
 const COOKIE_NAME = 'helprr-session';
 
@@ -22,6 +23,8 @@ const PUBLIC_EXACT_PATHS = [
   '/api/health', '/api/ready', '/offline.html', '/setup', '/api/setup/state', '/api/setup/admin',
   '/api/invite/state', '/api/invite/accept',
   '/api/calendar/feed.ics',
+  // Trusted-header sign-in: the route checks the proxy's secret header itself.
+  '/api/auth/trusted',
 ];
 const IS_DEV = process.env.NODE_ENV === 'development';
 
@@ -146,7 +149,12 @@ export async function proxy(request: NextRequest) {
   try {
     const { payload } = await jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] });
     // Session tokens never carry an audience (the two-step pending token does).
-    if (typeof payload.sid !== 'string' || !payload.sid || payload.aud !== undefined) {
+    // A trusted-header session also needs the proxy to still name its user,
+    // except to sign it out, which the logout route does for any signed token.
+    if (
+      typeof payload.sid !== 'string' || !payload.sid || payload.aud !== undefined
+      || (pathname !== '/api/auth/logout' && !trustedSessionStillVouched(payload, request.headers))
+    ) {
       if (pathname.startsWith('/api/')) {
         return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), csp);
       }

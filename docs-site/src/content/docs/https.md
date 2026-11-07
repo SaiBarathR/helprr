@@ -193,6 +193,140 @@ from a private address: Helprr answers through the proxy host, and a sent
 `X-Forwarded-For` and `X-Forwarded-Proto` are passed on. The Let's Encrypt step needs a
 real domain and was not part of the test.*
 
+## Sign in once, at the proxy
+
+A proxy that asks for its own sign-in (Authelia, Authentik) can also sign you in to
+Helprr, so you sign in once. The proxy names the signed-in user in a header, and sends a
+secret in a second header that proves the request came through it. Helprr signs in the
+existing, active Helprr account with exactly that username, including upper and lower
+case, as at its own sign-in. It never creates an account: add each person in
+**Settings → Users** first, with the same username they have at the proxy. A disabled
+account, or one whose invite is not accepted yet, is refused. Use plain-ASCII usernames:
+headers carry other characters unreliably, so such a name never matches.
+
+Two things are required, or anyone can sign in as anyone:
+
+- **The proxy must strip any client-sent copy of both headers.** It must set the user
+  header only from its own sign-in, and replace (not add to) the secret header. Each
+  example below does.
+- **Helprr's port must not be reachable except through the proxy.** Put the proxy on
+  the same machine or Docker network, and the port on `127.0.0.1` (see
+  [What Helprr needs from it](#what-helprr-needs-from-it)). The secret travels in plain
+  HTTP between the proxy and Helprr.
+
+- **Every proxy route that adds the secret header must also run the proxy's sign-in.**
+  A second router or `location` (for `/api`, say) that skips the sign-in but still adds
+  the secret would pass a visitor's own `Remote-User` through, and anyone could sign in
+  as anyone. A route without the sign-in must not add the secret, and must still strip
+  the user header.
+
+Make the proxy ask for its sign-in on every Helprr address: a rule that lets some paths
+through without it (Authelia's `bypass`, for example) sends those requests with no user,
+and Helprr then treats a session made this way as signed out.
+
+Then, in `.env`, with a secret from `openssl rand -hex 32`:
+
+```sh
+HELPRR_TRUSTED_AUTH_HEADER=Remote-User
+HELPRR_TRUSTED_AUTH_SECRET=paste-the-generated-value
+# Optional; this is the default:
+# HELPRR_TRUSTED_AUTH_SECRET_HEADER=X-Helprr-Proxy-Secret
+```
+
+Restart Helprr. The log says `Trusted-header sign-in is on`, or why it is off. Opening
+Helprr through the proxy then goes straight in; Helprr's own sign-in page is still there
+for anyone who reaches it some other way.
+
+- **Two-step sign-in is skipped** for this sign-in: the proxy's own sign-in is the second
+  factor, so turn on two-step sign-in at the proxy.
+- **Signing out at the proxy signs you out of Helprr** on your next tap, and so does
+  someone else signing in to the proxy on the same browser: a session made this way lasts
+  only while the proxy still names the same user. Signing out of Helprr alone does not
+  sign you out of the proxy, so Helprr's sign-in page signs you straight back in.
+- Sign-ins show in **Settings → Operation audit → Security** as *through the sign-in
+  proxy*. A request with a wrong secret is recorded and counts toward the sign-in limits,
+  like a wrong password: about 30 in 15 minutes pause every sign-in, password ones too.
+  When you change the secret, change it in the proxy and in `.env` together. Sessions
+  made with the old secret stop working, and so do they all when you turn the feature
+  off; to end them for good, sign out everywhere in **Settings → Users**.
+
+The examples use Authelia's `Remote-User` header; Authentik's proxy outpost sends
+`X-authentik-username`. Replace `the-secret` with your `HELPRR_TRUSTED_AUTH_SECRET`.
+
+**Caddy** with Authelia. Caddy normally runs directives in its own order, which would
+remove the header after `forward_auth` sets it; inside `route` they run as written, so a
+copy a visitor sent is dropped first, then Authelia's answer is copied in, and
+`header_up` replaces any sent secret:
+
+```caddy
+helprr.example.com {
+  route {
+    request_header -Remote-User
+    request_header -X-Helprr-Proxy-Secret
+    forward_auth authelia:9091 {
+      uri /api/authz/forward-auth
+      copy_headers Remote-User
+    }
+    reverse_proxy localhost:3050 {
+      header_up X-Helprr-Proxy-Secret "the-secret"
+    }
+  }
+}
+```
+
+**Traefik** with Authelia, in a dynamic configuration file (`forwardAuth` removes a sent
+`Remote-User` and sets Authelia's; `customRequestHeaders` replaces a sent secret):
+
+```yaml
+http:
+  middlewares:
+    authelia:
+      forwardAuth:
+        address: http://authelia:9091/api/authz/forward-auth
+        authResponseHeaders:
+          - Remote-User
+    helprr-proxy-secret:
+      headers:
+        customRequestHeaders:
+          X-Helprr-Proxy-Secret: "the-secret"
+  routers:
+    helprr:
+      rule: Host(`helprr.example.com`)
+      middlewares: [authelia, helprr-proxy-secret]
+      service: helprr
+  services:
+    helprr:
+      loadBalancer:
+        servers:
+          - url: http://helprr:3050
+```
+
+**nginx** with Authelia, using the `auth_request` locations from
+[Authelia's nginx guide](https://www.authelia.com/integration/proxies/nginx/).
+`proxy_set_header` replaces a header a visitor sent under the same name. A location with
+its own `proxy_set_header` lines stops inheriting the server's, so the forwarded headers
+are set here too (`X-Forwarded-For` replaced, not appended, as `TRUST_FORWARDED_PROTO`
+needs):
+
+```nginx
+location / {
+  auth_request /internal/authelia/authz;
+  auth_request_set $user $upstream_http_remote_user;
+  proxy_set_header Remote-User $user;
+  proxy_set_header X-Helprr-Proxy-Secret "the-secret";
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_pass http://127.0.0.1:3050;
+}
+```
+
+Cloudflare Access sends no username header Helprr can trust on its own, so it is not one
+of the proxies this works with yet.
+
+*Not yet tested with a real proxy: the examples follow each proxy's documentation as of
+2026-11-07, and Helprr's side is covered by its automated tests.*
+
 ## Keep it private
 
 Anyone who can reach Helprr's address can try to sign in. Tailscale keeps it to your own

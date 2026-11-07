@@ -91,6 +91,9 @@ const SIGN_IN_METHOD: Record<string, string> = {
   'jellyfin-unlinked': 'with Jellyfin, no Helprr profile linked',
   'jellyfin-wrong-account': 'with Jellyfin, not the account linked to the profile',
   totp: 'with a wrong two-step code',
+  'trusted-header': 'through the sign-in proxy',
+  'trusted-header-secret': 'through a proxy header without the proxy secret',
+  'trusted-header-no-account': 'through the sign-in proxy, no active Helprr account',
 };
 
 // The second factor a sign-in passed, after the method (fields[1]).
@@ -99,8 +102,10 @@ const SECOND_FACTOR: Record<string, string> = {
   'recovery-code': 'and a recovery code',
 };
 
-// Methods whose name Jellyfin accepted: kept as typed, with no Helprr account.
-const ACCOUNT_NAME_METHODS = new Set(['jellyfin-unlinked', 'jellyfin-wrong-account']);
+// Methods whose name Jellyfin or the sign-in proxy vouched for: kept as sent, with no Helprr account.
+const ACCOUNT_NAME_METHODS = new Set(['jellyfin-unlinked', 'jellyfin-wrong-account', 'trusted-header-no-account']);
+// The name came with a forged proxy header, so it says nothing about accounts.
+const NO_NAME_METHODS = new Set(['trusted-header-secret']);
 
 const PAGE_SIZE = 50;
 
@@ -133,7 +138,9 @@ function summary(record: SecurityAuditRecord): string {
     case 'LOGIN_FAILED':
       parts.push(method, plural(record.count, 'attempt'));
       // The name, kept as typed, matched no Helprr account.
-      if (!record.targetId && !ACCOUNT_NAME_METHODS.has(record.fields?.[0] ?? '')) parts.push('unknown username');
+      if (!record.targetId && !ACCOUNT_NAME_METHODS.has(record.fields?.[0] ?? '') && !NO_NAME_METHODS.has(record.fields?.[0] ?? '')) {
+        parts.push('unknown username');
+      }
       break;
     case 'PASSWORD_CHANGED':
       parts.push(`${plural(record.count, 'other session')} signed out`);

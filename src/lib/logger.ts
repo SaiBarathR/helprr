@@ -8,6 +8,7 @@ import {
   DEFAULT_LOG_MAX_FILE_MB,
   DEFAULT_LOG_RETENTION_DAYS,
 } from '@/lib/app-settings';
+import { TRUSTED_AUTH_SECRET_MIN_LENGTH } from '@/lib/trusted-auth';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -76,7 +77,7 @@ const EXACT_SENSITIVE_KEYS = new Set([
   'password', 'passwd', 'pwd', 'secret', 'token', 'jwt',
   'vapid', 'vapidsubject', 'vapidpublickey', 'vapidprivatekey',
   'client_secret', 'clientsecret', 'auth-token', 'auth_token', 'authtoken', 'browserauthtoken', 'cookies',
-  'mfatoken', 'recoverycodes', 'currentpassword', 'newpassword',
+  'mfatoken', 'recoverycodes', 'currentpassword', 'newpassword', 'x-helprr-proxy-secret',
 ]);
 const SUBSTRING_SENSITIVE_PATTERN = /api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token/i;
 const SENSITIVE_VALUE_PATTERN = /(Bearer\s+)[^\s,;]+|(api[_-]?key=)[^&\s]+|(apikey=)[^&\s]+|(password=)[^&\s]+|(token=)[^&\s]+|(sid=)[^;&\s]+|(code=)[^&\s]+|(state=)[^&\s]+|((?:passkey|authkey|torrent_pass|rsskey)=)[^&\s]+|(client_secret=)[^&\s]+|(clientSecret=)[^&\s]+|(auth-token=)[^;&\s]+|(secret=)[^&\s]+/gi;
@@ -194,6 +195,11 @@ export function configureLogger(next: Partial<LoggerConfig>): void {
 }
 
 function redactString(value: string): string {
+  // The trusted-header proxy secret, wherever it turns up, under any header name.
+  const proxySecret = process.env.HELPRR_TRUSTED_AUTH_SECRET;
+  if (proxySecret && proxySecret.length >= TRUSTED_AUTH_SECRET_MIN_LENGTH && value.includes(proxySecret)) {
+    value = value.replaceAll(proxySecret, '[REDACTED]');
+  }
   return value.replace(SENSITIVE_VALUE_PATTERN, (_match, bearer, apiKey, apikey, password, token, sid, code, state, trackerKey, clientSecretSnake, clientSecretCamel, authToken, otpSecret) => {
     const prefix = bearer || apiKey || apikey || password || token || sid || code || state || trackerKey
       || clientSecretSnake || clientSecretCamel || authToken || otpSecret || '';

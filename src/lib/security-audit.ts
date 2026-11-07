@@ -125,8 +125,17 @@ export async function recordSecurityEvent(request: NextRequest | null, input: Se
  * 'jellyfin-unlinked': Jellyfin took the password, but no Helprr profile is linked to that account.
  * 'jellyfin-wrong-account': a member connecting their own Jellyfin account signed in to a different one.
  * 'totp': a wrong two-step sign-in code (authenticator or recovery code), after a right password.
+ * 'trusted-header-secret': a trusted-header sign-in without the proxy's secret.
+ * 'trusted-header-no-account': the sign-in proxy named no active Helprr account.
  */
-export type SignInMethod = 'password' | 'jellyfin' | 'jellyfin-unlinked' | 'jellyfin-wrong-account' | 'totp';
+export type SignInMethod =
+  | 'password'
+  | 'jellyfin'
+  | 'jellyfin-unlinked'
+  | 'jellyfin-wrong-account'
+  | 'totp'
+  | 'trusted-header-secret'
+  | 'trusted-header-no-account';
 
 export interface FailedSignInInput {
   /** The username as typed, normalized. */
