@@ -179,7 +179,9 @@ async function patchHandler(
         console.error('[Users] Failed to refresh recommendations after a Jellyfin link change:', error),
       );
     }
-    const fields = changedFieldNames(existing, result.updated, AUDITED_FIELDS);
+    // A role change keeps the new role ("made admin"), so the log answers who gave whom admin.
+    const fields = changedFieldNames(existing, result.updated, AUDITED_FIELDS)
+      .map((field) => (field === 'role' ? `made ${result.updated.role}` : field));
     if (JSON.stringify(existing.permissions) !== JSON.stringify(result.updated.permissions)) fields.push('permissions');
     // A reset password revokes the user's sessions in the same transaction.
     if (data.passwordHash !== undefined) fields.push('password');

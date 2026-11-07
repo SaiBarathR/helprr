@@ -25,6 +25,24 @@ export function parseBareOrigin(value: string, requireHttps: boolean): string | 
 }
 
 /**
+ * The configured APP_ORIGIN as a bare origin (https only in production), or
+ * null when it is unset or invalid. Links Helprr hands out (calendar feeds,
+ * invite and reset links) use it, so a link made from a LAN http address
+ * still points at the public one; with null the page uses its own address.
+ */
+export function configuredAppOrigin(): string | null {
+  return parseBareOrigin(process.env.APP_ORIGIN?.trim() ?? '', process.env.NODE_ENV === 'production');
+}
+
+/** APP_ORIGIN is set but is not an origin configuredAppOrigin() accepts. */
+export function isAppOriginInvalid(): boolean {
+  return Boolean(process.env.APP_ORIGIN?.trim()) && configuredAppOrigin() === null;
+}
+
+export const INVALID_APP_ORIGIN_LINK_ERROR =
+  'APP_ORIGIN is set but is not a valid address (https in production), so no link was made. Fix APP_ORIGIN and try again.';
+
+/**
  * The origin Helprr is reached at, for OAuth redirect URIs and the redirects
  * that follow a callback. In production this is only the configured HTTPS
  * APP_ORIGIN; null means it is missing or invalid, and callers must fail

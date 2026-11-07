@@ -4,6 +4,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { checkOwnership, coercePositiveInt, coercePositiveIntArray } from '@/lib/manage-files-guard';
+import { can } from '@/lib/permissions';
 
 async function postHandler(request: NextRequest) {
   const auth = await requireUserCapability('activity.manage');
@@ -20,6 +21,11 @@ async function postHandler(request: NextRequest) {
     // ManualImport is deliberately not one of them: it moves whatever path it is
     // handed, so imports go through the routes that check the paths and write the
     // audit row (/api/activity/manualimport and /api/radarr/manualimport/import).
+    // Renaming moves files on disk, so Organize and per-file rename also need
+    // the movie file capability, checked before anything is sent.
+    if ((body.name === 'RenameMovie' || body.name === 'RenameFiles') && !can(auth.user, 'movies.manageFiles')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     switch (body.name) {
       case 'MoviesSearch':
         result = await client.searchMovie(body.movieIds);

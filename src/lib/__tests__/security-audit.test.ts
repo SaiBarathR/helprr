@@ -20,7 +20,7 @@ vi.mock('@/lib/login-rate-limit', () => ({ getClientIp: mocks.clientIp }));
 import {
   changedFieldNames,
   coarseIp,
-  maskUsername,
+  typedUsernameLabel,
   recordFailedLinkAttempt,
   recordFailedSignIn,
   recordSecurityEvent,
@@ -167,19 +167,24 @@ describe('recordFailedSignIn', () => {
     expect(mocks.findUser).not.toHaveBeenCalled();
   });
 
-  it('masks a name that matches no account, so a password typed there is not kept', async () => {
+  it('keeps a name that matches no account as typed (owner decision 2026-11-07)', async () => {
     const typo = 'hunter2-correct-horse';
     await recordFailedSignIn(request(), { username: typo, method: 'password', user: null, nowMs: minute });
     await recordFailedSignIn(request(), { username: typo, method: 'password', user: null, nowMs: minute + 5_000 });
 
-    expect(created(0)).toMatchObject({ targetId: null, targetLabel: 'hu… (21 chars)' });
-    expect(JSON.stringify(mocks.upsert.mock.calls)).not.toContain(typo);
-    // The full name still keys the row, so repeats coalesce.
+    expect(created(0)).toMatchObject({ targetId: null, targetLabel: typo });
     expect(keyOf(1)).toBe(keyOf(0));
     expect(mocks.findUser).not.toHaveBeenCalled();
   });
 
-  it('keys rows with an HMAC under the server secret, so the row cannot be used to guess a masked name', async () => {
+  it('strips control and bidi characters from a typed name and caps its length', async () => {
+    await recordFailedSignIn(request(), { username: 'ev\u0000il\u202Egnp.exe\u200B\u0007', method: 'password', user: null, nowMs: minute });
+    expect(created(0).targetLabel).toBe('evilgnp.exe');
+    await recordFailedSignIn(request(), { username: '😀'.repeat(70), method: 'password', user: null, nowMs: minute });
+    expect(created(1).targetLabel).toBe('😀'.repeat(64));
+  });
+
+  it('keys rows with an HMAC under the server secret, not a bare hash of what the row shows', async () => {
     const typo = 'hunter2-correct-horse';
     await recordFailedSignIn(request(), { username: typo, method: 'password', user: null, nowMs: minute });
     const row = created(0);
@@ -216,7 +221,7 @@ describe('recordFailedSignIn', () => {
       select: { id: true, username: true },
     });
     expect(created(0)).toMatchObject({ targetId: 'user-a', targetLabel: 'alice' });
-    expect(created(1)).toMatchObject({ targetId: null, targetLabel: 'st… (8 chars)' });
+    expect(created(1)).toMatchObject({ targetId: null, targetLabel: 'stranger' });
   });
 
   it('keeps a name Jellyfin accepted, and records the signed-in actor of a self-service failure', async () => {
@@ -299,9 +304,13 @@ describe('recordFailedLinkAttempt', () => {
   });
 });
 
-describe('maskUsername', () => {
-  it('keeps two characters and the length, counting code points', () => {
-    expect(maskUsername('correct horse')).toBe('co… (13 chars)');
-    expect(maskUsername('😀😀x')).toBe('😀😀… (3 chars)');
+describe('typedUsernameLabel', () => {
+  it('keeps ordinary text, emoji and accents as typed', () => {
+    expect(typedUsernameLabel('Zoë 😀 smith')).toBe('Zoë 😀 smith');
+  });
+
+  it('removes format characters and separators, and names a label with nothing left', () => {
+    expect(typedUsernameLabel('a\u00ADb\u061Cc\u2028d\u2029e\uFFF9f\u{E0041}g')).toBe('abcdefg');
+    expect(typedUsernameLabel('\u200B\u202E')).toBe('(unprintable)');
   });
 });

@@ -120,18 +120,18 @@ describe('Account: your data', () => {
     expect(mocks.endSession).not.toHaveBeenCalled();
   });
 
-  it('asks a Jellyfin-only account to type its username', async () => {
+  it('asks a Jellyfin-only account for its Jellyfin password', async () => {
     mocks.me = me({ hasLocalPassword: false });
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     renderPage();
     const { user, submit } = await openDelete();
-    const input = screen.getByLabelText('Type alex to confirm');
-    await user.type(input, 'ale');
+    const input = screen.getByLabelText('Jellyfin password') as HTMLInputElement;
+    expect(input.type).toBe('password');
     expect(submit.disabled).toBe(true);
-    await user.type(input, 'x');
+    await user.type(input, 'the words typed at sign in');
     await user.click(submit);
 
     await waitFor(() => expect(mocks.endSession).toHaveBeenCalledOnce());
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ confirmUsername: 'alex' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ currentPassword: 'the words typed at sign in' });
   });
 });

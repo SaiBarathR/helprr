@@ -32,24 +32,27 @@ type Handler = (request: NextRequest) => Promise<Response>;
 const post = (handler: Handler, service: string, body: unknown) =>
   handler(new NextRequest(`http://helprr.test/api/${service}/command`, { method: 'POST', body: JSON.stringify(body) }));
 
+// A member who may manage the files of each kind of title.
+const FILE_CAPS = { 'series.manageFiles': true, 'movies.manageFiles': true, 'music.delete': true };
+
 const cases = [
   {
-    service: 'sonarr', handler: sonarrCommand as Handler, idKey: 'seriesId',
+    service: 'sonarr', handler: sonarrCommand as Handler, idKey: 'seriesId', fileCap: 'series.manageFiles', organize: 'RenameSeries', organizeKey: 'seriesIds',
     listed: mocks.sonarr.getEpisodeFiles, rename: mocks.sonarr.renameFiles, listedWith: [7],
   },
   {
-    service: 'radarr', handler: radarrCommand as Handler, idKey: 'movieId',
+    service: 'radarr', handler: radarrCommand as Handler, idKey: 'movieId', fileCap: 'movies.manageFiles', organize: 'RenameMovie', organizeKey: 'movieIds',
     listed: mocks.radarr.getMovieFiles, rename: mocks.radarr.renameMovieFiles, listedWith: [7],
   },
   {
-    service: 'lidarr', handler: lidarrCommand as Handler, idKey: 'artistId',
+    service: 'lidarr', handler: lidarrCommand as Handler, idKey: 'artistId', fileCap: 'music.delete', organize: 'RenameArtist', organizeKey: 'artistIds',
     listed: mocks.lidarr.getTrackFiles, rename: mocks.lidarr.renameArtistFiles, listedWith: [{ artistId: 7 }],
   },
 ];
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.auth.mockResolvedValue({ ok: true, user: { id: 'member', role: 'member' } });
+  mocks.auth.mockResolvedValue({ ok: true, user: { id: 'member', role: 'member', template: 'member', permissions: FILE_CAPS } });
   for (const { listed, rename } of cases) {
     listed.mockResolvedValue([{ id: 101 }, { id: 102 }, { id: 103 }]);
     rename.mockResolvedValue({ id: 900, name: 'RenameFiles' });
@@ -80,6 +83,28 @@ describe.each(cases)('RenameFiles through /api/$service/command', ({ service, ha
     expect(res.status).toBe(400);
     expect(listed).not.toHaveBeenCalled();
     expect(rename).not.toHaveBeenCalled();
+  });
+});
+
+describe.each(cases)('renaming through /api/$service/command needs $fileCap', ({ service, handler, idKey, fileCap, organize, organizeKey, listed, rename }) => {
+  it.each([
+    ['activity.manage alone', { 'activity.manage': true }],
+    ['the file capability turned off', { ...FILE_CAPS, [fileCap]: false }],
+  ])('refuses a member with %s, asking the service nothing', async (_label, permissions) => {
+    mocks.auth.mockResolvedValue({ ok: true, user: { id: 'member', role: 'member', template: 'member', permissions } });
+    for (const body of [
+      { name: 'RenameFiles', [idKey]: 7, files: [101] },
+      { name: organize, [organizeKey]: [7] },
+    ]) {
+      expect((await post(handler, service, body)).status).toBe(403);
+    }
+    expect(listed).not.toHaveBeenCalled();
+    expect(rename).not.toHaveBeenCalled();
+  });
+
+  it('lets an admin rename without any override', async () => {
+    mocks.auth.mockResolvedValue({ ok: true, user: { id: 'admin', role: 'admin', template: 'admin', permissions: {} } });
+    expect((await post(handler, service, { name: 'RenameFiles', [idKey]: 7, files: [101] })).status).toBe(200);
   });
 });
 

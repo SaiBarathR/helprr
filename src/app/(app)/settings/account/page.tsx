@@ -111,7 +111,7 @@ export default function AccountSettingsPage() {
       {me && (
         <GroupedSection
           title="Your data"
-          footer="The download holds your profile, settings, watchlist, alerts, layouts, notification history, requests, devices and sessions. Never passwords or tokens."
+          footer="The download holds your profile, settings, watchlist, alerts, layouts, notification history, requests, devices, sessions, recommendation ratings and taste profile, and the videos you marked seen or hidden. Never passwords or tokens."
         >
           <button
             type="button"

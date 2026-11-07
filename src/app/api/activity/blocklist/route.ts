@@ -147,6 +147,31 @@ async function getHandler(request: NextRequest) {
   }
 }
 
+/**
+ * The release titles of the entries about to be removed, read from the *arr
+ * itself (never from the request), for the audit row. One read of the newest
+ * entries the list can show; an entry outside it, or a failed read, has no
+ * title and the row falls back to its id.
+ */
+async function releaseTitles(
+  client: { getBlocklist: (page: number, pageSize: number) => Promise<BlocklistResponse> },
+  ids: number[],
+): Promise<Map<number, string>> {
+  const wanted = new Set(ids);
+  const titles = new Map<number, string>();
+  try {
+    const { records } = await client.getBlocklist(1, BLOCKLIST_MAX_WINDOW);
+    for (const row of Array.isArray(records) ? records : []) {
+      if (wanted.has(row.id) && typeof row.sourceTitle === 'string' && row.sourceTitle) {
+        titles.set(row.id, row.sourceTitle);
+      }
+    }
+  } catch {
+    // Audit detail only: the removal goes ahead and the row keeps the ids.
+  }
+  return titles;
+}
+
 // ── DELETE /api/activity/blocklist ──────────────────────────────────────────
 // Body: { source, instanceId, ids }. Removes (unblocks) entries of one instance's
 // blocklist, so the *arr may grab those releases again. Audited as one row.
@@ -193,6 +218,7 @@ async function deleteHandler(request: NextRequest) {
         ? await getRadarrClient(instanceId)
         : await getLidarrClient(instanceId);
     const single = uniqueIds.length === 1;
+    const titles = await releaseTitles(client, uniqueIds);
     await runWithOperationAudit({
       user: auth.user,
       service,
@@ -201,10 +227,11 @@ async function deleteHandler(request: NextRequest) {
       targetType: 'blocklist',
       targetId: single ? uniqueIds[0] : null,
       targetTitle: single
-        ? `${APP_NAME[source]} blocklist entry #${uniqueIds[0]}`
+        ? titles.get(uniqueIds[0]) ?? `${APP_NAME[source]} blocklist entry #${uniqueIds[0]}`
         : `${uniqueIds.length} ${APP_NAME[source]} blocklist entries`,
       itemCount: uniqueIds.length,
-      details: { source, ids: uniqueIds },
+      // Each entry's release title from the *arr, or its id alone when the lookup missed it.
+      details: { source, ids: uniqueIds, titles: uniqueIds.map((id) => titles.get(id) ?? `#${id}`) },
     }, () => (single ? client.deleteBlocklistItem(uniqueIds[0]) : client.deleteBlocklistBulk(uniqueIds)));
 
     return NextResponse.json({ success: true, removed: uniqueIds.length });

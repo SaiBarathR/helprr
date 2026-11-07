@@ -502,7 +502,7 @@ export default function MusicPage() {
                   href: arrFilesHref('music', item.id, item.instanceId),
                 }]
               : []),
-            ...(canSearch
+            ...(canSearch && canDelete
               ? [{
                   id: 'rename',
                   label: 'Preview rename…',
@@ -1034,7 +1034,7 @@ export default function MusicPage() {
             instanceId: selectedInstance,
             isAdmin,
             canChangePath,
-            canOrganize: canSearch,
+            canOrganize: canSearch && canDelete,
             onApply: handleBulkEdit,
             onOrganize: handleOrganize,
           }}

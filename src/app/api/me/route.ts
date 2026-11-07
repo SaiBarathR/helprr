@@ -18,6 +18,9 @@ import { isHttpsRequest } from '@/lib/request-utils';
 import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
 import { deleteUserUnlessLastAdmin, lockActiveAdminGuard } from '@/lib/user-deletion';
 import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
+import { JellyfinClient } from '@/lib/jellyfin-client';
+import { getJellyfinClientContext } from '@/lib/service-helpers';
+import { storeJellyfinToken } from '@/lib/jellyfin-token';
 
 const DELETE_BODY_MAX_BYTES = 8 * 1024;
 
@@ -51,13 +54,54 @@ function badRequest(error: string): NextResponse {
 }
 
 const ACCOUNT_CHANGED = 'Your account changed while deleting. Reload and try again.';
+const JELLYFIN_UNAVAILABLE = 'Jellyfin is unavailable right now, so your password could not be checked. Try again in a moment.';
+
+interface LinkedJellyfinUser {
+  id: string;
+  name: string;
+  url: string;
+}
+
+/** The linked Jellyfin user's name, looked up by id with the admin connection; null if Jellyfin can't say. */
+async function linkedJellyfinUser(jellyfinUserId: string): Promise<LinkedJellyfinUser | null> {
+  try {
+    const { client, connection } = await getJellyfinClientContext();
+    const name = (await client.getUser(jellyfinUserId)).Name;
+    return name ? { id: jellyfinUserId, name, url: connection.url } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether Jellyfin takes this password for the linked Jellyfin user. The name
+ * was looked up by id, so the password is only ever checked as that user, and a
+ * sign-in that lands on any other Jellyfin account does not count.
+ */
+async function verifyJellyfinPassword(
+  userId: string,
+  jellyfin: LinkedJellyfinUser,
+  password: string,
+): Promise<boolean | 'unavailable'> {
+  const result = await JellyfinClient.authenticateByName(jellyfin.url, jellyfin.name, password);
+  if (!result.ok) return result.reason === 'invalid_credentials' ? false : 'unavailable';
+  if (result.userId !== jellyfin.id) return false;
+  // Signing in replaced the playback token Helprr kept for this device; keep the
+  // new one, so a delete refused after this check leaves playback working. It
+  // goes with the row when the delete succeeds.
+  await storeJellyfinToken(userId, result.accessToken)
+    .catch(() => console.error(`[Auth] Failed to keep the Jellyfin token for user ${userId}`));
+  return true;
+}
 
 /**
  * Delete the signed-in user's own account. The user comes from the session
  * only; an id in the body is ignored. A local account confirms with its current
  * password, checked behind the same throttles as sign-in (and counting toward
  * them), like a password change. A Jellyfin-only account has no Helprr password,
- * so it confirms by typing its username. The last active admin is refused.
+ * so it confirms with its Jellyfin password, checked against Jellyfin as the
+ * Jellyfin user linked to the profile, behind the same throttles. The last
+ * active admin is refused.
  * The delete is the one Settings -> Users makes, so it cascades the same way;
  * the cookie is cleared, and the session went with the account.
  */
@@ -87,49 +131,73 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return badRequest('Invalid request body');
   }
-  const { currentPassword, confirmUsername } = body as { currentPassword?: unknown; confirmUsername?: unknown };
-
-  if (user.passwordHash) {
-    if (typeof currentPassword !== 'string' || currentPassword.length === 0) {
-      return badRequest('Current password is required');
-    }
-    if (Buffer.byteLength(currentPassword, 'utf8') > LOCAL_PASSWORD_MAX_BYTES) {
-      return badRequest(`Password must be at most ${LOCAL_PASSWORD_MAX_BYTES} bytes`);
-    }
-
-    const limited = await enforceLoginRateLimit(getClientIp(request));
-    if (limited) return limited;
-    const backoff = await enforceUsernameBackoff(user.username);
-    if (backoff) return backoff;
-    const globalBackstop = await enforceGlobalLoginBackstop();
-    if (globalBackstop) return globalBackstop;
-
-    if (!(await verifyUserPassword(user, currentPassword))) {
-      await recordUsernameFailure(user.username, currentPassword);
-      await recordGlobalLoginFailure();
-      // A guess at the password from a signed-in session counts as a failed sign-in.
-      await recordFailedSignIn(request, { username: user.username, method: 'password', user, actor: user });
-      // 403, not 401: the client sends every 401 to /login, and the session is fine.
-      return NextResponse.json({ error: 'Current password is incorrect' }, { status: 403 });
-    }
-    await clearUsernameBackoff(user.username);
-  } else if (typeof confirmUsername !== 'string' || confirmUsername.trim() !== user.username) {
-    return NextResponse.json({ error: 'Type your username to confirm' }, { status: 403 });
+  const { currentPassword } = body as { currentPassword?: unknown };
+  if (typeof currentPassword !== 'string' || currentPassword.length === 0) {
+    return badRequest('Current password is required');
   }
+  if (Buffer.byteLength(currentPassword, 'utf8') > LOCAL_PASSWORD_MAX_BYTES) {
+    return badRequest(`Password must be at most ${LOCAL_PASSWORD_MAX_BYTES} bytes`);
+  }
+  // No Helprr password and no Jellyfin link: nothing can confirm it is them.
+  if (!user.passwordHash && !user.jellyfinUserId) {
+    return NextResponse.json({ error: 'This account has no password to confirm with. Ask an admin to delete it.' }, { status: 409 });
+  }
+
+  const limited = await enforceLoginRateLimit(getClientIp(request));
+  if (limited) return limited;
+  const backoff = await enforceUsernameBackoff(user.username);
+  if (backoff) return backoff;
+  const globalBackstop = await enforceGlobalLoginBackstop();
+  if (globalBackstop) return globalBackstop;
+
+  let jellyfin: LinkedJellyfinUser | null = null;
+  if (!user.passwordHash) {
+    jellyfin = await linkedJellyfinUser(user.jellyfinUserId!);
+    if (!jellyfin) return NextResponse.json({ error: JELLYFIN_UNAVAILABLE }, { status: 502 });
+    // Also the Jellyfin name's bucket, which Jellyfin sign-in counts in, so
+    // guesses here and there share one limit.
+    const jellyfinBackoff = await enforceUsernameBackoff(jellyfin.name);
+    if (jellyfinBackoff) return jellyfinBackoff;
+  }
+  // Names whose backoff this check counts toward (one when they share a bucket).
+  const backoffNames = [...new Set([user.username, ...(jellyfin ? [jellyfin.name] : [])]
+    .map((name) => name.trim().toLowerCase()))];
+
+  const confirmed = jellyfin
+    ? await verifyJellyfinPassword(user.id, jellyfin, currentPassword)
+    : await verifyUserPassword(user, currentPassword);
+  if (confirmed === 'unavailable') {
+    return NextResponse.json({ error: JELLYFIN_UNAVAILABLE }, { status: 502 });
+  }
+  if (!confirmed) {
+    for (const name of backoffNames) await recordUsernameFailure(name, currentPassword);
+    await recordGlobalLoginFailure();
+    // A guess at the password from a signed-in session counts as a failed sign-in.
+    await recordFailedSignIn(request, {
+      username: user.username,
+      method: user.passwordHash ? 'password' : 'jellyfin',
+      user,
+      actor: user,
+    });
+    // 403, not 401: the client sends every 401 to /login, and the session is fine.
+    return NextResponse.json({ error: 'Current password is incorrect' }, { status: 403 });
+  }
+  for (const name of backoffNames) await clearUsernameBackoff(name);
 
   try {
     const result = await prisma.$transaction(async (tx) => {
       // The admin guard lock before the user row, the order Settings -> Users takes them.
       if (user.role === 'admin') await lockActiveAdminGuard(tx);
       // Lock the row, and only if it is still the account just confirmed, as
-      // signed in through a live session: a password change, disable, role
-      // change or revoke that landed first wins, and none can land after.
+      // signed in through a live session: a password change, Jellyfin relink,
+      // disable, role change or revoke that landed first wins, and none can land after.
       const locked = await tx.user.updateMany({
         where: {
           id: user.id,
           status: 'active',
           role: user.role,
           passwordHash: user.passwordHash,
+          jellyfinUserId: user.jellyfinUserId,
           sessions: { some: { id: session.id, revokedAt: null } },
         },
         data: { updatedAt: new Date() },

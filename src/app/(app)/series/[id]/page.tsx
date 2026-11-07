@@ -266,7 +266,7 @@ export default function SeriesDetailPage() {
       id: 'manage',
       actions: [
         ...(canEditSeries ? [{ id: 'edit', label: 'Edit', icon: <Pencil className="h-4 w-4" />, href: arrEditHref('series', seriesId, instance) }] : []),
-        ...(canManageActivity ? [{ id: 'rename', label: 'Preview Rename', icon: <FileEdit className="h-4 w-4" />, onSelect: () => setShowRenamePreview(true) }] : []),
+        ...(canManageActivity && canManageFiles ? [{ id: 'rename', label: 'Preview Rename', icon: <FileEdit className="h-4 w-4" />, onSelect: () => setShowRenamePreview(true) }] : []),
         ...(canManageFiles ? [{ id: 'files', label: 'Manage Episodes', icon: <FileStack className="h-4 w-4" />, href: arrManageHref('series', seriesId, series.title, instance) }] : []),
       ],
     },

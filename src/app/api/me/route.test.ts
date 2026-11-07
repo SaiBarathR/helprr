@@ -19,6 +19,10 @@ const mocks = vi.hoisted(() => ({
   clearUsernameBackoff: vi.fn(),
   recordSecurityEvent: vi.fn(),
   recordFailedSignIn: vi.fn(),
+  getJellyfinClientContext: vi.fn(),
+  getJellyfinUser: vi.fn(),
+  authenticateByName: vi.fn(),
+  storeJellyfinToken: vi.fn(),
   inTransaction: false,
 }));
 
@@ -68,6 +72,9 @@ vi.mock('@/lib/security-audit', () => ({
   recordFailedSignIn: mocks.recordFailedSignIn,
 }));
 vi.mock('@/lib/request-utils', () => ({ isHttpsRequest: () => false }));
+vi.mock('@/lib/service-helpers', () => ({ getJellyfinClientContext: mocks.getJellyfinClientContext }));
+vi.mock('@/lib/jellyfin-client', () => ({ JellyfinClient: { authenticateByName: mocks.authenticateByName } }));
+vi.mock('@/lib/jellyfin-token', () => ({ storeJellyfinToken: mocks.storeJellyfinToken }));
 vi.mock('@/lib/api-logger', () => ({
   withApiLogging: (fn: unknown, name: string, options?: unknown) => (mocks.logging.push([name, options]), fn),
 }));
@@ -110,6 +117,17 @@ beforeEach(() => {
   for (const gate of [mocks.enforceLoginRateLimit, mocks.enforceUsernameBackoff, mocks.enforceGlobalLoginBackstop]) {
     gate.mockResolvedValue(null);
   }
+  mocks.getJellyfinClientContext.mockResolvedValue({
+    client: { getUser: mocks.getJellyfinUser },
+    connection: { url: 'http://jellyfin.test' },
+  });
+  mocks.getJellyfinUser.mockResolvedValue({ Id: 'jf-1', Name: 'Member JF' });
+  mocks.storeJellyfinToken.mockResolvedValue(undefined);
+  mocks.authenticateByName.mockImplementation(async (_url: string, _name: string, plain: string) => (
+    plain === PASSWORD
+      ? { ok: true, userId: 'jf-1', accessToken: 'jf-token', userName: 'Member JF' }
+      : { ok: false, reason: 'invalid_credentials' }
+  ));
 });
 
 describe('DELETE /api/me', () => {
@@ -243,20 +261,80 @@ describe('DELETE /api/me', () => {
 
   describe('a Jellyfin-only account (no Helprr password)', () => {
     beforeEach(() => {
-      mocks.requireUser.mockResolvedValue(signedIn({ passwordHash: null }));
+      mocks.requireUser.mockResolvedValue(signedIn({ passwordHash: null, jellyfinUserId: 'jf-1' }));
     });
 
-    it('confirms by typing its username', async () => {
-      const res = await del({ confirmUsername: ' member ' });
+    it('confirms with its Jellyfin password, checked as the linked Jellyfin user', async () => {
+      const res = await del({ currentPassword: PASSWORD });
       expect(res.status).toBe(200);
-      expect(mocks.userUpdateMany.mock.calls[0][0].where.passwordHash).toBeNull();
+      expect(mocks.getJellyfinUser).toHaveBeenCalledWith('jf-1');
+      expect(mocks.authenticateByName).toHaveBeenCalledWith('http://jellyfin.test', 'Member JF', PASSWORD);
+      // Both the Helprr name's and the Jellyfin name's backoff, the one Jellyfin sign-in uses.
+      expect(mocks.enforceUsernameBackoff.mock.calls).toEqual([['member'], ['Member JF']]);
+      expect(mocks.clearUsernameBackoff.mock.calls).toEqual([['member'], ['member jf']]);
+      // The new playback token is kept, in case the delete is refused after the check.
+      expect(mocks.storeJellyfinToken).toHaveBeenCalledWith('user-1', 'jf-token');
+      // The lock also holds the Jellyfin link that was just checked.
+      const where = mocks.userUpdateMany.mock.calls[0][0].where;
+      expect(where.passwordHash).toBeNull();
+      expect(where.jellyfinUserId).toBe('jf-1');
       expect(mocks.userDelete).toHaveBeenCalledWith({ where: { id: 'user-1' } });
       expect(mocks.verifyUserPassword).not.toHaveBeenCalled();
     });
 
-    it('refuses a different or missing username', async () => {
-      expect((await del({ confirmUsername: 'someone-else' })).status).toBe(403);
-      expect((await del({})).status).toBe(403);
+    it('refuses a wrong Jellyfin password and counts it like a failed sign-in', async () => {
+      const res = await del({ currentPassword: 'not it' });
+      expect(res.status).toBe(403);
+      expect(mocks.recordUsernameFailure.mock.calls).toEqual([['member', 'not it'], ['member jf', 'not it']]);
+      expect(mocks.storeJellyfinToken).not.toHaveBeenCalled();
+      expect(mocks.recordGlobalLoginFailure).toHaveBeenCalledOnce();
+      expect(mocks.recordFailedSignIn).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ method: 'jellyfin' }));
+      expect(mocks.userDelete).not.toHaveBeenCalled();
+    });
+
+    it('no longer accepts a typed username', async () => {
+      expect((await del({ confirmUsername: 'member' })).status).toBe(400);
+      expect(mocks.authenticateByName).not.toHaveBeenCalled();
+      expect(mocks.userDelete).not.toHaveBeenCalled();
+    });
+
+    it('refuses a password Jellyfin accepts for a different Jellyfin user', async () => {
+      mocks.authenticateByName.mockResolvedValue({ ok: true, userId: 'jf-other', accessToken: 't', userName: 'x' });
+      expect((await del({ currentPassword: PASSWORD })).status).toBe(403);
+      expect(mocks.userDelete).not.toHaveBeenCalled();
+    });
+
+    it('answers 502 and counts nothing when Jellyfin cannot be reached', async () => {
+      mocks.authenticateByName.mockResolvedValue({ ok: false, reason: 'unavailable' });
+      expect((await del({ currentPassword: PASSWORD })).status).toBe(502);
+      mocks.getJellyfinUser.mockRejectedValue(new Error('down'));
+      expect((await del({ currentPassword: PASSWORD })).status).toBe(502);
+      mocks.getJellyfinUser.mockResolvedValue({ Id: 'jf-1' });
+      expect((await del({ currentPassword: PASSWORD })).status).toBe(502);
+      expect(mocks.recordUsernameFailure).not.toHaveBeenCalled();
+      expect(mocks.userDelete).not.toHaveBeenCalled();
+    });
+
+    it('answers a throttled attempt without asking Jellyfin for the password', async () => {
+      mocks.enforceUsernameBackoff.mockResolvedValue(NextResponse.json({ error: 'Too many' }, { status: 429 }));
+      expect((await del({ currentPassword: PASSWORD })).status).toBe(429);
+      // Locked out under the Jellyfin name only (from Jellyfin sign-in).
+      mocks.enforceUsernameBackoff.mockImplementation(async (name: string) => (
+        name === 'Member JF' ? NextResponse.json({ error: 'Too many' }, { status: 429 }) : null
+      ));
+      expect((await del({ currentPassword: PASSWORD })).status).toBe(429);
+      expect(mocks.authenticateByName).not.toHaveBeenCalled();
+    });
+
+    it('deletes nothing when the Jellyfin link changed after the check', async () => {
+      mocks.userUpdateMany.mockResolvedValue({ count: 0 });
+      expect((await del({ currentPassword: PASSWORD })).status).toBe(409);
+      expect(mocks.userDelete).not.toHaveBeenCalled();
+    });
+
+    it('refuses an account with neither a password nor a Jellyfin link', async () => {
+      mocks.requireUser.mockResolvedValue(signedIn({ passwordHash: null, jellyfinUserId: null }));
+      expect((await del({ currentPassword: PASSWORD })).status).toBe(409);
       expect(mocks.userDelete).not.toHaveBeenCalled();
     });
   });

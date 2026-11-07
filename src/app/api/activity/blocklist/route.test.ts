@@ -134,11 +134,16 @@ describe('DELETE /api/activity/blocklist', () => {
     expect(mocks.runWithOperationAudit).not.toHaveBeenCalled();
   });
 
-  it('removes one entry on the named instance and audits it', async () => {
-    const res = await DELETE(request('DELETE', '/api/activity/blocklist', { source: 'sonarr', instanceId: 'son-1', ids: [4] }));
+  it('removes one entry on the named instance and audits it under its release title from the *arr', async () => {
+    const res = await DELETE(request('DELETE', '/api/activity/blocklist', {
+      source: 'sonarr', instanceId: 'son-1', ids: [1],
+      // A title the browser sends is never trusted.
+      sourceTitle: 'Forged.Title', titles: ['Forged.Title'],
+    }));
     expect(res.status).toBe(200);
     expect(mocks.getSonarrClient).toHaveBeenCalledWith('son-1');
-    expect(mocks.sonarr.deleteBlocklistItem).toHaveBeenCalledWith(4);
+    expect(mocks.sonarr.getBlocklist).toHaveBeenCalledWith(1, 1000);
+    expect(mocks.sonarr.deleteBlocklistItem).toHaveBeenCalledWith(1);
     expect(mocks.sonarr.deleteBlocklistBulk).not.toHaveBeenCalled();
     expect(mocks.runWithOperationAudit).toHaveBeenCalledWith(expect.objectContaining({
       user,
@@ -146,13 +151,32 @@ describe('DELETE /api/activity/blocklist', () => {
       instanceId: 'son-1',
       operation: 'REMOVE_BLOCKLIST',
       targetType: 'blocklist',
-      targetId: 4,
+      targetId: 1,
+      targetTitle: 'Release.1',
       itemCount: 1,
-      details: { source: 'sonarr', ids: [4] },
+      details: { source: 'sonarr', ids: [1], titles: ['Release.1'] },
+    }), expect.any(Function));
+    expect(JSON.stringify(mocks.runWithOperationAudit.mock.calls)).not.toContain('Forged');
+  });
+
+  it('falls back to the id when the entry is not found or the lookup fails, and still removes it', async () => {
+    await DELETE(request('DELETE', '/api/activity/blocklist', { source: 'sonarr', instanceId: 'son-1', ids: [4] }));
+    expect(mocks.runWithOperationAudit).toHaveBeenLastCalledWith(expect.objectContaining({
+      targetTitle: 'Sonarr blocklist entry #4',
+      details: { source: 'sonarr', ids: [4], titles: ['#4'] },
+    }), expect.any(Function));
+
+    mocks.radarr.getBlocklist.mockRejectedValueOnce(new Error('timeout'));
+    const res = await DELETE(request('DELETE', '/api/activity/blocklist', { source: 'radarr', instanceId: 'rad-1', ids: [7, 8] }));
+    expect(res.status).toBe(200);
+    expect(mocks.radarr.deleteBlocklistBulk).toHaveBeenCalledWith([7, 8]);
+    expect(mocks.runWithOperationAudit).toHaveBeenLastCalledWith(expect.objectContaining({
+      details: { source: 'radarr', ids: [7, 8], titles: ['#7', '#8'] },
     }), expect.any(Function));
   });
 
   it('removes several entries in one bulk call (deduplicated) and audits them as one row', async () => {
+    mocks.radarr.getBlocklist.mockResolvedValue({ totalRecords: 2, records: [entry(5, '2026-11-03T10:00:00Z'), entry(3, '2026-11-02T10:00:00Z')] });
     const res = await DELETE(request('DELETE', '/api/activity/blocklist', { source: 'radarr', instanceId: 'rad-1', ids: [3, 5, 3] }));
     expect(await res.json()).toEqual({ success: true, removed: 2 });
     expect(mocks.radarr.deleteBlocklistBulk).toHaveBeenCalledWith([3, 5]);
@@ -162,8 +186,9 @@ describe('DELETE /api/activity/blocklist', () => {
       instanceId: 'rad-1',
       operation: 'REMOVE_BLOCKLIST',
       targetId: null,
+      targetTitle: '2 Radarr blocklist entries',
       itemCount: 2,
-      details: { source: 'radarr', ids: [3, 5] },
+      details: { source: 'radarr', ids: [3, 5], titles: ['Release.3', 'Release.5'] },
     }), expect.any(Function));
   });
 
