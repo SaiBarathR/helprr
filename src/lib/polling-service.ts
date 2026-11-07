@@ -11,7 +11,7 @@ import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
 import { logger, redact } from '@/lib/logger';
 import { jobReports, noteJobFailure, noteJobSkipped, type JobReport } from '@/lib/polling-job-report';
-import { createPollingCycleContext, InstanceBackoff } from '@/lib/polling-cycle';
+import { arrInstanceBackoff, createPollingCycleContext, InstanceBackoff } from '@/lib/polling-cycle';
 import { refreshScheduledAlertOccurrences, checkScheduledAlerts } from '@/lib/scheduled-alerts/delivery';
 import { getCachedTaggedLibrary } from '@/lib/cache/tagged-library';
 import { runRetentionSweep } from '@/lib/retention';
@@ -169,7 +169,7 @@ export class PollingService {
   private sourceHealth = new Map<string, Omit<PollingSourceHealth, 'source' | 'runningSince'>>();
   private lastCycle: PollingHealth['lastCycle'] = null;
   // Skips an Arr instance that keeps failing so it stops holding a shared slot.
-  private instanceBackoff = new InstanceBackoff();
+  private instanceBackoff = arrInstanceBackoff;
   // Epoch ms of the last retention sweep. The poll loop runs every ~30s but
   // the sweep is throttled to once/day; 0 = run on first cycle.
   private lastRetentionPruneAt = 0;

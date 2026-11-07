@@ -76,6 +76,7 @@ vi.mock('@/lib/cache/tagged-library', async (importOriginal) => ({
 }));
 
 import { PollingService } from '@/lib/polling-service';
+import { arrInstanceBackoff } from '@/lib/polling-cycle';
 import { jobReports, noteJobFailure, noteJobSkipped, type JobReport } from '@/lib/polling-job-report';
 import { ConfigurationError } from '@/lib/config-error';
 
@@ -133,6 +134,8 @@ function stubCycle(service: PollingService) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.settings.mockResolvedValue({ notificationGroupingEnabled: true });
+  // The skip state is shared by every PollingService; start each test clean.
+  arrInstanceBackoff.clear('s1');
 });
 
 describe('polling service cycle orchestration', () => {
