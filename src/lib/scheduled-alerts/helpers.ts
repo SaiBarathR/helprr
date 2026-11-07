@@ -1,22 +1,52 @@
 import {
+  isValidExternalId,
   isValidMediaType,
   isValidSource,
   watchlistHrefFor,
-  type WatchlistMediaType,
-  type WatchlistSource,
 } from '@/lib/watchlist-helpers';
+import { NextResponse } from 'next/server';
+import { can, type PermissionUser } from '@/lib/permissions';
+import { resolveConnection } from '@/lib/arr-instances';
 import { getAppTimeZone, startOfLocalDay } from '@/lib/timezone';
 import type {
+  AlertMediaType,
   AlertScope,
+  AlertSource,
   CreateScheduledAlertInput,
   ReleaseKind,
   ScheduleMode,
   ScheduledAlertDraft,
 } from '@/lib/scheduled-alerts/types';
-import { ALERT_SCOPES, DEFAULT_OFFSET_MINUTES, RELEASE_KINDS, SCHEDULE_MODES, defaultReleaseTypes, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
+import { ALERT_SCOPES, DEFAULT_OFFSET_MINUTES, RELEASE_KINDS, SCHEDULE_MODES, defaultReleaseTypes, defaultScheduleMode, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
 
 const MAX_TITLE_LEN = 200;
 const MAX_POSTER_URL_LEN = 500;
+
+/** A watchlist source, or Lidarr (music alerts). */
+export function isAlertSource(v: string): v is AlertSource {
+  return isValidSource(v) || v === 'LIDARR';
+}
+
+/** A watchlist media type, or music (Lidarr album and artist alerts). */
+export function isAlertMediaType(v: string): v is AlertMediaType {
+  return isValidMediaType(v) || v === 'music';
+}
+
+/**
+ * Lidarr ids are only unique within one instance, so a music alert made on the
+ * default instance (no instance in the page URL) is tied to that instance.
+ */
+export async function pinMusicInstance(draft: ScheduledAlertDraft): Promise<ScheduledAlertDraft> {
+  if (draft.source !== 'LIDARR' || draft.instanceId) return draft;
+  const connection = await resolveConnection('LIDARR').catch(() => null);
+  return connection ? { ...draft, instanceId: connection.id } : draft;
+}
+
+/** A Lidarr alert reads the music library, so it needs music.view as well (fail closed). */
+export function musicAlertForbidden(user: PermissionUser, source: string): NextResponse | null {
+  if (source !== 'LIDARR' || can(user, 'music.view')) return null;
+  return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+}
 
 export function isScheduleMode(v: string): v is ScheduleMode {
   return (SCHEDULE_MODES as readonly string[]).includes(v);
@@ -24,6 +54,11 @@ export function isScheduleMode(v: string): v is ScheduleMode {
 
 export function isAlertScope(v: string): v is AlertScope {
   return (ALERT_SCOPES as readonly string[]).includes(v);
+}
+
+/** Music alerts are for one album or an artist's next album; the other media never use those scopes. */
+export function scopeFitsMediaType(scope: AlertScope, mediaType: string): boolean {
+  return (mediaType === 'music') === (scope === 'album' || scope === 'artist');
 }
 
 export function isReleaseKind(v: string): v is ReleaseKind {
@@ -82,15 +117,18 @@ export function normalizeDraft(raw: Record<string, unknown>): ScheduledAlertDraf
   const mediaType = typeof raw.mediaType === 'string' ? raw.mediaType.toLowerCase() : '';
   const title = typeof raw.title === 'string' ? raw.title.trim().slice(0, MAX_TITLE_LEN) : '';
 
-  if (!isValidSource(source) || !externalId || !isValidMediaType(mediaType) || !title) return null;
+  if (!isAlertSource(source) || !externalId || !isAlertMediaType(mediaType) || !title) return null;
+  // Lidarr holds music only, and music comes only from Lidarr; its ids are numbers.
+  if ((source === 'LIDARR') !== (mediaType === 'music')) return null;
+  if (source === 'LIDARR' && !isValidExternalId(externalId)) return null;
 
   const posterUrl =
     typeof raw.posterUrl === 'string' ? validatePosterUrl(raw.posterUrl) ?? undefined : undefined;
 
   return {
-    source: source as WatchlistSource,
+    source,
     externalId,
-    mediaType: mediaType as WatchlistMediaType,
+    mediaType,
     title,
     subtitle: typeof raw.subtitle === 'string' ? raw.subtitle : null,
     year: typeof raw.year === 'number' && Number.isFinite(raw.year) ? raw.year : null,
@@ -109,6 +147,7 @@ export function normalizeDraft(raw: Record<string, unknown>): ScheduledAlertDraf
         : null,
     episodeId:
       typeof raw.episodeId === 'number' && Number.isFinite(raw.episodeId) ? raw.episodeId : null,
+    albumId: typeof raw.albumId === 'number' && Number.isFinite(raw.albumId) ? raw.albumId : null,
   };
 }
 
@@ -117,15 +156,16 @@ export function parseCreateInput(body: Record<string, unknown>, fallbackTz: stri
   if (!draft) return { error: 'Invalid media draft' };
 
   const scheduleMode =
-    typeof body.scheduleMode === 'string'
-      ? body.scheduleMode
-      : draft.releaseDate
-        ? 'release_relative'
-        : 'absolute';
+    typeof body.scheduleMode === 'string' ? body.scheduleMode : defaultScheduleMode(draft);
   if (!isScheduleMode(scheduleMode)) return { error: 'Invalid scheduleMode' };
 
+  // A music alert's scope says what its id is (album or artist), so it comes
+  // from the draft, never from the request.
+  if (draft.mediaType === 'music' && draft.albumId != null && String(draft.albumId) !== draft.externalId) {
+    return { error: 'Invalid media draft' };
+  }
   const scope =
-    typeof body.scope === 'string' && isAlertScope(body.scope)
+    draft.mediaType !== 'music' && typeof body.scope === 'string' && isAlertScope(body.scope) && scopeFitsMediaType(body.scope, draft.mediaType)
       ? body.scope
       : defaultScopeForDraft(draft);
 

@@ -5,10 +5,11 @@ const mocks = vi.hoisted(() => ({
   sonarrHistory: vi.fn(),
   lidarrHistory: vi.fn(),
   lidarrFails: false,
+  user: { id: 'u1', role: 'admin' } as Record<string, unknown>,
 }));
 
 vi.mock('@/lib/auth', () => ({
-  requireUserCapability: vi.fn(async () => ({ ok: true, user: { id: 'u1', role: 'admin' } })),
+  requireUserCapability: vi.fn(async () => ({ ok: true, user: mocks.user })),
 }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
 vi.mock('@/lib/service-helpers', () => ({
@@ -35,6 +36,7 @@ function get(limit = 10) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.lidarrFails = false;
+  mocks.user = { id: 'u1', role: 'admin' };
   mocks.sonarrHistory.mockResolvedValue({
     records: [{ id: 1, eventType: 'downloadFolderImported', date: '2026-11-01T10:00:00Z', sourceTitle: 's', seriesId: 4, series: { title: 'Show', images: [] }, episode: { seasonNumber: 1, episodeNumber: 2, title: 'Ep' } }],
   });
@@ -88,5 +90,24 @@ describe('GET /api/activity/recent — Lidarr imports', () => {
     const res2 = await get();
     expect(res2.status).toBe(200);
     expect(await res2.json()).toHaveLength(1);
+  });
+
+  it('leaves albums out for a viewer without music.view, without asking Lidarr', async () => {
+    mocks.user = { id: 'u2', role: 'member', template: 'member', permissions: { 'activity.view': true, 'music.view': false } };
+    mocks.lidarrHistory.mockResolvedValue({ records: [rec(30, 'trackFileImported', '2026-11-03T12:00:03Z', 7)] });
+
+    const items = await (await get()).json();
+
+    expect(items.map((i: { id: string }) => i.id)).toEqual(['sonarr-son-1-1']);
+    expect(mocks.lidarrHistory).not.toHaveBeenCalled();
+  });
+
+  it('shows albums to a member with music.view', async () => {
+    mocks.user = { id: 'u3', role: 'member', template: 'member', permissions: { 'activity.view': true, 'music.view': true } };
+    mocks.lidarrHistory.mockResolvedValue({ records: [rec(30, 'trackFileImported', '2026-11-03T12:00:03Z', 7)] });
+
+    const items = await (await get()).json();
+
+    expect(items.map((i: { id: string }) => i.id)).toEqual(['lidarr-lid-1-album-7', 'sonarr-son-1-1']);
   });
 });

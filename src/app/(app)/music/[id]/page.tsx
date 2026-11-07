@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
+  Bell,
   MoreHorizontal,
   Search,
   RefreshCw,
@@ -60,6 +61,7 @@ import { useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
 import { arrInteractiveSearchHref } from '@/lib/arr-edit-href';
 import { useCan } from '@/components/permission-provider';
+import { ScheduledAlertDialog, type ScheduledAlertDraft } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
 // Known external providers surfaced as link chips (deduped by name, first wins).
@@ -146,6 +148,23 @@ export default function ArtistDetailPage() {
   const canChangePath = useCan('music.changePath');
   const canManageActivity = useCan('activity.manage');
   const canDeleteArtist = useCan('music.delete');
+  const canScheduleAlert = useCan('scheduledAlerts.edit');
+  const [showScheduleAlert, setShowScheduleAlert] = useState(false);
+  // An alert on the artist's next album: every album Lidarr learns of with a date ahead.
+  const alertArtistId = artist?.id;
+  const alertTitle = artist?.artistName;
+  const alertPoster = artist?.images?.find((i) => i.coverType === 'poster')?.remoteUrl ?? null;
+  const alertDraft = useMemo((): ScheduledAlertDraft | null => (alertArtistId == null || !alertTitle ? null : {
+    source: 'LIDARR',
+    externalId: String(alertArtistId),
+    mediaType: 'music',
+    title: alertTitle,
+    subtitle: 'Next album',
+    posterUrl: alertPoster,
+    instanceId: instance ?? null,
+    href: `/music/${alertArtistId}${instance ? `?instance=${instance}` : ''}`,
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- one draft per artist and instance, so a re-render does not reset the open alert dialog
+  }), [alertArtistId, alertTitle, alertPoster, instance]);
   const canEditArtist = canEditMonitoring || canEditTags || canChangePath;
 
   // eslint-disable-next-line react-hooks/preserve-manual-memoization -- keep the cache-write callback stable for the current artist and Lidarr instance
@@ -404,6 +423,12 @@ export default function ArtistDetailPage() {
                   <DropdownMenuItem onClick={handleSearch} disabled={!!actionLoading}>
                     <Search className="h-4 w-4" />
                     Search Monitored Albums
+                  </DropdownMenuItem>
+                )}
+                {canScheduleAlert && (
+                  <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
+                    <Bell className="h-4 w-4" />
+                    Alert on next album…
                   </DropdownMenuItem>
                 )}
                 {lidarrExternalUrl && artist.foreignArtistId && (
@@ -695,6 +720,10 @@ export default function ArtistDetailPage() {
           )}
         </div>
       </div>
+
+      {canScheduleAlert && (
+        <ScheduledAlertDialog open={showScheduleAlert} onOpenChange={setShowScheduleAlert} draft={alertDraft} />
+      )}
 
       <RenamePreviewDialog
         open={showRenamePreview}

@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   canManage: true,
   search: new URLSearchParams(),
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+  radarrAnswer: { id: 1 } as unknown,
 }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => mocks.search, usePathname: () => '/activity' }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn() }) }));
@@ -43,7 +44,7 @@ let posts: Array<{ url: string; body: unknown }>;
 const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
   if (init?.method === 'POST') {
     posts.push({ url, body: JSON.parse(String(init.body)) });
-    return Response.json({ id: 1 });
+    return Response.json(url.startsWith('/api/radarr/') ? mocks.radarrAnswer : { id: 1 });
   }
   if (url === '/api/instances') return Response.json(INSTANCES);
   if (url.startsWith('/api/activity/wanted?')) return Response.json({ records: RECORDS, totalRecords: 42 });
@@ -56,6 +57,9 @@ beforeEach(() => {
   fetchMock.mockClear();
   mocks.toast.success.mockClear();
   mocks.toast.error.mockClear();
+  mocks.toast.info.mockClear();
+  mocks.toast.warning.mockClear();
+  mocks.radarrAnswer = { id: 1 };
   vi.stubGlobal('fetch', fetchMock);
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -120,7 +124,7 @@ describe('WantedTab', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Search all' }));
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByText('Search for all 42 missing items?')).toBeTruthy();
-    expect(within(dialog).queryByText(/Radarr also searches/)).toBeNull();
+    expect(within(dialog).queryByText(/Radarr searches only/)).toBeNull();
     expect(posts).toEqual([]);
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Search all' }));
@@ -131,12 +135,28 @@ describe('WantedTab', () => {
     ]);
   });
 
-  it('warns that Radarr also searches unreleased films when Search all covers Radarr', async () => {
+  it('says Radarr skips films not released yet when Search all covers Radarr', async () => {
     renderTab();
     await screen.findByText(/Classroom - S01E08/);
     await waitFor(() => expect((screen.getByRole('button', { name: 'Search all' }) as HTMLButtonElement).disabled).toBe(false));
     await userEvent.click(screen.getByRole('button', { name: 'Search all' }));
-    expect(within(await screen.findByRole('alertdialog')).getByText(/Radarr also searches films that are not released yet/)).toBeTruthy();
+    expect(within(await screen.findByRole('alertdialog')).getByText(/Radarr searches only the films that are out: those not released yet are skipped/)).toBeTruthy();
+  });
+
+  it.each([
+    [{ movieCount: 0, queued: 0, notQueued: 0, commands: [], message: 'No released films are missing' }, 'info', 'No released films are missing.'],
+    [{ movieCount: 250, queued: 150, notQueued: 100, commands: [] }, 'warning', 'Searching 150 films; 100 could not be queued.'],
+  ] as const)('tells what Radarr\'s Search all did (%#)', async (answer, tone, message) => {
+    mocks.radarrAnswer = answer;
+    renderTab({ filterBy: ['radarr'] });
+    await screen.findByText('Out Film (2024)');
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Search all' }) as HTMLButtonElement).disabled).toBe(false));
+    await userEvent.click(screen.getByRole('button', { name: 'Search all' }));
+    await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Search all' }));
+
+    await waitFor(() => expect(mocks.toast[tone]).toHaveBeenCalledWith(message));
+    expect(posts).toEqual([{ url: '/api/radarr/command?instanceId=rad-1', body: { name: 'MissingMoviesSearch' } }]);
+    expect(mocks.toast.success).not.toHaveBeenCalled();
   });
 
   it('drops the selection when the filters change', async () => {

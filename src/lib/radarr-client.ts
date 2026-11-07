@@ -208,8 +208,9 @@ export class RadarrClient {
     page = 1,
     pageSize = 20,
     sortKey: 'movieMetadata.inCinemas' | 'movieMetadata.sortTitle' = 'movieMetadata.inCinemas',
+    sortDirection: 'ascending' | 'descending' = 'descending',
   ): Promise<{ page: number; pageSize: number; totalRecords: number; records: RadarrMovie[] }> {
-    return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey, sortDirection: 'descending' });
+    return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey, sortDirection });
   }
 
   async getCutoffUnmet(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: RadarrMovie[] }> {

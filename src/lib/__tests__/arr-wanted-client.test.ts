@@ -26,6 +26,13 @@ describe('arr wanted client sort keys', () => {
     });
   });
 
+  it('Radarr wanted/missing can be read oldest first', async () => {
+    await new RadarrClient('http://radarr.local', 'key').getWantedMissing(1, 20, 'movieMetadata.inCinemas', 'ascending');
+    expect(mocks.get).toHaveBeenLastCalledWith('/api/v3/wanted/missing', {
+      params: { page: 1, pageSize: 20, sortKey: 'movieMetadata.inCinemas', sortDirection: 'ascending' },
+    });
+  });
+
   it('Radarr wanted/missing can be read by title instead', async () => {
     await new RadarrClient('http://radarr.local', 'key').getWantedMissing(1, 50, 'movieMetadata.sortTitle');
     expect(mocks.get).toHaveBeenLastCalledWith('/api/v3/wanted/missing', {

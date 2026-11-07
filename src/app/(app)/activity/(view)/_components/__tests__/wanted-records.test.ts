@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isNotReleased,
+  searchAllOutcome,
   searchAllRequests,
   searchAllTargets,
   selectedSearchRequests,
@@ -127,5 +128,30 @@ describe('search requests', () => {
       { name: 'CutoffUnmetMoviesSearch' },
       { name: 'CutoffUnmetAlbumSearch' },
     ]);
+  });
+});
+
+describe('searchAllOutcome', () => {
+  const radarr = (movieCount: number, queued: number, notQueued: number) => ({ ok: true, data: { movieCount, queued, notQueued, commands: [] } });
+  const sonarr = { ok: true, data: { id: 5, name: 'MissingEpisodeSearch' } };
+  const refused = { ok: false };
+
+  it('says plainly when Radarr has no released film to search', () => {
+    expect(searchAllOutcome('missing', [radarr(0, 0, 0)])).toEqual({ tone: 'info', message: 'No released films are missing.' });
+  });
+
+  it('reports a partial result when some films could not be queued', () => {
+    expect(searchAllOutcome('missing', [radarr(250, 150, 100)])).toEqual({ tone: 'warning', message: 'Searching 150 films; 100 could not be queued.' });
+    expect(searchAllOutcome('missing', [radarr(101, 1, 100), refused])).toEqual({
+      tone: 'warning', message: 'Searching 1 film; 100 could not be queued. Search failed on 1 of 2 instances.',
+    });
+  });
+
+  it('keeps the usual messages otherwise', () => {
+    expect(searchAllOutcome('missing', [sonarr, radarr(0, 0, 0)])).toEqual({ tone: 'success', message: 'Searching for every missing item' });
+    expect(searchAllOutcome('missing', [sonarr, radarr(3, 3, 0)])).toEqual({ tone: 'success', message: 'Searching for every missing item' });
+    expect(searchAllOutcome('cutoff unmet', [sonarr, refused])).toEqual({ tone: 'error', message: 'Search started on 1 of 2 instances' });
+    expect(searchAllOutcome('missing', [refused, refused])).toEqual({ tone: 'error', message: 'Search failed' });
+    expect(searchAllOutcome('missing', [radarr(0, 0, 0), refused])).toEqual({ tone: 'error', message: 'No released films are missing. Search failed on 1 of 2 instances.' });
   });
 });

@@ -3,9 +3,9 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { parseReleaseTypes, isAlertScope, isScheduleMode } from '@/lib/scheduled-alerts/helpers';
+import { parseReleaseTypes, isAlertScope, isScheduleMode, musicAlertForbidden, scopeFitsMediaType } from '@/lib/scheduled-alerts/helpers';
 import { resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
-import { upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
+import { announceNewAlbums, upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
 import { serializeAlert } from '@/lib/scheduled-alerts/serialize';
 import type { ScheduledAlertMetadata } from '@/lib/scheduled-alerts/types';
 
@@ -23,6 +23,8 @@ async function patchHandler(
   const { id } = await params;
   const existing = await ownedAlert(auth.user.id, id);
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const forbidden = musicAlertForbidden(auth.user, existing.source);
+  if (forbidden) return forbidden;
 
   let body: Record<string, unknown>;
   try {
@@ -56,7 +58,13 @@ async function patchHandler(
   if (typeof body.scheduleMode === 'string' && isScheduleMode(body.scheduleMode)) {
     data.scheduleMode = body.scheduleMode;
   }
-  if (typeof body.scope === 'string' && isAlertScope(body.scope)) data.scope = body.scope;
+  // A music alert's scope says what its id is (album or artist), so it never changes.
+  if (
+    existing.mediaType !== 'music' &&
+    typeof body.scope === 'string' && isAlertScope(body.scope) && scopeFitsMediaType(body.scope, existing.mediaType)
+  ) {
+    data.scope = body.scope;
+  }
   if (body.releaseTypes !== undefined) data.releaseTypes = parseReleaseTypes(body.releaseTypes);
   if (typeof body.offsetMinutes === 'number' && Number.isFinite(body.offsetMinutes)) {
     data.offsetMinutes = Math.max(0, Math.min(10_080, Math.round(body.offsetMinutes)));
@@ -70,7 +78,14 @@ async function patchHandler(
   const metadata = { ...((existing.metadata ?? {}) as ScheduledAlertMetadata) };
   if (typeof body.seasonNumber === 'number') metadata.seasonNumber = body.seasonNumber;
   if (typeof body.episodeId === 'number') metadata.episodeId = body.episodeId;
-  if (body.seasonNumber !== undefined || body.episodeId !== undefined) {
+  // A cancelled artist alert was not refreshed: start its seen albums afresh
+  // rather than announce every album Lidarr learned of meanwhile at once.
+  if (data.status === 'active' && existing.status !== 'active' && metadata.knownAlbumKeys) {
+    delete metadata.knownAlbumKeys;
+    data.metadata = metadata as Prisma.InputJsonValue;
+  }
+  // Season and episode mean nothing to music, whose metadata holds the seen albums.
+  if (existing.mediaType !== 'music' && (body.seasonNumber !== undefined || body.episodeId !== undefined)) {
     data.metadata = metadata as Prisma.InputJsonValue;
   }
 
@@ -106,8 +121,9 @@ async function patchHandler(
   });
 
   if (alert.scheduleMode === 'release_relative') {
-    const { candidates, resolved } = await resolveAlertOccurrencesResult(alert);
+    const { candidates, resolved, upcomingAlbums } = await resolveAlertOccurrencesResult(alert);
     await upsertOccurrencesForAlert(alert, candidates, { resolved });
+    if (resolved && upcomingAlbums) await announceNewAlbums(alert, upcomingAlbums);
   }
 
   const full = await prisma.scheduledAlert.findUnique({

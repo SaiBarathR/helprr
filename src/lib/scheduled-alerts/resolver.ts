@@ -4,10 +4,11 @@ import type { RadarrCalendarEntry } from '@/types';
 import type { SonarrClient } from '@/lib/sonarr-client';
 import type { SonarrCalendarEntry } from '@/types';
 import axios from 'axios';
-import { getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
+import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
+import type { LidarrAlbum } from '@/types/lidarr';
 import { getAnimeNextAiringEpisode } from '@/lib/anilist-client';
 import { DEFAULT_HORIZON_DAYS } from '@/lib/scheduled-alerts/constants';
-import { applyOffset, defaultReminderLocal } from '@/lib/scheduled-alerts/helpers';
+import { applyOffset, defaultReminderLocal, isAlertScope, scopeFitsMediaType } from '@/lib/scheduled-alerts/helpers';
 import { noteJobFailure } from '@/lib/polling-job-report';
 import type {
   OccurrenceCandidate,
@@ -16,8 +17,9 @@ import type {
   ResolveResult,
   ScheduledAlertDraft,
   ScheduledAlertMetadata,
+  UpcomingAlbum,
 } from '@/lib/scheduled-alerts/types';
-import { defaultReleaseTypes, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
+import { defaultReleaseTypes, defaultScheduleMode, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
 import { getAppTimeZone, startOfLocalDay } from '@/lib/timezone';
 import type { MovieReleaseType } from '@/types';
 
@@ -98,12 +100,18 @@ function needsSonarr(draft: ScheduledAlertDraft): boolean {
   return draft.mediaType === 'series' || draft.source === 'SONARR';
 }
 
+function needsLidarr(draft: ScheduledAlertDraft): boolean {
+  return draft.source === 'LIDARR';
+}
+
 function needsAnilist(draft: ScheduledAlertDraft, releaseTypes: ReleaseKind[]): boolean {
   return (draft.mediaType === 'anime' || draft.source === 'ANILIST') && releaseTypes.includes('airing');
 }
 
+type SourceOutcomes = { radarr: SourceOutcome; sonarr: SourceOutcome; lidarr: SourceOutcome; anilist: SourceOutcome };
+
 function computeResolved(
-  outcomes: { radarr: SourceOutcome; sonarr: SourceOutcome; anilist: SourceOutcome },
+  outcomes: SourceOutcomes,
   draft: ScheduledAlertDraft,
   releaseTypes: ReleaseKind[],
   candidates: OccurrenceCandidate[],
@@ -111,6 +119,7 @@ function computeResolved(
   const remoteFailed =
     (needsRadarr(draft) && outcomes.radarr === 'failure') ||
     (needsSonarr(draft) && outcomes.sonarr === 'failure') ||
+    (needsLidarr(draft) && outcomes.lidarr === 'failure') ||
     (needsAnilist(draft, releaseTypes) && outcomes.anilist === 'failure');
   if (!remoteFailed) return true;
   return candidates.length > 0;
@@ -167,18 +176,19 @@ export async function previewScheduledAlert(
   } = {},
 ): Promise<PreviewResult> {
   const timeZone = opts.timeZone ?? getAppTimeZone();
-  const scope = (opts.scope && ['movie', 'series', 'season', 'episode', 'anime'].includes(opts.scope)
+  const scope = (opts.scope && isAlertScope(opts.scope) && scopeFitsMediaType(opts.scope, draft.mediaType)
     ? opts.scope
     : defaultScopeForDraft({
         mediaType: draft.mediaType,
         seasonNumber: opts.seasonNumber ?? draft.seasonNumber,
         episodeId: opts.episodeId ?? draft.episodeId,
+        albumId: draft.albumId,
       })) as PreviewResult['defaults']['scope'];
   const releaseTypes = opts.releaseTypes?.length
     ? opts.releaseTypes
     : defaultReleaseTypes(scope, draft.mediaType);
   const offsetMinutes = opts.offsetMinutes ?? 60;
-  const scheduleMode = opts.scheduleMode ?? (draft.releaseDate ? 'release_relative' : 'absolute');
+  const scheduleMode = opts.scheduleMode ?? defaultScheduleMode(draft);
   const absoluteDefault = defaultReminderLocal(draft.releaseDate, timeZone);
 
   const candidates =
@@ -237,10 +247,12 @@ async function resolveReleaseCandidates(
   const startIso = ctx?.calendarStartIso ?? lookupWindow.start.toISOString();
   const endIso = ctx?.calendarEndIso ?? lookupWindow.end.toISOString();
   const out: OccurrenceCandidate[] = [];
+  const upcomingAlbums: UpcomingAlbum[] = [];
 
-  const outcomes: { radarr: SourceOutcome; sonarr: SourceOutcome; anilist: SourceOutcome } = {
+  const outcomes: SourceOutcomes = {
     radarr: needsRadarr(draft) ? 'failure' : 'not_needed',
     sonarr: needsSonarr(draft) ? 'failure' : 'not_needed',
+    lidarr: needsLidarr(draft) ? 'failure' : 'not_needed',
     anilist: needsAnilist(draft, opts.releaseTypes) ? 'failure' : 'not_needed',
   };
 
@@ -367,6 +379,64 @@ async function resolveReleaseCandidates(
     }
   }
 
+  if (needsLidarr(draft)) {
+    const clients = await getLidarrClients().catch((error) => {
+      noteJobFailure(error);
+      return [];
+    });
+    const applicable = clients.filter(
+      ({ connection }) => !draft.instanceId || connection.id === draft.instanceId,
+    );
+    const id = Number.parseInt(draft.externalId, 10);
+    let succeeded = false;
+    for (const { connection, client } of Number.isFinite(id) ? applicable : []) {
+      try {
+        // One album, or every album Lidarr knows of for the artist: a new one is
+        // picked up on the next refresh after Lidarr learns of it.
+        let albums: LidarrAlbum[];
+        if (opts.scope === 'album') {
+          // An album Lidarr no longer has gives no reminder; other errors are failures.
+          const album = await client.getAlbumById(id).catch((error) => {
+            if (axios.isAxiosError(error) && error.response?.status === 404) return null;
+            throw error;
+          });
+          albums = album ? [album] : [];
+        } else {
+          albums = await client.getAlbums(id);
+        }
+        succeeded = true;
+        for (const album of albums) {
+          if (!album.releaseDate) continue;
+          // Lidarr's release date is a calendar day (midnight UTC): remind on that local day.
+          const releaseAt = dateOnlyAtLocalNine(album.releaseDate.slice(0, 10), opts.timeZone);
+          if (!Number.isFinite(releaseAt.getTime())) continue;
+          const artistName = album.artist?.artistName ?? (opts.scope === 'album' ? draft.subtitle : draft.title);
+          if (opts.scope === 'artist' && releaseAt > notifyStart) {
+            upcomingAlbums.push({ key: `${connection.id}:${album.id}`, title: album.title, artistName: artistName || draft.title, releaseAt });
+          }
+          const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
+          if (!withinNotifyHorizon(notifyAt)) continue;
+          out.push(
+            candidate(
+              `lidarr:${connection.id}:${album.id}`,
+              'album',
+              releaseAt,
+              notifyAt,
+              // Same title and subtitle as the album on the calendar, so the two merge.
+              artistName || album.title,
+              album.title,
+              { albumId: album.id, artistId: album.artistId, instanceId: connection.id },
+            ),
+          );
+        }
+      } catch (error) {
+        // Try the next instance; the polling job still failed.
+        noteJobFailure(error);
+      }
+    }
+    if (succeeded) outcomes.lidarr = 'success';
+  }
+
   if (draft.mediaType === 'anime' || draft.source === 'ANILIST') {
     const animeId = Number.parseInt(draft.externalId, 10);
     if (Number.isFinite(animeId) && opts.releaseTypes.includes('airing')) {
@@ -434,6 +504,7 @@ async function resolveReleaseCandidates(
   return {
     candidates: out,
     resolved: computeResolved(outcomes, draft, opts.releaseTypes, out),
+    ...(opts.scope === 'artist' && needsLidarr(draft) ? { upcomingAlbums } : {}),
   };
 }
 

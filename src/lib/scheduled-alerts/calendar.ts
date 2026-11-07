@@ -21,6 +21,8 @@ export async function fetchScheduledCalendarEvents(args: {
     where: {
       status: { in: ['pending', 'sent'] },
       alert: { userId: args.userId, status: 'active' },
+      // A "new album" announcement repeats the album's release reminder.
+      NOT: { targetKey: { endsWith: ':announced' } },
       OR: [
         { releaseAt: { not: null, gte: args.start, lte: args.end } },
         { releaseAt: null, notifyAt: { gte: args.start, lte: args.end } },
@@ -34,7 +36,7 @@ export async function fetchScheduledCalendarEvents(args: {
     const alert = occ.alert;
     const displayDate = occ.releaseAt ?? occ.notifyAt;
     const type =
-      alert.mediaType === 'movie' ? 'movie' : alert.mediaType === 'anime' ? 'episode' : 'episode';
+      alert.mediaType === 'movie' ? 'movie' : alert.mediaType === 'music' ? 'album' : 'episode';
     const href = alert.href ? validateInternalHref(alert.href) ?? undefined : undefined;
     const externalNum = Number.parseInt(alert.externalId, 10);
 

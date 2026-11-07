@@ -40,9 +40,11 @@ export function DiscoverToolbar({
   rateLimitInfo: RateLimitInfo | null;
   rateLimitCountdown: number | null;
 }) {
-  // Search ignores the sort, so no chip claims the results while searching. The
-  // chosen sort stays saved and is shown again once the search is cleared.
-  const selectedSort = query.trim() ? null : discoverSort;
+  // Search ignores the sort, so no chip claims the results while searching and
+  // the chips are off until the search is cleared. The chosen sort stays saved
+  // and is shown again then.
+  const searching = Boolean(query.trim());
+  const selectedSort = searching ? null : discoverSort;
   const sortRowRef = useRef<HTMLDivElement>(null);
   const selectedSortRef = useRef<HTMLButtonElement>(null);
   const arrivedKeyRef = useRef<string | null>(null);
@@ -132,6 +134,11 @@ export function DiscoverToolbar({
       <div className="mt-3 space-y-2">
         {/* <p className="text-[11px] font-medium text-muted-foreground">Sort</p> */}
         <div ref={sortRowRef} data-scroll-restoration-key="discover-sort" className="rail-bleed flex items-center gap-2 overflow-x-auto scrollbar-hide">
+          {searching && (
+            <span id="discover-sort-hint" className="text-[11px] text-muted-foreground whitespace-nowrap">
+              Clear the search to sort
+            </span>
+          )}
           {SORT_OPTIONS.map((option) => {
             const active = selectedSort === option.value;
             const Icon = option.icon;
@@ -141,7 +148,9 @@ export function DiscoverToolbar({
                 ref={active ? selectedSortRef : undefined}
                 onClick={() => handleSelectSort(option.value)}
                 aria-pressed={active}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 ${
+                disabled={searching}
+                aria-describedby={searching ? 'discover-sort-hint' : undefined}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 disabled:opacity-50 ${
                   active ? 'bg-primary/20 text-primary border border-primary/40' : 'bg-accent/40 text-muted-foreground'
                 }`}
               >

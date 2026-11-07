@@ -5,6 +5,69 @@ import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { checkOwnership, coercePositiveInt, coercePositiveIntArray } from '@/lib/manage-files-guard';
 import { can } from '@/lib/permissions';
+import { isFilmNotReleased } from '@/lib/film-releases';
+import { logger } from '@/lib/logger';
+import type { RadarrClient } from '@/lib/radarr-client';
+
+const MISSING_PAGE_SIZE = 500;
+const MISSING_MAX_PAGES = 20;
+// Films per MoviesSearch command: Radarr works through each command's list one
+// film at a time, so a long list becomes several commands instead of one huge one.
+const SEARCH_BATCH_SIZE = 100;
+
+/**
+ * Search every monitored missing film that is out, by id. Radarr's own
+ * MissingMoviesSearch runs as a manual search from the API, which skips its
+ * availability check and so searches films not released yet too. Films already
+ * in the queue are left out, as Radarr's own command does.
+ *
+ * A batch Radarr refuses does not undo the ones it took: the result says how
+ * many films were queued and how many could not be, and the log records which.
+ * Only when none could be queued does the request fail.
+ */
+async function searchReleasedMissing(client: RadarrClient, actor: { id: string; username: string }, instanceId: string | undefined) {
+  const now = Date.now();
+  // A film that moves between pages while they are read is counted once.
+  const ids = new Set<number>();
+  for (let page = 1; page <= MISSING_MAX_PAGES; page++) {
+    const { records, totalRecords } = await client.getWantedMissing(page, MISSING_PAGE_SIZE);
+    for (const film of records) if (!isFilmNotReleased(film, now)) ids.add(film.id);
+    if (records.length < MISSING_PAGE_SIZE || page * MISSING_PAGE_SIZE >= totalRecords) break;
+  }
+  // Leaving the queued ones out only saves indexer requests: search them anyway if the queue can't be read.
+  const queue = await client.getQueue(1, 1000).catch(() => null);
+  const queued = new Set(queue?.records.map((item) => item.movieId) ?? []);
+  const movieIds = [...ids].filter((id) => !queued.has(id));
+
+  if (movieIds.length === 0) {
+    return { movieCount: 0, queued: 0, notQueued: 0, commands: [], message: 'No released films are missing' };
+  }
+
+  const commands = [];
+  const queuedIds: number[] = [];
+  const notQueuedIds: number[] = [];
+  let firstError: unknown = null;
+  for (let i = 0; i < movieIds.length; i += SEARCH_BATCH_SIZE) {
+    const batch = movieIds.slice(i, i + SEARCH_BATCH_SIZE);
+    try {
+      commands.push(await client.searchMovie(batch));
+      queuedIds.push(...batch);
+    } catch (error) {
+      firstError ??= error;
+      notQueuedIds.push(...batch);
+    }
+  }
+  logger.info('Radarr Search all on Missing', {
+    userId: actor.id,
+    username: actor.username,
+    instanceId: instanceId ?? null,
+    queuedMovieIds: queuedIds,
+    commandIds: commands.map((command) => command.id),
+    notQueuedMovieIds: notQueuedIds,
+  }, { scope: 'radarr' });
+  if (queuedIds.length === 0) throw firstError;
+  return { movieCount: movieIds.length, queued: queuedIds.length, notQueued: notQueuedIds.length, commands };
+}
 
 async function postHandler(request: NextRequest) {
   const auth = await requireUserCapability('activity.manage');
@@ -31,7 +94,7 @@ async function postHandler(request: NextRequest) {
         result = await client.searchMovie(body.movieIds);
         break;
       case 'MissingMoviesSearch':
-        result = await client.searchWanted('missing');
+        result = await searchReleasedMissing(client, auth.user, instanceId);
         break;
       case 'CutoffUnmetMoviesSearch':
         result = await client.searchWanted('cutoff');

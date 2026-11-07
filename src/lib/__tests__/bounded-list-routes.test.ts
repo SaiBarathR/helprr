@@ -161,6 +161,16 @@ describe('GET /api/activity/wanted (at most 100 rows)', () => {
       expect(call[1]).toBeLessThanOrEqual(100);
     }
   });
+
+  it('asks Radarr for missing films oldest first and keeps Sonarr newest first', async () => {
+    mocks.withRadarr = true;
+    await activityWanted(get('/api/activity/wanted?type=missing&instanceId=radarr-1'));
+    expect(mocks.radarr.getWantedMissing).toHaveBeenCalledWith(1, 20, 'movieMetadata.inCinemas', 'ascending');
+    await activityWanted(get('/api/activity/wanted?type=missing&instanceId=sonarr-1'));
+    expect(mocks.sonarr.getWantedMissing).toHaveBeenCalledWith(1, 20);
+    await activityWanted(get('/api/activity/wanted?type=cutoff&instanceId=radarr-1'));
+    expect(mocks.radarr.getCutoffUnmet).toHaveBeenCalledWith(1, 20);
+  });
 });
 
 describe('GET /api/activity/recent (at most 250 rows)', () => {
