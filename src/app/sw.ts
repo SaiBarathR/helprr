@@ -201,7 +201,10 @@ const runtimeCaching: RuntimeCaching[] =
             cacheName: 'next-static-assets',
             plugins: [
               new ExpirationPlugin({
-                maxEntries: 96,
+                // A route loads 30-50 hashed, immutable chunks, so 96 filled after
+                // about a third of the app. Every page's initial chunks together
+                // are ~300 files, ~8 MB; this is still small beside api-images.
+                maxEntries: 300,
                 maxAgeSeconds: 7 * 24 * 60 * 60,
                 maxAgeFrom: 'last-used',
               }),
