@@ -10,6 +10,7 @@ import { PollNotificationCollector } from '@/lib/notification-grouping';
 import { fetchAllQueueRecords } from '@/lib/activity-queue';
 import { getMediaHrefFromIds } from '@/lib/media-href';
 import crypto from 'crypto';
+import { movieArrivals, notifyWatchlistArrivals } from './watchlist-available';
 import { importFailureBody, downloadFailureBody, buildTagMap, mediaFilterMeta, readQueueSnapshots, errorMessage, getPollingState, historyCursorFromState, fetchNewHistoryPages, advanceHistoryCursor, notifyAndLog, instanceTitle, type CycleContext, type QueueSnapshot } from './shared';
 
 export async function pollRadarr(context: CycleContext) {
@@ -193,6 +194,7 @@ export async function pollRadarr(context: CycleContext) {
       if (newHistory.some((item) => item.eventType === 'downloadFolderImported' || item.eventType === 'movieFileImported')) {
         await invalidateTaggedLibrary('radarr', instanceId);
       }
+      await notifyWatchlistArrivals(movieArrivals(newHistory, historyRecords, instanceId, n === 1));
 
       const health = await client.getHealth();
       const healthHash = crypto.createHash('md5').update(JSON.stringify(health)).digest('hex');

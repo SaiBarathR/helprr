@@ -113,7 +113,8 @@ export function buildTag(eventType: string, metadata: Record<string, unknown> | 
 }
 
 // Action buttons + the data the service worker needs to act on them without
-// opening the app. requestCreated → Approve/Decline; downloadFailed → Retry.
+// opening the app. requestCreated → Approve/Decline; downloadFailed → Retry;
+// watchlistAvailable → Remove from watchlist.
 // Only emitted where there's a clean server action to call. iOS ignores the
 // buttons (it falls back to the deep-link), so these are a progressive
 // enhancement for Android/desktop.
@@ -128,6 +129,13 @@ function buildNotificationActions(
         { action: 'decline', title: 'Decline' },
       ],
       data: { pendingId: String(metadata.id) },
+    };
+  }
+  // The tap target (/watchlist?focus=<id>) offers the same Remove on iOS.
+  if (eventType === 'watchlistAvailable' && typeof metadata.watchlistItemId === 'string') {
+    return {
+      actions: [{ action: 'removeWatchlist', title: 'Remove from watchlist' }],
+      data: { watchlistItemId: metadata.watchlistItemId },
     };
   }
   if (eventType === 'downloadFailed') {

@@ -902,6 +902,21 @@ the controls loading indefinitely. The Devices page flags consecutive delivery
 failures with recovery guidance alongside the recorded failure and delivery times;
 the subscription stores those counts/times, not the push service's error text.
 
+"Now in your library" (`watchlistAvailable`, `src/lib/polling/watchlist-available.ts`)
+is sent from the Radarr/Sonarr history poll: a non-upgrade import of a title on
+someone's watchlist sends that person their own copy (a follower event, gated by
+`notify.watchlist` plus `movies.view`/`series.view` and `watchlist.view`). Items
+match by TMDB/TVDB id, or by the arr id for items saved from a library page (with
+several instances of the app, the title must match too). An import is an upgrade,
+and skipped, when the same poll's history has an Upgrade file deletion for it
+within a minute. Each watchlist item is claimed once through
+`WatchlistItem.availableNotifiedAt` before sending (at most once: a failed send
+is not retried), so imports on several instances, later episodes and cleared
+notification lists never push again; the history dedupe key is per person per
+title, for two instances claiming different saved copies of one title. The
+tap opens `/watchlist?focus=<id>` (Open or Remove), the iOS stand-in for the
+Android/desktop Remove button.
+
 A subscription's endpoint is a URL the server posts to, and it arrives in a
 request. `src/lib/push-endpoint.ts` therefore accepts only the push services
 browsers use (FCM, Mozilla autopush, Apple, Windows Notification Services): the

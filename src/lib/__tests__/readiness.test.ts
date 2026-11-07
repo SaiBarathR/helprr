@@ -120,7 +120,8 @@ describe('migration readiness', () => {
     expect(names).toContain('20261108010000_queue_cleaner_apps');
     expect(names).toContain('20261108020000_calendar_feed_links');
     expect(names).toContain('20261108020100_whats_new_existing_users');
+    expect(names).toContain('20261108030000_watchlist_available_notified_at');
     expect(names).not.toContain('migration_lock.toml');
-    expect(names).toHaveLength(37);
+    expect(names).toHaveLength(38);
   });
 });

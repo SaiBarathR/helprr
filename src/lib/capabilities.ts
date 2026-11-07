@@ -241,6 +241,7 @@ export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability>
   cleanupRemoved: 'notify.cleanup',
   cleanupFailed: 'notify.cleanup',
   watchlistReminder: 'notify.watchlist',
+  watchlistAvailable: 'notify.watchlist',
   scheduledAlert: 'notify.scheduled',
   requestCreated: 'notify.requests',
   requestApproved: 'notify.requests',

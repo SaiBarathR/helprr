@@ -186,6 +186,9 @@ model WatchlistItem {
   reminderAt         DateTime?
   reminderNotifiedAt DateTime?
   reminderAttempts   Int            @default(0)
+  // Set when "Now in your library" was sent for this item: once per item, kept
+  // even when the person clears their notifications.
+  availableNotifiedAt DateTime?
   tags               WatchlistTag[] @relation("WatchlistItemTags")
 
   @@unique([userId, source, externalId, mediaType])

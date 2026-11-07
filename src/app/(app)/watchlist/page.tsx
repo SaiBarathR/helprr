@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+import { useSearchParams } from 'next/navigation';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -65,6 +66,7 @@ import { useCan } from '@/components/permission-provider';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { reportBulk } from '@/lib/bulk-fan-out';
 import { invalidateWatchlistTagCache } from '@/components/watchlist/watchlist-add-dialog';
+import { WatchlistFocusDialog } from '@/components/watchlist/watchlist-focus-dialog';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
@@ -285,6 +287,7 @@ export default function WatchlistPage() {
 
   // The items query key carries the search so changing it refetches; gcTime
   // keeps the list warm for instant back-nav. Tags filter client-side.
+  const focusId = useSearchParams().get('focus');
   const itemsKey = useMemo(
     () => ['watchlist', 'items', { q: appliedSearch }] as const,
     [appliedSearch],
@@ -297,6 +300,8 @@ export default function WatchlistPage() {
         : ''}`,
     ),
     select: ensureArray,
+    // A "Now in your library" tap: load afresh so the title links to its library page.
+    refetchOnMount: focusId ? 'always' : true,
   });
   const items = itemsQuery.data ?? null;
   const error = itemsQuery.isError
@@ -1118,6 +1123,13 @@ export default function WatchlistPage() {
           onConfirm={() => (removeTarget ? handleRemove(removeTarget) : Promise.resolve())}
         />
       )}
+
+      <WatchlistFocusDialog
+        items={itemsQuery.isFetchedAfterMount && !itemsQuery.isFetching ? items : null}
+        canEdit={canEdit}
+        removing={removing}
+        onRemove={handleRemove}
+      />
 
       <ConfirmDialog
         open={clearAllOpen}

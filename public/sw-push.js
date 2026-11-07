@@ -190,6 +190,19 @@ async function handleRetryAction(data) {
   }
 }
 
+// Takes a title that just arrived in the library off the watchlist, from the
+// "Now in your library" notification. iOS shows no buttons; its tap opens
+// /watchlist?focus=<id>, which offers the same Remove.
+async function handleRemoveWatchlistAction(watchlistItemId) {
+  const tag = `watchlist-remove-${watchlistItemId}`;
+  try {
+    const res = await fetch(`/api/watchlist/${encodeURIComponent(watchlistItemId)}`, { method: 'DELETE', credentials: 'include' });
+    await confirm(res.ok ? 'Removed from watchlist' : 'Could not remove — open the app', tag);
+  } catch {
+    await confirm('Could not remove — open the app', tag);
+  }
+}
+
 self.addEventListener('notificationclick', (event) => {
   const data = event.notification.data || {};
   const action = event.action;
@@ -201,6 +214,10 @@ self.addEventListener('notificationclick', (event) => {
   }
   if (action === 'retry') {
     event.waitUntil(handleRetryAction(data));
+    return;
+  }
+  if (action === 'removeWatchlist' && typeof data.watchlistItemId === 'string') {
+    event.waitUntil(handleRemoveWatchlistAction(data.watchlistItemId));
     return;
   }
 

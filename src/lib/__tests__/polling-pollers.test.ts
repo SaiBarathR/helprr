@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => ({
   connections: {} as Record<string, unknown>,
   serviceConnections: [] as unknown[],
   users: (() => []) as (args: unknown) => unknown[],
+  watchlist: (() => []) as () => unknown[],
+  watchlistMarked: new Set<string>(),
   history: [] as unknown[],
   digestRows: [] as unknown[],
   disks: [] as unknown[],
@@ -53,6 +55,14 @@ vi.mock('@/lib/db', () => {
     prisma: {
       pollingState,
       user: { findMany: vi.fn(async (args: unknown) => mocks.users(args)) },
+      watchlistItem: {
+        findMany: vi.fn(async () => mocks.watchlist()),
+        updateMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) => {
+          const fresh = where.id.in.filter((id) => !mocks.watchlistMarked.has(id));
+          fresh.forEach((id) => mocks.watchlistMarked.add(id));
+          return { count: fresh.length };
+        }),
+      },
       serviceConnection: { findMany: vi.fn(async () => mocks.serviceConnections) },
       appSettings: { update: vi.fn(async (args: unknown) => { record('appSettings.update', args); return {}; }) },
       notificationHistory: {
@@ -295,6 +305,8 @@ beforeEach(() => {
   mocks.history = [];
   mocks.digestRows = [];
   mocks.users = () => [];
+  mocks.watchlist = () => [];
+  mocks.watchlistMarked = new Set();
   mocks.qbit = null;
   mocks.jellyfin = null;
   mocks.seerr = null;
@@ -380,6 +392,26 @@ describe('pollers on fixed fixtures (golden)', () => {
   it('pollSonarr with grouping on: a burst of imports sent as one grouped notification', async () => {
     mocks.sonarr = [arrInstance('i1', 'Main', 'sonarr', true, 3)];
     expectGolden('pollSonarr:grouped', await run('pollSonarr', { ...SETTINGS, notificationGroupingEnabled: true }));
+  });
+
+  it('pollRadarr: a watchlisted movie imported on two instances alerts its owner once', async () => {
+    mocks.radarr = [arrInstance('i1', 'Main', 'radarr', true), arrInstance('i2', 'Anime', 'radarr', true)];
+    for (const { client } of mocks.radarr as ReturnType<typeof arrInstance>[]) {
+      const { records } = await client.getHistory(1);
+      Object.assign((records[0] as { movie: object }).movie, { title: 'Dune', tmdbId: 438631 });
+    }
+    mocks.watchlist = () => [{
+      id: 'w1', source: 'TMDB', externalId: '438631', mediaType: 'movie', title: 'Dune',
+      user: { id: 'u1', role: 'member', status: 'active', template: 'member', permissions: {} },
+    }];
+    const out = await run('pollRadarr');
+    const alerts = out.flatMap((o) => {
+      const event = (o as { notify?: { eventType: string } }).notify;
+      return event?.eventType === 'watchlistAvailable' ? [event] : [];
+    });
+    expect(alerts).toEqual([
+      expect.objectContaining({ title: 'Now in your library: Dune', url: '/watchlist?focus=w1', userIds: ['u1'], ownerUserId: 'u1' }),
+    ]);
   });
 
   it('pollRadarr: an instance whose history fails is reported while the other carries on', async () => {
