@@ -69,12 +69,15 @@ export interface LibraryGapSection {
 // Owned-vs-total across the monitored library, surfaced as the Insights completeness gauge.
 // Units mix TV episodes and movies (episodes dominate by volume); the tv/movies split keeps
 // the blended `percent` honest. Omitted when nothing monitored, so consumers must null-check.
+// `music` (tracks) is shown as its own row and kept out of `percent`; absent when Lidarr is not
+// connected or the viewer lacks music access.
 export interface LibraryCompleteness {
   percent: number; // 0..100, rounded — overall
   ownedUnits: number;
   totalUnits: number;
   tv: { owned: number; total: number };
   movies: { owned: number; total: number };
+  music?: { owned: number; total: number };
 }
 
 export interface LibraryGapsResponse {

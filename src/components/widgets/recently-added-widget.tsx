@@ -3,12 +3,12 @@ import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback } from 'react';
 import Link from '@/components/ui/app-link';
-import { Film, Tv, Clock } from 'lucide-react';
+import { Film, Tv, Clock, Disc3 } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowShort } from '@/lib/format';
-import { toCachedImageSrc } from '@/lib/image';
+import { toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import type { WidgetProps } from '@/lib/widgets/types';
 import {
   CAROUSEL_CARD_HEIGHT,
@@ -30,10 +30,28 @@ interface RecentItem {
   id: string;
   title: string;
   subtitle: string;
-  type: 'movie' | 'episode';
+  type: 'movie' | 'episode' | 'album';
   date: string;
   poster: string | null;
   href: string;
+}
+
+function posterHint(type: RecentItem['type']): ImageServiceHint {
+  if (type === 'movie') return 'radarr';
+  if (type === 'album') return 'lidarr';
+  return 'sonarr';
+}
+
+function typeIcon(type: RecentItem['type']) {
+  if (type === 'movie') return <Film size={11} strokeWidth={2.4} />;
+  if (type === 'album') return <Disc3 size={11} strokeWidth={2.4} />;
+  return <Tv size={11} strokeWidth={2.4} />;
+}
+
+function typeColor(type: RecentItem['type']): string {
+  if (type === 'movie') return HPR.blue;
+  if (type === 'album') return HPR.green;
+  return HPR.purple;
 }
 
 function formatShortDate(dateStr: string): string {
@@ -174,7 +192,7 @@ export function RecentlyAddedWidget({
         style={{ display: 'flex', gap: CAROUSEL_GAP, overflowX: 'auto', paddingBottom: 4 }}
       >
         {list.slice(0, visibleCount).map((it) => {
-          const posterSrc = toCachedImageSrc(it.poster, it.type === 'movie' ? 'radarr' : 'sonarr') || it.poster;
+          const posterSrc = toCachedImageSrc(it.poster, posterHint(it.type)) || it.poster;
           const card = (
             <>
               <Poster
@@ -185,13 +203,8 @@ export function RecentlyAddedWidget({
                 imageUrl={posterSrc ?? undefined}
                 timePill={formatDistanceToNowShort(it.date)}
                 badge={{
-                  icon:
-                    it.type === 'movie' ? (
-                      <Film size={11} strokeWidth={2.4} />
-                    ) : (
-                      <Tv size={11} strokeWidth={2.4} />
-                    ),
-                  color: it.type === 'movie' ? HPR.blue : HPR.purple,
+                  icon: typeIcon(it.type),
+                  color: typeColor(it.type),
                 }}
               />
               <div style={{ marginTop: 6 }}>
@@ -251,9 +264,7 @@ export function RecentlyAddedWidget({
 }
 
 function RecentRow({ item }: { item: RecentItem }) {
-  const isMovie = item.type === 'movie';
-  const typeColor = isMovie ? HPR.blue : HPR.purple;
-  const posterSrc = toCachedImageSrc(item.poster, isMovie ? 'radarr' : 'sonarr') || item.poster;
+  const posterSrc = toCachedImageSrc(item.poster, posterHint(item.type)) || item.poster;
   return (
     <div
       style={{
@@ -315,7 +326,7 @@ function RecentRow({ item }: { item: RecentItem }) {
           width: 20,
           height: 20,
           borderRadius: 6,
-          background: typeColor,
+          background: typeColor(item.type),
           color: 'var(--hpr-fg)',
           display: 'flex',
           alignItems: 'center',
@@ -326,7 +337,7 @@ function RecentRow({ item }: { item: RecentItem }) {
           opacity: 0.85,
         }}
       >
-        {isMovie ? <Film size={11} strokeWidth={2.4} /> : <Tv size={11} strokeWidth={2.4} />}
+        {typeIcon(item.type)}
       </div>
     </div>
   );

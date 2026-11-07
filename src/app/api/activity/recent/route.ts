@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
+import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { parseInt32 } from '@/lib/pagination';
@@ -15,7 +15,7 @@ interface RecentItem {
   id: string;
   title: string;
   subtitle: string;
-  type: 'movie' | 'episode';
+  type: 'movie' | 'episode' | 'album';
   date: string;
   poster: string | null;
   href: string;
@@ -35,9 +35,10 @@ async function getHandler(request: NextRequest) {
 
     const items: RecentItem[] = [];
 
-    const [sonarrClients, radarrClients] = await Promise.all([
+    const [sonarrClients, radarrClients, lidarrClients] = await Promise.all([
       getSonarrClients().catch(() => []),
       getRadarrClients().catch(() => []),
+      getLidarrClients().catch(() => []),
     ]);
 
     await Promise.all([
@@ -86,6 +87,45 @@ async function getHandler(request: NextRequest) {
               date: record.date,
               poster: poster?.remoteUrl ?? poster?.url ?? null,
               href: record.movieId ? `/movies/${record.movieId}?instance=${connection.id}` : '/activity',
+              instanceId: connection.id,
+              instanceLabel: connection.label,
+            });
+          }
+        } catch {
+          // Skip unreachable instance.
+        }
+      }),
+      ...lidarrClients.map(async ({ connection, client }) => {
+        try {
+          // Lidarr writes one trackFileImported row per track (plus one downloadImported row per
+          // album), so 50 unfiltered rows cover only a few albums. A second page of downloadImported
+          // rows (eventType 8) reaches further back; the unfiltered page keeps disk-scan imports,
+          // which write only track rows. Keep the newest row per album across both.
+          const [recent, downloads] = await Promise.all([
+            client.getHistory(1, 50, 'date', 'descending'),
+            client.getHistory(1, 50, 'date', 'descending', { eventType: 8 }).catch(() => null),
+          ]);
+          const records = [...recent.records, ...(downloads?.records ?? [])]
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          const seenAlbums = new Set<number>();
+          for (const record of records) {
+            if (record.eventType !== 'downloadImported' && record.eventType !== 'trackFileImported') continue;
+            if (record.albumId) {
+              if (seenAlbums.has(record.albumId)) continue;
+              seenAlbums.add(record.albumId);
+            }
+            const album = record.album;
+            const cover =
+              album?.images?.find((i) => i.coverType === 'cover')
+              ?? record.artist?.images?.find((i) => i.coverType === 'poster');
+            items.push({
+              id: record.albumId ? `lidarr-${connection.id}-album-${record.albumId}` : `lidarr-${connection.id}-${record.id}`,
+              title: record.artist?.artistName ?? album?.title ?? record.sourceTitle,
+              subtitle: album?.title ?? record.sourceTitle,
+              type: 'album',
+              date: record.date,
+              poster: cover?.remoteUrl ?? cover?.url ?? null,
+              href: record.albumId ? `/music/album/${record.albumId}?instance=${connection.id}` : '/activity',
               instanceId: connection.id,
               instanceLabel: connection.label,
             });
