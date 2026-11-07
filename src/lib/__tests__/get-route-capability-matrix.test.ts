@@ -214,6 +214,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   ],
   'cap:random.view': [
     'GET /api/random-watch',
+    'GET /api/tonight/[id]',
+    'GET /api/tonight/members',
   ],
   'cap:recommendations.view': [
     'GET /api/recommendations/excluded',
@@ -554,7 +556,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(281);
+    expect(handlers.size).toBe(283);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

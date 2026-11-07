@@ -196,6 +196,12 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/prowlarr/indexers/[id]/test',
     'POST /api/prowlarr/indexers/testall',
   ],
+  'cap:random.view': [
+    'POST /api/tonight',
+    'DELETE /api/tonight/[id]',
+    'POST /api/tonight/[id]/join',
+    'POST /api/tonight/[id]/vote',
+  ],
   'cap:recommendations.view': [
     // Events, ratings, rebuild and restoring an excluded title are per-user
     // writes scoped to the caller (no ownership params to escalate), so the
@@ -583,7 +589,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(261);
+    expect(handlers.size).toBe(265);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

@@ -16,11 +16,12 @@ export const EVENT_TYPES = [
   'twitchDownloadFailed', 'twitchWorkerIssue',
   'youtubeVideoNew', 'youtubeDownloadComplete', 'youtubeDownloadFailed', 'youtubeCookiesExpired', 'youtubeCleanupPaused',
   'updateAvailable', 'securityAlert',
+  'tonightPickInvite',
 ] as const;
 
 export type NotificationEventType = (typeof EVENT_TYPES)[number];
 
-export type NotificationEventGroupId = 'sonarrRadarr' | 'services' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'scheduled' | 'requests' | 'digests' | 'twitch' | 'youtube' | 'helprr';
+export type NotificationEventGroupId = 'sonarrRadarr' | 'services' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'scheduled' | 'requests' | 'digests' | 'twitch' | 'youtube' | 'helprr' | 'random';
 
 export interface NotificationEventMeta {
   type: NotificationEventType;
@@ -266,6 +267,12 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     description: 'An admin signed in on a new device, a burst of failed sign-ins, or two-step sign-in was turned off (admins)',
     iconName: 'AlertTriangle', colorClass: 'bg-red-500/10 text-red-500',
   },
+  tonightPickInvite: {
+    type: 'tonightPickInvite', group: 'random',
+    label: 'Tonight Pick Invite',
+    description: 'When someone in your household asks you to pick something to watch together',
+    iconName: 'Play', colorClass: 'bg-amber-500/10 text-amber-400',
+  },
 };
 
 export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types: NotificationEventType[] }[] = [
@@ -334,6 +341,11 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
     id: 'helprr',
     title: 'Helprr',
     types: ['updateAvailable', 'securityAlert'],
+  },
+  {
+    id: 'random',
+    title: 'Random',
+    types: ['tonightPickInvite'],
   },
 ];
 
