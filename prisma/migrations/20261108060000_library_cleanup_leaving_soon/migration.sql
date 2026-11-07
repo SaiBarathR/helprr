@@ -48,4 +48,3 @@ CREATE INDEX "LeavingSoonItem_deleteAfter_idx" ON "LeavingSoonItem"("deleteAfter
 
 -- CreateIndex
 CREATE UNIQUE INDEX "LeavingSoonItem_service_instanceId_arrId_key" ON "LeavingSoonItem"("service", "instanceId", "arrId");
-

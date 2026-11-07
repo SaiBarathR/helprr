@@ -215,9 +215,9 @@ const PLAY_PAGE = 500;
 const MAX_PLAY_PAGES = 200;
 
 /**
- * Every play by one Jellyfin user. Two reads: everything marked played (also
- * catches a play Jellyfin kept no date for), and every item with a play date,
- * newest first, paged until the first undated item. The second one is what
+ * Every play by one Jellyfin user: everything marked played (also catches a
+ * play Jellyfin kept no date for), everything partly watched, and every item with a play date,
+ * newest first, paged until the first undated item. The dated scan is what
  * catches a play in progress or stopped early: Jellyfin counts it (PlayCount,
  * LastPlayedDate) without marking it played or resumable.
  */
@@ -225,6 +225,9 @@ async function readUserPlays(client: JellyfinClient, playType: string, userName:
   const out: Array<{ item: JellyfinItem; fromPlayedFilter: boolean }> = [];
   const played = await client.queryItems({ IncludeItemTypes: playType, Recursive: true, Filters: 'IsPlayed', EnableUserData: true, EnableImages: false });
   for (const item of itemsOf(played, `plays for ${userName}`)) out.push({ item, fromPlayedFilter: true });
+  // Partly watched ones too, so they never depend on the scan's sort order alone.
+  const resumable = await client.queryItems({ IncludeItemTypes: playType, Recursive: true, Filters: 'IsResumable', EnableUserData: true, EnableImages: false });
+  for (const item of itemsOf(resumable, `plays for ${userName}`)) out.push({ item, fromPlayedFilter: false });
   for (let page = 0; page < MAX_PLAY_PAGES; page++) {
     const response = await client.queryItems({
       IncludeItemTypes: playType,

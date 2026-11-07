@@ -249,6 +249,16 @@ describe('library deletion', () => {
     expect(mocks.radarr.deleteMovie).toHaveBeenCalledWith(1, true, false);
   });
 
+  it('stops at the last look: a keep tag created and applied in the arr during the run', async () => {
+    gathers([facts(1), facts(2), facts(3)], [['radarr-1', null]]);
+    const { binding } = await previewLibraryDeletion(false, NOW);
+    mocks.radarr.getTags.mockResolvedValue([{ id: 8, label: 'keep' }]);
+    mocks.radarr.getMovieById.mockImplementation(async (id: number) => ({ id, tmdbId: id, tags: id === 1 ? [8] : [] }));
+    const result = await executeLibraryDeletion(binding, 'p', admin, NOW);
+    expect(result).toMatchObject({ deleted: 1, skipped: 1 });
+    expect(mocks.radarr.deleteMovie).toHaveBeenCalledWith(2, true, false);
+  });
+
   it('stops at the last look: a different title under the id puts the title back', async () => {
     const { binding } = await previewLibraryDeletion(false, NOW);
     mocks.radarr.getMovieById.mockImplementation(async (id: number) => ({ id, tmdbId: id === 2 ? 555 : id, tags: [] }));

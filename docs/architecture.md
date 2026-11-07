@@ -817,7 +817,8 @@ the old one.
   cannot be read completely. Seerr not being connected is a warning (Helprr's
   pending requests still count); Jellyfin not being connected blocks. For
   **every** Jellyfin user Helprr reads the library as that user sees it (the
-  provider-id index is their union), everything marked played, and every item
+  provider-id index is their union), everything marked played or partly
+  watched, and every item
   with a `LastPlayedDate` (`SortBy=DatePlayed`, newest first, paged until the
   first undated item: a play in progress or stopped early has a date and a
   `PlayCount` but is neither played nor resumable). Series use their episodes,

@@ -171,7 +171,7 @@ export function LibraryCleanupTab({ onDirtyChange }: { onDirtyChange?: (dirty: b
   const selectable = useMemo(() => (preview?.candidates ?? []).filter((c) => !c.leavingSoon), [preview]);
   const selectedBytes = selectable.filter((c) => selected.has(c.key)).reduce((sum, c) => sum + c.sizeBytes, 0);
 
-  if (configQuery.isError) {
+  if (configQuery.isError && !configQuery.data) {
     return (
       <div className="py-12 text-center text-sm text-muted-foreground">
         <p>Couldn’t load the library cleanup settings.</p>

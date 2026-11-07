@@ -129,6 +129,15 @@ week on the builds named with them.
     in a desktop browser at 1440×900. Both showed as a session under the member
     and left none behind when stopped. Two transcoded playbacks earlier that day,
     on the development server at `cc3494a` and on a local build, behaved the same.
+- **Jellyfin play history for library cleanup, 2026-11-07.** Read-only, on the
+  development stack's Jellyfin (11 users), to fix what library cleanup reads:
+  `Series` items carry `UserData` without `LastPlayedDate` (only episodes and
+  movies have it); a play in progress or stopped early has `PlayCount > 0` and
+  a `LastPlayedDate` but `Played: false` and no position, so neither
+  `Filters=IsPlayed` nor `IsResumable` returns it; `SortBy=DatePlayed&SortOrder=Descending`
+  lists every dated item before the undated ones; `/Sessions` answers an array
+  whose entries carry `NowPlayingItem` only while something plays. Helprr reads
+  all three (played, resumable, the dated scan) plus sessions.
 - **Jellyfin `12.2.0` in a player, 2026-10-08.** Played on the development stack
   at `e1ee60c` (Helprr 1.6.0 plus documentation commits) as a Jellyfin-linked
   administrator, in desktop Chrome 154 and in Safari on the iOS Simulator

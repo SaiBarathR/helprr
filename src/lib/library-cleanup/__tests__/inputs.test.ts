@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   library: vi.fn(),
   userLibrary: {} as Record<string, unknown[]>,
   // Per Jellyfin user id: what IsPlayed returns, and items with a play date (newest first).
-  plays: {} as Record<string, { IsPlayed?: unknown[]; dated?: unknown[] }>,
+  plays: {} as Record<string, { IsPlayed?: unknown[]; IsResumable?: unknown[]; dated?: unknown[] }>,
   jellyfinContext: vi.fn(),
   seerr: { listRequests: vi.fn() },
   getSeerrClient: vi.fn(),
@@ -34,6 +34,10 @@ vi.mock('@/lib/jellyfin-client', () => ({
     async queryItems(params: { Filters?: string; SortBy?: string; StartIndex?: number; Limit?: number }) {
       if (params.Filters === 'IsPlayed') {
         const items = mocks.plays[this.userId]?.IsPlayed ?? [];
+        return { Items: items, TotalRecordCount: items.length };
+      }
+      if (params.Filters === 'IsResumable') {
+        const items = mocks.plays[this.userId]?.IsResumable ?? [];
         return { Items: items, TotalRecordCount: items.length };
       }
       if (params.SortBy === 'DatePlayed') {
@@ -244,5 +248,11 @@ describe('gatherLibraryFacts', () => {
       // A request deleted mid-read shifted the pages: the last of page one comes again.
       .mockResolvedValueOnce({ pageInfo: { results: 101 }, results: [page[99]] });
     await expect(gatherLibraryFacts('movie', 'keep')).rejects.toBeInstanceOf(LibraryCleanupUnavailableError);
+  });
+
+  it('still counts a partly watched title the date scan did not reach', async () => {
+    mocks.plays['jf-b'] = { IsResumable: [{ Id: 'm3', UserData: { PlaybackPositionTicks: 9, PlayCount: 1, LastPlayedDate: '2026-11-01T00:00:00Z' } }] };
+    const { titles } = await gatherLibraryFacts('movie', 'keep');
+    expect(titles.find((t) => t.arrId === 3)!.lastWatchedAt?.toISOString()).toBe('2026-11-01T00:00:00.000Z');
   });
 });

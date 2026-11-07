@@ -528,7 +528,20 @@ async function deleteOne(
     await writeHistory(item, 'skipped', 'Could not re-read the title', actor, previewId, errorText(error));
     return skippedResult(item, 'Could not re-read the title');
   }
-  if (keepTagId !== null && (current.tags ?? []).includes(keepTagId)) {
+  // The keep tag may have been created in the arr after the run read the tags.
+  let tagId = keepTagId;
+  if (tagId === null) {
+    try {
+      const settings = await loadLibraryCleanupSettings();
+      const client = item.service === 'RADARR' ? await getRadarrClient(item.instanceId) : await getSonarrClient(item.instanceId);
+      tagId = (await client.getTags()).find((t) => t.label.toLowerCase() === settings.keepTag)?.id ?? null;
+    } catch (error) {
+      await restoreRow(item);
+      await writeHistory(item, 'skipped', 'Could not re-read the tags', actor, previewId, errorText(error));
+      return skippedResult(item, 'Could not re-read the tags');
+    }
+  }
+  if (tagId !== null && (current.tags ?? []).includes(tagId)) {
     // Kept in the arr itself: it leaves Leaving soon.
     await writeHistory(item, 'skipped', 'Tagged keep in Sonarr/Radarr', actor, previewId, null);
     return skippedResult(item, 'Tagged keep in Sonarr/Radarr');
