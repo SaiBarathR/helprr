@@ -104,6 +104,7 @@ beforeEach(() => {
     id: 'user-1',
     role: 'member',
     passwordHash: 'stored-hash',
+    totpEnabledAt: null,
   });
 });
 

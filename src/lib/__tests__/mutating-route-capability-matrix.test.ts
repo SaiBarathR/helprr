@@ -21,6 +21,8 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
   public: [
     'POST /api/auth/jellyfin',
     'POST /api/auth/login',
+    // The signed MFA pending token from the first step is the credential; rate-limited like sign-in.
+    'POST /api/auth/login/totp',
     // Only while no user exists and APP_PASSWORD is unset; same-origin JSON, rate-limited.
     'POST /api/setup/admin',
     // The single-use link token is the credential; rate-limited like sign-in.
@@ -38,6 +40,9 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/logs/client',
     'DELETE /api/me',
     'POST /api/me/password',
+    'DELETE /api/me/totp',
+    'POST /api/me/totp/enable',
+    'POST /api/me/totp/setup',
     'PATCH /api/me/settings',
     'POST /api/notifications/subscription/check',
     'POST /api/push/subscribe',
@@ -564,7 +569,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(247);
+    expect(handlers.size).toBe(251);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

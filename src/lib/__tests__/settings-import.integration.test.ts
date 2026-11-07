@@ -185,6 +185,40 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     expect(await prisma.creatorSubscription.count()).toBe(1);
   });
 
+  it('never exports a two-step sign-in secret or recovery code, even with secrets included, and an import leaves it off', async () => {
+    const { validateImportFile } = await import('@/lib/settings-export');
+    const { POST: exportSettings } = await import('@/app/api/settings/export/route');
+    const { NextRequest } = await import('next/server');
+    await prisma.user.create({
+      data: {
+        id: 'mfa-user', username: 'mfauser', displayName: 'MFA', passwordHash: 'scrypt-hash-value',
+        totpSecret: 'enc:v1:totp-secret-value', totpEnabledAt: new Date(), totpLastUsedStep: 12345,
+        recoveryCodes: { create: [{ codeHash: 'recovery-code-hash-value' }] },
+      },
+    });
+
+    const response = await exportSettings(new NextRequest('http://localhost/api/settings/export', {
+      method: 'POST',
+      body: JSON.stringify({ users: true, includeSecrets: true }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).toContain('mfauser');
+    for (const leak of ['totp-secret-value', 'recovery-code-hash-value', 'totpSecret', 'totpEnabledAt', 'totpLastUsedStep', 'recoveryCodes', 'codeHash']) {
+      expect(text).not.toContain(leak);
+    }
+    const file = validateImportFile(JSON.parse(text));
+    if (!file.ok) throw new Error(file.error);
+
+    await reset();
+    await runImport.applySettingsImport({ users: file.payload.users } as never, IMPORTER_ID);
+    expect(await prisma.user.findUniqueOrThrow({ where: { username: 'mfauser' } })).toMatchObject({
+      totpSecret: null, totpEnabledAt: null, totpLastUsedStep: null,
+    });
+    expect(await prisma.recoveryCode.count()).toBe(0);
+  });
+
   it('round-trips YouTube settings, rules and follows through export and import, without the cookies or the cleanup viewer', async () => {
     const { validateImportFile } = await import('@/lib/settings-export');
     const { POST: exportSettings } = await import('@/app/api/settings/export/route');

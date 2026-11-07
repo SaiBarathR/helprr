@@ -23,6 +23,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
 import { readLoginCredentials } from '@/lib/server/login-input';
 import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
+import { createMfaPendingToken, isTotpEnabled } from '@/lib/totp';
 
 // Generic so a probe can't tell "no such user" from "wrong password".
 const INVALID_CREDENTIALS = 'Invalid username or password';
@@ -31,14 +32,16 @@ const INVALID_CREDENTIALS = 'Invalid username or password';
  * Store a current-policy hash after a hash with older scrypt parameters has
  * just been verified. Only replaces the exact hash that was verified, so a
  * password change made meanwhile is never overwritten. Best effort: login
- * succeeds whether or not the write does.
+ * succeeds whether or not the write does. Returns the hash stored, or null.
  */
-async function upgradePasswordHash(userId: string, verifiedHash: string, password: string): Promise<void> {
+async function upgradePasswordHash(userId: string, verifiedHash: string, password: string): Promise<string | null> {
   try {
-    await prisma.user.updateMany({
+    const passwordHash = await hashPassword(password);
+    const updated = await prisma.user.updateMany({
       where: { id: userId, passwordHash: verifiedHash },
-      data: { passwordHash: await hashPassword(password) },
+      data: { passwordHash },
     });
+    return updated.count === 1 ? passwordHash : null;
   } catch (error) {
     // Name and code only: a Prisma validation message can echo the arguments,
     // which here are password hashes.
@@ -47,6 +50,7 @@ async function upgradePasswordHash(userId: string, verifiedHash: string, passwor
       ? `${error.name}${typeof code === 'string' ? ` ${code}` : ''}`
       : 'unknown error';
     console.error(`[Auth] Password hash upgrade failed for user ${userId}: ${reason}`);
+    return null;
   }
 }
 
@@ -76,7 +80,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   const user = await prisma.user.findFirst({
     where: { username, status: 'active' },
-    select: { id: true, username: true, role: true, passwordHash: true },
+    select: { id: true, username: true, role: true, passwordHash: true, jellyfinUserId: true, totpEnabledAt: true },
   });
 
   if (!user) {
@@ -96,10 +100,20 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
   }
 
-  await clearUsernameBackoff(username);
+  // With two-step sign-in on, the throttles are cleared only once the code
+  // passes too, so knowing the password never resets them between code guesses.
+  const mfa = isTotpEnabled(user);
+  if (!mfa) await clearUsernameBackoff(username);
 
+  let passwordHash = user.passwordHash;
   if (user.passwordHash && passwordHashNeedsUpgrade(user.passwordHash)) {
-    await upgradePasswordHash(user.id, user.passwordHash, password);
+    passwordHash = (await upgradePasswordHash(user.id, user.passwordHash, password)) ?? passwordHash;
+  }
+
+  if (mfa) {
+    // Not a session: /api/auth/login/totp exchanges it, with a code, for one.
+    const mfaToken = await createMfaPendingToken({ ...user, passwordHash }, 'password');
+    return NextResponse.json({ mfaRequired: true, mfaToken }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   if (ip !== undefined) {

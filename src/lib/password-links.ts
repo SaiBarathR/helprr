@@ -126,6 +126,8 @@ export async function redeemPasswordLink(
   purpose: PasswordLinkPurpose;
   revokedSessions: number;
   feedRevoked: boolean;
+  /** Two-step sign-in is on: the new password alone must not sign in. */
+  mfaEnabled: boolean;
 } | null> {
   if (!isWellFormedPasswordLinkToken(token)) return null;
   const tokenHash = hashPasswordLinkToken(token);
@@ -141,6 +143,9 @@ export async function redeemPasswordLink(
         data: { passwordHash, status: 'active' },
       });
       if (updated.count !== 1) throw new LinkUnusableError();
+      // Read now, with the row locked by the update: two-step sign-in turned on
+      // after the link was read still counts.
+      const mfa = await tx.user.findUnique({ where: { id: link.userId }, select: { totpEnabledAt: true } });
       // Single use: of two requests with the same link, only one deletes it.
       // Matching the hash too means a link reissued meanwhile is not consumed.
       const consumed = await tx.passwordLink.deleteMany({ where: { id: link.id, tokenHash } });
@@ -158,6 +163,7 @@ export async function redeemPasswordLink(
         purpose: link.purpose,
         revokedSessions: revoked.count,
         feedRevoked: feed.count > 0,
+        mfaEnabled: mfa?.totpEnabledAt !== null,
       };
     });
   } catch (error) {

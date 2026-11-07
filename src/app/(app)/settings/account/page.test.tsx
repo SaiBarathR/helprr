@@ -19,6 +19,7 @@ vi.mock('@/components/ui/app-link', () => ({
   default: ({ children }: { children: ReactNode }) => <a>{children}</a>,
 }));
 vi.mock('@/components/settings/jellyfin-connection', () => ({ JellyfinConnection: () => null }));
+vi.mock('@/components/settings/two-factor-section', () => ({ TwoFactorSection: () => null }));
 
 import AccountSettingsPage from './page';
 

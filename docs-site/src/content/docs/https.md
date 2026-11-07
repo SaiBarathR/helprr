@@ -197,5 +197,6 @@ real domain and was not part of the test.*
 
 Anyone who can reach Helprr's address can try to sign in. Tailscale keeps it to your own
 devices. With a public address, a proxy that asks for its own sign-in first (Cloudflare
-Access, Authelia) keeps strangers away from Helprr's; use long passwords either way, and
-keep Helprr and its apps up to date.
+Access, Authelia) keeps strangers away from Helprr's; use long passwords either way, turn
+on [two-step sign-in](/helprr/people/#two-step-sign-in) for admins, and keep Helprr and
+its apps up to date.

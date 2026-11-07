@@ -17,7 +17,7 @@ const emptySubscribe = () => () => {};
 const getOrigin = () => window.location.origin;
 
 /** The code, black on white with a quiet zone, so a camera reads it on any theme. */
-function QrCode({ text }: { text: string }) {
+export function QrCode({ text, label }: { text: string; label?: string }) {
   const modules = useMemo(() => qrModules(text), [text]);
   const quiet = 4;
   const size = modules.length + quiet * 2;
@@ -27,7 +27,7 @@ function QrCode({ text }: { text: string }) {
   return (
     <svg
       role="img"
-      aria-label={`QR code for ${text}`}
+      aria-label={label ?? `QR code for ${text}`}
       viewBox={`0 0 ${size} ${size}`}
       shapeRendering="crispEdges"
       className="h-52 w-52 rounded-lg"

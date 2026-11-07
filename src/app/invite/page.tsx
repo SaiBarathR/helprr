@@ -41,7 +41,7 @@ export default function InvitePage() {
   const router = useRouter();
   // Read once: after that the fragment is gone from the URL.
   const tokenRef = useRef<string | null>(null);
-  const [status, setStatus] = useState<'checking' | 'ready' | 'invalid' | 'missing' | 'unreachable'>('checking');
+  const [status, setStatus] = useState<'checking' | 'ready' | 'invalid' | 'missing' | 'unreachable' | 'done'>('checking');
   const [info, setInfo] = useState<LinkInfo | null>(null);
   const [notice, setNotice] = useState('');
   const [password, setPassword] = useState('');
@@ -118,6 +118,13 @@ export default function InvitePage() {
         body: JSON.stringify({ token: tokenRef.current, password }),
       });
       if (res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { signInWithCode?: unknown };
+        if (data.signInWithCode === true) {
+          // Two-step sign-in is on: no session was made here.
+          setNotice('Your password is set. Sign in with it and a code from your authenticator app.');
+          setStatus('done');
+          return;
+        }
         try {
           await completeBrowserSignIn();
         } catch {
@@ -175,6 +182,13 @@ export default function InvitePage() {
             <div className="space-y-4 text-center">
               <p className="text-sm text-muted-foreground" role="alert">{status === 'missing' ? MISSING : INVALID}</p>
               <Button asChild variant="outline" className="w-full">
+                <Link href="/login">Go to sign in</Link>
+              </Button>
+            </div>
+          ) : status === 'done' ? (
+            <div className="space-y-4 text-center">
+              <p className="text-sm text-muted-foreground" role="status">{notice}</p>
+              <Button asChild className="w-full">
                 <Link href="/login">Go to sign in</Link>
               </Button>
             </div>

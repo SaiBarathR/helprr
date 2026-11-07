@@ -7,7 +7,7 @@ import { hashPassword } from '@/lib/password';
 // refused in auth-session-role.test.ts).
 
 const mocks = vi.hoisted(() => ({
-  users: [] as Array<{ id: string; username: string; role: string; status: string; passwordHash: string | null }>,
+  users: [] as Array<{ id: string; username: string; role: string; status: string; passwordHash: string | null; totpEnabledAt: Date | null }>,
   createSession: vi.fn(),
 }));
 
@@ -61,7 +61,7 @@ function signIn() {
 describe('a pending (invited) user', () => {
   beforeEach(async () => {
     mocks.createSession.mockReset().mockResolvedValue('session-token');
-    mocks.users = [{ id: 'u1', username: 'newbie', role: 'member', status: 'pending', passwordHash: await hashPassword(PASSWORD) }];
+    mocks.users = [{ id: 'u1', username: 'newbie', role: 'member', status: 'pending', passwordHash: await hashPassword(PASSWORD), totpEnabledAt: null }];
   });
 
   it('cannot sign in, even with the right password', async () => {

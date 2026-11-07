@@ -53,6 +53,7 @@ import { GET } from './route';
 const FAKE_PUSH_KEY = ['fixture', 'push', 'key'].join('-');
 const SECRETS = [
   'stored-password-hash',
+  'enc:v1:totp-secret-value',
   'jellyfin-token-value',
   'anilist-access-token',
   'anilist-refresh-token',
@@ -77,6 +78,9 @@ const me = {
   jellyfinUserId: 'jf-1',
   seerrUserId: null,
   jellyfinToken: 'jellyfin-token-value',
+  totpSecret: 'enc:v1:totp-secret-value',
+  totpEnabledAt: new Date('2026-01-03T00:00:00Z'),
+  totpLastUsedStep: 59000000,
   createdAt: new Date('2026-01-01T00:00:00Z'),
   updatedAt: new Date('2026-01-02T00:00:00Z'),
 };
@@ -166,7 +170,7 @@ describe('GET /api/me/export', () => {
   it('never includes a hash, token, push key or session id', async () => {
     const text = await (await GET()).text();
     for (const secret of SECRETS) expect(text).not.toContain(secret);
-    for (const key of ['passwordHash', 'jellyfinToken', 'accessToken', 'refreshToken', 'endpoint', 'p256dh', 'deviceCode']) {
+    for (const key of ['passwordHash', 'jellyfinToken', 'totpSecret', 'totpLastUsedStep', 'codeHash', 'accessToken', 'refreshToken', 'endpoint', 'p256dh', 'deviceCode']) {
       expect(text).not.toContain(`"${key}"`);
     }
   });
@@ -202,6 +206,7 @@ describe('my-data export coverage', () => {
     creatorVideoStates: 'per-video seen/hidden flags',
     passwordLink: 'holds only a token hash',
     calendarFeedToken: 'holds only a token hash',
+    recoveryCodes: 'two-step sign-in recovery codes; holds only code hashes',
   };
 
   it('exports or explicitly excludes every relation of User', async () => {

@@ -12,7 +12,9 @@ import { invalidLinkResponse, readInviteRequest } from '@/lib/server/invite-requ
 /**
  * Public: use an invite or password-reset link. Sets the chosen password, makes
  * the account active, ends the link, revokes every session of the user, and
- * signs this browser in.
+ * signs this browser in, unless the account has two-step sign-in on: then the
+ * person signs in on /login with the new password and a code, so a reset link
+ * is never a way around the second factor.
  */
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const input = await readInviteRequest(request);
@@ -50,6 +52,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       targetLabel: user.username,
       fields: ['password'],
     });
+  }
+
+  // Fail closed: anything but a definite "off" makes no session.
+  if (user.mfaEnabled !== false) {
+    return NextResponse.json({ success: true, signInWithCode: true });
   }
 
   const sessionToken = await createSession({

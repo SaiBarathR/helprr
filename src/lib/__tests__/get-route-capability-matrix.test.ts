@@ -52,6 +52,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/me',
     'GET /api/me/export',
     'GET /api/me/settings',
+    'GET /api/me/totp',
     'GET /api/push/public-key',
     'GET /api/radarr/rootfolders',
     'GET /api/search/providers/[provider]',
@@ -539,7 +540,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(273);
+    expect(handlers.size).toBe(274);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

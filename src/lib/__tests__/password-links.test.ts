@@ -31,6 +31,10 @@ const db = vi.hoisted(() => {
       }),
     },
     user: {
+      findUnique: vi.fn(async ({ where }: { where: Row }) => {
+        const row = state.users.find((u) => u.id === where.id);
+        return row ? { totpEnabledAt: row.totpEnabledAt } : null;
+      }),
       updateMany: vi.fn(async ({ where, data }: { where: Row; data: Row }) => {
         const rows = state.users.filter((u) => matches(u, where));
         rows.forEach((u) => Object.assign(u, data));
@@ -82,7 +86,7 @@ const NOW = new Date('2026-11-07T12:00:00Z');
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 
 function addUser(id: string, status: string, passwordHash: string | null = 'old-hash') {
-  db.state.users.push({ id, username: id, displayName: id, role: 'member', status, passwordHash });
+  db.state.users.push({ id, username: id, displayName: id, role: 'member', status, passwordHash, totpEnabledAt: null });
 }
 
 beforeEach(() => {
@@ -160,11 +164,29 @@ describe('using a link', () => {
     db.state.feeds.push({ id: 'f1', userId: 'u1' }, { id: 'f2', userId: 'someone-else' });
 
     const used = await redeemPasswordLink(token, 'new-hash', NOW);
-    expect(used).toMatchObject({ purpose: 'reset', revokedSessions: 2, feedRevoked: true });
+    expect(used).toMatchObject({ purpose: 'reset', revokedSessions: 2, feedRevoked: true, mfaEnabled: false });
     expect(db.state.users[0].passwordHash).toBe('new-hash');
     expect(db.state.sessions.filter((s) => s.revokedAt !== null).map((s) => s.id)).toEqual(['s1', 's2']);
     // The calendar feed link ends with the sessions.
     expect(db.state.feeds.map((f) => f.id)).toEqual(['f2']);
+  });
+
+  it('a reset link says when the account has two-step sign-in on', async () => {
+    addUser('u1', 'active');
+    db.state.users[0].totpEnabledAt = NOW;
+    const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'reset', createdById: 'admin', now: NOW });
+    expect(await redeemPasswordLink(token, 'new-hash', NOW)).toMatchObject({ mfaEnabled: true });
+  });
+
+  it('counts two-step sign-in turned on after the link was read', async () => {
+    addUser('u1', 'active');
+    const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'reset', createdById: 'admin', now: NOW });
+    const read = await db.client.passwordLink.findUnique({ where: { tokenHash: sha256(token) } });
+    db.client.passwordLink.findUnique.mockImplementationOnce(async () => {
+      db.state.users[0].totpEnabledAt = NOW;
+      return read;
+    });
+    expect(await redeemPasswordLink(token, 'new-hash', NOW)).toMatchObject({ mfaEnabled: true });
   });
 
   it('a second use of a reset link racing the first writes nothing', async () => {

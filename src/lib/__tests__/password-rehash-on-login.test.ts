@@ -99,7 +99,7 @@ describe('passwordHashNeedsUpgrade', () => {
 
 describe('POST /api/auth/login password rehash', () => {
   it('does not rewrite a current-policy hash', async () => {
-    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: await hashPassword(TYPED) });
+    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: await hashPassword(TYPED), totpEnabledAt: null });
 
     expect((await login(loginRequest(TYPED))).status).toBe(200);
     expect(mocks.userUpdateMany).not.toHaveBeenCalled();
@@ -107,7 +107,7 @@ describe('POST /api/auth/login password rehash', () => {
 
   it('rewrites an older hash exactly once, only after the password verified', async () => {
     const old = legacyHash(TYPED);
-    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: old });
+    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: old, totpEnabledAt: null });
 
     expect((await login(loginRequest(TYPED))).status).toBe(200);
 
@@ -122,7 +122,7 @@ describe('POST /api/auth/login password rehash', () => {
 
   it('does not downgrade a stronger hash on login', async () => {
     mocks.userFindFirst.mockResolvedValue({
-      id: 'user-1', role: 'member', passwordHash: legacyHash(TYPED, { N: 32768 }),
+      id: 'user-1', role: 'member', passwordHash: legacyHash(TYPED, { N: 32768 }), totpEnabledAt: null,
     });
 
     expect((await login(loginRequest(TYPED))).status).toBe(200);
@@ -130,7 +130,7 @@ describe('POST /api/auth/login password rehash', () => {
   });
 
   it('never rewrites on a wrong password', async () => {
-    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: legacyHash(TYPED) });
+    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: legacyHash(TYPED), totpEnabledAt: null });
 
     expect((await login(loginRequest('other words'))).status).toBe(401);
     expect(mocks.userUpdateMany).not.toHaveBeenCalled();
@@ -138,7 +138,7 @@ describe('POST /api/auth/login password rehash', () => {
   });
 
   it('leaves a password changed meanwhile in place and still signs in', async () => {
-    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: legacyHash(TYPED) });
+    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: legacyHash(TYPED), totpEnabledAt: null });
     mocks.userUpdateMany.mockResolvedValue({ count: 0 });
 
     expect((await login(loginRequest(TYPED))).status).toBe(200);
@@ -146,7 +146,7 @@ describe('POST /api/auth/login password rehash', () => {
   });
 
   it('signs in when the rehash write fails, logging without the password', async () => {
-    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: legacyHash(TYPED) });
+    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: legacyHash(TYPED), totpEnabledAt: null });
     mocks.userUpdateMany.mockRejectedValue(new Error('database unavailable'));
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -165,14 +165,14 @@ describe('POST /api/auth/login password rehash', () => {
 
   it('upgrades a short legacy password, which still verifies after the 15-character rule', async () => {
     const short = 'abc';
-    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: legacyHash(short) });
+    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: legacyHash(short), totpEnabledAt: null });
 
     expect((await login(loginRequest(short))).status).toBe(200);
     expect(mocks.userUpdateMany).toHaveBeenCalledOnce();
   });
 
   it('leaves a Jellyfin-only account untouched', async () => {
-    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: null });
+    mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: null, totpEnabledAt: null });
 
     expect((await login(loginRequest(TYPED))).status).toBe(401);
     expect(mocks.userUpdateMany).not.toHaveBeenCalled();

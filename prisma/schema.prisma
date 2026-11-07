@@ -44,6 +44,9 @@ model User {
   jellyfinUserId String?    @unique
   seerrUserId    String?    @unique
   jellyfinToken  String? // the member's Jellyfin AccessToken that playback is signed with; encrypted (enc:v1:), written by Jellyfin sign-in and Settings → Account; not a Helprr login credential
+  totpSecret     String? // two-step sign-in authenticator secret, encrypted (enc:v1:); set up in Settings → Account, asked for at sign-in only once totpEnabledAt is set
+  totpEnabledAt  DateTime?
+  totpLastUsedStep Int? // the last 30-second step a code was accepted for, so each code works once
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   sessions       Session[]
@@ -64,6 +67,7 @@ model User {
   tasteProfile   UserTasteProfile?
   passwordLink   PasswordLink?
   calendarFeedToken CalendarFeedToken?
+  recoveryCodes  RecoveryCode[]
 
   @@index([jellyfinUserId])
   @@index([status])
@@ -87,6 +91,19 @@ model PasswordLink {
   expiresAt   DateTime
   createdById String?
   createdAt   DateTime            @default(now())
+}
+
+// One-time codes that stand in for the authenticator at sign-in (two-step
+// sign-in). Ten are made when it is turned on and shown once; only the SHA-256
+// of each is stored, and a code is deleted when it is used.
+model RecoveryCode {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, codeHash])
 }
 
 model ServiceConnection {
@@ -790,6 +807,9 @@ enum SecurityAuditAction {
   CALENDAR_FEED_CREATED
   CALENDAR_FEED_ROTATED
   CALENDAR_FEED_REVOKED
+  MFA_ENABLED // the user turned on two-step sign-in
+  MFA_DISABLED // the user turned it off (password and a code)
+  MFA_RECOVERY_CODE_USED // a recovery code stood in for the authenticator
 }
 
 // Who did what to accounts, sessions, service connections and settings, and

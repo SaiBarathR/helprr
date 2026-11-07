@@ -295,9 +295,33 @@ link matching its id and hash (single use; a race loser rolls back), and a revok
 session of the user; then it signs the browser in. Making, replacing, revoking and using
 links are security audit events. `HELPRR_ADMIN_PASSWORD_RESET=true` is a separate startup recovery
 path for the bootstrap admin: in one transaction it sets the password from `APP_PASSWORD`,
-deletes the admin's password link and calendar feed link and revokes every session of the admin (and any
+deletes the admin's password link and calendar feed link, turns off two-step sign-in (secret
+and recovery codes), and revokes every session of the admin (and any
 owner-less legacy session, which the startup attach would otherwise hand to the admin). It
 does this on every start while the flag is set, so remove it after one boot.
+
+Two-step sign-in (`src/lib/totp.ts`, `otpauth` for RFC 6238): optional per user, for
+accounts with a local password. `User.totpSecret` is enc:v1 (the Jellyfin-token cipher, via
+`twitch/token-cipher.ts`); it counts only once `totpEnabledAt` is set, so an unconfirmed
+setup changes nothing. With it on, a right password (or Jellyfin sign-in) returns no
+session but a 5-minute HS256 "MFA pending" JWT with its own audience and no `sid`, so
+`decodeToken` never accepts it. It is bound to the user by an HMAC stamp of the password
+hash, Jellyfin link and `totpEnabledAt`, so any of those changing ends it.
+`POST /api/auth/login/totp` checks it, applies the sign-in throttles keyed on the account,
+verifies a code (±1 step) and uses it up in the same conditional write
+(`totpLastUsedStep < step`), then spends the token's `jti` in Redis (`SET NX`, fail closed)
+and makes the session. The first step no longer clears the username backoff or IP bucket
+for these accounts, so a known password cannot reset them between code guesses, and every
+wrong code counts (no repeat-guess dedupe). Before a code is checked, one Redis script
+counts the attempt atomically: 10 per account per fixed hour (sign-in, enable and disable
+share it; cleared when a code passes) and 5 per pending token, and it answers "expired"
+for a token already used, so a retry after a lost response burns no code. A password-reset
+link for such an account sets the password but makes no session. Ten
+80-bit recovery codes are stored as SHA-256 (`RecoveryCode`, deleted on use) and still work
+after a `JWT_SECRET` change, when the secret no longer decrypts. Setup needs the current
+password; turning it off needs the password and a code. Settings export never carries
+either. Audit: `MFA_ENABLED`, `MFA_DISABLED`, `MFA_RECOVERY_CODE_USED`, and a wrong code as
+`LOGIN_FAILED` with method `totp`.
 
 Generated secrets: with the bundled Compose file, a short-lived `helprr-init`
 service (`docker/init-secrets.sh`, the app image run as root with no network) makes
