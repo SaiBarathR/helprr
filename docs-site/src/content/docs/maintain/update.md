@@ -95,7 +95,8 @@ hours; admins also get one [notification](/helprr/notifications/#admin-events) p
 release. It sends no
 installation data and never pulls an image, changes a tag, restarts a container, or
 applies an update. Back up and follow the normal update procedure after reviewing the
-linked release notes.
+linked release notes. To stop the check, turn off **Check for updates** in
+**Settings → Service status**: Helprr then never asks GitHub, and shows no notice.
 
 After an update, everyone sees a **What's new** card once, the first time they open
 Helprr, with the notes for each release since the version they last saw. Closing it

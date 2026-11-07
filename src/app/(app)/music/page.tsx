@@ -159,6 +159,7 @@ export default function MusicPage() {
   const canChangePath = useCan('music.changePath');
   const canEditArtist = canMonitor || canTag || canChangePath;
   const canDelete = useCan('music.delete');
+  const canManageFiles = useCan('music.manageFiles');
   const canSearch = useCan('activity.manage');
   const canBulk = canMonitor || canTag || canDelete || canSearch || canChangePath || isAdmin;
   const {
@@ -502,7 +503,7 @@ export default function MusicPage() {
                   href: arrFilesHref('music', item.id, item.instanceId),
                 }]
               : []),
-            ...(canSearch && canDelete
+            ...(canSearch && canManageFiles
               ? [{
                   id: 'rename',
                   label: 'Preview rename…',
@@ -545,6 +546,7 @@ export default function MusicPage() {
     canSearch,
     canBulk,
     canDelete,
+    canManageFiles,
     runMonitor,
     runSearch,
     enter,
@@ -1034,7 +1036,7 @@ export default function MusicPage() {
             instanceId: selectedInstance,
             isAdmin,
             canChangePath,
-            canOrganize: canSearch && canDelete,
+            canOrganize: canSearch && canManageFiles,
             onApply: handleBulkEdit,
             onOrganize: handleOrganize,
           }}

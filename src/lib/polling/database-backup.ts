@@ -39,23 +39,36 @@ export function isScheduledBackupDue(settings: ScheduleSettings, now: Date, time
 }
 
 interface OverdueSettings {
-  databaseBackupSchedule: string;
   databaseBackupAlertDays: number;
   databaseBackupAlertedAt: Date | null;
   lastDatabaseBackupAt: Date | null;
 }
 
 /**
- * Only while scheduled backups are on, so an install that backs up with
- * backup.sh alone (update.sh runs it before each update) is never nagged. A
- * schedule that never succeeded is reported by the failure push instead.
+ * Whether the schedule is on or not: a backup from backup.sh counts the same as
+ * one made in Helprr. Once the last backup is older than the alert, at most one
+ * reminder a day. With no backup ever recorded, one reminder only, once Helprr
+ * has been set up (`installedAt`, its first account) for longer than the alert,
+ * and none after it until a backup is recorded. 0 turns both off.
  */
-export function isBackupOverdue(settings: OverdueSettings, nowMs: number): boolean {
-  if (settings.databaseBackupSchedule === 'off' || settings.databaseBackupAlertDays <= 0) return false;
-  const last = settings.lastDatabaseBackupAt;
-  if (!last || nowMs - last.getTime() <= settings.databaseBackupAlertDays * DAY_MS + OVERDUE_SLACK_MS) return false;
+export function isBackupOverdue(settings: OverdueSettings, nowMs: number, installedAt: Date | null = null): boolean {
+  if (settings.databaseBackupAlertDays <= 0) return false;
+  const limitMs = settings.databaseBackupAlertDays * DAY_MS + OVERDUE_SLACK_MS;
   const alerted = settings.databaseBackupAlertedAt;
+  const last = settings.lastDatabaseBackupAt;
+  if (!last) return !alerted && installedAt !== null && nowMs - installedAt.getTime() > limitMs;
+  if (nowMs - last.getTime() <= limitMs) return false;
   return !alerted || nowMs - alerted.getTime() >= OVERDUE_REMINDER_MS;
+}
+
+// When the first account was made: kept once known, since it never changes.
+let installedAtCache: Date | null = null;
+
+async function installedAt(): Promise<Date | null> {
+  if (installedAtCache) return installedAtCache;
+  const first = await prisma.user.findFirst({ orderBy: { createdAt: 'asc' }, select: { createdAt: true } });
+  installedAtCache = first?.createdAt ?? null;
+  return installedAtCache;
 }
 
 async function activeAdminIds(): Promise<string[]> {
@@ -98,15 +111,28 @@ export async function checkDatabaseBackup(context: CycleContext): Promise<void> 
     return;
   }
 
-  if (isBackupRunning() || !isBackupOverdue(settings, context.startedAtMs)) {
+  const last = settings.lastDatabaseBackupAt;
+  // The first account is only looked up while the one never-backed-up reminder is still to come.
+  const firstAccountAt = !last && !settings.databaseBackupAlertedAt && settings.databaseBackupAlertDays > 0
+    ? await installedAt()
+    : null;
+  if (isBackupRunning() || !isBackupOverdue(settings, context.startedAtMs, firstAccountAt)) {
     noteJobSkipped();
     return;
   }
-  const days = Math.floor((context.startedAtMs - settings.lastDatabaseBackupAt!.getTime()) / DAY_MS);
-  await notifyAdmins(
-    'Database backup overdue',
-    `The last database backup was ${days} days ago. Check Settings → Backup & Restore.`,
-    'overdue',
-  );
+  if (last) {
+    const days = Math.floor((context.startedAtMs - last.getTime()) / DAY_MS);
+    await notifyAdmins(
+      'Database backup overdue',
+      `The last database backup was ${days} days ago. Check Settings → Backup & Restore.`,
+      'overdue',
+    );
+  } else {
+    await notifyAdmins(
+      'No database backup yet',
+      'Helprr has no database backup recorded. Back up now, or set a schedule, in Settings → Backup & Restore.',
+      'never',
+    );
+  }
   await prisma.appSettings.update({ where: { id: 'singleton' }, data: { databaseBackupAlertedAt: now } });
 }

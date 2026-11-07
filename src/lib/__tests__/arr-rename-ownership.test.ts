@@ -33,7 +33,7 @@ const post = (handler: Handler, service: string, body: unknown) =>
   handler(new NextRequest(`http://helprr.test/api/${service}/command`, { method: 'POST', body: JSON.stringify(body) }));
 
 // A member who may manage the files of each kind of title.
-const FILE_CAPS = { 'series.manageFiles': true, 'movies.manageFiles': true, 'music.delete': true };
+const FILE_CAPS = { 'series.manageFiles': true, 'movies.manageFiles': true, 'music.manageFiles': true };
 
 const cases = [
   {
@@ -45,7 +45,7 @@ const cases = [
     listed: mocks.radarr.getMovieFiles, rename: mocks.radarr.renameMovieFiles, listedWith: [7],
   },
   {
-    service: 'lidarr', handler: lidarrCommand as Handler, idKey: 'artistId', fileCap: 'music.delete', organize: 'RenameArtist', organizeKey: 'artistIds',
+    service: 'lidarr', handler: lidarrCommand as Handler, idKey: 'artistId', fileCap: 'music.manageFiles', organize: 'RenameArtist', organizeKey: 'artistIds',
     listed: mocks.lidarr.getTrackFiles, rename: mocks.lidarr.renameArtistFiles, listedWith: [{ artistId: 7 }],
   },
 ];
@@ -99,6 +99,13 @@ describe.each(cases)('renaming through /api/$service/command needs $fileCap', ({
       expect((await post(handler, service, body)).status).toBe(403);
     }
     expect(listed).not.toHaveBeenCalled();
+    expect(rename).not.toHaveBeenCalled();
+  });
+
+  it('no longer lets music.delete stand in for music.manageFiles', async () => {
+    if (service !== 'lidarr') return;
+    mocks.auth.mockResolvedValue({ ok: true, user: { id: 'member', role: 'member', template: 'member', permissions: { 'activity.manage': true, 'music.delete': true } } });
+    expect((await post(handler, service, { name: organize, [organizeKey]: [7] })).status).toBe(403);
     expect(rename).not.toHaveBeenCalled();
   });
 

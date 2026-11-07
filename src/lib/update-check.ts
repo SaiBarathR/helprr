@@ -24,7 +24,9 @@ export type UpdateCheckStatus =
   | 'update_available'
   | 'up_to_date'
   | 'development'
-  | 'unavailable';
+  | 'unavailable'
+  /** Turned off in Settings → Status: GitHub was not asked. */
+  | 'disabled';
 
 export interface UpdateCheckResult {
   status: UpdateCheckStatus;

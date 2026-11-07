@@ -113,6 +113,7 @@ async function putHandler(request: NextRequest) {
       activityDigestMode, activityDigestHour, activityDigestDayOfWeek,
       notificationGroupingEnabled,
       animeAutoMapEnabled, animeAutoMapHour,
+      updateCheckEnabled,
       anilistSectionsTtlMin, anilistBrowseTtlMin, anilistDetailTtlMin, anilistAiringTtlMin,
     } = body;
 
@@ -269,6 +270,16 @@ async function putHandler(request: NextRequest) {
       if ('error' in parsed) return parsed.error;
       data.animeAutoMapHour = parsed.value;
     }
+    if (updateCheckEnabled !== undefined) {
+      // Strict check — Boolean('false') would silently keep the release check on.
+      if (typeof updateCheckEnabled !== 'boolean') {
+        return NextResponse.json(
+          { error: 'Update check enabled must be a boolean' },
+          { status: 400 }
+        );
+      }
+      data.updateCheckEnabled = updateCheckEnabled;
+    }
     // AniList cache TTLs, in minutes (max 30 days).
     if (anilistSectionsTtlMin !== undefined) {
       const parsed = parseIntegerSetting(anilistSectionsTtlMin, 'AniList sections cache TTL', 1, 43_200);
@@ -320,6 +331,7 @@ async function putHandler(request: NextRequest) {
         notificationGroupingEnabled: (data.notificationGroupingEnabled as boolean | undefined) ?? true,
         animeAutoMapEnabled: (data.animeAutoMapEnabled as boolean | undefined) ?? true,
         animeAutoMapHour: (data.animeAutoMapHour as number | undefined) ?? 0,
+        updateCheckEnabled: (data.updateCheckEnabled as boolean | undefined) ?? true,
         anilistSectionsTtlMin: (data.anilistSectionsTtlMin as number | undefined) ?? 5,
         anilistBrowseTtlMin: (data.anilistBrowseTtlMin as number | undefined) ?? 10,
         anilistDetailTtlMin: (data.anilistDetailTtlMin as number | undefined) ?? 1440,

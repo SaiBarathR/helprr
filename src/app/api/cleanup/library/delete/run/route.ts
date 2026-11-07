@@ -11,8 +11,9 @@ import {
 import { libraryCleanupErrorResponse, readJsonObject } from '../../_shared';
 
 // "Delete now": consumes the preview token, re-checks every exclusion from
-// fresh data (any source unreadable → nothing deleted), then deletes each title
-// with its files, one audited call per title.
+// fresh data (any source unreadable → nothing deleted; no Seerr connection at
+// all → runs, with a warning that requests in Seerr were not checked), then
+// deletes each title with its files, one audited call per title.
 async function postHandler(req: NextRequest) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;

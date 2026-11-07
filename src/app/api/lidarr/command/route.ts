@@ -36,10 +36,9 @@ async function postHandler(request: NextRequest) {
     let result;
     // Data-mutating commands routed here must also be listed in MUTATING_COMMANDS
     // (lib/cache/tagged-library.ts), or their completion won't drop the Redis caches.
-    // Renaming moves files on disk, so Organize and per-file rename also need a
-    // music file capability. Music has no manageFiles; music.delete is the one
-    // that gates its track files (/api/lidarr/trackfile).
-    if ((body.name === 'RenameArtist' || body.name === 'RenameFiles') && !can(auth.user, 'music.delete')) {
+    // Renaming moves files on disk, so Organize and per-file rename also need
+    // music.manageFiles, as series and movies need their manageFiles.
+    if ((body.name === 'RenameArtist' || body.name === 'RenameFiles') && !can(auth.user, 'music.manageFiles')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     switch (body.name) {

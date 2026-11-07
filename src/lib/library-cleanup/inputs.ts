@@ -34,7 +34,7 @@ export interface GatheredFacts {
   titles: TitleFacts[];
   /** Per instance read: the keep tag's id there (null when the tag does not exist yet). */
   keepTagIds: Map<string, number | null>;
-  /** False when no Seerr connection exists (Delete now refuses then). */
+  /** False when no Seerr connection exists (requests in Seerr are then unchecked). */
   seerrConnected: boolean;
   /** Non-blocking notes, e.g. Seerr is not connected so no requests were checked. */
   warnings: string[];
@@ -354,13 +354,17 @@ interface RequestRecord {
 const SEERR_PAGE = 100;
 const MAX_SEERR_PAGES = 200;
 
+/** Shown with every preview, mark and Delete now run made without a Seerr connection. */
+export const SEERR_NOT_CONNECTED_WARNING =
+  "Seerr isn't connected, so requests made in Seerr were not checked. Requests made in Helprr still count.";
+
 async function readSeerrRequests(warnings: string[]): Promise<{ client: Awaited<ReturnType<typeof getSeerrClient>> | null; requests: SeerrRequest[] }> {
   let client: Awaited<ReturnType<typeof getSeerrClient>>;
   try {
     client = await getSeerrClient();
   } catch (error) {
     if (error instanceof ConfigurationError) {
-      warnings.push('Seerr is not connected, so only requests made in Helprr were checked. Delete now needs Seerr.');
+      warnings.push(SEERR_NOT_CONNECTED_WARNING);
       return { client: null, requests: [] };
     }
     fail('Seerr', error);

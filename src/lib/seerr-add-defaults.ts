@@ -14,6 +14,11 @@ const SEERR_TIMEOUT_MS = 4000;
 export interface SeerrAddDefaults {
   profileId: string | null;
   rootFolder: string | null;
+  /**
+   * Sonarr only, for a series added as anime: Seerr's anime profile and folder,
+   * each falling back to the regular one as Seerr's own anime requests do.
+   */
+  anime?: { profileId: string | null; rootFolder: string | null };
 }
 
 const NONE: SeerrAddDefaults = { profileId: null, rootFolder: null };
@@ -40,6 +45,13 @@ export function matchSeerrServer(
     ?? null;
 }
 
+function defaultsOf(profileId: unknown, directory: unknown): SeerrAddDefaults {
+  return {
+    profileId: Number.isInteger(profileId) ? String(profileId) : null,
+    rootFolder: typeof directory === 'string' && directory ? directory : null,
+  };
+}
+
 export async function getSeerrAddDefaults(kind: 'sonarr' | 'radarr', instanceId: string | undefined): Promise<SeerrAddDefaults> {
   try {
     if (!(await prisma.serviceConnection.findFirst({ where: { type: 'SEERR' }, select: { id: true } }))) return NONE;
@@ -48,9 +60,12 @@ export async function getSeerrAddDefaults(kind: 'sonarr' | 'radarr', instanceId:
     if (!Array.isArray(servers)) return NONE;
     const server = matchSeerrServer(servers, instance);
     if (!server) return NONE;
+    const regular = defaultsOf(server.activeProfileId, server.activeDirectory);
+    if (kind === 'radarr') return regular;
+    const anime = defaultsOf(server.activeAnimeProfileId, server.activeAnimeDirectory);
     return {
-      profileId: Number.isInteger(server.activeProfileId) ? String(server.activeProfileId) : null,
-      rootFolder: typeof server.activeDirectory === 'string' && server.activeDirectory ? server.activeDirectory : null,
+      ...regular,
+      anime: { profileId: anime.profileId ?? regular.profileId, rootFolder: anime.rootFolder ?? regular.rootFolder },
     };
   } catch (error) {
     console.warn(`[SeerrAddDefaults] ${kind} defaults unavailable: ${error instanceof Error ? error.name : 'unknown error'}`);

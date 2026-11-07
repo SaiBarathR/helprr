@@ -51,9 +51,27 @@ describe("Seerr's add defaults", () => {
 
   it("gives the matched server's profile and folder, and never its key", async () => {
     mocks.getArrServers.mockResolvedValue([server({ apiKey: 'key-a', activeProfileId: 7, activeDirectory: '/tv-kids' })]);
-    expect(await getSeerrAddDefaults('sonarr', 'son-2')).toEqual({ profileId: '7', rootFolder: '/tv-kids' });
+    expect(await getSeerrAddDefaults('sonarr', 'son-2')).toEqual({
+      profileId: '7',
+      rootFolder: '/tv-kids',
+      // No anime defaults set in Seerr: anime requests use the regular ones.
+      anime: { profileId: '7', rootFolder: '/tv-kids' },
+    });
     expect(mocks.resolveConnection).toHaveBeenCalledWith('SONARR', 'son-2');
     expect(mocks.getArrServers).toHaveBeenCalledWith('sonarr', expect.any(Number));
+  });
+
+  it("gives Seerr's anime profile and folder for Sonarr, each falling back to the regular one", async () => {
+    mocks.getArrServers.mockResolvedValueOnce([server({ apiKey: 'key-a', activeAnimeProfileId: 9, activeAnimeDirectory: '/anime' })]);
+    expect((await getSeerrAddDefaults('sonarr', 'son-2')).anime).toEqual({ profileId: '9', rootFolder: '/anime' });
+
+    mocks.getArrServers.mockResolvedValueOnce([server({ apiKey: 'key-a', activeAnimeProfileId: 9, activeAnimeDirectory: '' })]);
+    expect((await getSeerrAddDefaults('sonarr', 'son-2')).anime).toEqual({ profileId: '9', rootFolder: '/tv' });
+
+    // Radarr has no anime variant.
+    mocks.resolveConnection.mockResolvedValueOnce({ url: 'http://radarr:7878', apiKey: 'key-a' });
+    mocks.getArrServers.mockResolvedValueOnce([server({ apiKey: 'key-a', activeAnimeProfileId: 9 })]);
+    expect(await getSeerrAddDefaults('radarr', 'rad-1')).toEqual({ profileId: '4', rootFolder: '/tv' });
   });
 
   it('reads as none without Seerr, without a match, or when Seerr fails', async () => {

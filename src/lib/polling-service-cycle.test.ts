@@ -19,6 +19,12 @@ const mocks = vi.hoisted(() => ({
   findStates: vi.fn(async () => [] as unknown[]),
   upsertState: vi.fn<(args: unknown) => Promise<unknown>>(async () => ({})),
   probe: vi.fn(),
+  checkUpdate: vi.fn(async () => true),
+}));
+
+vi.mock('@/lib/polling/update-available', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/polling/update-available')>()),
+  checkUpdateAvailable: mocks.checkUpdate,
 }));
 
 vi.mock('@/lib/polling/poll-twitch', () => ({ pollTwitch: vi.fn().mockResolvedValue(undefined) }));
@@ -100,6 +106,7 @@ const SETTINGS_SOURCES = [
   'applyBandwidthSchedule',
   'checkRetention',
   'checkAnimeAutoMap',
+  'checkUpdateAvailable',
 ] as const;
 
 const UNRELATED_SOURCES = [
@@ -109,7 +116,6 @@ const UNRELATED_SOURCES = [
   'pollManualDownloads',
   'pollServiceReachability',
   'sweepTasteProfiles',
-  'checkUpdateAvailable',
 ] as const;
 
 function stubCycle(service: PollingService) {
@@ -160,6 +166,18 @@ describe('polling service cycle orchestration', () => {
       }),
       { scope: 'polling' },
     );
+  });
+
+  it('never checks for a release while the update check is off', async () => {
+    const internal = new PollingService() as unknown as InternalPollingService;
+    const check = (internal.checkUpdateAvailable as (context: unknown) => Promise<void>).bind(internal);
+
+    await check({ startedAtMs: 1_000, getSettings: async () => ({ updateCheckEnabled: false }) });
+    expect(mocks.checkUpdate).not.toHaveBeenCalled();
+
+    // Turned back on: the next cycle checks.
+    await check({ startedAtMs: 2_000, getSettings: async () => ({ updateCheckEnabled: true }) });
+    expect(mocks.checkUpdate).toHaveBeenCalledOnce();
   });
 
   it('keeps unrelated sources and cache warming alive when settings fail', async () => {

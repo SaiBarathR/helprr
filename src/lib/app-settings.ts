@@ -32,6 +32,7 @@ export function buildDefaultAppSettings(): Prisma.AppSettingsCreateInput {
     activityDigestDayOfWeek: 1,
     animeAutoMapEnabled: true,
     animeAutoMapHour: 0,
+    updateCheckEnabled: true,
     anilistSectionsTtlMin: 5,
     anilistBrowseTtlMin: 10,
     anilistDetailTtlMin: 1440,

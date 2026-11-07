@@ -460,8 +460,8 @@ in the security audit. The single link from before named links became one named
 "Calendar" with no stored filters; its URL's `?type=&instance=&monitored=` still
 apply, and on any link they can only narrow its own filters. Movie and album
 releases are all-day events on the local date of the upstream instant in the
-app's time zone (`AppSettings.timeZone`, Settings -> Preferences -> Timezone),
-not its UTC date (the Calendar page itself uses the browser's zone); episodes
+link owner's time zone (`UserSettings.timeZone` when set and valid, else the app's,
+`AppSettings.timeZone`, Settings -> Preferences -> Timezone), not its UTC date (the Calendar page itself uses the browser's zone); episodes
 stay timed in UTC. A password change (own, an
 admin reset, a reset link used, or the `HELPRR_ADMIN_PASSWORD_RESET` startup
 reset), an admin disabling the user, and a settings import that restores a
@@ -482,7 +482,7 @@ a miss is best-effort. There is no global backstop, so one client cannot lock
 everyone's feeds, provided `TRUSTED_PROXY_HOPS` matches the proxies in front:
 with too few hops every visitor shares the proxy's address and its cap. The token grants only that read; `type`, `instance` and `monitored`
 query parameters narrow it the way the Calendar page's filters do and are
-validated. The window is 30 days back to 180 ahead (whole days in the app time
+validated. The window is 30 days back to 180 ahead (whole days in that time
 zone); episodes are timed events, movie and album releases all-day. The request
 log redacts the token, but a reverse proxy's access log may keep it.
 
@@ -710,8 +710,10 @@ imports to whatever ids it is handed. The command routes do
 not accept `ManualImport`. A rename's file ids are checked against the title it
 names, as the file manager's edits and deletes are, because the *arr renames
 whatever ids it is handed. A rename (per-file or Organize) needs `activity.manage`
-and the title's file capability: `series.manageFiles`, `movies.manageFiles`, or for
-music, which has none, `music.delete` (the capability on its track files). Renames
+and the title's file capability: `series.manageFiles`, `movies.manageFiles`, or
+`music.manageFiles` (granted by the 20261108090000 migration wherever a user had a
+`music.delete` override, which gated Lidarr renames before it; a settings import
+does the same for an export whose `users` section lacks `musicManageFiles: true`). Renames
 are not audited; the *arr keeps them in its own history. Queue and download cleaner runs, scheduled or interactive, send
 their per-item outcomes to `CleanupHistory`, which records the trigger (`auto`
 or `manual`), the actor (`actorUserId`/`actorUsername`: the user who ran the
@@ -843,9 +845,13 @@ the old one.
   Radarr/Sonarr instance (titles, tags, the complete queue), Jellyfin or Seerr
   cannot be read completely. The Jellyfin connection must have administrator
   access (`/ScheduledTasks` answers: an API key or an admin account), since a
-  user token sees only its own sessions and users. Seerr not being connected is
-  a warning for the preview and marking (Helprr's pending requests still count),
-  but Delete now refuses without it (owner decision pending); Jellyfin not
+  user token sees only its own sessions and users. Seerr not being connected at
+  all (no connection row) is a warning for the preview, marking and Delete now
+  (Helprr's pending requests still count): Delete now runs, its preview and
+  result carry `seerrChecked: false` and the warning, each audit row records
+  `seerrChecked`, and the binding's config fingerprint includes it, so Seerr
+  connected or removed between preview and run makes the run stale. A Seerr
+  that is connected but cannot be read still fails closed. Jellyfin not
   being connected blocks. For
   **every** Jellyfin user Helprr reads the library as that user sees it (the
   provider-id index is their union), everything marked played or partly
@@ -1130,7 +1136,9 @@ logger redacts the channel secret field names.
 
 `updateAvailable` (once per release: a Redis marker of the last announced
 version plus the dedupe key `updateAvailable:<version>`, from a six-hourly
-polling job using the update-check cache) and
+polling job using the update-check cache; `AppSettings.updateCheckEnabled` off
+skips that job and makes `/api/admin/update-check` answer `disabled` without
+asking GitHub) and
 `securityAlert` (an admin's sign-in from a user agent family, versions
 stripped, not among their last 200 sign-ins; 10 failed sign-ins
 in 10 minutes, two-step sign-in turned off; raised from the security audit
@@ -1177,11 +1185,16 @@ made) to the app's user.
 
 The poll source `checkDatabaseBackup` starts the scheduled backup (daily or weekly, on
 the first poll at or after `databaseBackupHour` in the app time zone, claimed in
-`databaseBackupScheduledAt` so a window is tried once) without waiting for it. While a
-schedule is on, it pushes admins (`databaseBackup`, `userIds` = active admins) when a
-scheduled run fails, and when `lastDatabaseBackupAt` is older than
-`databaseBackupAlertDays` plus six hours' grace, at most daily (`databaseBackupAlertedAt`). With the schedule
-off it never pushes, so a `backup.sh`-only install is not reminded.
+`databaseBackupScheduledAt` so a window is tried once) without waiting for it. A
+`PUT` that changes the schedule, hour or day and makes today's window due when it was
+not before claims that window (`databaseBackupScheduledAt` = now), so turning a
+schedule on after the hour waits for the next one; a window already due (downtime over
+the hour) is left to catch up. It pushes admins (`databaseBackup`, `userIds` = active
+admins) when a scheduled run fails, and, whatever the schedule, when
+`lastDatabaseBackupAt` is older than `databaseBackupAlertDays` plus six hours' grace,
+at most daily (`databaseBackupAlertedAt`). With no backup ever recorded it pushes once,
+when the first `User.createdAt` is older than that, and not again while
+`databaseBackupAlertedAt` is set and no backup is recorded. `0` turns both off.
 
 The admin-only `/api/admin/database-backup` serves all of this to **Settings -> Backup &
 Restore** (amber when no backup is recorded or it is over seven days old;

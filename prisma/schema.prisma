@@ -448,6 +448,7 @@ model AppSettings {
   animeAutoMapEnabled      Boolean  @default(true)         // nightly job that auto-maps never-mapped Sonarr anime to AniList
   animeAutoMapHour         Int      @default(0)            // 0-23 local hour the nightly drain starts (default midnight)
   animeAutoMapLastRunAt    DateTime?                       // server-managed: when the last nightly drain completed
+  updateCheckEnabled       Boolean  @default(true)         // the six-hourly and Status-page check of GitHub for a new Helprr release; off = no release check at all
   lastDatabaseBackupAt     DateTime?                       // server-managed: when scripts/backup.sh or the in-app backup last made and validated a dump
   // In-app database backups (Settings → Backup & Restore), written to BACKUP_DIR.
   databaseBackupSchedule   String   @default("off")        // "off" | "daily" | "weekly"

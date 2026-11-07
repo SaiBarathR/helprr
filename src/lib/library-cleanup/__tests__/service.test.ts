@@ -266,12 +266,43 @@ describe('library deletion', () => {
     expect(mocks.rows.map((r) => r.id).sort()).toEqual(['ls-1', 'ls-2', 'ls-3']);
   });
 
-  it('refuses Delete now when Seerr is not connected, but still lets the admin mark titles', async () => {
-    mocks.gather.mockResolvedValue({ titles: [facts(1), facts(2)], keepTagIds: new Map([['radarr-1', 4]]), seerrConnected: false, warnings: ['Seerr is not connected'] });
-    await expect(previewLibraryDeletion(false, NOW)).rejects.toThrow(/Seerr is not connected.*Nothing was deleted/);
-    mocks.rows = [];
-    const marked = await markLeavingSoon(admin, 'movie', ['RADARR:radarr-1:1'], NOW);
-    expect(marked.marked).toHaveLength(1);
+  describe('without Seerr connected', () => {
+    const WARNING = "Seerr isn't connected, so requests made in Seerr were not checked. Requests made in Helprr still count.";
+    const withoutSeerr = (titles: TitleFacts[]) => mocks.gather.mockResolvedValue({
+      titles, keepTagIds: new Map([['radarr-1', 4]]), seerrConnected: false, warnings: [WARNING],
+    });
+
+    it('runs Delete now, says requests in Seerr were not checked, and still honours Helprr requests', async () => {
+      // Movie 2 has an open request made in Helprr.
+      withoutSeerr([facts(1), facts(2, { openRequest: true }), facts(3)]);
+      const preview = await previewLibraryDeletion(false, NOW);
+      expect(preview).toMatchObject({ seerrChecked: false, warnings: [WARNING], readyCount: 1 });
+      expect(preview.items.find((i) => i.id === 'ls-2')?.status).toBe('protected');
+
+      const result = await executeLibraryDeletion(preview.binding, 'p', admin, NOW);
+      expect(result).toMatchObject({ deleted: 1, seerrChecked: false, warnings: [WARNING] });
+      expect(mocks.radarr.deleteMovie).toHaveBeenCalledExactlyOnceWith(1, true, false);
+      expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ details: expect.objectContaining({ seerrChecked: false }) }));
+    });
+
+    it('is stale when Seerr was connected or removed between the preview and the run', async () => {
+      withoutSeerr([facts(1), facts(2), facts(3)]);
+      const unchecked = await previewLibraryDeletion(false, NOW);
+      gathers([facts(1), facts(2), facts(3)]);
+      await expect(executeLibraryDeletion(unchecked.binding, 'p', admin, NOW)).rejects.toBeInstanceOf(StaleCleanupPreviewError);
+
+      const checked = await previewLibraryDeletion(false, NOW);
+      withoutSeerr([facts(1), facts(2), facts(3)]);
+      await expect(executeLibraryDeletion(checked.binding, 'p', admin, NOW)).rejects.toBeInstanceOf(StaleCleanupPreviewError);
+      expect(mocks.radarr.deleteMovie).not.toHaveBeenCalled();
+    });
+
+    it('still lets the admin mark titles', async () => {
+      withoutSeerr([facts(1), facts(2)]);
+      mocks.rows = [];
+      const marked = await markLeavingSoon(admin, 'movie', ['RADARR:radarr-1:1'], NOW);
+      expect(marked.marked).toHaveLength(1);
+    });
   });
 
   it('marks a title as being processed while its delete runs, so Keep can say so', async () => {

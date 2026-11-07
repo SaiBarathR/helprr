@@ -75,11 +75,16 @@ and size. Helprr never offers them for download: copy them off the server as bel
 backup; other files in the folder are left alone. Each backup, and each one that failed, is in **Settings →
 Operation audit → Security**.
 
-While a schedule is on, admins get a push (the **Database Backup** event, under
-**Services** in each device's notification settings) when a scheduled backup fails, and
+Admins get a push (the **Database Backup** event, under **Services** in each device's
+notification settings) when a scheduled backup fails, and, with or without a schedule,
 when the last backup, from Helprr or `backup.sh`, is older than **Alert when older
-than** (7 days by default; at most one reminder a day). With the schedule off, nothing is
-sent, so an install that backs up only with `backup.sh` is never reminded.
+than** (7 days by default; at most one reminder a day; **Never** turns it off). An
+install with no backup recorded at all gets one reminder, once its first account is
+older than the alert, and no more until a backup is recorded.
+
+A schedule turned on, or moved to an earlier hour, after that hour has passed today
+starts at the next scheduled time, not at once. If the server was down at the hour, the
+backup still runs once it is back, later that day.
 
 :::note
 A backup made in Helprr holds the database only. If Helprr made its own secrets (no

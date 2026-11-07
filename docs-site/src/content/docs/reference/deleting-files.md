@@ -25,8 +25,10 @@ history for 90 days:
   the last N days are always protected, and Delete now checks all of that again
   first, and skips anything someone is playing at that moment: if Jellyfin,
   Seerr or Sonarr/Radarr cannot be read, or anything changed since the
-  preview, nothing is deleted. Delete now needs Seerr connected, and the
-  Jellyfin connection must be an API key or an administrator account. Everyone who can see a library
+  preview, nothing is deleted. Without a Seerr connection Delete now still
+  runs, but requests made in Seerr are not checked (requests made in Helprr
+  still count): the confirmation and the result both say so. The Jellyfin
+  connection must be an API key or an administrator account. Everyone who can see a library
   sees its Leaving soon shelf (Dashboard, Movies, Series) and can press
   **Keep**, which adds the keep tag in Sonarr/Radarr and is recorded in the
   operation audit. Each deleted title gets a Cleanup History row and an

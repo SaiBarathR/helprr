@@ -3,6 +3,7 @@
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, type ArrService } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray, withInstanceQuery, ApiError } from '@/lib/query-fetch';
+import type { SeerrAddDefaults } from '@/lib/seerr-add-defaults';
 import type {
   QualityProfile,
   QualityDefinition,
@@ -37,7 +38,7 @@ export function useQualityProfiles(service: ArrService, instanceId?: string, ena
 export function useSeerrAddDefaults(service: 'sonarr' | 'radarr', instanceId?: string) {
   return useQuery({
     queryKey: ['seerr-add-defaults', service, instanceId ?? 'default'],
-    queryFn: jsonFetcher<{ profileId: string | null; rootFolder: string | null }>(`/api/${service}/seerr-defaults`, instanceId),
+    queryFn: jsonFetcher<SeerrAddDefaults>(`/api/${service}/seerr-defaults`, instanceId),
     staleTime: REFERENCE_STALE,
     enabled: Boolean(instanceId),
   });

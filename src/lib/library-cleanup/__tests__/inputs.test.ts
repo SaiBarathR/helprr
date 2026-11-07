@@ -159,7 +159,7 @@ describe('gatherLibraryFacts', () => {
     mocks.getSeerrClient.mockRejectedValue(new ConfigurationError('Seerr is not configured.'));
     const { titles, warnings, seerrConnected } = await gatherLibraryFacts('movie', 'keep');
     expect(titles).toHaveLength(3);
-    expect(warnings[0]).toMatch(/Seerr is not connected/);
+    expect(warnings[0]).toBe("Seerr isn't connected, so requests made in Seerr were not checked. Requests made in Helprr still count.");
     expect(seerrConnected).toBe(false);
   });
 

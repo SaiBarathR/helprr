@@ -24,6 +24,7 @@ async function postHandler(req: NextRequest) {
       items: preview.items,
       readyCount: preview.readyCount,
       warnings: preview.warnings,
+      seerrChecked: preview.seerrChecked,
     });
   } catch (error) {
     return libraryCleanupErrorResponse(error);

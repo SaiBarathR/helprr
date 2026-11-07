@@ -15,6 +15,8 @@ bundled. Every outbound request is one of these:
   [Update notices](/helprr/maintain/update/#update-notices-and-support-bundles)); after a failed check, it
   asks again an hour later or on the next admin visit. A new release is announced to
   admins once, by push and on their [notification channels](/helprr/notifications/).
+  **Settings → Service status → Check for updates** turns it off; then no release
+  check runs at all.
 - **AniList.** The server reads AniList's public API (`graphql.anilist.co`) for the
   Anime pages and to map Sonarr anime to AniList, including a nightly run that sends
   never-mapped anime titles (**Settings → Anime mappings → Nightly auto-map**

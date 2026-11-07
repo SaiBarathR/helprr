@@ -2,14 +2,16 @@
 
 import Link from '@/components/ui/app-link';
 import { ChevronLeft, Download, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { ApiError, ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { PollingHealthSection } from '@/components/settings/polling-health-section';
 import { cn } from '@/lib/utils';
 import { useMe } from '@/components/permission-provider';
+import { useAppSettings } from '@/lib/hooks/use-app-settings';
 import type { UpdateCheckResult } from '@/lib/update-check';
 import type { SecretsStatus } from '@/lib/generated-secrets';
 import { APP_VERSION, GIT_SHA } from '@/lib/app-version';
@@ -26,6 +28,8 @@ interface ServiceHealthStatus {
 export default function ServiceStatusPage() {
   const me = useMe();
   const isAdmin = me?.role === 'admin';
+  const queryClient = useQueryClient();
+  const { settings, update: updateSettings } = useAppSettings();
   const {
     data: statuses = [],
     isLoading: loading,
@@ -66,6 +70,12 @@ export default function ServiceStatusPage() {
   }
 
   const downCount = statuses.filter((s) => !s.ok).length;
+
+  async function setUpdateCheck(enabled: boolean) {
+    if (await updateSettings({ updateCheckEnabled: enabled })) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.adminUpdate() });
+    }
+  }
 
   return (
     <div className="animate-content-in pb-12">
@@ -208,6 +218,9 @@ export default function ServiceStatusPage() {
               {isAdmin && updateCheck?.status === 'unavailable' && (
                 <div className="mt-0.5 text-xs text-muted-foreground">Check unavailable</div>
               )}
+              {isAdmin && updateCheck?.status === 'disabled' && (
+                <div className="mt-0.5 text-xs text-muted-foreground">Update check off</div>
+              )}
             </div>
           </div>
           {isAdmin && updateCheck?.status === 'update_available' && updateCheck.latestVersion && (
@@ -243,6 +256,22 @@ export default function ServiceStatusPage() {
                 {checkingUpdate && <Loader2 className="animate-spin" />}
                 Check again
               </Button>
+            </div>
+          )}
+          {isAdmin && (
+            <div className="grouped-row items-center">
+              <div className="min-w-0 flex-1 pr-3">
+                <div className="text-sm font-medium">Check for updates</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  Asks GitHub for a new Helprr release every six hours and tells admins once. Off, Helprr never asks.
+                </div>
+              </div>
+              <Switch
+                aria-label="Check for updates"
+                checked={settings?.updateCheckEnabled ?? true}
+                onCheckedChange={(next) => void setUpdateCheck(next)}
+                disabled={!settings}
+              />
             </div>
           )}
           {isAdmin && (

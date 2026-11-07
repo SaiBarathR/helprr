@@ -858,10 +858,11 @@ export class PollingService {
     return checkUpcomingPoller(context);
   }
 
-  // Every six hours; an hour after a check that could not reach GitHub.
+  // Every six hours; an hour after a check that could not reach GitHub. Off
+  // (Settings → Status) means no release check at all.
   private async checkUpdateAvailable(context: CycleContext): Promise<void> {
     const now = context.startedAtMs;
-    if (now < this.nextUpdateCheckAt) { noteJobSkipped(); return; }
+    if (now < this.nextUpdateCheckAt || !(await context.getSettings()).updateCheckEnabled) { noteJobSkipped(); return; }
     // Set first, so a slow or failing check is not retried every cycle.
     this.nextUpdateCheckAt = now + UPDATE_CHECK_RETRY_MS;
     if (await checkUpdateAvailable()) this.nextUpdateCheckAt = now + UPDATE_CHECK_INTERVAL_MS;

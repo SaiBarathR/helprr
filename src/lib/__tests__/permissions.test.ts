@@ -23,6 +23,7 @@ describe('capability resolution', () => {
     expect(can(m, 'movies.delete')).toBe(false);
     expect(can(m, 'music.delete')).toBe(false);
     expect(can(m, 'series.manageFiles')).toBe(false);
+    expect(can(m, 'music.manageFiles')).toBe(false);
     expect(can(m, 'cleanup.manage')).toBe(false);
     expect(can(m, 'torrents.delete')).toBe(false);
   });

@@ -4,12 +4,14 @@ import { NextResponse } from 'next/server';
 const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
   checkForUpdates: vi.fn(),
+  settings: vi.fn(),
   buildSupportBundle: vi.fn(),
   serializeSupportBundle: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({ requireAdmin: mocks.requireAdmin }));
 vi.mock('@/lib/update-check', () => ({ checkForUpdates: mocks.checkForUpdates }));
+vi.mock('@/lib/app-settings', () => ({ getOrCreateAppSettings: mocks.settings }));
 vi.mock('@/lib/support-bundle', () => ({
   buildSupportBundle: mocks.buildSupportBundle,
   serializeSupportBundle: mocks.serializeSupportBundle,
@@ -29,6 +31,7 @@ describe('admin diagnostic routes', () => {
       user: { id: 'admin', role: 'admin' },
       session: { id: 'session' },
     });
+    mocks.settings.mockResolvedValue({ updateCheckEnabled: true });
   });
 
   it.each([
@@ -60,6 +63,15 @@ describe('admin diagnostic routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('private, no-store');
+  });
+
+  it('does not ask GitHub when the update check is turned off', async () => {
+    mocks.settings.mockResolvedValue({ updateCheckEnabled: false });
+
+    const response = await getUpdateCheck();
+
+    expect(mocks.checkForUpdates).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ status: 'disabled', latestVersion: null });
   });
 
   it('downloads the support bundle with safe attachment headers', async () => {
