@@ -4,9 +4,10 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
-const mocks = vi.hoisted(() => ({ search: new URLSearchParams(), push: vi.fn() }));
+const mocks = vi.hoisted(() => ({ search: new URLSearchParams(), push: vi.fn(), phone: false }));
 vi.mock('next/navigation', () => ({
   useSearchParams: () => mocks.search,
   usePathname: () => '/activity',
@@ -73,7 +74,12 @@ const initialStore = useUIStore.getState();
 
 beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  mocks.phone = false;
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    get matches() { return query === '(max-width: 767px)' && mocks.phone; },
+    addEventListener() {},
+    removeEventListener() {},
+  }));
   useUIStore.setState(initialStore, true);
   mocks.search = new URLSearchParams();
   mocks.push.mockClear();
@@ -118,6 +124,11 @@ async function renderPage() {
   ));
 }
 const text = () => document.body.textContent ?? '';
+async function waitForElement(find: () => Element | null) {
+  let found: Element | null = null;
+  await waitFor(() => { found = find(); expect(found).toBeTruthy(); });
+  return found as unknown as Element;
+}
 const filterBar = () => document.querySelector('[aria-label="Active filters"]');
 const button = (name: string) =>
   [...document.querySelectorAll('button')].find((b) => (b.getAttribute('aria-label') ?? b.textContent?.trim()) === name);
@@ -577,11 +588,47 @@ describe('Activity toolbar', () => {
     const tablist = toolbar.querySelector<HTMLElement>('[role="tablist"]')!;
     expect(tablist.dataset.variant).toBe('segmented');
     const actions = [...toolbar.querySelectorAll('button:not([role="tab"])')];
-    // History and Blocklist show their words (no tooltips on touch); the icon-only ones are labelled.
-    expect(actions.map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim())).toEqual(['Filter and sort', 'History', 'Blocklist', 'Refresh']);
+    // Phones get a ⋯ menu; from md up History and Blocklist show their words
+    // (no tooltips on touch) and the icon-only ones are labelled.
+    expect(actions.map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim())).toEqual(['Filter and sort', 'More actions', 'History', 'Blocklist', 'Refresh']);
     expect(actions.filter((b) => !b.getAttribute('aria-label')).map((b) => b.textContent?.trim())).toEqual(['History', 'Blocklist']);
     for (const action of actions) {
       expect(tablist.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
+  });
+
+  it('opens the ⋯ menu as a phone sheet, like the filter, and closes it on an action', async () => {
+    HTMLElement.prototype.setPointerCapture ??= () => {};
+    HTMLElement.prototype.releasePointerCapture ??= () => {};
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    mocks.phone = true;
+    window.history.replaceState(null, '', '/activity');
+    await renderPage();
+    const user = userEvent.setup();
+    await user.click(button('More actions')!);
+    const sheet = await waitForElement(() => document.querySelector('[role="dialog"]'));
+    expect(sheet.textContent).toContain('More actions');
+    const history = [...sheet.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'History')!;
+    await user.click(history);
+    expect(mocks.push).toHaveBeenLastCalledWith('/activity/history');
+    await waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull());
+  });
+
+  it('keeps History, Blocklist and Refresh one tap behind the phone ⋯ menu', async () => {
+    window.history.replaceState(null, '', '/activity');
+    await renderPage();
+    const user = userEvent.setup();
+    const menuItem = async (name: string) => {
+      await user.click(button('More actions')!);
+      return [...document.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent?.trim() === name) as HTMLElement;
+    };
+
+    await user.click(await menuItem('History'));
+    expect(mocks.push).toHaveBeenLastCalledWith('/activity/history');
+    await user.click(await menuItem('Blocklist'));
+    expect(mocks.push).toHaveBeenLastCalledWith('/activity/blocklist');
+    await user.click(await menuItem('Refresh'));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url, init]) =>
+      String(url).startsWith('/api/sonarr/command') && String(init?.body).includes('RefreshMonitoredDownloads'))).toBe(true));
   });
 });

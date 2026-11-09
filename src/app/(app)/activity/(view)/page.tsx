@@ -6,6 +6,7 @@ import { useAppRouter as useRouter } from '@/components/layout/navigation-provid
 import { Button } from '@/components/ui/button';
 import {
   ResponsiveMenu,
+  ResponsiveMenuActionItem,
   ResponsiveMenuCheckboxItem,
   ResponsiveMenuLabel,
   ResponsiveMenuSeparator,
@@ -20,6 +21,7 @@ import {
   RefreshCw,
   Clock,
   Ban,
+  MoreHorizontal,
   SlidersHorizontal,
   ArrowDown,
   ArrowUp,
@@ -82,7 +84,6 @@ export default function ActivityPage() {
     const t = searchParams.get('tab');
     return t && isTabKey(t) ? t : 'queue';
   });
-  const [queueCount, setQueueCount] = useState(0);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   // arr instances for the per-instance filter (shown only when >1 instance).
@@ -120,6 +121,7 @@ export default function ActivityPage() {
   // Reconcile each URL view: a valid ?tab wins, otherwise resume the saved tab
   // after hydration. Guarded during render so URL changes don't paint a stale tab.
   const [tabResumed, setTabResumed] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [tabViewKey, setTabViewKey] = useState(searchParamsKey);
   if (tabViewKey !== searchParamsKey || (hasHydrated && !tabResumed)) {
     setTabViewKey(searchParamsKey);
@@ -259,9 +261,11 @@ export default function ActivityPage() {
     <div className="flex flex-col min-h-0 animate-content-in">
       <PullToRefresh onRefresh={handleRefreshActivity} scrollContainerRef={contentScrollRef} />
       <PageTitle>Activity</PageTitle>
-      <div className="page-toolbar page-toolbar-flush flex flex-wrap items-center gap-2 pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      {/* One row on phones too: History, Blocklist and Refresh fold into a ⋯
+          menu below md. From md up the row may wrap rather than clip. */}
+      <div className="page-toolbar page-toolbar-flush flex md:flex-wrap items-center gap-2 pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         {/* Segmented control tabs — Radix for tab semantics + arrow-key nav */}
-        <Tabs value={tab} onValueChange={(v) => isTabKey(v) && handleTabChange(v)} className="flex-1 gap-0 sm:flex-none">
+        <Tabs value={tab} onValueChange={(v) => isTabKey(v) && handleTabChange(v)} className="min-w-0 flex-1 gap-0 sm:flex-none">
           <TabsList variant="segmented">
             {TABS.map((t) => (
               <TabsTrigger key={t.key} value={t.key}>
@@ -271,7 +275,7 @@ export default function ActivityPage() {
           </TabsList>
         </Tabs>
 
-        <div className="ml-auto flex items-center md:gap-1 gap-2">
+        <div className="ml-auto flex shrink-0 items-center md:gap-1 gap-2">
           {/* Filter */}
           <ResponsiveMenu
             title="Filter and sort"
@@ -280,7 +284,7 @@ export default function ActivityPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="relative md:h-11 md:w-11 w-7 h-7"
+                className="relative touch-target md:h-11 md:w-11 w-7 h-7"
                 aria-label={filterButtonLabel('Filter and sort', activeFilters.length > 0)}
               >
                 <SlidersHorizontal className="h-4 w-4" />
@@ -357,11 +361,50 @@ export default function ActivityPage() {
             )}
           </ResponsiveMenu>
 
+          {/* Phones: the secondary actions share one ⋯ menu so the tabs keep the
+              row; the shared menu, a sheet on phones like Calendar's. Each action
+              closes it first (a sheet stays open otherwise). */}
+          <ResponsiveMenu
+            title="More actions"
+            align="end"
+            open={moreOpen}
+            onOpenChange={setMoreOpen}
+            trigger={(
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative touch-target w-7 h-7 md:hidden"
+                aria-label="More actions"
+              >
+                {/* The menu closes on Refresh, so its spinner shows here. */}
+                {refreshing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MoreHorizontal className="h-4 w-4" />
+                )}
+              </Button>
+            )}
+          >
+            <ResponsiveMenuActionItem onSelect={() => { setMoreOpen(false); router.push('/activity/history'); }}>
+              <Clock className="h-4 w-4" />
+              History
+            </ResponsiveMenuActionItem>
+            <ResponsiveMenuActionItem onSelect={() => { setMoreOpen(false); router.push('/activity/blocklist'); }}>
+              <Ban className="h-4 w-4" />
+              Blocklist
+            </ResponsiveMenuActionItem>
+            <ResponsiveMenuSeparator />
+            <ResponsiveMenuActionItem onSelect={() => { setMoreOpen(false); void handleRefreshActivity(); }}>
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </ResponsiveMenuActionItem>
+          </ResponsiveMenu>
+
           {/* History and Blocklist keep their words: touch screens get no tooltips. */}
           <Button
             variant="ghost"
             size="sm"
-            className="md:h-11 h-7"
+            className="hidden md:inline-flex h-11"
             onClick={() => router.push('/activity/history')}
           >
             <Clock className="h-4 w-4" />
@@ -371,7 +414,7 @@ export default function ActivityPage() {
           <Button
             variant="ghost"
             size="sm"
-            className="md:h-11 h-7"
+            className="hidden md:inline-flex h-11"
             onClick={() => router.push('/activity/blocklist')}
           >
             <Ban className="h-4 w-4" />
@@ -384,7 +427,7 @@ export default function ActivityPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:h-11 md:w-11 w-7 h-7"
+                className="hidden md:inline-flex h-11 w-11"
                 onClick={handleRefreshActivity}
                 disabled={refreshing}
                 aria-label="Refresh"
@@ -403,13 +446,6 @@ export default function ActivityPage() {
 
       <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} className="pt-2" />
 
-      {/* Queue count */}
-      {tab === 'queue' && queueCount > 0 && (
-        <p className="text-xs text-muted-foreground py-2">
-          {queueCount} {queueCount === 1 ? 'Task' : 'Tasks'}
-        </p>
-      )}
-
       {/* Tab content */}
       <div ref={contentScrollRef} data-scroll-restoration-key="activity-content" className="flex-1 overflow-y-auto">
         {tab === 'queue' && (
@@ -418,7 +454,6 @@ export default function ActivityPage() {
             sortDirection={sortDirection}
             filterBy={sources}
             instanceFilter={instanceFilter}
-            onCountChange={setQueueCount}
           />
         )}
         {tab === 'failed' && <FailedImportsTab filterBy={sources} instanceFilter={instanceFilter} />}

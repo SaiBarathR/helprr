@@ -42,6 +42,7 @@ import {
   Image as ImageIcon,
   ImageOff,
   CalendarPlus,
+  MoreHorizontal,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -51,22 +52,21 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuActionItem,
+  ResponsiveMenuCheckboxItem,
+  ResponsiveMenuSeparator,
+} from '@/components/ui/responsive-menu';
 import {
   FinaleBadge,
   ReleaseTypeBadge,
   getMonthBorderClass,
 } from '@/components/calendar/release-badges';
 import { useCalendar } from '@/hooks/use-calendar';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { useUIStore } from '@/lib/store';
 import { InstanceFilter, deriveInstances, withAppName } from '@/components/instance-filter';
-import { ActiveFilterBar } from '@/components/ui/active-filter-bar';
+import { ActiveFilterBar, FilterDot, filterButtonLabel } from '@/components/ui/active-filter-bar';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import type { ScheduledAlertDraft } from '@/lib/scheduled-alerts/types';
@@ -252,17 +252,30 @@ function CompactFilters({
   ] as const;
   const currentType = typeOptions.find((o) => o.value === typeFilter) ?? typeOptions[0];
   const CurrentTypeIcon = currentType.icon;
+  // The ⋯ menu hides these toggles' state below xl, so it carries a dot when they hide events.
+  const optionsFiltering = monitoredOnly || !showScheduled;
+  // Remember which layout opened the menu, so turning a phone sideways (sheet
+  // to dropdown, at 768px) closes it instead of reopening it as a stray dropdown.
+  const isPhone = useIsMobile(767);
+  const [optionsOpenIn, setOptionsOpenIn] = useState<'sheet' | 'dropdown' | null>(null);
+  const layout = isPhone ? 'sheet' : 'dropdown';
+  const optionsOpen = optionsOpenIn === layout;
+  const setOptionsOpen = (open: boolean) => setOptionsOpenIn(open ? layout : null);
 
   return (
     <div className="flex items-center gap-1">
-      {/* Type filter — dropdown on mobile/tablet (like the instance filter),
-          inline icon buttons from lg up. */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      {/* Type filter — the shared sheet/dropdown menu below lg (like the
+          instance filter), inline icon buttons from lg up. */}
+      <ResponsiveMenu
+        title="Type"
+        titleInDropdown
+        closeOnPick
+        align="end"
+        trigger={(
           <Button
             variant="outline"
             size="sm"
-            className="lg:hidden h-8 gap-1.5 px-2 sm:px-3"
+            className="relative touch-target lg:hidden h-8 gap-1.5 px-2 sm:px-3"
             title={currentType.label}
           >
             {CurrentTypeIcon ? (
@@ -270,29 +283,27 @@ function CompactFilters({
             ) : (
               <span className="text-[10px] font-bold leading-none">ALL</span>
             )}
-            <span className="hidden sm:inline max-w-[8rem] truncate">{currentType.label}</span>
+            {/* Icon only on phones and in the tablet row, where the width goes to the date. */}
+            <span className="hidden sm:inline md:hidden max-w-[8rem] truncate">{currentType.label}</span>
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Type</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {typeOptions.map(({ value, label, icon: Icon }) => (
-            <DropdownMenuCheckboxItem
-              key={value}
-              checked={typeFilter === value}
-              onCheckedChange={() => setTypeFilter(value)}
-            >
-              {Icon && <Icon className="h-3.5 w-3.5 mr-1.5" />}
-              {label}
-            </DropdownMenuCheckboxItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        )}
+      >
+        {typeOptions.map(({ value, label, icon: Icon }) => (
+          <ResponsiveMenuCheckboxItem
+            key={value}
+            checked={typeFilter === value}
+            onCheckedChange={() => setTypeFilter(value)}
+          >
+            {Icon && <Icon className="h-3.5 w-3.5 mr-1.5" />}
+            {label}
+          </ResponsiveMenuCheckboxItem>
+        ))}
+      </ResponsiveMenu>
 
       <div className="hidden lg:flex items-center gap-1">
         <button
           onClick={() => setTypeFilter('all')}
-          className={`p-1.5 pt-0 rounded-md transition-colors ${typeFilter === 'all'
+          className={`relative touch-target p-1.5 pt-0 rounded-md transition-colors ${typeFilter === 'all'
             ? 'bg-muted text-foreground'
             : 'text-muted-foreground hover:text-foreground hover:bg-muted'
             }`}
@@ -304,7 +315,7 @@ function CompactFilters({
         </button>
         <button
           onClick={() => setTypeFilter('episode')}
-          className={`p-1.5 rounded-md transition-colors ${typeFilter === 'episode'
+          className={`relative touch-target p-1.5 rounded-md transition-colors ${typeFilter === 'episode'
             ? 'bg-[var(--hpr-blue)]/15 text-[var(--hpr-blue)]'
             : 'text-muted-foreground hover:text-foreground hover:bg-muted'
             }`}
@@ -316,7 +327,7 @@ function CompactFilters({
         </button>
         <button
           onClick={() => setTypeFilter('movie')}
-          className={`p-1.5 rounded-md transition-colors ${typeFilter === 'movie'
+          className={`relative touch-target p-1.5 rounded-md transition-colors ${typeFilter === 'movie'
             ? 'bg-orange-500/15 text-orange-400'
             : 'text-muted-foreground hover:text-foreground hover:bg-muted'
             }`}
@@ -328,7 +339,7 @@ function CompactFilters({
         </button>
         <button
           onClick={() => setTypeFilter('album')}
-          className={`p-1.5 rounded-md transition-colors ${typeFilter === 'album'
+          className={`relative touch-target p-1.5 rounded-md transition-colors ${typeFilter === 'album'
             ? 'bg-emerald-500/15 text-emerald-400'
             : 'text-muted-foreground hover:text-foreground hover:bg-muted'
             }`}
@@ -340,14 +351,15 @@ function CompactFilters({
         </button>
       </div>
 
-      <div className="w-px h-4 bg-border/50 mx-0.5" />
+      <div className="w-px h-4 bg-border/50 mx-0.5 max-xl:hidden" />
 
       {/* Monitored toggle — compact by owner preference: the calendar toolbar
-          must fit one line on mobile, so these toggles keep their size and get
-          a 44px hit area (touch-target) instead of 44px minimums. */}
+          must fit one line, so these toggles keep their size and get a 44px hit
+          area (touch-target) instead of 44px minimums; below xl they live in
+          the ⋯ menu. */}
       <button
         onClick={() => setMonitoredOnly(!monitoredOnly)}
-        className={`relative touch-target p-1.5 rounded-md transition-colors ${monitoredOnly
+        className={`relative touch-target p-1.5 rounded-md transition-colors max-xl:hidden ${monitoredOnly
           ? 'bg-primary/15 text-primary'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
@@ -362,11 +374,11 @@ function CompactFilters({
         )}
       </button>
 
-      <div className="w-px h-4 bg-border/50 mx-0.5" />
+      <div className="w-px h-4 bg-border/50 mx-0.5 max-xl:hidden" />
 
       <button
         onClick={() => setShowScheduled(!showScheduled)}
-        className={`relative touch-target p-1.5 rounded-md transition-colors ${showScheduled
+        className={`relative touch-target p-1.5 rounded-md transition-colors max-xl:hidden ${showScheduled
           ? 'bg-primary/15 text-primary'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
@@ -380,7 +392,7 @@ function CompactFilters({
       {/* Poster/backdrop visibility (agenda + week views) */}
       <button
         onClick={() => setShowImages(!showImages)}
-        className={`relative touch-target p-1.5 rounded-md transition-colors ${showImages
+        className={`relative touch-target p-1.5 rounded-md transition-colors max-xl:hidden ${showImages
           ? 'bg-muted text-foreground'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
@@ -397,12 +409,49 @@ function CompactFilters({
 
       <button
         onClick={onSubscribe}
-        className="p-1.5 rounded-md transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+        className="relative touch-target p-1.5 rounded-md transition-colors text-muted-foreground hover:text-foreground hover:bg-muted max-xl:hidden"
         title="Subscribe in Calendar"
         aria-label="Subscribe in Calendar"
       >
         <CalendarPlus className="h-3.5 w-3.5" />
       </button>
+
+      {/* Below xl the toggles and Subscribe share one ⋯ menu, so phones keep
+          the view tabs and filters on one row and tablets and small laptops
+          (beside the sidebar) don't wrap; from xl up they stay inline (above). */}
+      <ResponsiveMenu
+        title="Calendar options"
+        align="end"
+        open={optionsOpen}
+        onOpenChange={setOptionsOpen}
+        trigger={(
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative touch-target h-8 w-8 xl:hidden"
+            aria-label={filterButtonLabel('Calendar options', optionsFiltering)}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+            <FilterDot active={optionsFiltering} />
+          </Button>
+        )}
+      >
+        <ResponsiveMenuCheckboxItem checked={monitoredOnly} onCheckedChange={() => setMonitoredOnly(!monitoredOnly)}>
+          Monitored only
+        </ResponsiveMenuCheckboxItem>
+        <ResponsiveMenuCheckboxItem checked={showScheduled} onCheckedChange={() => setShowScheduled(!showScheduled)}>
+          Scheduled alerts
+        </ResponsiveMenuCheckboxItem>
+        <ResponsiveMenuCheckboxItem checked={showImages} onCheckedChange={() => setShowImages(!showImages)}>
+          Show artwork
+        </ResponsiveMenuCheckboxItem>
+        <ResponsiveMenuSeparator />
+        {/* Close the menu (the phone sheet stays open otherwise) before the dialog opens. */}
+        <ResponsiveMenuActionItem onSelect={() => { setOptionsOpen(false); onSubscribe(); }}>
+          <CalendarPlus className="h-4 w-4" />
+          Subscribe in Calendar
+        </ResponsiveMenuActionItem>
+      </ResponsiveMenu>
     </div>
   );
 }
@@ -1527,17 +1576,17 @@ export default function CalendarPage() {
     >
       <PullToRefresh onRefresh={refetch} />
       <PageTitle>Calendar</PageTitle>
-      <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
-        {/* Top bar: title + view tabs. Wraps so the filter cluster drops to
-            its own line on narrow screens instead of overflowing. */}
-        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 md:hidden">
+      <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-1 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-1">
+        {/* Phones: view tabs and filters share one row (CompactFilters folds
+            its toggles into a ⋯ menu below xl). */}
+        <div className="flex items-center justify-between gap-2 md:hidden">
           <ViewTabs
             value={calendarView}
             views={CALENDAR_VIEWS}
             onChange={(v) => setCalendarView(v)}
           />
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <InstanceFilter instances={instances} value={instanceFilter} onChange={setInstanceFilter} />
+          <div className="flex shrink-0 items-center justify-end gap-2">
+            <InstanceFilter compact instances={instances} value={instanceFilter} onChange={setInstanceFilter} />
             <CompactFilters
               typeFilter={typeFilter}
               setTypeFilter={setTypeFilter}
@@ -1554,12 +1603,12 @@ export default function CalendarPage() {
 
         {/* Navigation row: arrows, today, period label, filters */}
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 min-w-0">
+          <div className="flex items-center min-w-0">
             <Button
               variant="ghost"
               size="icon"
               onClick={goBack}
-              className="h-7 w-7 shrink-0"
+              className="-ml-2 h-11 w-11 shrink-0"
               aria-label="Previous period"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -1568,21 +1617,20 @@ export default function CalendarPage() {
               variant="ghost"
               size="icon"
               onClick={goForward}
-              className="h-7 w-7 shrink-0"
+              className="h-11 w-11 shrink-0"
               aria-label="Next period"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
-            {/* Every control in this row has a hit area; each one after the
-                first grows rightward only (touch-target sibling rule), so none
-                covers the one before it. */}
+            {/* Real 44px boxes: this row has the width, and its own padding
+                comes out of the toolbar's (pb-1/space-y-1 above). */}
             <button
               onClick={goToday}
-              className="relative touch-target text-[11px] font-medium text-primary hover:text-primary/80 transition-colors shrink-0 px-1"
+              className="h-11 min-w-11 text-[11px] font-medium text-primary hover:text-primary/80 transition-colors shrink-0 px-1"
             >
               Today
             </button>
-            <span className="text-sm font-semibold truncate">{headerLabel}</span>
+            <span className="ml-1.5 text-sm font-semibold truncate">{headerLabel}</span>
           </div>
           <div className="items-center justify-end hidden md:flex flex-wrap gap-2">
             <ViewTabs
@@ -1590,7 +1638,7 @@ export default function CalendarPage() {
               views={CALENDAR_VIEWS}
               onChange={(v) => setCalendarView(v)}
             />
-            <InstanceFilter instances={instances} value={instanceFilter} onChange={setInstanceFilter} />
+            <InstanceFilter compact instances={instances} value={instanceFilter} onChange={setInstanceFilter} />
             <CompactFilters
               typeFilter={typeFilter}
               setTypeFilter={setTypeFilter}
@@ -1622,8 +1670,9 @@ export default function CalendarPage() {
         />
       )}
 
-      {/* On phones the instance picker is a bare icon, so name the pick here. The
-          type, monitored and scheduled toggles show their own state. */}
+      {/* Below lg the instance picker is a bare icon, so name the pick here. The
+          type, monitored and scheduled toggles show their own state (below xl,
+          the ⋯ menu's dot and checkmarks). */}
       <ActiveFilterBar
         filters={instanceFilter === 'all' ? [] : [{
           id: 'instance',

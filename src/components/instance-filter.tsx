@@ -65,11 +65,14 @@ export function InstanceFilter({
   value,
   onChange,
   align = 'end',
+  compact = false,
 }: {
   instances: InstanceOption[];
   value: string;
   onChange: (id: string) => void;
   align?: 'start' | 'center' | 'end';
+  /** Icon only up to lg, for a crowded row that names the pick elsewhere. */
+  compact?: boolean;
 }) {
   if (instances.length <= 1) return null;
 
@@ -85,15 +88,16 @@ export function InstanceFilter({
         <Button
           variant="outline"
           size="sm"
-          className="relative h-8 gap-1.5 px-2 sm:px-3"
+          className="relative touch-target h-8 gap-1.5 px-2 sm:px-3"
           title={current}
           aria-label={`Instance: ${current}`}
         >
           <Layers className="h-3.5 w-3.5 shrink-0" />
-          {/* Icon-only on mobile to avoid horizontal overflow; label shows from sm up,
-              and the dot marks a picked instance where the label is hidden. */}
-          <span className="hidden sm:inline max-w-[10rem] truncate">{current}</span>
-          <span className="sm:hidden"><FilterDot active={value !== 'all'} /></span>
+          {/* Icon-only on mobile to avoid horizontal overflow; label shows from sm up
+              (lg up when compact), and the dot marks a picked instance where the
+              label is hidden. */}
+          <span className={`hidden max-w-[10rem] truncate ${compact ? 'lg:inline' : 'sm:inline'}`}>{current}</span>
+          <span className={compact ? 'lg:hidden' : 'sm:hidden'}><FilterDot active={value !== 'all'} /></span>
         </Button>
       )}
     >

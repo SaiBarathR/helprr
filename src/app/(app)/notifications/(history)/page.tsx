@@ -611,8 +611,30 @@ export default function NotificationsPage() {
         onRefresh={() => Promise.all([notificationsQuery.refetch(), refreshBadges()])}
       />
       <PageTitle>Notifications</PageTitle>
-      <div className="page-toolbar page-toolbar-flush app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="flex items-center justify-end gap-1">
+      <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        {/* Search and the actions share one row, as on Movies and Discover. */}
+        <div className="flex items-center gap-1">
+          <div className="relative min-w-0 flex-1">
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <SearchInput
+              value={searchInput}
+              onChange={setSearchInput}
+              historyKey="notifications"
+              placeholder="Search…"
+              aria-label="Search notifications"
+              className="pl-9 pr-9 h-10"
+            />
+            {searchInput.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSearchInput('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
           {hasCapability(me, 'scheduledAlerts.view') && (
             <Link
               href="/notifications/scheduled"
@@ -647,27 +669,6 @@ export default function NotificationsPage() {
             {markingAll ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
           </button>
         </div>
-      </div>
-
-      <div className="relative">
-        <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-        <SearchInput
-          value={searchInput}
-          onChange={setSearchInput}
-          historyKey="notifications"
-          placeholder="Search notifications…"
-          className="pl-9 pr-9 h-10"
-        />
-        {searchInput.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setSearchInput('')}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
-            aria-label="Clear search"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
       </div>
 
       <ActiveFilterBar
