@@ -65,7 +65,7 @@ export function SeriesHeaderActions({
           ) : series.monitored ? (
             <Eye className="h-5 w-5" />
           ) : (
-            <EyeOff className="h-5 w-5" />
+            <EyeOff className="h-5 w-5 text-muted-foreground" />
           )}
         </button>
       )}

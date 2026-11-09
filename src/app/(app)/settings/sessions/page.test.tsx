@@ -33,7 +33,7 @@ vi.mock('@/components/ui/confirm-dialog', () => ({
 }));
 
 // API tokens have their own test (api-tokens-section.test.tsx).
-vi.mock('@/components/settings/api-tokens-section', () => ({ ApiTokensSection: () => null }));
+vi.mock('@/components/settings/api-tokens-section', () => ({ ApiTokensSection: () => <section aria-label="API tokens" /> }));
 
 import SessionsPage from './page';
 
@@ -116,6 +116,16 @@ afterEach(() => {
 });
 
 describe('Settings → Sessions revoke', () => {
+  it('puts API tokens above the session list, and the sign-in date on a line of its own', async () => {
+    await renderPage();
+    const tokens = container.querySelector('section[aria-label="API tokens"]')!;
+    const firstRow = container.querySelector('button[aria-label="Rename This Mac"]')!;
+    expect(tokens.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const signedIn = [...container.querySelectorAll('div')].filter((d) => /^Signed in /.test(d.textContent ?? '') && d.children.length === 0);
+    expect(signedIn).toHaveLength(2);
+    expect(signedIn[0].previousElementSibling!.textContent).toBe('Seen Never');
+  });
+
   it('ends this browser session when the current session is revoked', async () => {
     await renderPage();
     await confirmRevoke('Sign out this device');

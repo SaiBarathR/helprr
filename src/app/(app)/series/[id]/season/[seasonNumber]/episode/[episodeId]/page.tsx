@@ -400,7 +400,7 @@ export default function EpisodeDetailPage() {
                 ) : episode.monitored ? (
                   <Eye className="h-5 w-5" />
                 ) : (
-                  <EyeOff className="h-5 w-5" />
+                  <EyeOff className="h-5 w-5 text-muted-foreground" />
                 )}
               </button>
             )}
@@ -885,7 +885,7 @@ export default function EpisodeDetailPage() {
 
       {/* Delete File Confirmation Drawer */}
       <Drawer open={showDeleteDrawer} onOpenChange={setShowDeleteDrawer}>
-        <DrawerContent>
+        <DrawerContent size="content">
           <DrawerHeader>
             <DrawerTitle>Delete Episode File?</DrawerTitle>
             <DrawerDescription>

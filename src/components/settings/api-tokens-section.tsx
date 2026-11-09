@@ -201,7 +201,7 @@ export function ApiTokensSection() {
             {allowed ? (
               <button
                 type="button"
-                className="grouped-row w-full gap-2 text-sm text-primary disabled:opacity-60"
+                className="grouped-row w-full justify-start! gap-2 text-sm text-primary disabled:opacity-60"
                 onClick={openCreate}
                 disabled={busy || full || grantable.length === 0}
               >

@@ -60,7 +60,7 @@ const SELECT_TRIGGER =
   'w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5';
 
 const FOOTER =
-  'Back up now and scheduled backups are saved in the backup folder on the server; they are never downloaded. Backups made with backup.sh are recorded here too; other backups are not shown.';
+  'Saved in the backup folder on the server, never downloaded. Backups made with backup.sh show here too.';
 
 function withCurrent(options: number[], current: number): number[] {
   return options.includes(current) ? options : [...options, current].sort((a, b) => a - b);
@@ -228,7 +228,7 @@ export function DatabaseBackupSection() {
       {settingsReady && (
         <GroupedSection
           title="Scheduled backups"
-          footer={`Keeps the newest backups Helprr made and removes older ones. Admins get a push when a scheduled backup fails, and, with or without a schedule, when the last backup (from Helprr or backup.sh) is older than the alert. Times are in ${data?.timeZone ?? 'UTC'}.`}
+          footer={`Keeps the newest backups Helprr made. Admins get a push when a scheduled backup fails or the last backup is older than the alert. Times are in ${data?.timeZone ?? 'UTC'}.`}
         >
           <SettingSelect
             label="Frequency"

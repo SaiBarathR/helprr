@@ -227,6 +227,8 @@ export default function SeriesDetailPage() {
   const poster = getImageUrl(series.images, 'poster', 'sonarr');
   const { label: statusLabel, className: statusColor } = seriesStatusBadge(series);
   const nextAiring = formatNextAiring(series);
+  // The overview block (overview, Created By); without it Play takes its place.
+  const hasMain = Boolean(series.overview) || Boolean(tmdbData && tmdbData.createdBy.length > 0);
   const isAnimeSeries = series.seriesType === 'anime';
   // Anime search (explore) needs anime.view; the detail page is also open to
   // series.view, so the mapped link always shows.
@@ -342,6 +344,21 @@ export default function SeriesDetailPage() {
               <MediaDownloadProgress source="sonarr" mediaId={series.id} instanceId={instance} className="my-4" />
             </div>
 
+            {/* Play sits right under the hero, ahead of the facts and overview, like the
+                movie page. Its place is held while the lookup runs when the show has files.
+                With no overview it opens the wide layout's right column (globals.css). */}
+            <div className={`my-4 empty:hidden ${hasMain ? '[grid-area:actions]' : '[grid-area:main]'}`}>
+              {/* Straight into Helprr's own player when the show is in Jellyfin. */}
+              <PlayInHelprrButton
+                imdbId={series.imdbId}
+                tvdbId={series.tvdbId}
+                tmdbId={series.tmdbId}
+                autoPlay={false}
+                reserveSpace={(series.statistics?.episodeFileCount ?? 0) > 0}
+                className="h-10 w-full rounded-full"
+              />
+            </div>
+
             {isAnimeSeries && (
               <div className="pt-3 space-y-3 [grid-area:anilist]">
                 {/* Anilist update form */}
@@ -420,7 +437,7 @@ export default function SeriesDetailPage() {
               )}
             </div>
 
-            <div className="min-w-0 [grid-area:main]">
+            {hasMain && <div className="min-w-0 [grid-area:main]">
               {/* Overview */}
               {series.overview && (
                 <div className="pt-4 pb-2">
@@ -458,16 +475,7 @@ export default function SeriesDetailPage() {
                   </div>
                 </div>
               )}
-
-              {/* Straight into Helprr's own player when the show is in Jellyfin. */}
-              <PlayInHelprrButton
-                imdbId={series.imdbId}
-                tvdbId={series.tvdbId}
-                tmdbId={series.tmdbId}
-                autoPlay={false}
-                className="mt-4 h-10 w-full rounded-full"
-              />
-            </div>
+            </div>}
 
             {/* Seasons list */}
             <SeriesSeasons

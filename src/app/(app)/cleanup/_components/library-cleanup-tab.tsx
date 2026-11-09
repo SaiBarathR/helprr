@@ -312,7 +312,7 @@ export function LibraryCleanupTab({ onDirtyChange }: { onDirtyChange?: (dirty: b
       <section className="grouped-section">
         <div className="grouped-section-title">Options</div>
         <div className="grouped-section-content">
-          <div className="grouped-row">
+          <div className="grouped-row gap-4">
             <div className="min-w-0 flex-1">
               <Label htmlFor="library-keep-tag">Keep tag</Label>
               <p className="text-xs text-muted-foreground mt-0.5">Sonarr/Radarr tag that protects a title. Keep adds it. Changing it stops protecting titles kept with the old tag.</p>
@@ -320,7 +320,7 @@ export function LibraryCleanupTab({ onDirtyChange }: { onDirtyChange?: (dirty: b
             <Input id="library-keep-tag" className="w-28 sm:w-36 shrink-0" value={draft.keepTag}
               onChange={(e) => setDraft({ ...draft, keepTag: e.target.value.toLowerCase() })} />
           </div>
-          <div className="grouped-row">
+          <div className="grouped-row gap-4">
             <div className="min-w-0 flex-1">
               <Label htmlFor="library-countdown">Countdown</Label>
               <p className="text-xs text-muted-foreground mt-0.5">Days a title stays Leaving soon before it can be deleted.</p>
@@ -331,14 +331,14 @@ export function LibraryCleanupTab({ onDirtyChange }: { onDirtyChange?: (dirty: b
               <span className="text-sm text-muted-foreground">days</span>
             </div>
           </div>
-          <div className="grouped-row">
+          <div className="grouped-row gap-4">
             <div className="min-w-0 flex-1">
               <Label>Tell requesters</Label>
               <p className="text-xs text-muted-foreground mt-0.5">Push the people who requested a title when it is marked.</p>
             </div>
             <Switch aria-label="Tell requesters" checked={draft.notifyOnMark} onCheckedChange={(v) => setDraft({ ...draft, notifyOnMark: v })} />
           </div>
-          <div className="grouped-row">
+          <div className="grouped-row gap-4">
             <div className="min-w-0 flex-1">
               <Label>Import-list exclusion</Label>
               <p className="text-xs text-muted-foreground mt-0.5">Default for Delete now: stop import lists adding the title back.</p>

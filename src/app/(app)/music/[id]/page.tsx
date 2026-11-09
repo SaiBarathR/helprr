@@ -402,7 +402,7 @@ export default function ArtistDetailPage() {
                 ) : artist.monitored ? (
                   <Eye className="h-5 w-5" />
                 ) : (
-                  <EyeOff className="h-5 w-5" />
+                  <EyeOff className="h-5 w-5 text-muted-foreground" />
                 )}
               </button>
             )}
@@ -743,7 +743,7 @@ export default function ArtistDetailPage() {
           setShowDelete(open);
         }}
       >
-        <DrawerContent>
+        <DrawerContent size="content">
           <DrawerHeader>
             <DrawerTitle>Delete {artist.artistName}?</DrawerTitle>
             <DrawerDescription>

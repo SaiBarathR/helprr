@@ -96,8 +96,9 @@ export default function RequestsPage() {
       <div
         className="page-toolbar page-toolbar-flush flex items-center gap-1.5 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
       >
-        {/* Radix Tabs: same segmented look, plus roving focus + arrow-key nav. */}
-        <Tabs
+        {/* Radix Tabs: same segmented look, plus roving focus + arrow-key nav.
+            A switch with one option switches nothing, so it shows only with two. */}
+        {tabs.length > 1 && <Tabs
           value={tab}
           onValueChange={(v) => setTab(v as (typeof TABS)[number]['key'])}
           className="flex-1 gap-0 sm:flex-none"
@@ -114,7 +115,7 @@ export default function RequestsPage() {
               </TabsTrigger>
             ))}
           </TabsList>
-        </Tabs>
+        </Tabs>}
 
         {tab === 'requests' ? (
           <>

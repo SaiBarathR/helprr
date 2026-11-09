@@ -316,6 +316,16 @@ describe('series detail page (characterization)', () => {
     expect(screen.getAllByRole('button', { name: 'Add to watchlist' })).toHaveLength(1);
   });
 
+  it('puts Play right under the hero, ahead of the facts and overview, as the movie page does', async () => {
+    renderPage();
+    await screen.findByText('“Work is a mystery.”');
+    const play = screen.getByRole('button', { name: 'Play in Helprr' });
+    const precedes = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(precedes(play, screen.getByText('Drama, Mystery'))).toBe(true);
+    expect(precedes(play, screen.getByRole('link', { name: 'Dan Erickson' }))).toBe(true);
+    expect(play.parentElement!.className).toContain('[grid-area:actions]');
+  });
+
   it('offers each action only to someone who may take it', async () => {
     renderPage();
     await screen.findAllByRole('heading', { level: 1, name: 'Severance' });
@@ -347,6 +357,8 @@ describe('series detail page (characterization)', () => {
     await user.click(toggle);
     await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Unmonitored', expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) })));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Monitored' }).querySelector('svg.lucide-eye-off')).toBeTruthy());
+    // Not monitored reads as off: muted, not the accent the monitored eye uses.
+    expect(screen.getByRole('button', { name: 'Monitored' }).querySelector('svg.lucide-eye-off')!.getAttribute('class')).toContain('text-muted-foreground');
 
     const { action } = mocks.toast.success.mock.calls[0][1] as { action: { onClick: () => void } };
     act(() => action.onClick());

@@ -53,8 +53,40 @@ function DrawerOverlay({
 function DrawerContent({
   className,
   children,
+  size = "full",
+  ref,
   ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Content>) {
+}: React.ComponentProps<typeof DrawerPrimitive.Content> & {
+  /** "content": a bottom drawer only as tall as what it holds (up to 90dvh),
+   *  for short forms and confirmations. "full" (default) is a fixed 90dvh
+   *  panel whose body fills it with `flex-1 min-h-0` and scrolls. */
+  size?: "full" | "content"
+}) {
+  // vaul sizes a drawer above the phone keyboard, and when the keyboard
+  // closes it writes back, as an inline px height, the height the drawer had
+  // when a keyboard first opened in it. A content-sized drawer whose content
+  // has changed since (the next step of a form) would stay at that old height,
+  // so once the keyboard is closed the inline height is dropped again.
+  const contentRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      if (typeof ref === "function") ref(node)
+      else if (ref) ref.current = node
+      if (!node || size !== "content") return
+      const observer = new MutationObserver(() => {
+        const viewport = window.visualViewport
+        const keyboardOpen = viewport ? window.innerHeight - viewport.height > 60 : false
+        if (node.style.height && !keyboardOpen) node.style.height = ""
+      })
+      observer.observe(node, { attributes: true, attributeFilter: ["style"] })
+      return () => {
+        observer.disconnect()
+        if (typeof ref === "function") ref(null)
+        else if (ref) ref.current = null
+      }
+    },
+    [ref, size]
+  )
+
   return (
     <DrawerPortal data-slot="drawer-portal">
       <DrawerOverlay />
@@ -70,8 +102,10 @@ function DrawerContent({
           "data-[vaul-drawer-direction=bottom]:inset-x-0 data-[vaul-drawer-direction=bottom]:bottom-0 data-[vaul-drawer-direction=bottom]:mt-24 data-[vaul-drawer-direction=bottom]:h-[90dvh] data-[vaul-drawer-direction=bottom]:max-h-[90dvh] data-[vaul-drawer-direction=bottom]:rounded-t-lg data-[vaul-drawer-direction=bottom]:border-t data-[vaul-drawer-direction=bottom]:pb-[env(safe-area-inset-bottom)]",
           "data-[vaul-drawer-direction=right]:inset-y-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:w-3/4 data-[vaul-drawer-direction=right]:border-l data-[vaul-drawer-direction=right]:pt-[env(safe-area-inset-top)] data-[vaul-drawer-direction=right]:pb-[env(safe-area-inset-bottom)] data-[vaul-drawer-direction=right]:sm:max-w-sm",
           "data-[vaul-drawer-direction=left]:inset-y-0 data-[vaul-drawer-direction=left]:left-0 data-[vaul-drawer-direction=left]:w-3/4 data-[vaul-drawer-direction=left]:border-r data-[vaul-drawer-direction=left]:pt-[env(safe-area-inset-top)] data-[vaul-drawer-direction=left]:pb-[env(safe-area-inset-bottom)] data-[vaul-drawer-direction=left]:sm:max-w-sm",
+          size === "content" && "data-[vaul-drawer-direction=bottom]:h-auto",
           className
         )}
+        ref={contentRef}
         {...props}
       >
         <div className="bg-muted mx-auto mt-4 hidden h-2 w-[100px] shrink-0 rounded-full group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />

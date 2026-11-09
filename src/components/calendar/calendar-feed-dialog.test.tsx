@@ -7,7 +7,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CalendarFeedDialog, feedUrls } from './calendar-feed-dialog';
 
+const mocks = vi.hoisted(() => ({ phone: false }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/hooks/use-is-mobile', () => ({ useIsMobile: () => mocks.phone }));
 // Each Select as a native <select>, so a test can pick an option.
 vi.mock('@/components/ui/select', () => ({
   Select: ({ value, onValueChange, children }: { value: string; onValueChange: (v: string) => void; children: ReactNode }) => (
@@ -27,7 +29,10 @@ const LINK = {
   createdAt: '2026-11-01T00:00:00Z', lastUsedAt: null,
 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  mocks.phone = false;
+  vi.unstubAllGlobals();
+});
 
 function mount(state: { links: unknown[]; max?: number; origin?: string | null }) {
   const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
@@ -57,6 +62,24 @@ describe('feedUrls', () => {
 });
 
 describe('CalendarFeedDialog', () => {
+  it('is a bottom sheet on a phone, focused itself rather than its close button or Name field', async () => {
+    mocks.phone = true;
+    mount({ links: [] });
+    const name = await screen.findByLabelText('Name');
+    const sheet = screen.getByRole('dialog', { name: 'Subscribe in Calendar' });
+    expect(sheet.getAttribute('data-vaul-drawer-direction')).toBe('bottom');
+    expect(sheet.contains(name)).toBe(true);
+    expect(document.activeElement).toBe(sheet);
+  });
+
+  it('focuses the dialog itself, not its close button, on a wide screen', async () => {
+    mount({ links: [] });
+    await screen.findByLabelText('Name');
+    const dialog = screen.getByRole('dialog', { name: 'Subscribe in Calendar' });
+    expect(dialog.getAttribute('data-vaul-drawer-direction')).toBeNull();
+    expect(document.activeElement).toBe(dialog);
+  });
+
   it("makes a named link with the filters picked, starting from the page's, and shows it once", async () => {
     const fetchMock = mount({ links: [] });
     const name = (await screen.findByLabelText('Name')) as HTMLInputElement;
