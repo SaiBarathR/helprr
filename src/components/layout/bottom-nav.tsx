@@ -31,6 +31,12 @@ const SLOT_LABEL = 'max-w-full truncate tracking-[-0.01em]';
 // end on the last slot at 375px, even for 99+.
 const SLOT_BADGE = 'absolute -top-[5px] left-[calc(100%-4px)] h-4 min-w-[1rem] px-1 text-[10px] ring-2 ring-background [html[data-glass]_&]:ring-[color:var(--hpr-glass-bg)]';
 
+/** A tab's name for screen readers: its label first, then its count ("More, 59 unread"), not "59More". */
+function slotName(label: string, slice: BadgeSlice | undefined): string | undefined {
+  if (!slice || slice.total <= 0) return undefined;
+  return `${label}, ${slice.total > 99 ? '99+' : slice.total} unread`;
+}
+
 export function BottomNav() {
   const pathname = usePathname();
   const pendingHref = usePendingHref();
@@ -95,6 +101,7 @@ export function BottomNav() {
                 key={href}
                 href={href}
                 prefetch={null}
+                aria-label={slotName(shortLabel, slice)}
                 className={cn(
                   SLOT,
                   isActive ? cn(ACTIVE_LABEL, GLASS_ACTIVE_LABEL) : 'text-muted-foreground',
@@ -121,6 +128,7 @@ export function BottomNav() {
               onOpenChange={setMoreOpen}
               trigger={(
                 <button
+                  aria-label={slotName('More', moreBadge)}
                   className={cn(
                     SLOT,
                     isMoreActive ? cn(ACTIVE_LABEL, GLASS_ACTIVE_LABEL) : 'text-muted-foreground'

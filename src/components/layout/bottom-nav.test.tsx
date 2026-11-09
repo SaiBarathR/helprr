@@ -9,9 +9,9 @@ const mocks = vi.hoisted(() => ({ counts: null as BadgeCounts | null }));
 
 vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard' }));
 vi.mock('@/components/ui/app-link', () => ({
-  default: ({ children, href, onClick, className }: { children: React.ReactNode; href: string; onClick?: React.MouseEventHandler; className?: string }) => (
+  default: ({ children, href, onClick, className, 'aria-label': ariaLabel }: { children: React.ReactNode; href: string; onClick?: React.MouseEventHandler; className?: string; 'aria-label'?: string }) => (
     // jsdom cannot navigate, so stop the default after the component's handler.
-    <a href={href} className={className} onClick={(event) => { onClick?.(event); event.preventDefault(); }}>{children}</a>
+    <a href={href} aria-label={ariaLabel} className={className} onClick={(event) => { onClick?.(event); event.preventDefault(); }}>{children}</a>
   ),
 }));
 vi.mock('@/components/layout/navigation-provider', () => ({ usePendingHref: () => null }));
@@ -104,6 +104,23 @@ describe('BottomNav', () => {
     expect([...badge.classList]).toEqual(expect.arrayContaining(['absolute', 'left-[calc(100%-4px)]', '-top-[5px]', 'h-4', 'ring-2', 'ring-background', '[html[data-glass]_&]:ring-[color:var(--hpr-glass-bg)]']));
     expect(badge.parentElement!.querySelector('svg')).not.toBeNull();
     expect(screen.getByRole('button', { name: /More/ }).parentElement!.classList).toContain('px-3.5');
+  });
+
+  it('names a tab with a count label first, then the count, for screen readers', () => {
+    mocks.counts = { ...EMPTY_BADGE_COUNTS, notifications: { total: 59, attention: 59 }, activity: { total: 3, attention: 0 } };
+    render(<BottomNav />);
+    const bar = within(screen.getByRole('navigation'));
+    expect(bar.getByRole('button', { name: 'More, 59 unread' })).toBeTruthy();
+    expect(bar.getByRole('link', { name: 'Activity, 3 unread' })).toBeTruthy();
+    // Tabs without a count keep their plain label.
+    expect(bar.getByRole('link', { name: 'Movies' })).toBeTruthy();
+    expect(bar.getByRole('button', { name: 'Search' })).toBeTruthy();
+  });
+
+  it('caps the spoken count the way the badge shows it', () => {
+    mocks.counts = { ...EMPTY_BADGE_COUNTS, notifications: { total: 140, attention: 140 } };
+    render(<BottomNav />);
+    expect(within(screen.getByRole('navigation')).getByRole('button', { name: 'More, 99+ unread' })).toBeTruthy();
   });
 
   it('does not count the same downloads twice when Activity and Torrents are both in More', () => {
