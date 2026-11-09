@@ -53,21 +53,23 @@ export function BottomNav() {
 
   // Roll the hidden items' badges into one count on the "More" button. The
   // Activity queue and Torrents largely count the same downloads, so when both
-  // are hidden only Torrents counts.
-  const moreBadge = useMemo<BadgeSlice>(
+  // are hidden only Torrents counts. It reads as unread only while unread
+  // notifications are all it holds.
+  const { moreBadge, moreOnlyUnread } = useMemo(
     () => {
       const hasDownloads = moreItems.some((item) => item.badgeArea === 'downloads');
       return moreItems.reduce(
         (acc, item) => {
           if (hasDownloads && item.badgeArea === 'activity') return acc;
           const slice = item.badgeArea ? counts[item.badgeArea] : undefined;
-          if (slice) {
-            acc.total += slice.total;
-            acc.attention += slice.attention;
+          if (slice && slice.total > 0) {
+            acc.moreBadge.total += slice.total;
+            acc.moreBadge.attention += slice.attention;
+            if (item.badgeArea !== 'notifications') acc.moreOnlyUnread = false;
           }
           return acc;
         },
-        { total: 0, attention: 0 },
+        { moreBadge: { total: 0, attention: 0 } as BadgeSlice, moreOnlyUnread: true },
       );
     },
     [moreItems, counts],
@@ -122,7 +124,7 @@ export function BottomNav() {
               onOpenChange={setMoreOpen}
               trigger={(
                 <button
-                  aria-label={navBadgeName('More', moreBadge, 'more')}
+                  aria-label={navBadgeName('More', moreBadge, moreOnlyUnread ? 'notifications' : 'more')}
                   className={cn(
                     SLOT,
                     isMoreActive ? cn(ACTIVE_LABEL, GLASS_ACTIVE_LABEL) : 'text-muted-foreground'

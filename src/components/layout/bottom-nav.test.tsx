@@ -110,6 +110,7 @@ describe('BottomNav', () => {
     mocks.counts = { ...EMPTY_BADGE_COUNTS, notifications: { total: 59, attention: 59 }, activity: { total: 3, attention: 0 } };
     render(<BottomNav />);
     const bar = within(screen.getByRole('navigation'));
+    // Only notifications behind More: unread.
     expect(bar.getByRole('button', { name: 'More, 59 unread' })).toBeTruthy();
     expect(bar.getByRole('link', { name: 'Activity, 3 in queue' })).toBeTruthy();
     // Tabs without a count keep their plain label.
@@ -126,6 +127,12 @@ describe('BottomNav', () => {
     expect(sheet.getByRole('link', { name: 'Requests, 2 items' })).toBeTruthy();
     expect(sheet.getByRole('link', { name: 'Torrents, 1 item' })).toBeTruthy();
     expect(sheet.getByRole('link', { name: 'Discover' })).toBeTruthy();
+  });
+
+  it('calls More\'s count new once anything but notifications adds to it', () => {
+    mocks.counts = { ...EMPTY_BADGE_COUNTS, notifications: { total: 59, attention: 59 }, requests: { total: 1, attention: 1 }, downloads: { total: 2, attention: 0 } };
+    render(<BottomNav />);
+    expect(within(screen.getByRole('navigation')).getByRole('button', { name: 'More, 62 new' })).toBeTruthy();
   });
 
   it('caps the spoken count the way the badge shows it', () => {

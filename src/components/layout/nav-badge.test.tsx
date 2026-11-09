@@ -4,7 +4,9 @@ import { navBadgeName } from './nav-badge';
 describe('navBadgeName', () => {
   it('says what each count is, after the label', () => {
     expect(navBadgeName('Notifications', { total: 44, attention: 44 }, 'notifications')).toBe('Notifications, 44 unread');
-    expect(navBadgeName('More', { total: 59, attention: 3 }, 'more')).toBe('More, 59 unread');
+    // More's roll-up of mixed areas; a roll-up of only notifications passes 'notifications'.
+    expect(navBadgeName('More', { total: 62, attention: 59 }, 'more')).toBe('More, 62 new');
+    expect(navBadgeName('More', { total: 59, attention: 59 }, 'notifications')).toBe('More, 59 unread');
     // The Activity badge counts the Sonarr/Radarr/Lidarr download queue.
     expect(navBadgeName('Activity', { total: 3, attention: 0 }, 'activity')).toBe('Activity, 3 in queue');
     expect(navBadgeName('Torrents', { total: 2, attention: 0 }, 'downloads')).toBe('Torrents, 2 items');

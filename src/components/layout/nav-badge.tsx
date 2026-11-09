@@ -57,11 +57,13 @@ function countText(total: number): string {
  * "Notifications44" its text reads as. Undefined without a count, so the
  * item keeps its plain label. Activity counts the Arr download queue; the
  * other areas (downloading torrents, pending requests, new videos) and a
- * plain count say "items". More rolls its hidden items into one count.
+ * plain count say "items". 'more' is More's roll-up of mixed areas, "new";
+ * a roll-up of only notifications passes 'notifications'.
  */
 export function navBadgeName(label: string, slice: BadgeSlice | undefined, area: BadgeArea | 'more' | undefined): string | undefined {
   if (!slice || slice.total <= 0) return undefined;
-  const what = area === 'notifications' || area === 'more' ? 'unread'
+  const what = area === 'notifications' ? 'unread'
+    : area === 'more' ? 'new'
     : area === 'activity' ? 'in queue'
     : slice.total === 1 ? 'item' : 'items';
   return `${label}, ${countText(slice.total)} ${what}`;
