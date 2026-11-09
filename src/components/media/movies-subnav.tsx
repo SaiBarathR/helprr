@@ -25,7 +25,9 @@ export function MoviesSubNav({ active }: { active: 'library' | 'collections' }) 
             aria-label={label}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-md px-2.5 sm:px-3 py-1.5 text-sm font-medium transition-colors',
+              // 44px wide on phones (icon only) and 44px tall through
+              // touch-target-y, while the switch itself stays its size.
+              'relative touch-target-y inline-flex min-w-11 items-center justify-center gap-1.5 rounded-md px-2.5 sm:px-3 py-1.5 text-sm font-medium transition-colors',
               isActive
                 ? 'bg-[var(--hpr-amber)] text-[var(--hpr-ink)] shadow-sm'
                 : 'text-muted-foreground hover:bg-accent hover:text-foreground'

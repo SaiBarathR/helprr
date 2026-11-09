@@ -335,7 +335,7 @@ export default function AnimeHomePage() {
           <>
             <Link
               href="/anime/explore"
-              className="shrink-0 flex items-center gap-1.5 bg-muted/50 border border-border/50 text-muted-foreground rounded-full px-3 sm:px-4 py-2 text-sm hover:bg-muted transition-colors"
+              className="relative touch-target shrink-0 flex items-center gap-1.5 bg-muted/50 border border-border/50 text-muted-foreground rounded-full px-3 sm:px-4 py-2 text-sm hover:bg-muted transition-colors"
               aria-label="Browse anime"
             >
               <LayoutGrid className="h-4 w-4" />
@@ -343,7 +343,7 @@ export default function AnimeHomePage() {
             </Link>
             <Link
               href="/anime/schedule"
-              className="shrink-0 flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 text-amber-300 rounded-full px-3 sm:px-4 py-2 text-sm hover:bg-amber-500/25 transition-colors"
+              className="relative touch-target shrink-0 flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 text-amber-300 rounded-full px-3 sm:px-4 py-2 text-sm hover:bg-amber-500/25 transition-colors"
               aria-label="Anime weekly schedule"
             >
               <CalendarClock className="h-4 w-4" />
@@ -352,7 +352,7 @@ export default function AnimeHomePage() {
             {viewer?.connected && (
               <Link
                 href="/anime/library"
-                className="shrink-0 flex items-center gap-1.5 bg-pink-500/15 border border-pink-500/30 text-pink-300 rounded-full px-3 sm:px-4 py-2 text-sm hover:bg-pink-500/25 transition-colors"
+                className="relative touch-target shrink-0 flex items-center gap-1.5 bg-pink-500/15 border border-pink-500/30 text-pink-300 rounded-full px-3 sm:px-4 py-2 text-sm hover:bg-pink-500/25 transition-colors"
                 aria-label="My AniList library"
               >
                 <Sparkles className="h-4 w-4" />

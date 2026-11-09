@@ -81,6 +81,22 @@ describe('list sort, filter and view menus on a phone', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Sort by' })).toBeNull());
   });
 
+  it('keeps the requests sort direction in the sheet only, not as a second toolbar button', async () => {
+    const onSortDirectionChange = vi.fn();
+    render(
+      <TooltipProvider>
+        <RequestsSortMenu sort="added" onSortChange={vi.fn()} sortDirection="desc" onSortDirectionChange={onSortDirectionChange} />
+      </TooltipProvider>,
+    );
+    expect(screen.queryByRole('button', { name: /^Sort direction/ })).toBeNull();
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    await userEvent.click(screen.getByRole('button', { name: /^Sort:/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Sort by' });
+    await userEvent.click(within(within(sheet).getByRole('group', { name: 'Sort direction' })).getByRole('button', { name: 'Ascending' }));
+    expect(onSortDirectionChange).toHaveBeenCalledWith('asc');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Sort by' })).toBeNull());
+  });
+
   it('keeps the multi-select logs filter open, with Reset filters once one is on', async () => {
     const onToggleLevel = vi.fn();
     const onReset = vi.fn();
