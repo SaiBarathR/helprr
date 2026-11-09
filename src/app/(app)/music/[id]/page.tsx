@@ -23,12 +23,11 @@ import {
   DrawerClose,
 } from '@/components/ui/drawer';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuActionItem,
+  ResponsiveMenuLinkItem,
+  ResponsiveMenuSeparator,
+} from '@/components/ui/responsive-menu';
 import {
   Bell,
   MoreHorizontal,
@@ -407,70 +406,71 @@ export default function ArtistDetailPage() {
               </button>
             )}
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <ResponsiveMenu
+              title="More actions"
+              actions
+              align="end"
+              contentClassName="w-52"
+              trigger={(
                 <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                {canManageActivity && (
-                  <DropdownMenuItem onClick={handleRefresh} disabled={!!actionLoading}>
-                    <RefreshCw className="h-4 w-4" />
-                    Refresh &amp; Scan
-                  </DropdownMenuItem>
-                )}
-                {canManageActivity && (
-                  <DropdownMenuItem onClick={handleSearch} disabled={!!actionLoading}>
-                    <Search className="h-4 w-4" />
-                    Search Monitored Albums
-                  </DropdownMenuItem>
-                )}
-                {canScheduleAlert && (
-                  <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
-                    <Bell className="h-4 w-4" />
-                    Alert on next album…
-                  </DropdownMenuItem>
-                )}
-                {lidarrExternalUrl && artist.foreignArtistId && (
-                  <DropdownMenuItem asChild>
-                    <a href={`${lidarrExternalUrl}/artist/${artist.foreignArtistId}`} target="_blank" rel="noopener noreferrer">
-                      <Disc3 className="h-4 w-4" />
-                      Open in Lidarr
-                    </a>
-                  </DropdownMenuItem>
-                )}
-                {artist.foreignArtistId && (
-                  <DropdownMenuItem
-                    onClick={() => window.open(`https://musicbrainz.org/artist/${artist.foreignArtistId}`, '_blank')}
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Open in MusicBrainz
-                  </DropdownMenuItem>
-                )}
-                {canEditArtist && (
-                  <DropdownMenuItem onClick={() => router.push(`/music/${artist.id}/edit${instance ? `?instance=${instance}` : ''}`)}>
-                    <Pencil className="h-4 w-4" />
-                    Edit
-                  </DropdownMenuItem>
-                )}
-                {canManageActivity && canManageFiles && (
-                  <DropdownMenuItem onClick={() => setShowRenamePreview(true)}>
-                    <FileEdit className="h-4 w-4" />
-                    Preview Rename
-                  </DropdownMenuItem>
-                )}
-                {canDeleteArtist && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem variant="destructive" onClick={() => setShowDelete(true)}>
-                      <Trash2 className="h-4 w-4" />
-                      Delete
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
+            >
+              {canManageActivity && (
+                <ResponsiveMenuActionItem onSelect={handleRefresh} disabled={!!actionLoading}>
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh &amp; Scan
+                </ResponsiveMenuActionItem>
+              )}
+              {canManageActivity && (
+                <ResponsiveMenuActionItem onSelect={handleSearch} disabled={!!actionLoading}>
+                  <Search className="h-4 w-4" />
+                  Search Monitored Albums
+                </ResponsiveMenuActionItem>
+              )}
+              {canScheduleAlert && (
+                <ResponsiveMenuActionItem onSelect={() => setShowScheduleAlert(true)}>
+                  <Bell className="h-4 w-4" />
+                  Alert on next album…
+                </ResponsiveMenuActionItem>
+              )}
+              {lidarrExternalUrl && artist.foreignArtistId && (
+                <ResponsiveMenuLinkItem external href={`${lidarrExternalUrl}/artist/${artist.foreignArtistId}`}>
+                  <Disc3 className="h-4 w-4" />
+                  Open in Lidarr
+                </ResponsiveMenuLinkItem>
+              )}
+              {artist.foreignArtistId && (
+                <ResponsiveMenuActionItem
+                  onSelect={() => window.open(`https://musicbrainz.org/artist/${artist.foreignArtistId}`, '_blank')}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open in MusicBrainz
+                </ResponsiveMenuActionItem>
+              )}
+              {canEditArtist && (
+                <ResponsiveMenuActionItem onSelect={() => router.push(`/music/${artist.id}/edit${instance ? `?instance=${instance}` : ''}`)}>
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </ResponsiveMenuActionItem>
+              )}
+              {canManageActivity && canManageFiles && (
+                <ResponsiveMenuActionItem onSelect={() => setShowRenamePreview(true)}>
+                  <FileEdit className="h-4 w-4" />
+                  Preview Rename
+                </ResponsiveMenuActionItem>
+              )}
+              {canDeleteArtist && (
+                <>
+                  <ResponsiveMenuSeparator />
+                  <ResponsiveMenuActionItem destructive onSelect={() => setShowDelete(true)}>
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </ResponsiveMenuActionItem>
+                </>
+              )}
+            </ResponsiveMenu>
           </>
         }
       />

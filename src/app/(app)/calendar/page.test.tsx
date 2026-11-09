@@ -13,6 +13,11 @@ const calendar = vi.hoisted(() => ({
   refetch: (() => Promise.resolve()) as () => Promise<void>,
   pullToRefresh: null as null | { onRefresh: () => unknown },
 }));
+// The configured arr instances (/api/instances), which drive the instance filter.
+const arr = vi.hoisted(() => ({ instances: undefined as undefined | Array<{ id: string; label: string; type: string }> }));
+vi.mock('@tanstack/react-query', () => ({
+  useQuery: () => ({ data: arr.instances }),
+}));
 vi.mock('next/navigation', () => ({
   usePathname: () => route.pathname,
   useSearchParams: () => new URLSearchParams(),
@@ -78,6 +83,7 @@ async function settleScroll() {
 }
 
 beforeEach(() => {
+  arr.instances = undefined;
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-10-22T12:00:00'));
   sessionStorage.clear();
@@ -347,4 +353,24 @@ it('opens Type and the ⋯ options as phone sheets, like the instance filter', a
   await user.click(within(options).getByRole('button', { name: /Subscribe in Calendar/ }));
   await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Calendar options' })).toBeNull());
   expect(screen.getByText('Calendar feed dialog')).toBeTruthy();
+});
+
+it.each(['agenda', 'week', 'month'] as const)('keeps the instance filter in the %s view, though the range holds one instance', (view) => {
+  // Every event in range comes from one instance (no instanceId at all here).
+  arr.instances = [
+    { id: 'r1', label: 'radarr', type: 'RADARR' },
+    { id: 's1', label: 'sonarr-anime', type: 'SONARR' },
+  ];
+  useUIStore.setState({ calendarView: view });
+  render(<CalendarPage />);
+  expect(screen.getAllByRole('button', { name: 'Instance: All instances' }).length).toBeGreaterThan(0);
+});
+
+it('keeps a saved instance pick until the configured list has loaded', () => {
+  useUIStore.setState({ calendarInstanceFilter: 's1' });
+  const page = render(<CalendarPage />);
+  expect(useUIStore.getState().calendarInstanceFilter).toBe('s1');
+  arr.instances = [{ id: 'r1', label: 'radarr', type: 'RADARR' }];
+  page.rerender(<CalendarPage />);
+  expect(useUIStore.getState().calendarInstanceFilter).toBe('all');
 });

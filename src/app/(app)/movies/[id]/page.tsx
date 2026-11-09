@@ -23,12 +23,11 @@ import {
   DrawerClose,
 } from '@/components/ui/drawer';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuActionItem,
+  ResponsiveMenuLinkItem,
+  ResponsiveMenuSeparator,
+} from '@/components/ui/responsive-menu';
 import {
   Bookmark,
   Eye,
@@ -484,112 +483,111 @@ export default function MovieDetailPage() {
             )}
 
             {/* 3-dot menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <ResponsiveMenu
+              title="More actions"
+              actions
+              align="end"
+              contentClassName="w-48"
+              trigger={(
                 <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                {canManageActivity && (
-                  <DropdownMenuItem
-                    onClick={handleRefresh}
-                    disabled={!!actionLoading}
+              )}
+            >
+              {canManageActivity && (
+                <ResponsiveMenuActionItem
+                  onSelect={handleRefresh}
+                  disabled={!!actionLoading}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh
+                </ResponsiveMenuActionItem>
+              )}
+              {canManageActivity && (
+                <ResponsiveMenuActionItem
+                  onSelect={handleSearch}
+                  disabled={!!actionLoading}
+                >
+                  <Search className="h-4 w-4" />
+                  Automatic Search
+                </ResponsiveMenuActionItem>
+              )}
+              {canViewAnime && movie.genres?.includes('Animation') && (
+                <ResponsiveMenuLinkItem href={`/anime/explore?search=${encodeURIComponent(movie.title)}`}>
+                  <Sparkles className="h-4 w-4" />
+                  Search on AniList
+                </ResponsiveMenuLinkItem>
+              )}
+              {movie.imdbId && (
+                <ResponsiveMenuActionItem
+                  onSelect={() => window.open(`https://www.imdb.com/title/${movie.imdbId}`, '_blank')}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open in IMDb
+                </ResponsiveMenuActionItem>
+              )}
+              {radarrExternalUrl && movie.tmdbId && (
+                <ResponsiveMenuLinkItem external href={`${radarrExternalUrl}/movie/${movie.tmdbId}`}>
+                  <Film className="h-4 w-4" />
+                  Open in Radarr
+                </ResponsiveMenuLinkItem>
+              )}
+              {externalUrls.JELLYFIN && (movie?.imdbId || movie?.tmdbId) && (
+                <ResponsiveMenuActionItem onSelect={handleOpenInJellyfin} disabled={jellyfinLoading}>
+                  {jellyfinLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+                  Open in Jellyfin
+                </ResponsiveMenuActionItem>
+              )}
+              <MarkWatchedMenuItem status={movieWatch} />
+              <ResponsiveMenuActionItem onSelect={() => setShowAddWatchlist(true)}>
+                <Bookmark className="h-4 w-4" />
+                Add to Watchlist…
+              </ResponsiveMenuActionItem>
+              {canScheduleAlert && (
+                <ResponsiveMenuActionItem onSelect={() => setShowScheduleAlert(true)}>
+                  <Bell className="h-4 w-4" />
+                  Schedule alert…
+                </ResponsiveMenuActionItem>
+              )}
+              {canEditMovie && (
+                <ResponsiveMenuActionItem
+                  onSelect={() => router.push(`/movies/${movie.id}/edit${instance ? `?instance=${instance}` : ''}`)}
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </ResponsiveMenuActionItem>
+              )}
+              {canManageActivity && canManageFiles && (
+                <ResponsiveMenuActionItem onSelect={() => setShowRenamePreview(true)}>
+                  <FileEdit className="h-4 w-4" />
+                  Preview Rename
+                </ResponsiveMenuActionItem>
+              )}
+              {canManageFiles && (
+                <ResponsiveMenuActionItem
+                  onSelect={() =>
+                    router.push(
+                      `/movies/${movie.id}/manage?title=${encodeURIComponent(movie.title)}${instance ? `&instance=${instance}` : ''}`
+                    )
+                  }
+                >
+                  <FileStack className="h-4 w-4" />
+                  Manage Files
+                </ResponsiveMenuActionItem>
+              )}
+              {canDeleteMovie && (
+                <>
+                  <ResponsiveMenuSeparator />
+                  <ResponsiveMenuActionItem
+                    destructive
+                    onSelect={() => setShowDelete(true)}
                   >
-                    <RefreshCw className="h-4 w-4" />
-                    Refresh
-                  </DropdownMenuItem>
-                )}
-                {canManageActivity && (
-                  <DropdownMenuItem
-                    onClick={handleSearch}
-                    disabled={!!actionLoading}
-                  >
-                    <Search className="h-4 w-4" />
-                    Automatic Search
-                  </DropdownMenuItem>
-                )}
-                {canViewAnime && movie.genres?.includes('Animation') && (
-                  <DropdownMenuItem asChild>
-                    <Link href={`/anime/explore?search=${encodeURIComponent(movie.title)}`}>
-                      <Sparkles className="h-4 w-4" />
-                      Search on AniList
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-                {movie.imdbId && (
-                  <DropdownMenuItem
-                    onClick={() => window.open(`https://www.imdb.com/title/${movie.imdbId}`, '_blank')}
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Open in IMDb
-                  </DropdownMenuItem>
-                )}
-                {radarrExternalUrl && movie.tmdbId && (
-                  <DropdownMenuItem asChild>
-                    <a href={`${radarrExternalUrl}/movie/${movie.tmdbId}`} target="_blank" rel="noopener noreferrer">
-                      <Film className="h-4 w-4" />
-                      Open in Radarr
-                    </a>
-                  </DropdownMenuItem>
-                )}
-                {externalUrls.JELLYFIN && (movie?.imdbId || movie?.tmdbId) && (
-                  <DropdownMenuItem onClick={handleOpenInJellyfin} disabled={jellyfinLoading}>
-                    {jellyfinLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
-                    Open in Jellyfin
-                  </DropdownMenuItem>
-                )}
-                <MarkWatchedMenuItem status={movieWatch} />
-                <DropdownMenuItem onClick={() => setShowAddWatchlist(true)}>
-                  <Bookmark className="h-4 w-4" />
-                  Add to Watchlist…
-                </DropdownMenuItem>
-                {canScheduleAlert && (
-                  <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
-                    <Bell className="h-4 w-4" />
-                    Schedule alert…
-                  </DropdownMenuItem>
-                )}
-                {canEditMovie && (
-                  <DropdownMenuItem
-                    onClick={() => router.push(`/movies/${movie.id}/edit${instance ? `?instance=${instance}` : ''}`)}
-                  >
-                    <Pencil className="h-4 w-4" />
-                    Edit
-                  </DropdownMenuItem>
-                )}
-                {canManageActivity && canManageFiles && (
-                  <DropdownMenuItem onClick={() => setShowRenamePreview(true)}>
-                    <FileEdit className="h-4 w-4" />
-                    Preview Rename
-                  </DropdownMenuItem>
-                )}
-                {canManageFiles && (
-                  <DropdownMenuItem
-                    onClick={() =>
-                      router.push(
-                        `/movies/${movie.id}/manage?title=${encodeURIComponent(movie.title)}${instance ? `&instance=${instance}` : ''}`
-                      )
-                    }
-                  >
-                    <FileStack className="h-4 w-4" />
-                    Manage Files
-                  </DropdownMenuItem>
-                )}
-                {canDeleteMovie && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => setShowDelete(true)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Delete
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </ResponsiveMenuActionItem>
+                </>
+              )}
+            </ResponsiveMenu>
           </>
         }
       />

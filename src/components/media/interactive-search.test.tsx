@@ -90,7 +90,7 @@ describe('InteractiveSearch page', () => {
     expect(titles()).toEqual(['Movie.2026.2160p.Big', 'Movie.2026.1080p.Small']);
     await user.click(screen.getByRole('button', { name: 'Size' }));
     expect(titles()).toEqual(['Movie.2026.1080p.Small', 'Movie.2026.2160p.Big']);
-    await user.type(screen.getByPlaceholderText('Filter releases...'), 'small');
+    await user.type(screen.getByPlaceholderText('Filter releases…'), 'small');
     expect(titles()).toEqual(['Movie.2026.1080p.Small']);
     expect(screen.getByText('1 / 2')).toBeTruthy();
   });
@@ -210,7 +210,7 @@ describe('InteractiveSearch page', () => {
 
   it('pins the filters below the whole header, padding included', async () => {
     renderSearch();
-    const filters = (await screen.findByPlaceholderText('Filter releases...')).closest('.page-toolbar') as HTMLElement;
+    const filters = (await screen.findByPlaceholderText('Filter releases…')).closest('.page-toolbar') as HTMLElement;
     expect(filters.style.top).toBe('calc(var(--header-height, 0px) + var(--main-pad-top) + 2.75rem)');
   });
 });

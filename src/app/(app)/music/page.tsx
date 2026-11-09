@@ -9,6 +9,7 @@ import {
   ResponsiveMenuCheckboxItem,
   ResponsiveMenuLabel,
   ResponsiveMenuSeparator,
+  ResponsiveMenuSortDirection,
 } from '@/components/ui/responsive-menu';
 import { MediaCard } from '@/components/media/media-card';
 import { MediaOverviewItem } from '@/components/media/media-overview';
@@ -699,7 +700,10 @@ export default function MusicPage() {
       <PullToRefresh onRefresh={() => refetchArtists()} disabled={selectionMode} />
       <PageTitle>Music</PageTitle>
       <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
-        <div className="flex items-center md:gap-2 w-full overflow-x-auto scrollbar-hide">
+        {/* Phones: 4px wider, with the 4px as padding, so the last button's
+            44px tap area isn't clipped by the scrolling row and the button
+            still lines up with the search field below. */}
+        <div className="flex items-center md:gap-2 w-full max-md:w-[calc(100%+0.25rem)] max-md:pr-1 overflow-x-auto scrollbar-hide">
           <ResponsiveMenu
             title="Filter"
             titleInDropdown
@@ -773,6 +777,7 @@ export default function MusicPage() {
               </button>
             )}
           >
+            <ResponsiveMenuSortDirection value={sortDir} onChange={setSortDir} />
             {sortOptions.map((opt) => (
               <ResponsiveMenuCheckboxItem
                 key={opt.value}
@@ -782,19 +787,6 @@ export default function MusicPage() {
                 {opt.label}
               </ResponsiveMenuCheckboxItem>
             ))}
-            <ResponsiveMenuSeparator />
-            <ResponsiveMenuCheckboxItem
-              checked={sortDir === 'asc'}
-              onCheckedChange={() => setSortDir('asc')}
-            >
-              Ascending
-            </ResponsiveMenuCheckboxItem>
-            <ResponsiveMenuCheckboxItem
-              checked={sortDir === 'desc'}
-              onCheckedChange={() => setSortDir('desc')}
-            >
-              Descending
-            </ResponsiveMenuCheckboxItem>
           </ResponsiveMenu>
 
           <ViewSelector value={viewMode} onChange={setViewMode} />
@@ -845,7 +837,7 @@ export default function MusicPage() {
               <TooltipTrigger asChild>
                 <Link
                   href="/music/add"
-                  className="md:p-2 md:min-h-[44px] md:min-w-[44px] p-1 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                  className="relative touch-target touch-target-center ml-1 md:ml-0 md:p-2 md:min-h-[44px] md:min-w-[44px] p-1 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
                   aria-label="Add Artist"
                 >
                   <Plus className="md:h-5 md:w-5 h-6 w-6" />
@@ -856,7 +848,7 @@ export default function MusicPage() {
           )}
         </div>
 
-        <SearchBar value={search} onChange={handleSearch} placeholder="Search artists..." historyKey="music" debounceMs={250} />
+        <SearchBar value={search} onChange={handleSearch} placeholder="Search artists…" historyKey="music" debounceMs={250} />
       </div>
       {/* Below the sticky toolbar, so it can't push over sticky table headers;
           the filter button's dot stays in view. */}

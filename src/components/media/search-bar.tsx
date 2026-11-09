@@ -2,7 +2,9 @@
 
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import { Loader2, Search, X } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { useSearchHistory } from '@/lib/hooks/use-search-history';
 import { useSearchHistoryListbox } from '@/lib/hooks/use-search-history-listbox';
 import { SearchHistoryDropdown } from './search-history-dropdown';
@@ -11,13 +13,16 @@ interface SearchBarProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  /** A shorter placeholder below sm (640px), where the field shares a narrow row. */
+  compactPlaceholder?: string;
   /** When set, recent searches are remembered and shown under the bar on focus. */
   historyKey?: string;
   /** Debounce before `onChange` fires. Lower it for instant in-memory filtering. */
   debounceMs?: number;
 }
 
-export function SearchBar({ value, onChange, placeholder = 'Search...', historyKey, debounceMs = 700 }: SearchBarProps) {
+export function SearchBar({ value, onChange, placeholder = 'Search…', compactPlaceholder, historyKey, debounceMs = 700 }: SearchBarProps) {
+  const narrow = useIsMobile(639);
   const [internal, setInternal] = useState(value);
   const [open, setOpen] = useState(false);
   const [debouncing, setDebouncing] = useState(false);
@@ -82,10 +87,14 @@ export function SearchBar({ value, onChange, placeholder = 'Search...', historyK
   const showHistory = !!historyKey && open && items.length > 0;
 
   return (
-    <div className="relative" ref={wrapperRef}>
+    // A container, so a field squeezed under 7rem (a crowded phone row) drops
+    // its placeholder to the magnifier rather than show a clipped word.
+    <div className="relative @container" ref={wrapperRef}>
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
       <Input
-        placeholder={placeholder}
+        placeholder={narrow && compactPlaceholder ? compactPlaceholder : placeholder}
+        // The name without the placeholder's trailing ellipsis, which screen readers read out.
+        aria-label={placeholder.replace(/…$/, '')}
         value={internal}
         onChange={(e) => {
           setInternal(e.target.value);
@@ -110,7 +119,8 @@ export function SearchBar({ value, onChange, placeholder = 'Search...', historyK
         aria-controls={showHistory ? listbox.listboxId : undefined}
         aria-autocomplete="list"
         aria-activedescendant={listbox.activeDescendantId}
-        className="pl-9 pr-9"
+        // Room on the right only while the spinner or the clear button shows.
+        className={cn('pl-9 @max-[7rem]:placeholder:text-transparent', internal || debouncing ? 'pr-9' : 'pr-3')}
       />
       {debouncing ? (
         <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />

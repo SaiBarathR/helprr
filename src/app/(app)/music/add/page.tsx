@@ -262,7 +262,7 @@ function AddArtistPageContent() {
       <div className="space-y-4 mt-1 pb-8">
         <form onSubmit={handleSearch} className="flex gap-2">
           <SearchInput
-            placeholder="Search for an artist..."
+            placeholder="Search for an artist…"
             value={term}
             onChange={setTerm}
             historyKey="music-add"

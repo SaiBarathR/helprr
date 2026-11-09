@@ -51,18 +51,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
   ResponsiveMenu,
   ResponsiveMenuCheckboxItem,
   ResponsiveMenuLabel,
   ResponsiveMenuSeparator,
   ResponsiveMenuActionItem,
+  ResponsiveMenuSortDirection,
 } from '@/components/ui/responsive-menu';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useCan } from '@/components/permission-provider';
@@ -803,6 +797,10 @@ export default function WatchlistPage() {
               </button>
             )}
           >
+            <ResponsiveMenuSortDirection
+              value={view.sortDir}
+              onChange={(sortDir) => setView((prev) => ({ ...prev, sortDir }))}
+            />
             {SORT_OPTIONS.map((opt) => (
               <ResponsiveMenuCheckboxItem
                 key={opt.value}
@@ -812,19 +810,6 @@ export default function WatchlistPage() {
                 {opt.label}
               </ResponsiveMenuCheckboxItem>
             ))}
-            <ResponsiveMenuSeparator />
-            <ResponsiveMenuCheckboxItem
-              checked={view.sortDir === 'asc'}
-              onCheckedChange={() => setView((prev) => ({ ...prev, sortDir: 'asc' }))}
-            >
-              Ascending
-            </ResponsiveMenuCheckboxItem>
-            <ResponsiveMenuCheckboxItem
-              checked={view.sortDir === 'desc'}
-              onCheckedChange={() => setView((prev) => ({ ...prev, sortDir: 'desc' }))}
-            >
-              Descending
-            </ResponsiveMenuCheckboxItem>
           </ResponsiveMenu>
 
           {visibleTags.length > 0 && (
@@ -905,8 +890,12 @@ export default function WatchlistPage() {
           )}
 
           {canEdit && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <ResponsiveMenu
+              title="Watchlist actions"
+              actions
+              align="end"
+              contentClassName="w-48"
+              trigger={(
                 <button
                   type="button"
                   className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-primary hover:bg-accent active:bg-accent/80 transition-colors"
@@ -914,23 +903,18 @@ export default function WatchlistPage() {
                 >
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => setManageOpen(true)}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Manage tags
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onClick={() => setClearAllOpen(true)}
-                  disabled={totalCount === 0}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Clear watchlist
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
+            >
+              <ResponsiveMenuActionItem onSelect={() => setManageOpen(true)}>
+                <Settings className="h-4 w-4" />
+                Manage tags
+              </ResponsiveMenuActionItem>
+              <ResponsiveMenuSeparator />
+              <ResponsiveMenuActionItem destructive onSelect={() => setClearAllOpen(true)} disabled={totalCount === 0}>
+                <Trash2 className="h-4 w-4" />
+                Clear watchlist
+              </ResponsiveMenuActionItem>
+            </ResponsiveMenu>
           )}
         </div>
 
@@ -1330,31 +1314,34 @@ function WatchlistCard({
     <div className="absolute top-1.5 left-1.5 z-10">
       {/* Mobile: one compact menu so the small poster isn't crowded with icons. */}
       <div className="md:hidden">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        {/* The shared action sheet on phones, like the page's ⋯ menu. */}
+        <ResponsiveMenu
+          title={item.title}
+          actions
+          contentClassName="w-44"
+          trigger={(
             <button
               type="button"
               aria-label="Item actions"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/55 backdrop-blur-sm hover:bg-black/70 text-white"
+              className="relative touch-target inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/55 backdrop-blur-sm hover:bg-black/70 text-white"
             >
               <MoreVertical className="h-4 w-4" />
             </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-44">
-            {canSchedule && (
-              <DropdownMenuItem onClick={() => setScheduleOpen(true)}>
-                <Bell className="mr-2 h-4 w-4" />
-                Schedule alert
-              </DropdownMenuItem>
-            )}
-            {canEdit && (
-              <DropdownMenuItem variant="destructive" onClick={() => onRemove()}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                Remove
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          )}
+        >
+          {canSchedule && (
+            <ResponsiveMenuActionItem onSelect={() => setScheduleOpen(true)}>
+              <Bell className="h-4 w-4" />
+              Schedule alert
+            </ResponsiveMenuActionItem>
+          )}
+          {canEdit && (
+            <ResponsiveMenuActionItem destructive onSelect={() => onRemove()}>
+              <Trash2 className="h-4 w-4" />
+              Remove
+            </ResponsiveMenuActionItem>
+          )}
+        </ResponsiveMenu>
       </div>
       {/* Desktop: individual icons on the poster, as before. */}
       <div className="hidden md:flex items-center gap-1.5">

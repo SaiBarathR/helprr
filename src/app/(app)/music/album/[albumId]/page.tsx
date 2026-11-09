@@ -14,11 +14,10 @@ import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { PageHeader } from '@/components/layout/page-header';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuActionItem,
+  ResponsiveMenuLinkItem,
+} from '@/components/ui/responsive-menu';
 import {
   Bell,
   Eye,
@@ -365,59 +364,60 @@ export default function AlbumDetailPage() {
                 )}
               </button>
             )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <ResponsiveMenu
+              title="More actions"
+              actions
+              align="end"
+              contentClassName="w-52"
+              trigger={(
                 <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                {canManageActivity && (
-                  <DropdownMenuItem onClick={handleSearch} disabled={!!actionLoading}>
-                    <Search className="h-4 w-4" />
-                    Automatic Search
-                  </DropdownMenuItem>
-                )}
-                {canManageActivity && (
-                  <DropdownMenuItem onClick={() => router.push(searchHref)}>
-                    <Search className="h-4 w-4" />
-                    Interactive Search
-                  </DropdownMenuItem>
-                )}
-                {canScheduleAlert && (
-                  <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
-                    <Bell className="h-4 w-4" />
-                    Schedule alert…
-                  </DropdownMenuItem>
-                )}
-                {lidarrExternalUrl && album.foreignAlbumId && (
-                  <DropdownMenuItem asChild>
-                    <a href={`${lidarrExternalUrl}/album/${album.foreignAlbumId}`} target="_blank" rel="noopener noreferrer">
-                      <Disc3 className="h-4 w-4" />
-                      Open in Lidarr
-                    </a>
-                  </DropdownMenuItem>
-                )}
-                {album.foreignAlbumId && (
-                  <DropdownMenuItem onClick={() => window.open(`https://musicbrainz.org/release-group/${album.foreignAlbumId}`, '_blank')}>
-                    <ExternalLink className="h-4 w-4" />
-                    Open in MusicBrainz
-                  </DropdownMenuItem>
-                )}
-                {canDelete && (
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onClick={() => {
-                      setDeleteAlbumFiles(false);
-                      setDeleteAlbumOpen(true);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete Album
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
+            >
+              {canManageActivity && (
+                <ResponsiveMenuActionItem onSelect={handleSearch} disabled={!!actionLoading}>
+                  <Search className="h-4 w-4" />
+                  Automatic Search
+                </ResponsiveMenuActionItem>
+              )}
+              {canManageActivity && (
+                <ResponsiveMenuActionItem onSelect={() => router.push(searchHref)}>
+                  <Search className="h-4 w-4" />
+                  Interactive Search
+                </ResponsiveMenuActionItem>
+              )}
+              {canScheduleAlert && (
+                <ResponsiveMenuActionItem onSelect={() => setShowScheduleAlert(true)}>
+                  <Bell className="h-4 w-4" />
+                  Schedule alert…
+                </ResponsiveMenuActionItem>
+              )}
+              {lidarrExternalUrl && album.foreignAlbumId && (
+                <ResponsiveMenuLinkItem external href={`${lidarrExternalUrl}/album/${album.foreignAlbumId}`}>
+                  <Disc3 className="h-4 w-4" />
+                  Open in Lidarr
+                </ResponsiveMenuLinkItem>
+              )}
+              {album.foreignAlbumId && (
+                <ResponsiveMenuActionItem onSelect={() => window.open(`https://musicbrainz.org/release-group/${album.foreignAlbumId}`, '_blank')}>
+                  <ExternalLink className="h-4 w-4" />
+                  Open in MusicBrainz
+                </ResponsiveMenuActionItem>
+              )}
+              {canDelete && (
+                <ResponsiveMenuActionItem
+                  destructive
+                  onSelect={() => {
+                    setDeleteAlbumFiles(false);
+                    setDeleteAlbumOpen(true);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete Album
+                </ResponsiveMenuActionItem>
+              )}
+            </ResponsiveMenu>
           </>
         }
       />

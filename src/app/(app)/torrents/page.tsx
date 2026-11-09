@@ -491,6 +491,7 @@ export default function TorrentsPage() {
         setFilter={setFilter}
         sortKey={sortKey}
         sortDir={sortDir}
+        setSortDir={setSortDir}
         handleHeaderSort={handleHeaderSort}
         refresh={refresh}
         refreshing={refreshing}

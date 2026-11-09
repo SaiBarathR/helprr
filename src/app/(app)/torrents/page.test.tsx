@@ -60,6 +60,12 @@ vi.mock('@/components/ui/responsive-menu', () => ({
   ResponsiveMenuCheckboxItem: ({ children, checked, onCheckedChange }: { children: React.ReactNode; checked: boolean; onCheckedChange: () => void }) => (
     <button type="button" role="menuitemcheckbox" aria-checked={checked} onClick={onCheckedChange}>{children}</button>
   ),
+  ResponsiveMenuSortDirection: ({ value, onChange }: { value: 'asc' | 'desc'; onChange: (dir: 'asc' | 'desc') => void }) => (
+    <div role="group" aria-label="Sort direction">
+      <button type="button" aria-pressed={value === 'asc'} onClick={() => onChange('asc')}>Ascending</button>
+      <button type="button" aria-pressed={value === 'desc'} onClick={() => onChange('desc')}>Descending</button>
+    </div>
+  ),
 }));
 type MockAction = { id: string; label: string; onSelect?: () => void };
 vi.mock('@/components/ui/quick-context-menu', () => ({
@@ -297,20 +303,25 @@ describe('torrents page (characterization)', () => {
     expect(mocks.asked.some((path) => path === '/api/qbittorrent/summary?filter=downloading&view=delta')).toBe(true);
     expect(screen.getByRole('button', { name: /^Filter: Downloading/ })).toBeTruthy();
 
-    await user.type(screen.getByPlaceholderText('Search torrents...'), 'zzz');
+    await user.type(screen.getByPlaceholderText('Search torrents…'), 'zzz');
     expect(await screen.findByText('No torrents match your search and filters.')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Clear search & filters' }));
     await waitFor(() => expect(names()).toHaveLength(3));
     expect(useUIStore.getState().torrentsFilter).toEqual([]);
   });
 
-  it('sorts from the menu: a new key takes its natural direction, the active key flips', async () => {
+  it('sorts from the menu: a new key takes its natural direction, and the direction control reverses it', async () => {
     const { user } = renderPage();
     await waitFor(() => expect(names()).toHaveLength(3));
     await user.click(screen.getByRole('menuitemcheckbox', { name: 'Size' }));
     await waitFor(() => expect(names()).toEqual(['Bravo.Show', 'Alpha.Movie', 'Charlie']));
     expect(useUIStore.getState()).toEqual(expect.objectContaining({ torrentsSortKey: 'size', torrentsSortDir: 'desc' }));
+    // Picking the active key again keeps its direction.
     await user.click(screen.getByRole('menuitemcheckbox', { name: /^Size/ }));
+    expect(useUIStore.getState().torrentsSortDir).toBe('desc');
+    const direction = screen.getByRole('group', { name: 'Sort direction' });
+    expect(within(direction).getByRole('button', { name: 'Descending' }).getAttribute('aria-pressed')).toBe('true');
+    await user.click(within(direction).getByRole('button', { name: 'Ascending' }));
     await waitFor(() => expect(names()).toEqual(['Charlie', 'Alpha.Movie', 'Bravo.Show']));
   });
 

@@ -47,7 +47,7 @@ export function FieldToggles({
       contentClassName="w-48"
       trigger={(
         <button
-          className="p-1.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+          className="relative touch-target p-1.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
           aria-label="Toggle fields"
         >
           <Settings2 className="h-4 w-4" />

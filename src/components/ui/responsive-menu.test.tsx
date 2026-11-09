@@ -6,8 +6,10 @@ import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ResponsiveMenu,
+  ResponsiveMenuActionItem,
   ResponsiveMenuCheckboxItem,
   ResponsiveMenuLabel,
+  ResponsiveMenuSortDirection,
 } from './responsive-menu';
 
 // One query object per width is cached by useIsMobile, so read the width live.
@@ -71,5 +73,60 @@ describe('ResponsiveMenu', () => {
 
     await userEvent.click(within(menu).getByRole('menuitemcheckbox', { name: 'year' }));
     expect(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: 'year' }).getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('as an action sheet, runs a row and closes, and ends with Cancel instead of Done', async () => {
+    viewport.phone = true;
+    const onSelect = vi.fn();
+    render(
+      <ResponsiveMenu title="More actions" actions trigger={<button type="button">More</button>}>
+        <ResponsiveMenuActionItem onSelect={onSelect}>Refresh</ResponsiveMenuActionItem>
+        <ResponsiveMenuActionItem destructive disabled onSelect={onSelect}>Delete</ResponsiveMenuActionItem>
+      </ResponsiveMenu>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'More' }));
+    const sheet = await screen.findByRole('dialog', { name: 'More actions' });
+    expect(within(sheet).getByRole('button', { name: 'Cancel' })).toBeTruthy();
+    expect(within(sheet).queryByRole('button', { name: 'Done' })).toBeNull();
+    const del = within(sheet).getByRole('button', { name: 'Delete' }) as HTMLButtonElement;
+    expect(del.disabled).toBe(true);
+    expect(del.className).toContain('text-destructive');
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Refresh' }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog', { name: 'More actions' })).toBeNull();
+  });
+
+  function DirectionMenu({ closeOnPick }: { closeOnPick?: boolean }) {
+    const [dir, setDir] = useState<'asc' | 'desc'>('asc');
+    return (
+      <ResponsiveMenu title="Sort by" titleInDropdown closeOnPick={closeOnPick} trigger={<button type="button">Sort {dir}</button>}>
+        <ResponsiveMenuSortDirection value={dir} onChange={setDir} />
+        <ResponsiveMenuCheckboxItem checked onCheckedChange={() => {}}>Title</ResponsiveMenuCheckboxItem>
+      </ResponsiveMenu>
+    );
+  }
+
+  it('puts the direction first in a sort sheet; a pick applies and closes a one-choice menu', async () => {
+    viewport.phone = true;
+    render(<DirectionMenu closeOnPick />);
+    await userEvent.click(screen.getByRole('button', { name: 'Sort asc' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Sort by' });
+    const group = within(sheet).getByRole('group', { name: 'Sort direction' });
+    // The control comes before the options.
+    expect(group.compareDocumentPosition(within(sheet).getByRole('button', { name: 'Title' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(group).getByRole('button', { name: 'Ascending' }).getAttribute('aria-pressed')).toBe('true');
+    await userEvent.click(within(group).getByRole('button', { name: 'Descending' }));
+    expect(screen.getByRole('button', { name: 'Sort desc' })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Sort by' })).toBeNull();
+  });
+
+  it('keeps a multi-section dropdown open on a direction pick', async () => {
+    viewport.phone = false;
+    render(<DirectionMenu />);
+    await userEvent.click(screen.getByRole('button', { name: 'Sort asc' }));
+    const menu = await screen.findByRole('menu');
+    await userEvent.click(within(menu).getByRole('menuitemradio', { name: 'Descending' }));
+    expect(screen.getByRole('menu')).toBeTruthy();
+    expect(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: 'Descending' }).getAttribute('aria-checked')).toBe('true');
   });
 });

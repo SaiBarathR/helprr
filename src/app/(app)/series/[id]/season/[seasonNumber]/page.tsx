@@ -10,8 +10,10 @@ import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerClose,
 } from '@/components/ui/drawer';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuActionItem,
+  ResponsiveMenuSeparator,
+} from '@/components/ui/responsive-menu';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -359,41 +361,43 @@ export default function SeasonDetailPage() {
             )}
 
             {/* 3-dot menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <ResponsiveMenu
+              title="More actions"
+              actions
+              align="end"
+              trigger={(
                 <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleRefresh} disabled={!!actionLoading}>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Refresh
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleAutomaticSearch} disabled={!!actionLoading}>
-                  <Search className="mr-2 h-4 w-4" />
-                  Automatic Search
-                </DropdownMenuItem>
-                {canScheduleAlert && (
-                  <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
-                    <Bell className="mr-2 h-4 w-4" />
-                    Schedule alert…
-                  </DropdownMenuItem>
-                )}
-                {canDeleteSeries && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => setShowDeleteDrawer(true)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Unmonitor Season
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
+            >
+              <ResponsiveMenuActionItem onSelect={handleRefresh} disabled={!!actionLoading}>
+                <RefreshCw className="h-4 w-4" />
+                Refresh
+              </ResponsiveMenuActionItem>
+              <ResponsiveMenuActionItem onSelect={handleAutomaticSearch} disabled={!!actionLoading}>
+                <Search className="h-4 w-4" />
+                Automatic Search
+              </ResponsiveMenuActionItem>
+              {canScheduleAlert && (
+                <ResponsiveMenuActionItem onSelect={() => setShowScheduleAlert(true)}>
+                  <Bell className="h-4 w-4" />
+                  Schedule alert…
+                </ResponsiveMenuActionItem>
+              )}
+              {canDeleteSeries && (
+                <>
+                  <ResponsiveMenuSeparator />
+                  <ResponsiveMenuActionItem
+                    onSelect={() => setShowDeleteDrawer(true)}
+                    destructive
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Unmonitor Season
+                  </ResponsiveMenuActionItem>
+                </>
+              )}
+            </ResponsiveMenu>
           </div>
         }
       />

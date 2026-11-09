@@ -10,6 +10,7 @@ import {
   ResponsiveMenuCheckboxItem,
   ResponsiveMenuLabel,
   ResponsiveMenuSeparator,
+  ResponsiveMenuSortDirection,
 } from '@/components/ui/responsive-menu';
 import { MediaCard } from '@/components/media/media-card';
 import { MediaOverviewItem } from '@/components/media/media-overview';
@@ -752,7 +753,10 @@ export default function MoviesPage() {
       <PullToRefresh onRefresh={() => refetchMovies()} disabled={selectionMode} />
       <PageTitle>Movies</PageTitle>
       <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
-        <div className="flex items-center md:gap-2 w-full overflow-x-auto scrollbar-hide">
+        {/* Phones: 4px wider, with the 4px as padding, so the last button's
+            44px tap area isn't clipped by the scrolling row and the button
+            still lines up with the search field below. */}
+        <div className="flex items-center md:gap-2 w-full max-md:w-[calc(100%+0.25rem)] max-md:pr-1 overflow-x-auto scrollbar-hide">
           <ResponsiveMenu
             title="Filter"
             titleInDropdown
@@ -850,6 +854,7 @@ export default function MoviesPage() {
               </button>
             )}
           >
+            <ResponsiveMenuSortDirection value={sortDir} onChange={setSortDir} />
             {sortOptions.map((opt) => (
               <ResponsiveMenuCheckboxItem
                 key={opt.value}
@@ -859,19 +864,6 @@ export default function MoviesPage() {
                 {opt.label}
               </ResponsiveMenuCheckboxItem>
             ))}
-            <ResponsiveMenuSeparator />
-            <ResponsiveMenuCheckboxItem
-              checked={sortDir === 'asc'}
-              onCheckedChange={() => setSortDir('asc')}
-            >
-              Ascending
-            </ResponsiveMenuCheckboxItem>
-            <ResponsiveMenuCheckboxItem
-              checked={sortDir === 'desc'}
-              onCheckedChange={() => setSortDir('desc')}
-            >
-              Descending
-            </ResponsiveMenuCheckboxItem>
           </ResponsiveMenu>
 
           <ViewSelector value={viewMode} onChange={setViewMode} />
@@ -922,7 +914,7 @@ export default function MoviesPage() {
               <TooltipTrigger asChild>
                 <Link
                   href="/movies/add"
-                  className="md:p-2 md:min-h-[44px] md:min-w-[44px] p-1 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                  className="relative touch-target touch-target-center ml-1 md:ml-0 md:p-2 md:min-h-[44px] md:min-w-[44px] p-1 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
                   aria-label="Add Movie"
                 >
                   <Plus className="md:h-5 md:w-5 h-6 w-6" />
@@ -936,7 +928,7 @@ export default function MoviesPage() {
         <div className="flex items-center gap-2">
           <MoviesSubNav active="library" />
           <div className="flex-1 min-w-0">
-            <SearchBar value={search} onChange={handleSearch} placeholder="Search movies..." historyKey="movies" debounceMs={250} />
+            <SearchBar value={search} onChange={handleSearch} placeholder="Search movies…" historyKey="movies" debounceMs={250} />
           </div>
         </div>
       </div>

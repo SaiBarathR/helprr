@@ -124,3 +124,38 @@ describe('SearchBar', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe('placeholder fit', () => {
+  // useIsMobile caches one query per width, so it reads the width live.
+  const width = { phone: false };
+  const stubWidth = (phone: boolean) => {
+    width.phone = phone;
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      get matches() { return query === '(max-width: 639px)' && width.phone; },
+      addEventListener() {},
+      removeEventListener() {},
+    }));
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('says what it searches from sm up and shortens below sm, keeping the full name', async () => {
+    for (const phone of [false, true]) {
+      stubWidth(phone);
+      root = createRoot(container);
+      await act(async () => root!.render(<SearchBar value="" onChange={() => {}} placeholder="Search videos…" compactPlaceholder="Search…" />));
+      expect(box().placeholder).toBe(phone ? 'Search…' : 'Search videos…');
+      expect(box().getAttribute('aria-label')).toBe('Search videos');
+      await act(async () => root!.unmount());
+      root = undefined;
+    }
+  });
+
+  it('keeps right padding for the clear button only while there is text', async () => {
+    stubWidth(true);
+    root = createRoot(container);
+    await act(async () => root!.render(<SearchBar value="" onChange={() => {}} debounceMs={0} />));
+    expect(box().className).toContain('pr-3');
+    await type('dune');
+    expect(box().className).toContain('pr-9');
+  });
+});

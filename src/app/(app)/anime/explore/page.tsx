@@ -363,7 +363,7 @@ export default function AnimePage() {
             setSearchQuery(value);
             if (!value.trim()) setViewMode('browse');
           }}
-          placeholder="Search anime..."
+          placeholder="Search anime…"
           historyKey="anime-explore"
         />
 

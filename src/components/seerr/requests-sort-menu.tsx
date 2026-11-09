@@ -1,14 +1,13 @@
 'use client';
 
 import { useMemo } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   ResponsiveMenu,
   ResponsiveMenuCheckboxItem,
-  ResponsiveMenuSeparator,
+  ResponsiveMenuSortDirection,
 } from '@/components/ui/responsive-menu';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   type RequestsSortDirectionPreference,
   type RequestsSortPreference,
@@ -37,70 +36,34 @@ export function RequestsSortMenu({
     [sort],
   );
 
-  const toggleDirection = () => {
-    onSortDirectionChange(sortDirection === 'asc' ? 'desc' : 'asc');
-  };
-
-  const DirectionIcon = sortDirection === 'asc' ? ArrowUp : ArrowDown;
-
   return (
-    <div className="flex items-center">
-      <ResponsiveMenu
-        title="Sort by"
-        titleInDropdown
-        closeOnPick
-        contentClassName="w-48"
-        trigger={(
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            aria-label={`Sort: ${activeSortLabel} ${sortDirection === 'asc' ? 'Ascending' : 'Descending'}`}
-          >
-            <ArrowUpDown className="h-4 w-4" />
-          </Button>
-        )}
-      >
-        {SORT_OPTIONS.map((opt) => (
-          <ResponsiveMenuCheckboxItem
-            key={opt.value}
-            checked={sort === opt.value}
-            onCheckedChange={() => onSortChange(opt.value)}
-          >
-            {opt.label}
-          </ResponsiveMenuCheckboxItem>
-        ))}
-        <ResponsiveMenuSeparator />
-        <ResponsiveMenuCheckboxItem
-          checked={sortDirection === 'asc'}
-          onCheckedChange={() => onSortDirectionChange('asc')}
+    <ResponsiveMenu
+      title="Sort by"
+      titleInDropdown
+      closeOnPick
+      contentClassName="w-48"
+      trigger={(
+        <Button
+          variant="ghost"
+          size="icon"
+          // Right after the filter button: keep its tap area centred (globals.css).
+          className="touch-target-center h-8 w-8"
+          aria-label={`Sort: ${activeSortLabel} ${sortDirection === 'asc' ? 'Ascending' : 'Descending'}`}
         >
-          Ascending
-        </ResponsiveMenuCheckboxItem>
+          <ArrowUpDown className="h-4 w-4" />
+        </Button>
+      )}
+    >
+      <ResponsiveMenuSortDirection value={sortDirection} onChange={onSortDirectionChange} />
+      {SORT_OPTIONS.map((opt) => (
         <ResponsiveMenuCheckboxItem
-          checked={sortDirection === 'desc'}
-          onCheckedChange={() => onSortDirectionChange('desc')}
+          key={opt.value}
+          checked={sort === opt.value}
+          onCheckedChange={() => onSortChange(opt.value)}
         >
-          Descending
+          {opt.label}
         </ResponsiveMenuCheckboxItem>
-      </ResponsiveMenu>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={toggleDirection}
-            aria-label={`Sort direction: ${sortDirection === 'asc' ? 'Ascending' : 'Descending'}`}
-          >
-            <DirectionIcon className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {sortDirection === 'asc' ? 'Ascending' : 'Descending'}
-        </TooltipContent>
-      </Tooltip>
-    </div>
+      ))}
+    </ResponsiveMenu>
   );
 }

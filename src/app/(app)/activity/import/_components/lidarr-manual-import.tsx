@@ -283,10 +283,10 @@ export function LidarrManualImport() {
 
   if (view !== 'files') {
     const picker = view === 'artists'
-      ? { title: 'Select Artist', subtitle: itemTitle, placeholder: 'Search artists...' }
+      ? { title: 'Select Artist', subtitle: itemTitle, placeholder: 'Search artists…' }
       : view === 'albums'
-        ? { title: 'Select Album', subtitle: chosenArtist?.artistName, placeholder: 'Search albums...' }
-        : { title: 'Select Track', subtitle: pickerFile?.name || pickerFile?.relativePath, placeholder: 'Search tracks...' };
+        ? { title: 'Select Album', subtitle: chosenArtist?.artistName, placeholder: 'Search albums…' }
+        : { title: 'Select Track', subtitle: pickerFile?.name || pickerFile?.relativePath, placeholder: 'Search tracks…' };
     const loadingList = view === 'artists' ? artistsLoading : view === 'albums' ? albumsLoading : tracksLoading;
     const listError = view === 'artists' ? artistsError : view === 'albums' ? albumsError : tracksError;
     const noun = view === 'artists' ? 'artist' : view === 'albums' ? 'album' : 'track';

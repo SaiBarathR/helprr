@@ -30,7 +30,9 @@ export function ViewSelector<T extends ViewMode>({
           key={v}
           onClick={() => onChange(v as T)}
           className={cn(
-            'p-1.5 min-h-[40px] min-w-[40px] items-center justify-center rounded-md transition-colors',
+            // 44px wide, and 44px tall through touch-target-y: the pill stays
+            // 44px, so the toolbar row keeps its height.
+            'relative touch-target-y p-1.5 min-h-[40px] min-w-11 items-center justify-center rounded-md transition-colors',
             value === v
               ? 'bg-background text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground',

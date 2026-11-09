@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const virtual = vi.hoisted(() => ({ useWindowVirtualizer: vi.fn(), measure: vi.fn(), scrollToIndex: vi.fn() }));
 vi.mock('@tanstack/react-virtual', () => ({ useWindowVirtualizer: virtual.useWindowVirtualizer }));
+vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: undefined }) }));
 vi.mock('next/navigation', () => ({
   usePathname: () => '/calendar',
   useSearchParams: () => new URLSearchParams(),

@@ -7,7 +7,8 @@ import { useSyncExternalStore } from 'react';
 const mqCache = new Map<number, MediaQueryList>();
 
 function getMediaQuery(maxWidth: number): MediaQueryList | null {
-  if (typeof window === 'undefined') return null;
+  // No window on the server, and no matchMedia in some test DOMs.
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return null;
   let mq = mqCache.get(maxWidth);
   if (!mq) {
     mq = window.matchMedia(`(max-width: ${maxWidth}px)`);

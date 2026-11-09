@@ -207,7 +207,7 @@ export function CreatorsPage() {
           </>
         )}
       >
-        <SearchBar value={search} onChange={setSearch} placeholder="Search..." debounceMs={150} />
+        <SearchBar value={search} onChange={setSearch} placeholder={`Search ${platform.creatorsLabel.toLowerCase()}…`} compactPlaceholder="Search…" debounceMs={150} />
       </CreatorToolbar>
 
       {list.isLoading ? (
