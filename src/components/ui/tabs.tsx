@@ -33,7 +33,8 @@ const tabsListVariants = cva(
         default: "bg-muted",
         line: "gap-1 bg-transparent",
         // A page's section switch: full width on phones, its own width from sm up.
-        segmented: "flex w-full gap-0.5 bg-muted/50 p-0.5 sm:w-fit",
+        // Starts at the left, so a strip that scrolls sideways can reach its first tab.
+        segmented: "flex w-full justify-start gap-0.5 bg-muted/50 p-0.5 sm:w-fit",
       },
     },
     defaultVariants: {

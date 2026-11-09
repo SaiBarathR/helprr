@@ -32,8 +32,11 @@ const DATE_OPTIONS = [
   { value: 'iso', label: '2026-11-07' },
 ];
 
-// An evening time so the 12/24-hour difference shows.
-const SAMPLE = new Date(2026, 10, 7, 20, 26);
+// Today at an evening time, so the 12/24-hour difference shows.
+function sampleDate(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 20, 26);
+}
 
 const noopSubscribe = () => () => {};
 
@@ -107,7 +110,7 @@ export function DateTimeFormatSection({ children }: { children?: ReactNode }) {
       <div className="grouped-row">
         <span className="text-sm">Preview</span>
         <span className="text-sm text-muted-foreground tabular-nums" data-testid="date-time-preview">
-          {mounted ? formatDateTime(SAMPLE, undefined, prefs) : ''}
+          {mounted ? formatDateTime(sampleDate(), undefined, prefs) : ''}
         </span>
       </div>
     </GroupedSection>

@@ -170,7 +170,7 @@ export function SeriesSeasons({
                     aria-pressed={isMonitored}
                   >
                     {isMonitored ? (
-                      <Eye className="h-5 w-5 text-foreground" />
+                      <Eye className="h-5 w-5 text-primary" />
                     ) : (
                       <EyeOff className="h-5 w-5 text-muted-foreground" />
                     )}

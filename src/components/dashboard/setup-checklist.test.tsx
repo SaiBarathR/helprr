@@ -74,9 +74,9 @@ describe('SetupChecklist', () => {
   it('counts the required steps and the optional one apart, from the ticks it shows', () => {
     const states: Array<[SetupChecklistState['done'], RegExp, number]> = [
       [{ service: false, people: false, push: false, install: false, backup: false }, /^Getting started · 0 of 4 done$/, 0],
-      [{ service: true, people: true, push: false, install: false, backup: false }, /^Getting started · 1 of 4 done · \+1 optional$/, 2],
+      [{ service: true, people: true, push: false, install: false, backup: false }, /^Getting started · 1 of 4 done, \+1 optional$/, 2],
       [{ service: true, people: false, push: true, install: true, backup: false }, /^Getting started · 3 of 4 done$/, 3],
-      [{ service: false, people: true, push: false, install: false, backup: false }, /^Getting started · 0 of 4 done · \+1 optional$/, 1],
+      [{ service: false, people: true, push: false, install: false, backup: false }, /^Getting started · 0 of 4 done, \+1 optional$/, 1],
     ];
     for (const [done, count, ticks] of states) {
       const { unmount } = render(<SetupChecklist initial={{ hidden: false, done }} mobile />);

@@ -279,7 +279,7 @@ export function CreatorFeedPage() {
           </>
         )}
       >
-        <SearchBar value={search} onChange={setSearch} placeholder="Search videos..." historyKey={`${platform.id}-feed`} debounceMs={250} />
+        <SearchBar value={search} onChange={setSearch} placeholder="Search..." historyKey={`${platform.id}-feed`} debounceMs={250} />
       </CreatorToolbar>
       <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
 

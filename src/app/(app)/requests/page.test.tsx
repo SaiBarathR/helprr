@@ -72,7 +72,9 @@ describe('RequestsPage', () => {
     mocks.tab = 'users';
     render();
     await flush();
-    expect(tabs()).toEqual(['Requests']);
+    // A one-option switch is not shown.
+    expect(tabs()).toEqual([]);
+    expect(document.querySelector('[role="tablist"]')).toBeNull();
     expect(document.body.textContent).toContain('requests list');
     expect(document.body.textContent).not.toContain('users list');
     expect(fetchMock).not.toHaveBeenCalled();
@@ -86,7 +88,8 @@ describe('RequestsPage', () => {
     mocks.canApprove = false;
     act(() => root.render(<QueryClientProvider client={client}><TooltipProvider><RequestsPage /></TooltipProvider></QueryClientProvider>));
     await flush();
-    expect(tabs()).toEqual(['Requests']);
+    expect(tabs()).toEqual([]);
+    expect(document.body.textContent).not.toContain('Requests7');
   });
 
   it('gives an approver both tabs and the pending count', async () => {

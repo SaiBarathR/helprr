@@ -162,17 +162,12 @@ function SessionGroupSection({ group, loadedAt, busy, onRename, onRevoke }: Sess
                 {displayName(s)}
                 {s.isCurrent && <span className="text-primary font-normal"> · This device</span>}
               </div>
-              <div
-                className="text-xs text-muted-foreground mt-0.5 truncate"
-                title={`Signed in ${formatDateTime(s.createdAt)}`}
-              >
-                {[
-                  `Seen ${relativeTime(s.lastSeenAt)}`,
-                  s.ip,
-                  `Signed in ${formatDate(s.createdAt)}`,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
+              {/* Two lines, so a phone shows the sign-in date instead of cutting it off. */}
+              <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                {[`Seen ${relativeTime(s.lastSeenAt)}`, s.ip].filter(Boolean).join(' · ')}
+              </div>
+              <div className="text-xs text-muted-foreground truncate" title={formatDateTime(s.createdAt)}>
+                Signed in {formatDate(s.createdAt)}
               </div>
             </div>
             <Button
@@ -201,7 +196,7 @@ function SessionGroupSection({ group, loadedAt, busy, onRename, onRevoke }: Sess
       {query.hasNextPage && (
         <button
           type="button"
-          className="grouped-row w-full justify-center gap-2 text-sm text-primary disabled:opacity-60"
+          className="grouped-row w-full justify-center! gap-2 text-sm text-primary disabled:opacity-60"
           onClick={() => void query.fetchNextPage()}
           disabled={query.isFetchingNextPage}
         >
@@ -364,6 +359,9 @@ export default function SessionsPage() {
         </GroupedSection>
       )}
 
+      {/* Tokens first: a long session list would otherwise bury them. */}
+      <ApiTokensSection />
+
       {groups === null && !error ? (
         <GroupedSection>
           <div className="px-4 py-6 text-center text-sm text-muted-foreground">
@@ -399,8 +397,6 @@ export default function SessionsPage() {
           </div>
         </GroupedSection>
       )}
-
-      <ApiTokensSection />
 
       <ConfirmDialog
         open={confirmTarget !== null}

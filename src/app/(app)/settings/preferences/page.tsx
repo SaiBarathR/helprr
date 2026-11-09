@@ -96,7 +96,7 @@ export default function PreferencesPage() {
     void update(
       { timeZone: value },
       {
-        successMessage: (state) => `Timezone set to ${state.timeZone}`,
+        successMessage: (state) => `Server time zone set to ${state.timeZone}`,
       },
     ).then(() => setDraft(null));
   }, 600);
@@ -126,20 +126,24 @@ export default function PreferencesPage() {
       </div>
 
       <GroupedSection title="General" footer="Synced across devices">
-        <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Timezone</Label>
-          <Input
-            placeholder={settings?.envTimeZone ?? 'UTC'}
-            value={displayedTz}
-            onChange={(event) => onTimeZoneChange(event.target.value)}
-            onBlur={() => tzCommit.flush()}
-            disabled={loading}
-            className="h-10"
-          />
-          <div className="text-xs text-muted-foreground">
-            Env default: {settings?.envTimeZone ?? 'UTC'}
+        {/* The server's zone is global (admins only); "Your time zone" under Date & Time is personal. */}
+        {me?.role === 'admin' && (
+          <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
+            <Label htmlFor="server-time-zone" className="text-xs text-muted-foreground">Server time zone</Label>
+            <Input
+              id="server-time-zone"
+              placeholder={settings?.envTimeZone ?? 'UTC'}
+              value={displayedTz}
+              onChange={(event) => onTimeZoneChange(event.target.value)}
+              onBlur={() => tzCommit.flush()}
+              disabled={loading}
+              className="h-10"
+            />
+            <div className="text-xs text-muted-foreground">
+              Env default: {settings?.envTimeZone ?? 'UTC'}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="grouped-row">
           <span className="text-sm">Polling</span>

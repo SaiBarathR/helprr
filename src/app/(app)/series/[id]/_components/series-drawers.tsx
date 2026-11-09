@@ -81,7 +81,7 @@ export function SeriesDeleteDrawer({
         onOpenChange(next);
       }}
     >
-      <DrawerContent>
+      <DrawerContent size="content">
         <DrawerHeader className="text-center">
           <DrawerTitle>Delete {title}?</DrawerTitle>
           <DrawerDescription>

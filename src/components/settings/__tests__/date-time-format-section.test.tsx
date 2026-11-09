@@ -37,11 +37,15 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe('DateTimeFormatSection', () => {
   it('saves a choice and updates the preview at once', async () => {
+    // The preview shows today, not a fixed date.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2027, 2, 4, 9, 15));
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ timeFormat: '24h', dateFormat: 'iso' }), { status: 200 }));
     renderSection();
     const [timeSelect, dateSelect] = screen.getAllByRole('combobox');
@@ -49,7 +53,7 @@ describe('DateTimeFormatSection', () => {
     await userEvent.selectOptions(timeSelect, '24h');
     await userEvent.selectOptions(dateSelect, 'iso');
 
-    expect(screen.getByTestId('date-time-preview').textContent).toBe('2026-11-07 20:26');
+    expect(screen.getByTestId('date-time-preview').textContent).toBe('2027-03-04 20:26');
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body))).toEqual([
       { timeFormat: '24h' },

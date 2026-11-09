@@ -569,10 +569,10 @@ html[data-scheme='light'] :is([class*='bg-pink-400/'], [class*='bg-pink-500/']) 
    and its poster and title open the left column, so the right column starts
    beside the poster rather than under an empty band. A section spanning rows
    sizes only the rows nothing else fills, and an empty row takes a share, so:
-   on series the tall overview/Play block spans the hero, download and first
-   facts rows (its progress wrapper always renders); on movies the hero spans
-   the short overview's row and the first row of the actions, which take the
-   overview's place when there is none. */
+   on series the tall overview block spans the hero, download and first
+   facts rows (its progress wrapper always renders) with Play under it; on
+   movies the hero spans the short overview's row and the first row of the
+   actions, which take the overview's place when there is none. */
 @container (min-width: 56rem) {
   .detail-grid {
     display: grid;
@@ -598,11 +598,12 @@ html[data-scheme='light'] :is([class*='bg-pink-400/'], [class*='bg-pink-500/']) 
   }
 
   .detail-grid-series {
-    grid-template-rows: auto auto auto 1fr;
+    grid-template-rows: auto auto auto auto 1fr;
     grid-template-areas:
       'banner banner'
       'progress progress'
       'facts main'
+      'facts actions'
       'facts anilist'
       'seasons seasons'
       'info info'
@@ -644,12 +645,13 @@ html[data-scheme='light'] :is([class*='bg-pink-400/'], [class*='bg-pink-500/']) 
   }
 
   .detail-grid-series:has(> .detail-hero-split) {
-    grid-template-rows: auto auto auto auto 1fr;
+    grid-template-rows: auto auto auto auto auto 1fr;
     grid-template-areas:
       'banner banner'
       'hero main'
       'progress main'
       'facts main'
+      'facts actions'
       'facts anilist'
       'seasons seasons'
       'info info'

@@ -85,7 +85,7 @@ export function ChangePasswordDrawer({
         onOpenChange(o);
       }}
     >
-      <DrawerContent>
+      <DrawerContent size="content">
         <DrawerHeader className="text-center">
           <DrawerTitle>Change password</DrawerTitle>
           <DrawerDescription>Your other devices will be signed out. This one stays signed in.</DrawerDescription>

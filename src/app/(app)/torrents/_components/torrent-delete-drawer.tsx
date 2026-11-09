@@ -26,7 +26,7 @@ export function TorrentDeleteDrawer({
 }) {
   return (
     <Drawer open={deleteDrawer.open} onOpenChange={(open) => !open && setDeleteDrawer({ ...deleteDrawer, open: false })}>
-      <DrawerContent>
+      <DrawerContent size="content">
         <DrawerHeader>
           <DrawerTitle>Delete Torrent</DrawerTitle>
           <DrawerDescription>

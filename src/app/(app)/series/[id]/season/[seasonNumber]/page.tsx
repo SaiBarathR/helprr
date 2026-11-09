@@ -353,7 +353,7 @@ export default function SeasonDetailPage() {
                 ) : isSeasonMonitored ? (
                   <Eye className="h-5 w-5" />
                 ) : (
-                  <EyeOff className="h-5 w-5" />
+                  <EyeOff className="h-5 w-5 text-muted-foreground" />
                 )}
               </button>
             )}
@@ -633,7 +633,7 @@ export default function SeasonDetailPage() {
 
       {/* Delete/Unmonitor Confirmation Drawer */}
       <Drawer open={showDeleteDrawer} onOpenChange={setShowDeleteDrawer}>
-        <DrawerContent>
+        <DrawerContent size="content">
           <DrawerHeader>
             <DrawerTitle>Unmonitor {seasonTitle}?</DrawerTitle>
             <DrawerDescription>

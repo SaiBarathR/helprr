@@ -478,7 +478,7 @@ export default function MovieDetailPage() {
                 ) : movie.monitored ? (
                   <Eye className="h-5 w-5" />
                 ) : (
-                  <EyeOff className="h-5 w-5" />
+                  <EyeOff className="h-5 w-5 text-muted-foreground" />
                 )}
               </button>
             )}
@@ -1045,7 +1045,7 @@ export default function MovieDetailPage() {
           setShowDelete(open);
         }}
       >
-        <DrawerContent>
+        <DrawerContent size="content">
           <DrawerHeader>
             <DrawerTitle>Delete {movie.title}?</DrawerTitle>
             <DrawerDescription>

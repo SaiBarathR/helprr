@@ -196,11 +196,13 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
             Getting started ·{' '}
             <span style={{ whiteSpace: 'nowrap' }}>
               <span style={{ fontFamily: FONT_MONO }}>{progress.done} of {progress.total}</span> done
+              {/* The comma stays with "done", so a phone that wraps here never starts or ends a line on a separator. */}
+              {progress.optionalDone > 0 && ','}
             </span>
             {/* Optional steps are ticked too, so they are counted, apart from the required ones. */}
             {progress.optionalDone > 0 && (
               <>
-                {' · '}
+                {' '}
                 <span style={{ whiteSpace: 'nowrap' }}>
                   <span style={{ fontFamily: FONT_MONO }}>+{progress.optionalDone}</span> optional
                 </span>

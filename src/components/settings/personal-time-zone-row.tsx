@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronsUpDown } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -81,10 +81,10 @@ export function PersonalTimeZoneRow() {
             type="button"
             aria-label="Your time zone"
             disabled={!data}
-            className="flex min-w-0 items-center gap-1 rounded-md px-2 py-1 text-sm text-muted-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="flex min-w-0 items-center gap-1 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors dark:bg-input/30 dark:hover:bg-input/50 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             <span className="truncate">{data ? (current ? zoneLabel(current) : 'Same as the server') : ''}</span>
-            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0" />
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
           </button>
         </PopoverTrigger>
         <PopoverContent className="p-0 w-[280px]" align="end">

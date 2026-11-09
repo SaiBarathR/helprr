@@ -61,9 +61,9 @@ export default function CleanupPage() {
           className="page-toolbar page-toolbar-flush mb-4 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
         >
           <TabsList variant="segmented" data-scroll-restoration-key="cleanup:tabs" className="no-scrollbar overflow-x-auto">
-          <TabsTrigger value="dashboard" className="min-w-0">Dashboard</TabsTrigger>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           {canManage && (
-            <TabsTrigger value="queue" className="min-w-0">
+            <TabsTrigger value="queue">
               Queue
               {dirty.queue && (
                 <span
@@ -74,7 +74,7 @@ export default function CleanupPage() {
             </TabsTrigger>
           )}
           {canManage && (
-            <TabsTrigger value="download" className="min-w-0">
+            <TabsTrigger value="download">
               Download
               {dirty.download && (
                 <span
@@ -85,7 +85,7 @@ export default function CleanupPage() {
             </TabsTrigger>
           )}
           {isAdmin && (
-            <TabsTrigger value="library" className="min-w-0">
+            <TabsTrigger value="library">
               Library
               {dirty.library && (
                 <span
@@ -95,7 +95,7 @@ export default function CleanupPage() {
               )}
             </TabsTrigger>
           )}
-          <TabsTrigger value="history" className="min-w-0">History</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
         </div>
 

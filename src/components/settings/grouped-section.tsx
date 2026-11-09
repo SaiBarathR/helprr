@@ -14,7 +14,7 @@ export function GroupedSection({ title, footer, className, children }: GroupedSe
       {title && <div className="grouped-section-title">{title}</div>}
       <div className="grouped-section-content">{children}</div>
       {footer && (
-        <div className="px-4 pt-2 text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80">
+        <div className="px-4 pt-2 text-xs text-muted-foreground">
           {footer}
         </div>
       )}

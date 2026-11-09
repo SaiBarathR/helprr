@@ -108,6 +108,7 @@ describe('movie detail monitored toggle', () => {
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
     expect(toggle.getAttribute('title')).toBe('Not monitored');
     expect(toggle.querySelector('svg.lucide-eye-off')).toBeTruthy();
+    expect(toggle.querySelector('svg.lucide-eye-off')!.getAttribute('class')).toContain('text-muted-foreground');
 
     const { action } = mocks.toast.success.mock.calls[0][1] as { action: { onClick: () => void } };
     act(() => action.onClick());
