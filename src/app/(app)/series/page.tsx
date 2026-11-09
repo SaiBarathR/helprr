@@ -814,6 +814,7 @@ export default function SeriesPage() {
           <ResponsiveMenu
             title="Sort by"
             titleInDropdown
+            closeOnPick
             contentClassName="w-52"
             trigger={(
               <button

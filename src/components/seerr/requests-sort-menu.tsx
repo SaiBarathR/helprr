@@ -48,6 +48,7 @@ export function RequestsSortMenu({
       <ResponsiveMenu
         title="Sort by"
         titleInDropdown
+        closeOnPick
         contentClassName="w-48"
         trigger={(
           <Button

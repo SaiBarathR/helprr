@@ -154,6 +154,7 @@ export default function HistoryPage() {
             <ResponsiveMenu
               title="Event"
               titleInDropdown
+              closeOnPick
               align="end"
               trigger={(
                 <Button

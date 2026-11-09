@@ -9,6 +9,7 @@ import { RequestsSortMenu } from '@/components/seerr/requests-sort-menu';
 import { ResponsiveMenu, ResponsiveMenuActionItem } from '@/components/ui/responsive-menu';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { DiscoverToolbar } from '@/app/(app)/discover/_components/discover-toolbar';
+import { LogsFilterMenu } from '@/app/(app)/logs/logs-filter-menu';
 
 vi.mock('@/components/media/search-bar', () => ({ SearchBar: () => null }));
 
@@ -33,7 +34,7 @@ const INSTANCES = [{ id: 'a', label: 'Sonarr' }, { id: 'b', label: 'Sonarr 4K' }
 describe('list sort, filter and view menus on a phone', () => {
   beforeEach(() => { viewport.phone = true; });
 
-  it('opens the instance filter as a sheet that stays open while picking', async () => {
+  it('opens the instance filter as a sheet that applies and closes on one pick', async () => {
     const onChange = vi.fn();
     render(<InstanceFilter instances={INSTANCES} value="all" onChange={onChange} />);
     await userEvent.click(screen.getByRole('button', { name: 'Instance: All instances' }));
@@ -41,10 +42,10 @@ describe('list sort, filter and view menus on a phone', () => {
     expect(within(sheet).getByRole('button', { name: 'All instances' }).getAttribute('aria-pressed')).toBe('true');
     await userEvent.click(within(sheet).getByRole('button', { name: 'Sonarr 4K' }));
     expect(onChange).toHaveBeenCalledWith('b');
-    expect(screen.getByRole('dialog', { name: 'Instance' })).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Instance' })).toBeNull());
   });
 
-  it('opens the view options as a sheet with poster size and fields', async () => {
+  it('keeps the view options sheet open across picks, since it has several sections', async () => {
     const onPosterSizeChange = vi.fn();
     const onChange = vi.fn();
     render(
@@ -63,9 +64,10 @@ describe('list sort, filter and view menus on a phone', () => {
     expect(onPosterSizeChange).toHaveBeenCalledWith('large');
     await userEvent.click(within(sheet).getByRole('button', { name: 'Year' }));
     expect(onChange).toHaveBeenCalledWith(['year']);
+    expect(screen.getByRole('dialog', { name: 'View options' })).toBeTruthy();
   });
 
-  it('opens the requests sort as a sheet', async () => {
+  it('opens the requests sort as a sheet that applies and closes on one pick', async () => {
     const onSortChange = vi.fn();
     render(
       <TooltipProvider>
@@ -76,6 +78,24 @@ describe('list sort, filter and view menus on a phone', () => {
     const sheet = await screen.findByRole('dialog', { name: 'Sort by' });
     await userEvent.click(within(sheet).getByRole('button', { name: 'Last Modified' }));
     expect(onSortChange).toHaveBeenCalledWith('modified');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Sort by' })).toBeNull());
+  });
+
+  it('keeps the multi-select logs filter open, with Reset filters once one is on', async () => {
+    const onToggleLevel = vi.fn();
+    const onReset = vi.fn();
+    const props = { sources: new Set<'server' | 'client' | 'service-worker'>(), onToggleLevel, onToggleSource: vi.fn(), onReset };
+    const view = render(<LogsFilterMenu {...props} levels={new Set()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Filter' });
+    expect(within(sheet).queryByRole('button', { name: 'Reset filters' })).toBeNull();
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Error' }));
+    expect(onToggleLevel).toHaveBeenCalledWith('error');
+    view.rerender(<LogsFilterMenu {...props} levels={new Set(['error'])} />);
+    const open = screen.getByRole('dialog', { name: 'Filter' });
+    expect(within(open).getByRole('button', { name: 'Error' }).getAttribute('aria-pressed')).toBe('true');
+    await userEvent.click(within(open).getByRole('button', { name: 'Reset filters' }));
+    expect(onReset).toHaveBeenCalledOnce();
   });
 
   it('closes the Discover content type sheet on a pick, since the pick opens its results', async () => {
@@ -111,13 +131,17 @@ describe('list sort, filter and view menus on a phone', () => {
 describe('list sort, filter and view menus from md up', () => {
   beforeEach(() => { viewport.phone = false; });
 
-  it('keeps the instance filter a titled dropdown', async () => {
-    render(<InstanceFilter instances={INSTANCES} value="b" onChange={vi.fn()} />);
+  it('keeps the instance filter a titled dropdown that closes on one pick', async () => {
+    const onChange = vi.fn();
+    render(<InstanceFilter instances={INSTANCES} value="b" onChange={onChange} />);
     await userEvent.click(screen.getByRole('button', { name: 'Instance: Sonarr 4K' }));
     const menu = await screen.findByRole('menu');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(within(menu).getByText('Instance')).toBeTruthy();
     expect(within(menu).getByRole('menuitemcheckbox', { name: 'Sonarr 4K' }).getAttribute('aria-checked')).toBe('true');
+    await userEvent.click(within(menu).getByRole('menuitemcheckbox', { name: 'All instances' }));
+    expect(onChange).toHaveBeenCalledWith('all');
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
   });
 
   it('runs a one-off action as a menu item', async () => {

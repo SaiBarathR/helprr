@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { isFreshArrival, readRouteScrollState, routeScrollKey } from '@/lib/route-scroll-state';
 import { SearchBar } from '@/components/media/search-bar';
 import {
@@ -46,7 +46,6 @@ export function DiscoverToolbar({
   const sortRowRef = useRef<HTMLDivElement>(null);
   const selectedSortRef = useRef<HTMLButtonElement>(null);
   const arrivedKeyRef = useRef<string | null>(null);
-  const [contentTypeOpen, setContentTypeOpen] = useState(false);
 
   useEffect(() => {
     // On arriving at a URL by Back/Forward or reload, the row's saved offset
@@ -83,8 +82,7 @@ export function DiscoverToolbar({
         </div>
         <ResponsiveMenu
           title="Content type"
-          open={contentTypeOpen}
-          onOpenChange={setContentTypeOpen}
+          closeOnPick
           align="end"
           contentClassName="w-36"
           trigger={(
@@ -113,11 +111,7 @@ export function DiscoverToolbar({
               <ResponsiveMenuCheckboxItem
                 key={option.value}
                 checked={discoverContentType === option.value}
-                onCheckedChange={() => {
-                  // Picking a type opens its results, so the menu closes rather than cover them.
-                  setContentTypeOpen(false);
-                  handleSelectContentType(option.value as 'all' | 'movie' | 'show');
-                }}
+                onCheckedChange={() => handleSelectContentType(option.value as 'all' | 'movie' | 'show')}
               >
                 <Icon className="h-4 w-4" />
                 {option.label}

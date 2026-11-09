@@ -762,6 +762,7 @@ export default function MusicPage() {
           <ResponsiveMenu
             title="Sort by"
             titleInDropdown
+            closeOnPick
             contentClassName="w-52"
             trigger={(
               <button

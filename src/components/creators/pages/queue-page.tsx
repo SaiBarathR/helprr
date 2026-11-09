@@ -298,6 +298,7 @@ export function CreatorQueuePage() {
             <ResponsiveMenu
               title="Filter"
               titleInDropdown
+              closeOnPick
               contentClassName="w-48"
               trigger={(
                 <button className={toolbarButtonClass()} aria-label={`Filter: ${SECTIONS.find((item) => item.id === section)?.label ?? 'All'}`}>

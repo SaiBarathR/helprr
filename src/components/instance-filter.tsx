@@ -79,6 +79,7 @@ export function InstanceFilter({
     <ResponsiveMenu
       title="Instance"
       titleInDropdown
+      closeOnPick
       align={align}
       trigger={(
         <Button

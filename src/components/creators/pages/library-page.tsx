@@ -112,6 +112,8 @@ export function CreatorLibraryPage() {
     queryFn: ({ signal }) => getJson<LibrarySummary>(`${platform.api}/files/summary`, signal),
   });
   const stats = summary.data;
+  // With only Show in the filter it is a single choice, so a pick closes it.
+  const showCreatorFilter = (stats?.streamers.length ?? 0) > 1 && !showingDeleted;
   // YouTube files are rarely re-encoded, so these only show once there is something in them.
   const showReencode = platform.id === 'twitch' || Boolean(stats && (stats.savedBytes > 0 || stats.originalsKept > 0));
 
@@ -196,6 +198,7 @@ export function CreatorLibraryPage() {
           <>
             <ResponsiveMenu
               title="Filter"
+              closeOnPick={!showCreatorFilter}
               contentClassName="max-h-[70dvh] w-56 overflow-y-auto"
               trigger={(
                 <button
@@ -208,7 +211,7 @@ export function CreatorLibraryPage() {
               )}
             >
               <FilterGroup label="Show" options={SHOW} value={filter} onChange={setFilter} separated={false} />
-              {(stats?.streamers.length ?? 0) > 1 && !showingDeleted && (
+              {showCreatorFilter && (
                 <FilterGroup
                   label={platform.creatorLabel}
                   options={[
@@ -224,6 +227,7 @@ export function CreatorLibraryPage() {
               <ResponsiveMenu
                 title="Sort by"
                 titleInDropdown
+                closeOnPick
                 contentClassName="w-52"
                 trigger={(
                   <button className={toolbarButtonClass()} aria-label={`Sort: ${SORTS.find((item) => item.id === sort)?.label}`}>

@@ -314,6 +314,7 @@ export default function ScheduledAlertsPage() {
         <ResponsiveMenu
           title="Sort by"
           titleInDropdown
+          closeOnPick
           trigger={(
             <Button variant="outline" size="sm" className="h-8">
               <ArrowUpDown data-icon="inline-start" />

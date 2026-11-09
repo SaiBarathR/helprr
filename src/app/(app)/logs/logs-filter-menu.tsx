@@ -2,14 +2,12 @@
 
 import { Filter } from 'lucide-react';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuCheckboxItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+  ResponsiveMenuLabel,
+  ResponsiveMenuSeparator,
+  ResponsiveMenuActionItem,
+} from '@/components/ui/responsive-menu';
 import { cn } from '@/lib/utils';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -46,8 +44,11 @@ export function LogsFilterMenu({
   const activeCount = levels.size + sources.size;
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <ResponsiveMenu
+      title="Filter"
+      align="end"
+      contentClassName="w-56"
+      trigger={(
         <button
           type="button"
           className="relative h-10 w-10 flex items-center justify-center rounded-md border border-input bg-background hover:bg-accent active:bg-accent/80 transition-colors press-feedback"
@@ -65,44 +66,35 @@ export function LogsFilterMenu({
             </span>
           )}
         </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="tracked-caps text-[11px] text-muted-foreground">
-          Level
-        </DropdownMenuLabel>
-        {LEVEL_OPTIONS.map((option) => (
-          <DropdownMenuCheckboxItem
-            key={option.value}
-            checked={levels.has(option.value)}
-            onCheckedChange={() => onToggleLevel(option.value)}
-            onSelect={(event) => event.preventDefault()}
-          >
-            {option.label}
-          </DropdownMenuCheckboxItem>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="tracked-caps text-[11px] text-muted-foreground">
-          Source
-        </DropdownMenuLabel>
-        {SOURCE_OPTIONS.map((option) => (
-          <DropdownMenuCheckboxItem
-            key={option.value}
-            checked={sources.has(option.value)}
-            onCheckedChange={() => onToggleSource(option.value)}
-            onSelect={(event) => event.preventDefault()}
-          >
-            {option.label}
-          </DropdownMenuCheckboxItem>
-        ))}
-        {activeCount > 0 && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onReset} className="text-muted-foreground">
-              Reset filters
-            </DropdownMenuItem>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      )}
+    >
+      <ResponsiveMenuLabel>Level</ResponsiveMenuLabel>
+      {LEVEL_OPTIONS.map((option) => (
+        <ResponsiveMenuCheckboxItem
+          key={option.value}
+          checked={levels.has(option.value)}
+          onCheckedChange={() => onToggleLevel(option.value)}
+        >
+          {option.label}
+        </ResponsiveMenuCheckboxItem>
+      ))}
+      <ResponsiveMenuSeparator />
+      <ResponsiveMenuLabel>Source</ResponsiveMenuLabel>
+      {SOURCE_OPTIONS.map((option) => (
+        <ResponsiveMenuCheckboxItem
+          key={option.value}
+          checked={sources.has(option.value)}
+          onCheckedChange={() => onToggleSource(option.value)}
+        >
+          {option.label}
+        </ResponsiveMenuCheckboxItem>
+      ))}
+      {activeCount > 0 && (
+        <>
+          <ResponsiveMenuSeparator />
+          <ResponsiveMenuActionItem onSelect={onReset}>Reset filters</ResponsiveMenuActionItem>
+        </>
+      )}
+    </ResponsiveMenu>
   );
 }

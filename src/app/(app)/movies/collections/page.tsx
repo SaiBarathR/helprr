@@ -247,6 +247,7 @@ export default function MovieCollectionsPage() {
           <ResponsiveMenu
             title="Filter"
             titleInDropdown
+            closeOnPick={!multiInstance}
             align="end"
             contentClassName="w-48"
             trigger={(
@@ -297,6 +298,7 @@ export default function MovieCollectionsPage() {
           <ResponsiveMenu
             title="Sort by"
             titleInDropdown
+            closeOnPick
             align="end"
             contentClassName="w-48"
             trigger={(

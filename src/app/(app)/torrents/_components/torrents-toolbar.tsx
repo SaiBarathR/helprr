@@ -96,6 +96,7 @@ export function TorrentsToolbar({
 
         <ResponsiveMenu
           title="Sort by"
+          closeOnPick
           titleInDropdown
           contentClassName="w-52 max-h-80 overflow-y-auto"
           trigger={(
