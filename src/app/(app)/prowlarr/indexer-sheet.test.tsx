@@ -61,6 +61,46 @@ describe('IndexerSheet', () => {
     expect(vi.mocked(fetch).mock.calls.map((call) => String(call[0]))).toContain('/api/prowlarr/history?indexerId=7&pageSize=10');
   });
 
+  it('never lists another indexer\'s history, and says so when this one has none', async () => {
+    const fetchMock = vi.mocked(fetch);
+    const otherRows = { records: [{ id: 9, indexerId: 3, eventType: 'indexerQuery', successful: true, date: '2026-11-09T00:00:00Z', data: { query: 'RADWIMPS PAPARAZZI' } }] };
+    fetchMock.mockImplementation(async (url) => new Response(JSON.stringify(
+      String(url).startsWith('/api/prowlarr/history') ? otherRows : [],
+    )));
+    renderSheet();
+
+    expect(await screen.findByText('No recent activity for this indexer.')).toBeTruthy();
+    expect(screen.queryByText('RADWIMPS PAPARAZZI')).toBeNull();
+  });
+
+  it('says the history failed to load instead of claiming there is none', async () => {
+    vi.mocked(fetch).mockImplementation(async (url) => (String(url).startsWith('/api/prowlarr/history')
+      ? new Response(JSON.stringify({ error: 'Prowlarr unreachable' }), { status: 502 })
+      : new Response('[]')));
+    renderSheet();
+
+    expect(await screen.findByText('Failed to load recent activity.')).toBeTruthy();
+    expect(screen.queryByText('No recent activity for this indexer.')).toBeNull();
+  });
+
+  it('fetches the newly opened indexer\'s own history when the sheet switches indexers', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const shared = actions();
+    const view = (target: ProwlarrIndexerSummary) => (
+      <QueryClientProvider client={client}>
+        <IndexerSheet indexer={target} statuses={[]} canManage actions={shared} onClose={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(view(indexer));
+    expect(await screen.findByText('big buck bunny')).toBeTruthy();
+
+    rerender(view({ ...indexer, id: 21, name: 'MediaFusion Tamil' }));
+
+    expect(await screen.findByText('No recent activity for this indexer.')).toBeTruthy();
+    expect(screen.queryByText('big buck bunny')).toBeNull();
+    expect(vi.mocked(fetch).mock.calls.map((call) => String(call[0]))).toContain('/api/prowlarr/history?indexerId=21&pageSize=10');
+  });
+
   it('hides the actions from users who cannot manage', () => {
     renderSheet({ canManage: false });
 

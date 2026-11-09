@@ -262,7 +262,8 @@ export function IndexerSheet({
 
   const stats = statsQuery.data?.indexers?.find((row) => row.indexerId === indexerId);
   const blockedStatus = indexer ? getActiveBlockedStatus(indexer.id, statuses) : undefined;
-  const records = historyQuery.data?.records ?? [];
+  // Only this indexer's rows, whatever the upstream filter returned.
+  const records = (historyQuery.data?.records ?? []).filter((record) => record.indexerId === indexerId);
   const pending = indexer ? actions.pendingEdits.has(indexer.id) : false;
 
   return (
@@ -360,7 +361,7 @@ export function IndexerSheet({
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  {historyQuery.isLoading ? 'Loading…' : 'No recent activity.'}
+                  {historyQuery.isLoading ? 'Loading…' : historyQuery.isError ? 'Failed to load recent activity.' : 'No recent activity for this indexer.'}
                 </p>
               )}
             </section>
