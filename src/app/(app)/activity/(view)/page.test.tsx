@@ -532,7 +532,7 @@ describe('Activity: wanted tabs, sorting and refresh', () => {
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({ name: 'MoviesSearch', movieIds: [42] });
   });
 
-  it('sorts the queue by a chosen key, and reverses it when the key is chosen again', async () => {
+  it('sorts the queue by a chosen key, and reverses it with the direction control at the top of the sort section', async () => {
     queueRecords = [
       { ...QUEUE[0], title: 'Small.Show.S01E01', size: 100 },
       { ...QUEUE[1], title: 'Big.Movie.2026', size: 900 },
@@ -550,7 +550,12 @@ describe('Activity: wanted tabs, sorting and refresh', () => {
     const first = useUIStore.getState().activitySortDirection;
     await waitFor(() => expect(order()).toEqual(first === 'desc' ? ['Big.Movie', 'Small.Show'] : ['Small.Show', 'Big.Movie']));
 
+    // Choosing the key again keeps the direction; the segmented control reverses it.
     await act(async () => sizeItem().click());
+    expect(useUIStore.getState().activitySortDirection).toBe(first);
+    const reverse = [...document.querySelectorAll('[role="group"][aria-label="Sort direction"] [role="menuitemradio"]')]
+      .find((item) => item.textContent?.trim() === (first === 'desc' ? 'Ascending' : 'Descending')) as HTMLElement;
+    await act(async () => reverse.click());
     expect(useUIStore.getState().activitySortDirection).toBe(first === 'desc' ? 'asc' : 'desc');
     await waitFor(() => expect(order()).toEqual(first === 'desc' ? ['Small.Show', 'Big.Movie'] : ['Big.Movie', 'Small.Show']));
   });

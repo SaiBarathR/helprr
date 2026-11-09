@@ -9,6 +9,7 @@ import type { DateRange } from 'react-day-picker';
 import { PageTitle } from '@/components/layout/page-title';
 import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/media/search-input';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import {
   ActiveFilterBar,
   FilterDot,
@@ -169,6 +170,7 @@ export default function NotificationsPage() {
 
   const queryClient = useQueryClient();
   const [searchInput, setSearchInput] = useState(filters.search);
+  const narrow = useIsMobile(639);
   const [debouncedSearch, setDebouncedSearch] = useState(filters.search);
   const [markingAll, setMarkingAll] = useState(false);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
@@ -620,7 +622,8 @@ export default function NotificationsPage() {
               value={searchInput}
               onChange={setSearchInput}
               historyKey="notifications"
-              placeholder="Search…"
+              // The row holds four actions, so phones get the short form.
+              placeholder={narrow ? 'Search…' : 'Search notifications…'}
               aria-label="Search notifications"
               className="pl-9 pr-9 h-10"
             />

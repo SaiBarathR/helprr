@@ -1,10 +1,11 @@
 'use client';
 
-import Link from '@/components/ui/app-link';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuActionItem,
+  ResponsiveMenuLinkItem,
+  ResponsiveMenuSeparator,
+} from '@/components/ui/responsive-menu';
 import { MarkWatchedMenuItem } from '@/components/jellyfin/mark-watched-button';
 import {
   Bookmark, Bell, MoreHorizontal, RefreshCw, Search, ExternalLink,
@@ -71,122 +72,115 @@ export function SeriesHeaderActions({
       )}
 
       {/* 3-dot dropdown */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      <ResponsiveMenu
+        title="More actions"
+        actions
+        align="end"
+        contentClassName="w-52"
+        trigger={(
           <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
             <MoreHorizontal className="h-5 w-5" />
           </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
-          {canManageActivity && (
-            <DropdownMenuItem onClick={actions.refresh} disabled={actionLoading === 'refresh'}>
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </DropdownMenuItem>
-          )}
-          {canManageActivity && (
-            <DropdownMenuItem onClick={actions.searchAll} disabled={actionLoading === 'search'}>
-              <Search className="h-4 w-4" />
-              Search Monitored
-            </DropdownMenuItem>
-          )}
-          {isAnimeSeries && openInAnimeHref && (
-            <DropdownMenuItem asChild>
-              <Link href={openInAnimeHref}>
-                <Sparkles className="h-4 w-4" />
-                Open in Anime
-              </Link>
-            </DropdownMenuItem>
-          )}
-          {isAnimeSeries && isAdmin && (
-            <DropdownMenuItem onClick={() => open('remap')}>
-              <Search className="h-4 w-4" />
-              Remap AniList
-            </DropdownMenuItem>
-          )}
-          <DropdownMenuSeparator />
-          {series.tvdbId > 0 && (
-            <DropdownMenuItem asChild>
-              <a href={`https://trakt.tv/search/tvdb/${series.tvdbId}?id_type=show`} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="h-4 w-4" />
-                Open in Trakt
-              </a>
-            </DropdownMenuItem>
-          )}
-          {series.imdbId && (
-            <DropdownMenuItem asChild>
-              <a href={`https://www.imdb.com/title/${series.imdbId}`} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="h-4 w-4" />
-                Open in IMDb
-              </a>
-            </DropdownMenuItem>
-          )}
-          {series.tvdbId > 0 && (
-            <DropdownMenuItem asChild>
-              <a href={`https://www.thetvdb.com/?id=${series.tvdbId}&tab=series`} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="h-4 w-4" />
-                Open in TVDB
-              </a>
-            </DropdownMenuItem>
-          )}
-          {sonarrExternalUrl && series.titleSlug && (
-            <DropdownMenuItem asChild>
-              <a href={`${sonarrExternalUrl}/series/${series.titleSlug}`} target="_blank" rel="noopener noreferrer">
-                <Tv className="h-4 w-4" />
-                Open in Sonarr
-              </a>
-            </DropdownMenuItem>
-          )}
-          {jellyfinUrl && (series?.imdbId || series?.tvdbId) && (
-            <DropdownMenuItem onClick={actions.openInJellyfin} disabled={jellyfinLoading}>
-              {jellyfinLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
-              Open in Jellyfin
-            </DropdownMenuItem>
-          )}
-          <MarkWatchedMenuItem status={seriesWatch} />
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => open('watchlist')}>
-            <Bookmark className="h-4 w-4" />
-            Add to Watchlist…
-          </DropdownMenuItem>
-          {canScheduleAlert && (
-            <DropdownMenuItem onClick={() => open('scheduleAlert')}>
-              <Bell className="h-4 w-4" />
-              Schedule alert…
-            </DropdownMenuItem>
-          )}
-          {canEditMonitoring && (
-            <DropdownMenuItem onClick={() => open('monitor')}>
-              <Eye className="h-4 w-4" />
-              Monitor
-            </DropdownMenuItem>
-          )}
-          {canEditSeries && (
-            <DropdownMenuItem onClick={onEdit}>
-              <Pencil className="h-4 w-4" />
-              Edit
-            </DropdownMenuItem>
-          )}
-          {canManageActivity && canManageFiles && (
-            <DropdownMenuItem onClick={() => open('renamePreview')}>
-              <FileEdit className="h-4 w-4" />
-              Preview Rename
-            </DropdownMenuItem>
-          )}
-          {canManageFiles && (
-            <DropdownMenuItem onClick={onManageEpisodes}>
-              <FileStack className="h-4 w-4" />
-              Manage Episodes
-            </DropdownMenuItem>
-          )}
-          {canDeleteSeries && (
-            <DropdownMenuItem variant="destructive" onClick={() => open('delete')}>
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        )}
+      >
+        {canManageActivity && (
+          <ResponsiveMenuActionItem onSelect={actions.refresh} disabled={actionLoading === 'refresh'}>
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </ResponsiveMenuActionItem>
+        )}
+        {canManageActivity && (
+          <ResponsiveMenuActionItem onSelect={actions.searchAll} disabled={actionLoading === 'search'}>
+            <Search className="h-4 w-4" />
+            Search Monitored
+          </ResponsiveMenuActionItem>
+        )}
+        {isAnimeSeries && openInAnimeHref && (
+          <ResponsiveMenuLinkItem href={openInAnimeHref}>
+            <Sparkles className="h-4 w-4" />
+            Open in Anime
+          </ResponsiveMenuLinkItem>
+        )}
+        {isAnimeSeries && isAdmin && (
+          <ResponsiveMenuActionItem onSelect={() => open('remap')}>
+            <Search className="h-4 w-4" />
+            Remap AniList
+          </ResponsiveMenuActionItem>
+        )}
+        <ResponsiveMenuSeparator />
+        {series.tvdbId > 0 && (
+          <ResponsiveMenuLinkItem external href={`https://trakt.tv/search/tvdb/${series.tvdbId}?id_type=show`}>
+            <ExternalLink className="h-4 w-4" />
+            Open in Trakt
+          </ResponsiveMenuLinkItem>
+        )}
+        {series.imdbId && (
+          <ResponsiveMenuLinkItem external href={`https://www.imdb.com/title/${series.imdbId}`}>
+            <ExternalLink className="h-4 w-4" />
+            Open in IMDb
+          </ResponsiveMenuLinkItem>
+        )}
+        {series.tvdbId > 0 && (
+          <ResponsiveMenuLinkItem external href={`https://www.thetvdb.com/?id=${series.tvdbId}&tab=series`}>
+            <ExternalLink className="h-4 w-4" />
+            Open in TVDB
+          </ResponsiveMenuLinkItem>
+        )}
+        {sonarrExternalUrl && series.titleSlug && (
+          <ResponsiveMenuLinkItem external href={`${sonarrExternalUrl}/series/${series.titleSlug}`}>
+            <Tv className="h-4 w-4" />
+            Open in Sonarr
+          </ResponsiveMenuLinkItem>
+        )}
+        {jellyfinUrl && (series?.imdbId || series?.tvdbId) && (
+          <ResponsiveMenuActionItem onSelect={actions.openInJellyfin} disabled={jellyfinLoading}>
+            {jellyfinLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+            Open in Jellyfin
+          </ResponsiveMenuActionItem>
+        )}
+        <MarkWatchedMenuItem status={seriesWatch} />
+        <ResponsiveMenuSeparator />
+        <ResponsiveMenuActionItem onSelect={() => open('watchlist')}>
+          <Bookmark className="h-4 w-4" />
+          Add to Watchlist…
+        </ResponsiveMenuActionItem>
+        {canScheduleAlert && (
+          <ResponsiveMenuActionItem onSelect={() => open('scheduleAlert')}>
+            <Bell className="h-4 w-4" />
+            Schedule alert…
+          </ResponsiveMenuActionItem>
+        )}
+        {canEditMonitoring && (
+          <ResponsiveMenuActionItem onSelect={() => open('monitor')}>
+            <Eye className="h-4 w-4" />
+            Monitor
+          </ResponsiveMenuActionItem>
+        )}
+        {canEditSeries && (
+          <ResponsiveMenuActionItem onSelect={onEdit}>
+            <Pencil className="h-4 w-4" />
+            Edit
+          </ResponsiveMenuActionItem>
+        )}
+        {canManageActivity && canManageFiles && (
+          <ResponsiveMenuActionItem onSelect={() => open('renamePreview')}>
+            <FileEdit className="h-4 w-4" />
+            Preview Rename
+          </ResponsiveMenuActionItem>
+        )}
+        {canManageFiles && (
+          <ResponsiveMenuActionItem onSelect={onManageEpisodes}>
+            <FileStack className="h-4 w-4" />
+            Manage Episodes
+          </ResponsiveMenuActionItem>
+        )}
+        {canDeleteSeries && (
+          <ResponsiveMenuActionItem destructive onSelect={() => open('delete')}>
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </ResponsiveMenuActionItem>
+        )}
+      </ResponsiveMenu>
     </div>
   );
 }

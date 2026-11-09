@@ -257,7 +257,7 @@ export function CreatorLibraryPage() {
           </ToolbarButton>
         )}
       >
-        <SearchBar value={search} onChange={setSearch} placeholder="Search..." historyKey={`${platform.id}-library`} debounceMs={250} />
+        <SearchBar value={search} onChange={setSearch} placeholder="Search videos…" compactPlaceholder="Search…" historyKey={`${platform.id}-library`} debounceMs={250} />
       </CreatorToolbar>
 
       {stats && (

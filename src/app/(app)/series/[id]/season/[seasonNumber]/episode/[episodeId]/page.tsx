@@ -10,8 +10,11 @@ import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerClose,
 } from '@/components/ui/drawer';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuActionItem,
+  ResponsiveMenuLinkItem,
+  ResponsiveMenuSeparator,
+} from '@/components/ui/responsive-menu';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -406,78 +409,68 @@ export default function EpisodeDetailPage() {
             )}
 
             {/* 3-dot menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <ResponsiveMenu
+              title="More actions"
+              actions
+              align="end"
+              trigger={(
                 <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {series.imdbId && (
-                  <DropdownMenuItem asChild>
-                    <a
-                      href={`https://www.imdb.com/title/${series.imdbId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      Open in IMDb
-                    </a>
-                  </DropdownMenuItem>
-                )}
-                {series.tvdbId && (
-                  <DropdownMenuItem asChild>
-                    <a
-                      href={`https://trakt.tv/search/tvdb/${series.tvdbId}?id_type=show`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      Open in Trakt
-                    </a>
-                  </DropdownMenuItem>
-                )}
-                {canSetWatched && epWatch && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      disabled={isWriting}
-                      onClick={() => setWatched({
-                        jellyfinItemId: epWatch.jellyfinItemId,
-                        played: !epWatch.played,
-                        seriesId: jellyfinSeriesId ?? undefined,
-                      })}
-                    >
-                      {epWatch.played ? <RotateCcw className="mr-2 h-4 w-4" /> : <Check className="mr-2 h-4 w-4" />}
-                      {epWatch.played ? 'Mark as unwatched' : 'Mark as watched'}
-                    </DropdownMenuItem>
-                  </>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleAutomaticSearch} disabled={!!actionLoading}>
-                  <Search className="mr-2 h-4 w-4" />
-                  Automatic Search
-                </DropdownMenuItem>
-                {canScheduleAlert && (
-                  <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
-                    <Bell className="mr-2 h-4 w-4" />
-                    Schedule alert…
-                  </DropdownMenuItem>
-                )}
-                {episode.hasFile && canDeleteSeries && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => setShowDeleteDrawer(true)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete File
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
+            >
+              {series.imdbId && (
+                <ResponsiveMenuLinkItem external href={`https://www.imdb.com/title/${series.imdbId}`}>
+                  <ExternalLink className="h-4 w-4" />
+                  Open in IMDb
+                </ResponsiveMenuLinkItem>
+              )}
+              {series.tvdbId && (
+                <ResponsiveMenuLinkItem external href={`https://trakt.tv/search/tvdb/${series.tvdbId}?id_type=show`}>
+                  <ExternalLink className="h-4 w-4" />
+                  Open in Trakt
+                </ResponsiveMenuLinkItem>
+              )}
+              {canSetWatched && epWatch && (
+                <>
+                  <ResponsiveMenuSeparator />
+                  <ResponsiveMenuActionItem
+                    disabled={isWriting}
+                    onSelect={() => setWatched({
+                      jellyfinItemId: epWatch.jellyfinItemId,
+                      played: !epWatch.played,
+                      seriesId: jellyfinSeriesId ?? undefined,
+                    })}
+                  >
+                    {epWatch.played ? <RotateCcw className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                    {epWatch.played ? 'Mark as unwatched' : 'Mark as watched'}
+                  </ResponsiveMenuActionItem>
+                </>
+              )}
+              <ResponsiveMenuSeparator />
+              <ResponsiveMenuActionItem onSelect={handleAutomaticSearch} disabled={!!actionLoading}>
+                <Search className="h-4 w-4" />
+                Automatic Search
+              </ResponsiveMenuActionItem>
+              {canScheduleAlert && (
+                <ResponsiveMenuActionItem onSelect={() => setShowScheduleAlert(true)}>
+                  <Bell className="h-4 w-4" />
+                  Schedule alert…
+                </ResponsiveMenuActionItem>
+              )}
+              {episode.hasFile && canDeleteSeries && (
+                <>
+                  <ResponsiveMenuSeparator />
+                  <ResponsiveMenuActionItem
+                    onSelect={() => setShowDeleteDrawer(true)}
+                    destructive
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete File
+                  </ResponsiveMenuActionItem>
+                </>
+              )}
+            </ResponsiveMenu>
           </div>
         }
       />

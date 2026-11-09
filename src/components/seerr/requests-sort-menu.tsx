@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import {
   ResponsiveMenu,
   ResponsiveMenuCheckboxItem,
-  ResponsiveMenuSeparator,
+  ResponsiveMenuSortDirection,
 } from '@/components/ui/responsive-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -44,7 +44,8 @@ export function RequestsSortMenu({
   const DirectionIcon = sortDirection === 'asc' ? ArrowUp : ArrowDown;
 
   return (
-    <div className="flex items-center">
+    // 12px apart, so each 32px button keeps its whole 44px tap area.
+    <div className="flex items-center gap-3">
       <ResponsiveMenu
         title="Sort by"
         titleInDropdown
@@ -61,6 +62,7 @@ export function RequestsSortMenu({
           </Button>
         )}
       >
+        <ResponsiveMenuSortDirection value={sortDirection} onChange={onSortDirectionChange} />
         {SORT_OPTIONS.map((opt) => (
           <ResponsiveMenuCheckboxItem
             key={opt.value}
@@ -70,19 +72,6 @@ export function RequestsSortMenu({
             {opt.label}
           </ResponsiveMenuCheckboxItem>
         ))}
-        <ResponsiveMenuSeparator />
-        <ResponsiveMenuCheckboxItem
-          checked={sortDirection === 'asc'}
-          onCheckedChange={() => onSortDirectionChange('asc')}
-        >
-          Ascending
-        </ResponsiveMenuCheckboxItem>
-        <ResponsiveMenuCheckboxItem
-          checked={sortDirection === 'desc'}
-          onCheckedChange={() => onSortDirectionChange('desc')}
-        >
-          Descending
-        </ResponsiveMenuCheckboxItem>
       </ResponsiveMenu>
 
       <Tooltip>
@@ -90,7 +79,7 @@ export function RequestsSortMenu({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="touch-target-center h-8 w-8"
             onClick={toggleDirection}
             aria-label={`Sort direction: ${sortDirection === 'asc' ? 'Ascending' : 'Descending'}`}
           >

@@ -10,6 +10,7 @@ import {
   ResponsiveMenuCheckboxItem,
   ResponsiveMenuLabel,
   ResponsiveMenuSeparator,
+  ResponsiveMenuSortDirection,
 } from '@/components/ui/responsive-menu';
 import { MediaCard } from '@/components/media/media-card';
 import { MediaOverviewItem } from '@/components/media/media-overview';
@@ -850,6 +851,7 @@ export default function MoviesPage() {
               </button>
             )}
           >
+            <ResponsiveMenuSortDirection value={sortDir} onChange={setSortDir} />
             {sortOptions.map((opt) => (
               <ResponsiveMenuCheckboxItem
                 key={opt.value}
@@ -859,19 +861,6 @@ export default function MoviesPage() {
                 {opt.label}
               </ResponsiveMenuCheckboxItem>
             ))}
-            <ResponsiveMenuSeparator />
-            <ResponsiveMenuCheckboxItem
-              checked={sortDir === 'asc'}
-              onCheckedChange={() => setSortDir('asc')}
-            >
-              Ascending
-            </ResponsiveMenuCheckboxItem>
-            <ResponsiveMenuCheckboxItem
-              checked={sortDir === 'desc'}
-              onCheckedChange={() => setSortDir('desc')}
-            >
-              Descending
-            </ResponsiveMenuCheckboxItem>
           </ResponsiveMenu>
 
           <ViewSelector value={viewMode} onChange={setViewMode} />
@@ -936,7 +925,7 @@ export default function MoviesPage() {
         <div className="flex items-center gap-2">
           <MoviesSubNav active="library" />
           <div className="flex-1 min-w-0">
-            <SearchBar value={search} onChange={handleSearch} placeholder="Search movies..." historyKey="movies" debounceMs={250} />
+            <SearchBar value={search} onChange={handleSearch} placeholder="Search movies…" historyKey="movies" debounceMs={250} />
           </div>
         </div>
       </div>

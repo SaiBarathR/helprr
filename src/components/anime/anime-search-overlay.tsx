@@ -158,7 +158,7 @@ export function AnimeSearchOverlay({
         <Input
           ref={inputRef}
           value={query}
-          placeholder="Search anime..."
+          placeholder="Search anime…"
           onChange={(e) => setQuery(e.target.value)}
           onFocus={open}
           onKeyDown={(e) => {

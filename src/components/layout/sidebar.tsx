@@ -92,9 +92,9 @@ export function Sidebar() {
       // Collapsed, the icon is all there is; the tooltip gives no name.
       aria-label={sidebarCollapsed ? 'Search' : undefined}
       className={cn(
-        // 44px rows on touch screens (a tablet's icon rail), as for the links.
-        'w-full relative flex items-center gap-3 rounded-md px-3 py-2 pointer-coarse:min-h-11 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
-        sidebarCollapsed && 'justify-center px-2'
+        // 44px rows in a touch screen's icon rail, as for the links.
+        'w-full relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
+        sidebarCollapsed && 'justify-center px-2 pointer-coarse:min-h-11'
       )}
     >
       <Search className="h-4 w-4 shrink-0" />
@@ -120,8 +120,9 @@ export function Sidebar() {
         prefetch={null}
         aria-label={navBadgeName(label, slice, badgeArea) ?? (sidebarCollapsed ? label : undefined)}
         className={cn(
-          // 44px rows on touch screens (a tablet's icon rail).
-          'relative flex items-center gap-3 rounded-md px-3 py-2 pointer-coarse:min-h-11 text-sm font-medium transition-colors',
+          // 44px rows in a touch screen's icon rail; expanded (a landscape
+          // tablet) the rows stay 36px, so the whole list fits on screen.
+          'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
           // In dark Liquid Glass only the icon takes the blue tint; the label
           // stays white. Light Glass and other themes tint the label through
           // --hpr-tab-label (the text colour for the cyan accent).
@@ -129,7 +130,7 @@ export function Sidebar() {
             ? 'bg-primary/10 text-[color:var(--hpr-tab-label,var(--primary))] [html[data-glass][data-scheme=dark]_&]:text-foreground'
             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
           isPending && 'opacity-70',
-          sidebarCollapsed && 'justify-center px-2'
+          sidebarCollapsed && 'justify-center px-2 pointer-coarse:min-h-11'
         )}
       >
         {isPending ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-primary')} />}
@@ -198,8 +199,8 @@ export function Sidebar() {
           size="sm"
           onClick={handleToggle}
           aria-label={sidebarCollapsed ? 'Expand sidebar' : undefined}
-          // 44px on touch screens, like the rows above it.
-          className={cn('w-full pointer-coarse:h-11', sidebarCollapsed ? 'justify-center' : 'justify-start')}
+          // 44px in a touch screen's icon rail, like the rows above it.
+          className={cn('w-full', sidebarCollapsed ? 'justify-center pointer-coarse:h-11' : 'justify-start')}
         >
           {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           {!sidebarCollapsed && <span className="ml-2">Collapse</span>}

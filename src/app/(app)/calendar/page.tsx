@@ -65,7 +65,10 @@ import {
 import { useCalendar } from '@/hooks/use-calendar';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { useUIStore } from '@/lib/store';
-import { InstanceFilter, deriveInstances, withAppName } from '@/components/instance-filter';
+import { InstanceFilter, withAppName, type InstanceOption } from '@/components/instance-filter';
+import { useQuery } from '@tanstack/react-query';
+import { jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import { ActiveFilterBar, FilterDot, filterButtonLabel } from '@/components/ui/active-filter-bar';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
@@ -263,7 +266,9 @@ function CompactFilters({
   const setOptionsOpen = (open: boolean) => setOptionsOpenIn(open ? layout : null);
 
   return (
-    <div className="flex items-center gap-1">
+    // Below lg the visible controls (Type, ⋯) sit far enough apart that each
+    // keeps its whole 44px tap area; from lg up they are inline icons.
+    <div className="flex items-center gap-2.5 lg:gap-1">
       {/* Type filter — the shared sheet/dropdown menu below lg (like the
           instance filter), inline icon buttons from lg up. */}
       <ResponsiveMenu
@@ -428,7 +433,7 @@ function CompactFilters({
           <Button
             variant="ghost"
             size="icon"
-            className="relative touch-target h-8 w-8 xl:hidden"
+            className="relative touch-target touch-target-center h-8 w-8 xl:hidden"
             aria-label={filterButtonLabel('Calendar options', optionsFiltering)}
           >
             <MoreHorizontal className="h-4 w-4" />
@@ -1448,15 +1453,28 @@ export default function CalendarPage() {
     includeScheduled: showScheduled,
   });
 
-  // Instances present in the loaded events (drives the instance-filter dropdown).
-  const instances = useMemo(() => deriveInstances(events, (event) => EVENT_APP[event.type]), [events]);
+  // The configured instances drive the instance filter, not the ones in the
+  // loaded range: a week with one instance's events would hide the button and
+  // shift the toolbar between views. Same list and cache as Activity's filter.
+  const { data: arrConnections } = useQuery({
+    queryKey: queryKeys.arrInstances(),
+    queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
+    staleTime: 5 * 60_000,
+  });
+  const instances = useMemo<InstanceOption[]>(
+    () => (Array.isArray(arrConnections) ? arrConnections : [])
+      .filter((c) => c.type === 'SONARR' || c.type === 'RADARR' || c.type === 'LIDARR')
+      .map((c) => ({ id: c.id, label: withAppName(c.label, c.type) })),
+    [arrConnections],
+  );
 
-  // Drop a stale instance selection if that instance is no longer present.
+  // Drop a stale instance selection once the list has loaded without it.
   useEffect(() => {
+    if (!Array.isArray(arrConnections)) return;
     if (instanceFilter !== 'all' && !instances.some((i) => i.id === instanceFilter)) {
       setInstanceFilter('all');
     }
-  }, [instances, instanceFilter, setInstanceFilter]);
+  }, [arrConnections, instances, instanceFilter, setInstanceFilter]);
 
   // Apply monitored + instance filters client-side.
   const filteredEvents = useMemo(() => {
@@ -1585,7 +1603,7 @@ export default function CalendarPage() {
             views={CALENDAR_VIEWS}
             onChange={(v) => setCalendarView(v)}
           />
-          <div className="flex shrink-0 items-center justify-end gap-2">
+          <div className="flex shrink-0 items-center justify-end gap-3">
             <InstanceFilter compact instances={instances} value={instanceFilter} onChange={setInstanceFilter} />
             <CompactFilters
               typeFilter={typeFilter}

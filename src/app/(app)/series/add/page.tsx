@@ -375,7 +375,7 @@ function AddSeriesPageContent() {
         {/* Search form */}
         <form onSubmit={handleSearch} className="flex gap-2">
           <SearchInput
-            placeholder="Search for a TV series..."
+            placeholder="Search for a TV series…"
             value={term}
             onChange={setTerm}
             historyKey="series-add"

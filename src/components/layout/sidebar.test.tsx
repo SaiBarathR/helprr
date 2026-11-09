@@ -205,4 +205,15 @@ describe('Sidebar layout', () => {
     expect(document.querySelector('button[aria-label="Expand sidebar"]')!.className).toContain('pointer-coarse:h-11');
   });
 
+  it('keeps 36px rows when expanded on touch too, so a landscape tablet sees the whole list', async () => {
+    mocks.collapsed = false;
+    await render();
+    const rows = [...document.querySelectorAll('aside a'), ...document.querySelectorAll('aside button')];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.className).not.toContain('pointer-coarse:min-h-11');
+      expect(row.className).not.toContain('pointer-coarse:h-11');
+    }
+  });
+
 });

@@ -10,6 +10,7 @@ import {
   ResponsiveMenuCheckboxItem,
   ResponsiveMenuLabel,
   ResponsiveMenuSeparator,
+  ResponsiveMenuSortDirection,
 } from '@/components/ui/responsive-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
@@ -23,8 +24,6 @@ import {
   Ban,
   MoreHorizontal,
   SlidersHorizontal,
-  ArrowDown,
-  ArrowUp,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -121,7 +120,6 @@ export default function ActivityPage() {
   // Reconcile each URL view: a valid ?tab wins, otherwise resume the saved tab
   // after hydration. Guarded during render so URL changes don't paint a stale tab.
   const [tabResumed, setTabResumed] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [tabViewKey, setTabViewKey] = useState(searchParamsKey);
   if (tabViewKey !== searchParamsKey || (hasHydrated && !tabResumed)) {
     setTabViewKey(searchParamsKey);
@@ -218,10 +216,8 @@ export default function ActivityPage() {
   }
 
   function handleSortSelect(nextSort: SortKey) {
-    if (nextSort === sortBy) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-      return;
-    }
+    // The direction has its own control at the top of the sort section.
+    if (nextSort === sortBy) return;
     setSortBy(nextSort);
     setSortDirection(getDefaultActivitySortDirection(nextSort));
   }
@@ -275,7 +271,9 @@ export default function ActivityPage() {
           </TabsList>
         </Tabs>
 
-        <div className="ml-auto flex shrink-0 items-center md:gap-1 gap-2">
+        {/* Phones: the two icons keep their size, 44px apart centre to centre,
+            so each one's 44px tap area (touch-target) is its own. */}
+        <div className="ml-auto flex shrink-0 items-center md:gap-1 gap-4">
           {/* Filter */}
           <ResponsiveMenu
             title="Filter and sort"
@@ -338,42 +336,32 @@ export default function ActivityPage() {
               <>
                 <ResponsiveMenuSeparator />
                 <ResponsiveMenuLabel>Sort by</ResponsiveMenuLabel>
-                {availableSortOptions.map((opt) => {
-                  const selected = sortBy === opt.key;
-                  const DirectionIcon = sortDirection === 'asc' ? ArrowUp : ArrowDown;
-                  return (
-                    <ResponsiveMenuCheckboxItem
-                      key={opt.key}
-                      checked={selected}
-                      ariaLabel={
-                        selected
-                          ? `${opt.label}, ${sortDirection === 'asc' ? 'ascending' : 'descending'}. Select again to reverse.`
-                          : opt.label
-                      }
-                      onCheckedChange={() => handleSortSelect(opt.key)}
-                    >
-                      {opt.label}
-                      {selected && <DirectionIcon className="ml-auto h-3.5 w-3.5" />}
-                    </ResponsiveMenuCheckboxItem>
-                  );
-                })}
+                <ResponsiveMenuSortDirection value={sortDirection} onChange={setSortDirection} />
+                {availableSortOptions.map((opt) => (
+                  <ResponsiveMenuCheckboxItem
+                    key={opt.key}
+                    checked={sortBy === opt.key}
+                    onCheckedChange={() => handleSortSelect(opt.key)}
+                  >
+                    {opt.label}
+                  </ResponsiveMenuCheckboxItem>
+                ))}
               </>
             )}
           </ResponsiveMenu>
 
           {/* Phones: the secondary actions share one ⋯ menu so the tabs keep the
-              row; the shared menu, a sheet on phones like Calendar's. Each action
-              closes it first (a sheet stays open otherwise). */}
+              row; the shared menu, an action sheet on phones (each action closes
+              it, and it ends with Cancel). */}
           <ResponsiveMenu
             title="More actions"
+            actions
             align="end"
-            open={moreOpen}
-            onOpenChange={setMoreOpen}
             trigger={(
               <Button
                 variant="ghost"
                 size="icon"
-                className="relative touch-target w-7 h-7 md:hidden"
+                className="relative touch-target touch-target-center w-7 h-7 md:hidden"
                 aria-label="More actions"
               >
                 {/* The menu closes on Refresh, so its spinner shows here. */}
@@ -385,16 +373,16 @@ export default function ActivityPage() {
               </Button>
             )}
           >
-            <ResponsiveMenuActionItem onSelect={() => { setMoreOpen(false); router.push('/activity/history'); }}>
+            <ResponsiveMenuActionItem onSelect={() => router.push('/activity/history')}>
               <Clock className="h-4 w-4" />
               History
             </ResponsiveMenuActionItem>
-            <ResponsiveMenuActionItem onSelect={() => { setMoreOpen(false); router.push('/activity/blocklist'); }}>
+            <ResponsiveMenuActionItem onSelect={() => router.push('/activity/blocklist')}>
               <Ban className="h-4 w-4" />
               Blocklist
             </ResponsiveMenuActionItem>
             <ResponsiveMenuSeparator />
-            <ResponsiveMenuActionItem onSelect={() => { setMoreOpen(false); void handleRefreshActivity(); }}>
+            <ResponsiveMenuActionItem onSelect={() => { void handleRefreshActivity(); }}>
               <RefreshCw className="h-4 w-4" />
               Refresh
             </ResponsiveMenuActionItem>

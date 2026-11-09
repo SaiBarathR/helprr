@@ -61,13 +61,39 @@ function TabsList({
 
 function TabsTrigger({
   className,
+  onPointerDown,
+  onFocus,
+  onKeyDown,
+  onBlur,
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+  // Radix focuses the tab from its own mousedown handler, and that script
+  // focus matches :focus-visible after a tap. Focus that follows a press on
+  // this tab is marked, so the ring (focus-key:) shows for keyboard focus
+  // only. A press that never focuses (a right-click, a scroll) marks nothing.
+  const pressedAt = React.useRef(0)
   return (
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
+      onPointerDown={(event) => {
+        pressedAt.current = Date.now()
+        onPointerDown?.(event)
+      }}
+      onFocus={(event) => {
+        // On touch the focus comes after the whole tap, so allow a moment.
+        if (Date.now() - pressedAt.current < 1000) event.currentTarget.dataset.pointerFocus = ""
+        onFocus?.(event)
+      }}
+      onKeyDown={(event) => {
+        delete event.currentTarget.dataset.pointerFocus
+        onKeyDown?.(event)
+      }}
+      onBlur={(event) => {
+        delete event.currentTarget.dataset.pointerFocus
+        onBlur?.(event)
+      }}
       className={cn(
-        "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring text-foreground/60 hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-all group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 group-data-[variant=default]/tabs-list:data-[state=active]:shadow-sm group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "focus-key:border-ring focus-key:ring-ring/50 focus-key:outline-ring data-[pointer-focus]:outline-none text-foreground/60 hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-all group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start focus-key:ring-[3px] focus-key:outline-1 disabled:pointer-events-none disabled:opacity-50 group-data-[variant=default]/tabs-list:data-[state=active]:shadow-sm group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent dark:group-data-[variant=line]/tabs-list:data-[state=active]:border-transparent dark:group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent",
         "group-data-[variant=segmented]/tabs-list:py-1.5 group-data-[variant=segmented]/tabs-list:text-xs group-data-[variant=segmented]/tabs-list:data-[state=active]:shadow-sm sm:group-data-[variant=segmented]/tabs-list:flex-none sm:group-data-[variant=segmented]/tabs-list:px-3",
         "data-[state=active]:bg-background dark:data-[state=active]:text-foreground dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 data-[state=active]:text-foreground",

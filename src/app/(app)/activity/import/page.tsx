@@ -438,7 +438,7 @@ function ManualImportContent() {
             value={mediaSearch}
             onChange={setMediaSearch}
             historyKey="activity-import-media"
-            placeholder={`Search ${isSonarr ? 'series' : 'movies'}...`}
+            placeholder={`Search ${isSonarr ? 'series' : 'movies'}…`}
             autoFocus
             className="w-full text-sm bg-muted/40 rounded-lg pl-9 pr-3 py-2.5 h-auto shadow-none border-0 outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-primary/40 transition-shadow"
           >
@@ -528,7 +528,7 @@ function ManualImportContent() {
             value={episodeSearch}
             onChange={setEpisodeSearch}
             historyKey="activity-import"
-            placeholder="Search episodes..."
+            placeholder="Search episodes…"
             autoFocus
             className="w-full text-sm bg-muted/40 rounded-lg pl-9 pr-3 py-2.5 h-auto shadow-none border-0 outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-primary/40 transition-shadow"
           >

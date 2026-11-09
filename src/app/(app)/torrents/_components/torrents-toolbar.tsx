@@ -6,6 +6,7 @@ import { FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui
 import {
   ResponsiveMenu,
   ResponsiveMenuCheckboxItem,
+  ResponsiveMenuSortDirection,
 } from '@/components/ui/responsive-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { ArrowDown, ArrowUp, ArrowUpDown, Filter, Gauge, Link2, Plus, RefreshCw, Search, Settings } from 'lucide-react';
@@ -21,6 +22,7 @@ export function TorrentsToolbar({
   setFilter,
   sortKey,
   sortDir,
+  setSortDir,
   handleHeaderSort,
   refresh,
   refreshing,
@@ -40,6 +42,7 @@ export function TorrentsToolbar({
   setFilter: (filter: FilterType[]) => void;
   sortKey: SortKey;
   sortDir: 'asc' | 'desc';
+  setSortDir: (dir: 'asc' | 'desc') => void;
   handleHeaderSort: (key: SortKey) => void;
   refresh: () => void;
   refreshing: boolean;
@@ -108,16 +111,15 @@ export function TorrentsToolbar({
             </button>
           )}
         >
+          <ResponsiveMenuSortDirection value={sortDir} onChange={setSortDir} />
           {SORT_OPTIONS.map((opt) => (
             <ResponsiveMenuCheckboxItem
               key={opt.key}
               checked={sortKey === opt.key}
-              onCheckedChange={() => handleHeaderSort(opt.key)}
+              // The direction has its own control above; picking the current key again keeps it.
+              onCheckedChange={() => { if (sortKey !== opt.key) handleHeaderSort(opt.key); }}
             >
               {opt.label}
-              {sortKey === opt.key && (
-                sortDir === 'asc' ? <ArrowUp className="ml-auto h-3.5 w-3.5" /> : <ArrowDown className="ml-auto h-3.5 w-3.5" />
-              )}
             </ResponsiveMenuCheckboxItem>
           ))}
         </ResponsiveMenu>
@@ -220,7 +222,7 @@ export function TorrentsToolbar({
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <SearchInput
           clearable
-          placeholder="Search torrents..."
+          placeholder="Search torrents…"
           value={search}
           onChange={setSearch}
           historyKey="torrents"

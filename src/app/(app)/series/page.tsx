@@ -25,6 +25,7 @@ import {
   ResponsiveMenuCheckboxItem,
   ResponsiveMenuLabel,
   ResponsiveMenuSeparator,
+  ResponsiveMenuSortDirection,
 } from '@/components/ui/responsive-menu';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { useToolbarHeight } from '@/lib/hooks/use-toolbar-height';
@@ -825,6 +826,7 @@ export default function SeriesPage() {
               </button>
             )}
           >
+            <ResponsiveMenuSortDirection value={sortDir} onChange={setSortDir} />
             {sortOptions.map((opt) => (
               <ResponsiveMenuCheckboxItem
                 key={opt.value}
@@ -834,19 +836,6 @@ export default function SeriesPage() {
                 {opt.label}
               </ResponsiveMenuCheckboxItem>
             ))}
-            <ResponsiveMenuSeparator />
-            <ResponsiveMenuCheckboxItem
-              checked={sortDir === 'asc'}
-              onCheckedChange={() => setSortDir('asc')}
-            >
-              Ascending
-            </ResponsiveMenuCheckboxItem>
-            <ResponsiveMenuCheckboxItem
-              checked={sortDir === 'desc'}
-              onCheckedChange={() => setSortDir('desc')}
-            >
-              Descending
-            </ResponsiveMenuCheckboxItem>
           </ResponsiveMenu>
 
           <ViewSelector value={viewMode} onChange={setViewMode} />
@@ -908,7 +897,7 @@ export default function SeriesPage() {
           )}
         </div>
 
-        <SearchBar value={search} onChange={handleSearch} placeholder="Search series..." historyKey="series" debounceMs={250} />
+        <SearchBar value={search} onChange={handleSearch} placeholder="Search series…" historyKey="series" debounceMs={250} />
       </div>
       {/* Below the sticky toolbar, so it can't push over sticky table headers;
           the filter button's dot stays in view. */}

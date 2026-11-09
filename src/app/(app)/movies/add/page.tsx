@@ -293,7 +293,7 @@ function AddMoviePageContent() {
         {/* Search form */}
         <form onSubmit={handleSearch} className="flex gap-2">
           <SearchInput
-            placeholder="Search for a movie..."
+            placeholder="Search for a movie…"
             value={term}
             onChange={setTerm}
             historyKey="movies-add"

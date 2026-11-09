@@ -85,7 +85,12 @@ describe('floating phone tab bar (nav at the bottom)', () => {
     const props = rule.nodes.filter((node) => node.type === 'decl').map((node) => (node as { prop: string }).prop);
     expect(props.indexOf('-webkit-backdrop-filter')).toBeGreaterThan(props.indexOf('backdrop-filter'));
     expect(found['(prefers-reduced-transparency: reduce)']).toMatchObject({ background: 'var(--hpr-surface)', 'backdrop-filter': 'none' });
-    const unsupported = Object.keys(found).find((media) => media.startsWith('not'));
+    const unsupported = Object.keys(found).find((media) => media.startsWith('not ((backdrop-filter'));
     expect(unsupported && found[unsupported]).toMatchObject({ background: 'var(--hpr-surface)', 'backdrop-filter': 'none' });
+  });
+
+  it('gives the pill the denser overlay fill where the blur is capped (no -webkit- alias: Chromium), so text behind never reads', () => {
+    const found = decls("html[data-glass][data-nav-position='bottom'] .app-tab-surface");
+    expect(found['not (-webkit-backdrop-filter: blur(1px))']).toEqual({ background: 'var(--hpr-glass-bg-strong)' });
   });
 });
