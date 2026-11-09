@@ -405,8 +405,9 @@ export class ProwlarrClient {
     return this.get<ProwlarrStats>('/api/v1/indexerstats', params as Record<string, unknown>);
   }
 
-  async getHistory(params: { page?: number; pageSize?: number; indexerId?: number; eventType?: number; successful?: boolean } = {}): Promise<ProwlarrHistoryResponse> {
-    return this.get<ProwlarrHistoryResponse>('/api/v1/history', params as Record<string, unknown>);
+  async getHistory({ indexerId, ...params }: { page?: number; pageSize?: number; indexerId?: number; eventType?: number; successful?: boolean } = {}): Promise<ProwlarrHistoryResponse> {
+    // Prowlarr filters history by `indexerIds` and ignores `indexerId`.
+    return this.get<ProwlarrHistoryResponse>('/api/v1/history', { ...params, indexerIds: indexerId });
   }
 
   async sendCommand(name: string): Promise<CommandResponse> {
