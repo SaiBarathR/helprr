@@ -9,9 +9,8 @@ import { isQueryOffline } from '@/lib/network-error';
 import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
-import { Clock, Dices, Film, Loader2, RefreshCw, SlidersHorizontal, Sparkles, Star, Tv, Users } from 'lucide-react';
+import { Clock, Dices, Film, Loader2, MoreHorizontal, RefreshCw, SlidersHorizontal, Sparkles, Star, Tv, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
 import { hasCapability, useMe } from '@/components/permission-provider';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { RandomPick, RandomWatchFilterType as FilterType } from '@/types';
@@ -21,6 +20,7 @@ import { useUIStore } from '@/lib/store';
 import { MAX_RANDOM_GENRES, normalizeRandomWatchPrefs, RANDOM_RUNTIME_LABELS, RANDOM_RUNTIMES, type RandomRuntime } from '@/lib/random-watch-filters';
 import {
   ResponsiveMenu,
+  ResponsiveMenuActionItem,
   ResponsiveMenuCheckboxItem,
   ResponsiveMenuLabel,
   ResponsiveMenuSeparator,
@@ -77,6 +77,9 @@ export function RandomWatchView() {
   // series are wanted.
   const runtime: RandomRuntime = type === 'series' ? 'any' : savedRuntime;
   const activeFilterCount = genres.length + (runtime === 'any' ? 0 : 1);
+  // Unwatched only lives in the Filters menu too, so the button counts it.
+  const filtersCount = activeFilterCount + (watch === 'unwatched' ? 1 : 0);
+  const filtersLabel = filtersCount > 0 ? `Filters · ${filtersCount}` : 'Filters';
 
   // A Tonight pick opens over Random from ?tonight=<id> (the push and the copied link).
   const searchParams = useSearchParams();
@@ -90,6 +93,8 @@ export function RandomWatchView() {
     router.replace(`/recommendations?mode=random&tonight=${encodeURIComponent(id)}`, { scroll: false });
   };
   const closeTonight = () => router.replace('/recommendations?mode=random', { scroll: false });
+  const startOrResumeTonight = () => (lastTonightId ? openTonight(lastTonightId) : setTonightSheetOpen(true));
+  const tonightLabel = lastTonightId ? 'Back to pick' : 'Pick together';
 
   const apiUrl = useMemo(() => {
     const params = new URLSearchParams({ type, watch });
@@ -162,9 +167,11 @@ export function RandomWatchView() {
           onStarted={openTonight}
         />
         {tonightId && <TonightPick key={tonightId} id={tonightId} onClose={closeTonight} onOpenPick={openTonight} />}
-        {/* Single-row control bar: never wraps; overflows into horizontal scroll
-            on very narrow screens instead of breaking onto a second line. */}
-        <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto scrollbar-hide">
+        {/* One row that fits a 320px phone: type and Filters stay in view;
+            Pick together and the pool size fold into the ⋯ menu below lg (a
+            sidebar beside a tablet-width row leaves no room for them) and sit
+            in the row from lg up. */}
+        <div className="flex flex-nowrap items-center gap-1.5">
           {(['any', 'movie', 'series'] as FilterType[]).map((t) => {
             const active = type === t;
             const label = t === 'any' ? 'All' : t === 'movie' ? 'Movies' : 'Series';
@@ -174,7 +181,8 @@ export function RandomWatchView() {
                 type="button"
                 onClick={() => setType(t)}
                 aria-label={label}
-                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${active
+                aria-pressed={active}
+                className={`relative touch-target-y inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${active
                   ? 'border border-primary/40 bg-primary/20 text-primary'
                   : 'bg-accent/40 text-muted-foreground'
                   }`}
@@ -186,32 +194,35 @@ export function RandomWatchView() {
               </button>
             );
           })}
-          {canFilterUnwatched && (
-            <label className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent/40 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
-              <span>Unwatched</span>
-              <Switch
-                size="sm"
-                checked={unwatchedOnly}
-                onCheckedChange={setUnwatchedOnly}
-                aria-label="Unwatched only"
-              />
-            </label>
-          )}
           <ResponsiveMenu
             title="Filters"
             trigger={(
               <button
                 type="button"
-                className={`touch-target inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${activeFilterCount > 0
+                aria-label={filtersLabel}
+                className={`relative touch-target-y inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${filtersCount > 0
                   ? 'border border-primary/40 bg-primary/20 text-primary'
                   : 'bg-accent/40 text-muted-foreground'
                   }`}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
-                {activeFilterCount > 0 ? `Filters · ${activeFilterCount}` : 'Filters'}
+                {/* The word goes on the narrowest phones; the count stays. */}
+                <span className="max-[374px]:hidden">Filters</span>
+                {filtersCount > 0 && (
+                  <span><span className="max-[374px]:hidden">· </span>{filtersCount}</span>
+                )}
               </button>
             )}
           >
+            {canFilterUnwatched && (
+              <>
+                <ResponsiveMenuLabel>Watched</ResponsiveMenuLabel>
+                <ResponsiveMenuCheckboxItem checked={unwatchedOnly} onCheckedChange={() => setUnwatchedOnly(!unwatchedOnly)}>
+                  Unwatched only
+                </ResponsiveMenuCheckboxItem>
+                <ResponsiveMenuSeparator />
+              </>
+            )}
             {type !== 'series' && (
               <>
                 <ResponsiveMenuLabel>Movie length</ResponsiveMenuLabel>
@@ -239,23 +250,46 @@ export function RandomWatchView() {
           </ResponsiveMenu>
           <button
             type="button"
-            onClick={() => (lastTonightId ? openTonight(lastTonightId) : setTonightSheetOpen(true))}
-            className="touch-target relative inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent/40 px-3 py-1.5 text-xs font-semibold text-muted-foreground"
+            onClick={startOrResumeTonight}
+            className="relative touch-target-y hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent/40 px-3 py-1.5 text-xs font-semibold text-muted-foreground lg:inline-flex"
           >
             <Users className="h-3.5 w-3.5" />
-            {lastTonightId ? 'Back to pick' : 'Pick together'}
+            {tonightLabel}
           </button>
-          <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1.5">
+          {/* The icons sit 44px apart centre to centre, so each 44px tap area is its own. */}
+          <div className="ml-auto flex shrink-0 items-center gap-3 pl-1.5">
             {poolSize !== null && (
-              <span className="whitespace-nowrap rounded-full bg-accent/40 px-2.5 py-1 text-[11px] tabular-nums text-muted-foreground">
+              <span className="hidden whitespace-nowrap rounded-full bg-accent/40 px-2.5 py-1 text-[11px] tabular-nums text-muted-foreground lg:inline">
                 Pool: {poolSize}
               </span>
             )}
+            <ResponsiveMenu
+              title="More actions"
+              actions
+              align="end"
+              trigger={(
+                <Button
+                  size="icon-sm"
+                  variant="outline"
+                  className="relative touch-target lg:hidden"
+                  aria-label="More actions"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              )}
+            >
+              {poolSize !== null && <ResponsiveMenuLabel>Pool: {poolSize}</ResponsiveMenuLabel>}
+              <ResponsiveMenuActionItem onSelect={startOrResumeTonight}>
+                <Users className="h-4 w-4" />
+                {tonightLabel}
+              </ResponsiveMenuActionItem>
+            </ResponsiveMenu>
             <Button
               size="icon-sm"
               onClick={() => rollQuery.refetch()}
               disabled={loading}
               variant="outline"
+              className="relative touch-target touch-target-center"
               aria-label="Pick another"
             >
               {loading ? (
