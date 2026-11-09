@@ -198,8 +198,10 @@ describe('DashboardClient Edit row', () => {
     const button = editButton()!;
     expect(button.textContent).toBe('Edit');
     const row = button.parentElement!;
-    // Inline, right-aligned, 40px, and ahead of the widgets: not floating over them.
-    expect(row.style.height).toBe('40px');
+    // Inline, right-aligned, only as tall as the pill, and ahead of the widgets:
+    // not floating over them. On desktop it rises into the top padding.
+    expect(row.style.height).toBe('30px');
+    expect(row.style.margin).toBe(device === 'mobile' ? '0px 0px 8px' : '-12px 0px 8px');
     expect(row.style.justifyContent).toBe('flex-end');
     expect(row.textContent).toBe('Edit');
     expect(button.style.position).toBe('');

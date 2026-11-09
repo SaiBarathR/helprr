@@ -9,7 +9,8 @@ export default function ThemeSettingsPage() {
   const isMobile = useIsMobile();
 
   return (
-    <div className="animate-content-in pb-12">
+    // Five columns need the full content width, not the settings column.
+    <div className="animate-content-in pb-12" data-settings-wide>
       <div className="px-1 pt-1 pb-2">
         <Link
           href="/settings/appearance"

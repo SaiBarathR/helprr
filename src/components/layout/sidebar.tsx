@@ -120,9 +120,8 @@ export function Sidebar() {
         prefetch={null}
         aria-label={sidebarCollapsed ? label : undefined}
         className={cn(
-          // Shorter rows on short screens so the whole list fits above the
-          // footer at 1440x900, but never under 44px on a touch screen (a tablet's rail).
-          'relative flex items-center gap-3 rounded-md px-3 py-2 [@media(max-height:960px)]:py-1 pointer-coarse:min-h-11 text-sm font-medium transition-colors',
+          // 44px rows on touch screens (a tablet's icon rail).
+          'relative flex items-center gap-3 rounded-md px-3 py-2 pointer-coarse:min-h-11 text-sm font-medium transition-colors',
           // In dark Liquid Glass only the icon takes the blue tint; the label
           // stays white. Light Glass and other themes tint the label through
           // --hpr-tab-label (the text colour for the cyan accent).
@@ -136,7 +135,8 @@ export function Sidebar() {
         {isPending ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-primary')} />}
         {!sidebarCollapsed && label}
         {!sidebarCollapsed && <NavBadge slice={slice} className="ml-auto" />}
-        {sidebarCollapsed && <NavBadge slice={slice} dot className="absolute right-1.5 top-1.5" />}
+        {/* Pinned to the icon's top-right corner, so it stays put however tall the row is. */}
+        {sidebarCollapsed && <NavBadge slice={slice} dot className="absolute left-1/2 top-1/2 ml-2.5 -mt-3" />}
       </Link>
     );
 
@@ -198,7 +198,8 @@ export function Sidebar() {
           size="sm"
           onClick={handleToggle}
           aria-label={sidebarCollapsed ? 'Expand sidebar' : undefined}
-          className={cn('w-full', sidebarCollapsed ? 'justify-center' : 'justify-start')}
+          // 44px on touch screens, like the rows above it.
+          className={cn('w-full pointer-coarse:h-11', sidebarCollapsed ? 'justify-center' : 'justify-start')}
         >
           {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           {!sidebarCollapsed && <span className="ml-2">Collapse</span>}

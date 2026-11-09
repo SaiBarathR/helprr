@@ -261,21 +261,21 @@ export default function DashboardRefreshSettingsPage() {
   }
 
   return (
-    <div className="px-4 sm:px-6 py-4 max-w-3xl mx-auto">
-      <div className="flex items-center gap-2 mb-4">
-        {/* Guarded back-nav: unsaved interval edits confirm before discarding. */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 -ml-2 px-2"
+    <div className="animate-content-in pb-12">
+      <div className="px-1 pt-1 pb-2">
+        {/* Guarded back-nav: unsaved interval edits confirm before discarding.
+            Styled like the other settings pages' back link. */}
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 text-sm text-primary -ml-1 min-h-[44px] px-1"
           onClick={() => (dirty ? setConfirmLeave(true) : router.push('/settings/preferences'))}
         >
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="h-5 w-5" />
           Preferences
-        </Button>
+        </button>
       </div>
 
-      <div className="mb-6">
+      <div className="px-4 mb-4">
         <h1 className="text-2xl font-semibold">Dashboard Widget Refresh</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Configure how often each widget polls for fresh data. Leave a field empty

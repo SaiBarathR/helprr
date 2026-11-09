@@ -168,4 +168,18 @@ describe('Sidebar layout', () => {
     expect(names('aside > div')).toEqual(['Notifications', 'Settings', 'Expand sidebar']);
   });
 
+  it('keeps 36px rows on short desktop windows and 44px touch targets in the rail, Collapse included', async () => {
+    mocks.collapsed = true;
+    await render();
+    const links = Array.from(document.querySelectorAll('aside a'));
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link.className).toContain('py-2');
+      expect(link.className).not.toContain('max-height');
+      expect(link.className).toContain('pointer-coarse:min-h-11');
+    }
+    expect(document.querySelector('aside nav[aria-label="Main"] button')!.className).toContain('pointer-coarse:min-h-11');
+    expect(document.querySelector('button[aria-label="Expand sidebar"]')!.className).toContain('pointer-coarse:h-11');
+  });
+
 });

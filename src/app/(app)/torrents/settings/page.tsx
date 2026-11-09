@@ -140,9 +140,10 @@ export default function QBittorrentSettingsPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title="qBittorrent Settings" />
+      {/* The bar spans the page; its back button and title line up with the settings column. */}
+      <PageHeader title="qBittorrent Settings" className="*:readable-column" />
 
-      <div className="mt-3 pb-8">
+      <div className="mt-3 pb-8 readable-column">
         <GroupedSection title="View" footer="Automatic shows the table on wide screens and cards on phones.">
           <div className="grouped-row">
             <span className="text-sm">Layout</span>
