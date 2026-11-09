@@ -221,7 +221,8 @@ function RecommendationsPageInner() {
                 onClick={() => setMode(id)}
                 aria-label={label}
                 aria-pressed={active}
-                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${active
+                // Narrower sides below 360px, so Refresh still fits a 320px phone.
+                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold max-[359px]:px-2 ${active
                   ? 'border border-primary/40 bg-primary/20 text-primary'
                   : 'bg-accent/40 text-muted-foreground'
                   }`}
