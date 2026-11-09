@@ -9,9 +9,9 @@ const mocks = vi.hoisted(() => ({ counts: null as BadgeCounts | null }));
 
 vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard' }));
 vi.mock('@/components/ui/app-link', () => ({
-  default: ({ children, href, onClick, className }: { children: React.ReactNode; href: string; onClick?: React.MouseEventHandler; className?: string }) => (
+  default: ({ children, href, onClick, className, 'aria-label': ariaLabel }: { children: React.ReactNode; href: string; onClick?: React.MouseEventHandler; className?: string; 'aria-label'?: string }) => (
     // jsdom cannot navigate, so stop the default after the component's handler.
-    <a href={href} className={className} onClick={(event) => { onClick?.(event); event.preventDefault(); }}>{children}</a>
+    <a href={href} aria-label={ariaLabel} className={className} onClick={(event) => { onClick?.(event); event.preventDefault(); }}>{children}</a>
   ),
 }));
 vi.mock('@/components/layout/navigation-provider', () => ({ usePendingHref: () => null }));
@@ -39,25 +39,30 @@ beforeEach(() => {
 });
 
 describe('BottomNav', () => {
-  // The four tabs and More fill the bar; Search is a round button beside them.
+  // The four tabs and More fill the bar; Search sits beside them.
   const slots = () => {
     const search = within(screen.getByRole('navigation')).getByRole('button', { name: 'Search' });
     return Array.from(search.previousElementSibling!.children).map((slot) => slot.textContent);
   };
 
-  it('shows the default tabs and More in five slots, with Search as a round button beside them', () => {
+  it('shows the default tabs and More in five slots, with Search beside them', () => {
     render(<BottomNav />);
     const bar = within(screen.getByRole('navigation'));
     expect(bar.getAllByRole('link').map((link) => link.textContent)).toEqual(['Dashboard', 'Movies', 'Series', 'Activity']);
     expect(slots()).toEqual(['Dashboard', 'Movies', 'Series', 'Activity', 'More']);
     const search = bar.getByRole('button', { name: 'Search' });
-    expect(search.textContent).toBe('');
-    expect(search.classList).toContain('rounded-full');
-    expect(search.classList).toContain('shrink-0');
+    // A tab-like slot with its label; at the bottom globals.css makes it round and hides the label.
+    expect(search.textContent).toBe('Search');
+    expect(search.querySelector('.app-tab-search-label')!.textContent).toBe('Search');
+    // The same slot classes as an idle tab.
+    expect([...search.classList]).toEqual(expect.arrayContaining(
+      [...bar.getByRole('link', { name: 'Movies' }).classList].filter((name) => !['touch-manipulation', 'active:opacity-70'].includes(name)),
+    ));
     // Last in the bar, so it sits at its right (bottom-right with the nav at the bottom).
     expect(search.parentElement!.lastElementChild).toBe(search);
-    // At the bottom, globals.css floats the tabs and Search as two surfaces (see floating-tab-bar.test.ts).
-    expect(search.previousElementSibling!.classList).toContain('app-tab-surface');
+    // At the bottom, globals.css floats the tabs and Search as two surfaces; at the
+    // top the tab group gives way so Search is one more slot (floating-tab-bar.test.ts).
+    expect([...search.previousElementSibling!.classList]).toEqual(expect.arrayContaining(['app-tab-surface', 'app-tab-group']));
     expect([...search.classList]).toEqual(expect.arrayContaining(['app-tab-search', 'app-tab-surface']));
   });
 
@@ -88,6 +93,52 @@ describe('BottomNav', () => {
     mocks.counts = { ...EMPTY_BADGE_COUNTS, notifications: { total: 3, attention: 3 }, requests: { total: 2, attention: 2 } };
     render(<BottomNav />);
     expect(screen.getByRole('button', { name: /More/ }).textContent).toBe('5More');
+  });
+
+  it("overlaps only its icon's top-right corner, ringed in the bar's colour", () => {
+    mocks.counts = { ...EMPTY_BADGE_COUNTS, notifications: { total: 44, attention: 44 } };
+    render(<BottomNav />);
+    const badge = within(screen.getByRole('button', { name: /More/ })).getByText('44');
+    // Its left edge 4px inside the icon's right edge, 5px above the icon (the
+    // bar's 14px inner padding keeps a 99+ on the last slot inside the pill).
+    expect([...badge.classList]).toEqual(expect.arrayContaining(['absolute', 'left-[calc(100%-4px)]', '-top-[5px]', 'h-4', 'ring-2', 'ring-background', '[html[data-glass]_&]:ring-[color:var(--hpr-glass-bg)]']));
+    expect(badge.parentElement!.querySelector('svg')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /More/ }).parentElement!.classList).toContain('px-3.5');
+  });
+
+  it('names a tab with a count label first, then the count, for screen readers', () => {
+    mocks.counts = { ...EMPTY_BADGE_COUNTS, notifications: { total: 59, attention: 59 }, activity: { total: 3, attention: 0 } };
+    render(<BottomNav />);
+    const bar = within(screen.getByRole('navigation'));
+    // Only notifications behind More: unread.
+    expect(bar.getByRole('button', { name: 'More, 59 unread' })).toBeTruthy();
+    expect(bar.getByRole('link', { name: 'Activity, 3 in queue' })).toBeTruthy();
+    // Tabs without a count keep their plain label.
+    expect(bar.getByRole('link', { name: 'Movies' })).toBeTruthy();
+    expect(bar.getByRole('button', { name: 'Search' })).toBeTruthy();
+  });
+
+  it('names More sheet rows with a count the same way', async () => {
+    mocks.counts = { ...EMPTY_BADGE_COUNTS, notifications: { total: 44, attention: 44 }, requests: { total: 2, attention: 2 }, downloads: { total: 1, attention: 0 } };
+    render(<BottomNav />);
+    await userEvent.click(screen.getByRole('button', { name: /^More/ }));
+    const sheet = within(await screen.findByRole('dialog', { name: 'More' }));
+    expect(sheet.getByRole('link', { name: 'Notifications, 44 unread' })).toBeTruthy();
+    expect(sheet.getByRole('link', { name: 'Requests, 2 items' })).toBeTruthy();
+    expect(sheet.getByRole('link', { name: 'Torrents, 1 item' })).toBeTruthy();
+    expect(sheet.getByRole('link', { name: 'Discover' })).toBeTruthy();
+  });
+
+  it('calls More\'s count new once anything but notifications adds to it', () => {
+    mocks.counts = { ...EMPTY_BADGE_COUNTS, notifications: { total: 59, attention: 59 }, requests: { total: 1, attention: 1 }, downloads: { total: 2, attention: 0 } };
+    render(<BottomNav />);
+    expect(within(screen.getByRole('navigation')).getByRole('button', { name: 'More, 62 new' })).toBeTruthy();
+  });
+
+  it('caps the spoken count the way the badge shows it', () => {
+    mocks.counts = { ...EMPTY_BADGE_COUNTS, notifications: { total: 140, attention: 140 } };
+    render(<BottomNav />);
+    expect(within(screen.getByRole('navigation')).getByRole('button', { name: 'More, 99+ unread' })).toBeTruthy();
   });
 
   it('does not count the same downloads twice when Activity and Torrents are both in More', () => {

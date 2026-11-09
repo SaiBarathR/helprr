@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   navOrder: [] as string[],
   disabledNavItems: [] as string[],
   denied: new Set<string>(),
+  counts: {} as Record<string, { total: number; attention: number }>,
 }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard' }));
 vi.mock('@/components/ui/app-link', () => ({
@@ -22,8 +23,11 @@ vi.mock('@/components/permission-provider', () => ({
   hasCapability: (_me: unknown, cap: string) => !mocks.denied.has(cap),
 }));
 vi.mock('@/components/search/search-store', () => ({ useSearchPalette: () => () => {} }));
-vi.mock('@/components/layout/badge-provider', () => ({ useBadgeCounts: () => ({}) }));
-vi.mock('@/components/layout/nav-badge', () => ({ NavBadge: () => null }));
+vi.mock('@/components/layout/badge-provider', () => ({ useBadgeCounts: () => mocks.counts }));
+vi.mock('@/components/layout/nav-badge', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/layout/nav-badge')>()),
+  NavBadge: () => null,
+}));
 vi.mock('@/lib/store', () => ({
   useUIStore: (select: (s: Record<string, unknown>) => unknown) => select({
     sidebarCollapsed: mocks.collapsed, toggleSidebar: () => {},
@@ -44,6 +48,7 @@ beforeEach(() => {
   mocks.navOrder = [...DEFAULT_NAV_ORDER];
   mocks.disabledNavItems = [];
   mocks.denied = new Set();
+  mocks.counts = {};
   root = createRoot(document.getElementById('root')!);
 });
 afterEach(async () => {
@@ -79,6 +84,24 @@ describe('Sidebar names', () => {
     expect(document.querySelectorAll('aside a[aria-label], aside button[aria-label]')).toHaveLength(0);
     expect(names('aside nav[aria-label="Main"]')[0]).toBe('Search⌘K');
     expect(names('aside > div')).toEqual(['Notifications', 'Settings', 'Collapse']);
+  });
+
+  it.each([true, false])('reads a count after its label, saying what it counts (collapsed: %s)', async (collapsed) => {
+    mocks.collapsed = collapsed;
+    mocks.counts = {
+      notifications: { total: 44, attention: 44 },
+      activity: { total: 3, attention: 0 },
+      downloads: { total: 2, attention: 0 },
+      requests: { total: 1, attention: 1 },
+    };
+    await render();
+    const label = (href: string) => document.querySelector(`aside a[href="${href}"]`)!.getAttribute('aria-label');
+    expect(label('/notifications')).toBe('Notifications, 44 unread');
+    expect(label('/activity')).toBe('Activity, 3 in queue');
+    expect(label('/torrents')).toBe('Torrents, 2 items');
+    expect(label('/requests')).toBe('Requests, 1 item');
+    // Without a count an expanded item keeps its visible text as its name.
+    expect(label('/movies')).toBe(collapsed ? 'Movies' : null);
   });
 });
 

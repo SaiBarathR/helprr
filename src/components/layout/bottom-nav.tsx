@@ -11,7 +11,7 @@ import { getActiveNavHref, getEnabledNavItems, getBottomNavLayout, navItemAllowe
 import { usePendingHref } from '@/components/layout/navigation-provider';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useBadgeCounts } from '@/components/layout/badge-provider';
-import { NavBadge } from '@/components/layout/nav-badge';
+import { NavBadge, navBadgeName } from '@/components/layout/nav-badge';
 import { useSearchPalette } from '@/components/search/search-store';
 import type { BadgeSlice } from '@/types/badges';
 
@@ -21,6 +21,15 @@ import type { BadgeSlice } from '@/types/badges';
 // --hpr-tab-label, which is the text colour for the cyan accent (dashboard-theme.ts).
 const GLASS_ACTIVE_LABEL = '[html[data-glass]_&]:text-foreground';
 const ACTIVE_LABEL = 'text-[color:var(--hpr-tab-label,var(--primary))]';
+// One tab slot: an icon over a 10px label, as iOS sets them. The label
+// truncates rather than run into the next slot or the bar's rounded end.
+const SLOT = 'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 h-full min-h-11 text-[10px] font-medium leading-tight transition-colors';
+const SLOT_LABEL = 'max-w-full truncate tracking-[-0.01em]';
+// A count overlaps only the icon's top-right corner, as on iOS tabs, ringed
+// in the bar's colour so it reads apart from the icon. The bar's 14px inner
+// padding and the 5px rise keep the badge inside the floating bar's rounded
+// end on the last slot at 375px, even for 99+.
+const SLOT_BADGE = 'absolute -top-[5px] left-[calc(100%-4px)] h-4 min-w-[1rem] px-1 text-[10px] ring-2 ring-background [html[data-glass]_&]:ring-[color:var(--hpr-glass-bg)]';
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -44,21 +53,23 @@ export function BottomNav() {
 
   // Roll the hidden items' badges into one count on the "More" button. The
   // Activity queue and Torrents largely count the same downloads, so when both
-  // are hidden only Torrents counts.
-  const moreBadge = useMemo<BadgeSlice>(
+  // are hidden only Torrents counts. It reads as unread only while unread
+  // notifications are all it holds.
+  const { moreBadge, moreOnlyUnread } = useMemo(
     () => {
       const hasDownloads = moreItems.some((item) => item.badgeArea === 'downloads');
       return moreItems.reduce(
         (acc, item) => {
           if (hasDownloads && item.badgeArea === 'activity') return acc;
           const slice = item.badgeArea ? counts[item.badgeArea] : undefined;
-          if (slice) {
-            acc.total += slice.total;
-            acc.attention += slice.attention;
+          if (slice && slice.total > 0) {
+            acc.moreBadge.total += slice.total;
+            acc.moreBadge.attention += slice.attention;
+            if (item.badgeArea !== 'notifications') acc.moreOnlyUnread = false;
           }
           return acc;
         },
-        { total: 0, attention: 0 },
+        { moreBadge: { total: 0, attention: 0 } as BadgeSlice, moreOnlyUnread: true },
       );
     },
     [moreItems, counts],
@@ -72,9 +83,11 @@ export function BottomNav() {
       className="app-tab-bar md:hidden z-50 border-border app-chrome-bar bg-background/95 backdrop-blur-sm"
     >
       {/* With the nav at the bottom of a phone, the tabs and the round Search
-          float as two surfaces of their own (app-tab-surface, globals.css). */}
-      <div className="flex items-center h-12">
-        <div className="app-tab-surface flex flex-1 min-w-0 items-center justify-around h-full">
+          float as two surfaces of their own (app-tab-surface, globals.css).
+          At the top the tab group steps aside (app-tab-group), so Search is
+          one more slot in the same row. */}
+      <div className="app-tab-row flex items-center h-12">
+        <div className="app-tab-surface app-tab-group flex flex-1 min-w-0 items-center justify-around h-full px-3.5">
           {tabs.map(({ href, icon: Icon, shortLabel, badgeArea }) => {
             const slice = badgeArea ? counts[badgeArea] : undefined;
             const isActive = href === activeHref;
@@ -84,8 +97,9 @@ export function BottomNav() {
                 key={href}
                 href={href}
                 prefetch={null}
+                aria-label={navBadgeName(shortLabel, slice, badgeArea)}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-11 text-[11px] font-medium transition-colors',
+                  SLOT,
                   isActive ? cn(ACTIVE_LABEL, GLASS_ACTIVE_LABEL) : 'text-muted-foreground',
                   isPending && 'opacity-70'
                 )}
@@ -96,9 +110,9 @@ export function BottomNav() {
                   ) : (
                     <Icon className={cn('h-5 w-5', isActive && 'text-primary')} strokeWidth={isActive ? 2.5 : 2} />
                   )}
-                  <NavBadge slice={slice} className="absolute -right-2.5 -top-1.5 h-4 min-w-[1rem] px-1 text-[10px]" />
+                  <NavBadge slice={slice} className={SLOT_BADGE} />
                 </span>
-                {shortLabel}
+                <span className={SLOT_LABEL}>{shortLabel}</span>
               </Link>
             );
           })}
@@ -110,16 +124,17 @@ export function BottomNav() {
               onOpenChange={setMoreOpen}
               trigger={(
                 <button
+                  aria-label={navBadgeName('More', moreBadge, moreOnlyUnread ? 'notifications' : 'more')}
                   className={cn(
-                    'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-11 text-[11px] font-medium transition-colors',
+                    SLOT,
                     isMoreActive ? cn(ACTIVE_LABEL, GLASS_ACTIVE_LABEL) : 'text-muted-foreground'
                   )}
                 >
                   <span className="relative">
                     <MoreHorizontal className={cn('h-5 w-5', isMoreActive && 'text-primary')} strokeWidth={isMoreActive ? 2.5 : 2} />
-                    <NavBadge slice={moreBadge} className="absolute -right-2.5 -top-1.5 h-4 min-w-[1rem] px-1 text-[10px]" />
+                    <NavBadge slice={moreBadge} className={SLOT_BADGE} />
                   </span>
-                  More
+                  <span className={SLOT_LABEL}>More</span>
                 </button>
               )}
               footer={(
@@ -146,6 +161,7 @@ export function BottomNav() {
                       <Link
                         href={href}
                         prefetch={null}
+                        aria-label={navBadgeName(label, slice, badgeArea)}
                         onClick={(event) => {
                           if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
                             return;
@@ -173,16 +189,17 @@ export function BottomNav() {
         </div>
 
         {/* Phone search: the sidebar's search and its shortcut hint are md+ only.
-            A round button of its own beside the five slots, so it never takes a
-            tab's place: detached beside the bar at the bottom, as iOS 26 apps
-            place it, and inside the bar's right end when the nav is at the top. */}
+            It never takes a tab's place: at the bottom a round button detached
+            beside the bar, as iOS 26 apps place it (globals.css hides its label
+            there), and at the top a last slot that looks like the tabs. */}
         <button
           type="button"
           aria-label="Search"
           onClick={() => openSearch(true)}
-          className="app-tab-search app-tab-surface mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-foreground/10 bg-foreground/[0.06] text-foreground shadow-sm transition-colors active:bg-foreground/[0.12]"
+          className={cn('app-tab-search app-tab-surface', SLOT, 'text-muted-foreground')}
         >
           <Search className="h-5 w-5" />
+          <span className={cn('app-tab-search-label', SLOT_LABEL)}>Search</span>
         </button>
       </div>
     </nav>

@@ -13,7 +13,7 @@ import { usePendingHref } from '@/components/layout/navigation-provider';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useSearchPalette } from '@/components/search/search-store';
 import { useBadgeCounts } from '@/components/layout/badge-provider';
-import { NavBadge } from '@/components/layout/nav-badge';
+import { NavBadge, navBadgeName } from '@/components/layout/nav-badge';
 
 /**
  * Render the application's responsive, collapsible navigation sidebar.
@@ -118,7 +118,7 @@ export function Sidebar() {
         key={href}
         href={href}
         prefetch={null}
-        aria-label={sidebarCollapsed ? label : undefined}
+        aria-label={navBadgeName(label, slice, badgeArea) ?? (sidebarCollapsed ? label : undefined)}
         className={cn(
           // 44px rows on touch screens (a tablet's icon rail).
           'relative flex items-center gap-3 rounded-md px-3 py-2 pointer-coarse:min-h-11 text-sm font-medium transition-colors',
