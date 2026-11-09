@@ -272,7 +272,7 @@ function DashboardInner({ initialLayout, initialDevice, setupChecklist }: Dashbo
           dirty={isDirty}
         />
       )}
-      {!editMode && canCustomize && <EditRow onClick={() => setEditMode(true)} />}
+      {!editMode && canCustomize && <EditRow mobile={isMobile} onClick={() => setEditMode(true)} />}
       {!editMode && setupChecklist && <SetupChecklist initial={setupChecklist} mobile={isMobile} />}
       {!editMode && <LeavingSoonShelf />}
       <WidgetGrid isMobile={isMobile} onConfigureRefresh={() => setRefreshDrawerOpen(true)} />

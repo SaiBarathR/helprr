@@ -777,11 +777,21 @@ const btnDone: React.CSSProperties = {
 };
 
 // ─── EditRow (small inline Edit at the top of the dashboard) ───────────
-// A 40px right-aligned row above the widgets, in place of a floating button
-// that covered widget content. No heading text: the page has no visible title.
-export function EditRow({ onClick }: { onClick?: () => void }) {
+// A right-aligned row above the widgets, in place of a floating button that
+// covered widget content. No heading text: the page has no visible title. The
+// row is only as tall as the pill; on desktop it rises into the dashboard's
+// 20px top padding, so the widgets start 8px under the pill.
+export function EditRow({ onClick, mobile = false }: { onClick?: () => void; mobile?: boolean }) {
   return (
-    <div style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+    <div
+      style={{
+        height: 30,
+        margin: mobile ? '0 0 8px' : '-12px 0 8px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+      }}
+    >
       <button
         type="button"
         onClick={onClick}

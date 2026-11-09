@@ -314,101 +314,104 @@ export default function LogsPage() {
         downloadLabel={downloadLabel}
       />
 
-      {hasFilters && (
-        <LogsActiveFilters
-          levels={levels}
-          sources={sources}
-          from={from}
-          to={to}
-          selectedFile={selectedFile}
-          query={query}
-          onToggleLevel={handleToggleLevel}
-          onToggleSource={handleToggleSource}
-          onClearDateRange={() => handleDateRangeChange('', '')}
-          onClearFile={() => setSelectedFile('all')}
-          onClearQuery={() => {
-            setSearchInput('');
-            setQuery('');
-          }}
-          onClearAll={handleClearAll}
-        />
-      )}
-
-      <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-        <span className="tracked-caps">
-          {loading ? 'Loading…' : `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`}
-          {entries.length >= 1000 && (
-            <span className="ml-2 text-foreground/60 normal-case tracking-normal">
-              (cap reached, narrow filters)
-            </span>
-          )}
-        </span>
-        {expanded.size > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              setExpanded(new Set());
-              // Expanded rows that scrolled out of view are unmounted, so they
-              // never remeasure on collapse — their cached heights go stale and
-              // scrolling jumps. Reset all measurements instead.
-              virtualizer.measure();
+      {/* Log lines are long, so the wider of the two readable columns. */}
+      <div className="readable-column-wide space-y-2">
+        {hasFilters && (
+          <LogsActiveFilters
+            levels={levels}
+            sources={sources}
+            from={from}
+            to={to}
+            selectedFile={selectedFile}
+            query={query}
+            onToggleLevel={handleToggleLevel}
+            onToggleSource={handleToggleSource}
+            onClearDateRange={() => handleDateRangeChange('', '')}
+            onClearFile={() => setSelectedFile('all')}
+            onClearQuery={() => {
+              setSearchInput('');
+              setQuery('');
             }}
-            className="hover:text-foreground transition-colors"
-          >
-            Collapse all ({expanded.size})
-          </button>
+            onClearAll={handleClearAll}
+          />
+        )}
+
+        <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+          <span className="tracked-caps">
+            {loading ? 'Loading…' : `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`}
+            {entries.length >= 1000 && (
+              <span className="ml-2 text-foreground/60 normal-case tracking-normal">
+                (cap reached, narrow filters)
+              </span>
+            )}
+          </span>
+          {expanded.size > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setExpanded(new Set());
+                // Expanded rows that scrolled out of view are unmounted, so they
+                // never remeasure on collapse — their cached heights go stale and
+                // scrolling jumps. Reset all measurements instead.
+                virtualizer.measure();
+              }}
+              className="hover:text-foreground transition-colors"
+            >
+              Collapse all ({expanded.size})
+            </button>
+          )}
+        </div>
+
+        <div className="rounded-xl bg-card overflow-hidden">
+          {loading && entries.length === 0 ? (
+            <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+              <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
+              Loading logs
+            </div>
+          ) : loadError && entries.length === 0 ? (
+            <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+              Failed to load logs
+            </div>
+          ) : entries.length === 0 ? (
+            <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+              No matching log entries
+            </div>
+          ) : (
+            <div
+              ref={handleListRef}
+              className="relative w-full"
+              style={{ height: totalSize }}
+            >
+              {virtualItems.map((virtualItem) => {
+                const entry = entries[virtualItem.index];
+                const key = entryKey(entry, virtualItem.index);
+                const isExpanded = expanded.has(key);
+                return (
+                  <LogsEntryRow
+                    key={key}
+                    ref={virtualizer.measureElement}
+                    entry={entry}
+                    isExpanded={isExpanded}
+                    onToggle={() => toggleExpand(key)}
+                    onFilterLevel={handleFilterLevel}
+                    onFilterSource={handleFilterSource}
+                    dataIndex={virtualItem.index}
+                    style={{
+                      transform: `translateY(${virtualItem.start - (virtualizer.options.scrollMargin ?? 0)}px)`,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {entries.length >= 200 && entryLimit === 200 && (
+          <Button variant="outline" className="w-full" disabled={loading} onClick={() => setExpandedSearch(logsSearchPath)}>
+            Load up to 1,000 entries
+          </Button>
         )}
       </div>
-
-      <div className="rounded-xl bg-card overflow-hidden">
-        {loading && entries.length === 0 ? (
-          <div className="px-4 py-12 text-center text-sm text-muted-foreground">
-            <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
-            Loading logs
-          </div>
-        ) : loadError && entries.length === 0 ? (
-          <div className="px-4 py-12 text-center text-sm text-muted-foreground">
-            Failed to load logs
-          </div>
-        ) : entries.length === 0 ? (
-          <div className="px-4 py-12 text-center text-sm text-muted-foreground">
-            No matching log entries
-          </div>
-        ) : (
-          <div
-            ref={handleListRef}
-            className="relative w-full"
-            style={{ height: totalSize }}
-          >
-            {virtualItems.map((virtualItem) => {
-              const entry = entries[virtualItem.index];
-              const key = entryKey(entry, virtualItem.index);
-              const isExpanded = expanded.has(key);
-              return (
-                <LogsEntryRow
-                  key={key}
-                  ref={virtualizer.measureElement}
-                  entry={entry}
-                  isExpanded={isExpanded}
-                  onToggle={() => toggleExpand(key)}
-                  onFilterLevel={handleFilterLevel}
-                  onFilterSource={handleFilterSource}
-                  dataIndex={virtualItem.index}
-                  style={{
-                    transform: `translateY(${virtualItem.start - (virtualizer.options.scrollMargin ?? 0)}px)`,
-                  }}
-                />
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {entries.length >= 200 && entryLimit === 200 && (
-        <Button variant="outline" className="w-full" disabled={loading} onClick={() => setExpandedSearch(logsSearchPath)}>
-          Load up to 1,000 entries
-        </Button>
-      )}
 
       <LogsFilesSheet
         open={filesSheetOpen}

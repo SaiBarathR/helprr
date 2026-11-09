@@ -103,9 +103,9 @@ export default function FileAuditPage() {
 
       <Tabs value={tab} onValueChange={(value) => setTab(value as AuditTab)} className="gap-0">
         <div className="mb-3 px-4">
-          <TabsList aria-label="Audit logs" className="flex w-full h-auto bg-muted/50 p-0.5 gap-0.5">
-            <TabsTrigger value="operations" className="flex-1 text-xs font-medium py-1.5 px-2 data-[state=active]:shadow-sm">Operations</TabsTrigger>
-            <TabsTrigger value="security" className="flex-1 text-xs font-medium py-1.5 px-2 data-[state=active]:shadow-sm">Security</TabsTrigger>
+          <TabsList aria-label="Audit logs" variant="segmented">
+            <TabsTrigger value="operations">Operations</TabsTrigger>
+            <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="operations"><OperationsList /></TabsContent>

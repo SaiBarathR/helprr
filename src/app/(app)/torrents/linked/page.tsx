@@ -52,9 +52,9 @@ export default function LinkedDownloadsPage() {
       />
 
       <Tabs value={filter} onValueChange={(value) => setFilter(value as Filter)} className="mt-1">
-        <TabsList aria-label="Linked downloads" className="flex w-full h-auto bg-muted/50 p-0.5 gap-0.5">
+        <TabsList aria-label="Linked downloads" variant="segmented">
           {FILTERS.map((item) => (
-            <TabsTrigger key={item.key} value={item.key} className="flex-1 text-xs font-medium py-1.5 px-2 data-[state=active]:shadow-sm">
+            <TabsTrigger key={item.key} value={item.key}>
               {item.label}
             </TabsTrigger>
           ))}

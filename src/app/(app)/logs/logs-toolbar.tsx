@@ -65,8 +65,10 @@ export function LogsToolbar({
 
   return (
     <div
-      className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2"
+      className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80"
     >
+      {/* The bar's background spans the page; its controls keep to the log list's width. */}
+      <div className="readable-column-wide space-y-2">
         <Link
           href="/settings"
           className="inline-flex items-center gap-1 text-sm text-primary -ml-1 min-h-[44px] px-1"
@@ -74,81 +76,82 @@ export function LogsToolbar({
           <ChevronLeft className="h-5 w-5" />
           Settings
         </Link>
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <SearchInput
-          value={searchInput}
-          onChange={onSearchInputChange}
-          historyKey="logs"
-          placeholder="Search logs"
-          className="h-10 pl-9 pr-9"
-        />
-        {searchInput && (
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <SearchInput
+            value={searchInput}
+            onChange={onSearchInputChange}
+            historyKey="logs"
+            placeholder="Search logs"
+            className="h-10 pl-9 pr-9"
+          />
+          {searchInput && (
+            <button
+              type="button"
+              onClick={() => onSearchInputChange('')}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Select value={selectedFile} onValueChange={onSelectFile}>
+            {/* Its own row on phones, so the six controls never leave the download
+                button alone on a second line. */}
+            <SelectTrigger className="h-10 basis-full sm:basis-auto sm:max-w-[240px]" aria-label="Filter by log file">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All files</SelectItem>
+              {files.map((file) => (
+                <SelectItem key={file.name} value={file.name} className="font-mono text-xs">
+                  {file.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <LogsFilterMenu
+            levels={levels}
+            sources={sources}
+            onToggleLevel={onToggleLevel}
+            onToggleSource={onToggleSource}
+            onReset={onResetFilters}
+          />
+
+          <LogsDateRangePicker from={from} to={to} onChange={onDateRangeChange} />
+
+          <div className="flex-1" />
+
           <button
             type="button"
-            onClick={() => onSearchInputChange('')}
-            aria-label="Clear search"
-            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            onClick={onOpenFilesSheet}
+            className={ICON_BUTTON_CLASS}
+            aria-label="Manage log files"
           >
-            <X className="h-3.5 w-3.5" />
+            <FolderOpen className="h-4 w-4" />
           </button>
-        )}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Select value={selectedFile} onValueChange={onSelectFile}>
-          {/* Its own row on phones, so the six controls never leave the download
-              button alone on a second line. */}
-          <SelectTrigger className="h-10 basis-full sm:basis-auto sm:max-w-[240px]" aria-label="Filter by log file">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All files</SelectItem>
-            {files.map((file) => (
-              <SelectItem key={file.name} value={file.name} className="font-mono text-xs">
-                {file.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <LogsFilterMenu
-          levels={levels}
-          sources={sources}
-          onToggleLevel={onToggleLevel}
-          onToggleSource={onToggleSource}
-          onReset={onResetFilters}
-        />
-
-        <LogsDateRangePicker from={from} to={to} onChange={onDateRangeChange} />
-
-        <div className="flex-1" />
-
-        <button
-          type="button"
-          onClick={onOpenFilesSheet}
-          className={ICON_BUTTON_CLASS}
-          aria-label="Manage log files"
-        >
-          <FolderOpen className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={loading}
-          className={ICON_BUTTON_CLASS}
-          aria-label="Refresh logs"
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-        </button>
-        <button
-          type="button"
-          onClick={onDownload}
-          className={cn(ICON_BUTTON_CLASS)}
-          aria-label={downloadLabel}
-        >
-          <Download className="h-4 w-4" />
-        </button>
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            className={ICON_BUTTON_CLASS}
+            aria-label="Refresh logs"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={onDownload}
+            className={cn(ICON_BUTTON_CLASS)}
+            aria-label={downloadLabel}
+          >
+            <Download className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </div>
   );
