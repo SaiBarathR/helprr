@@ -238,6 +238,16 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* With the nav at the top the tabs and Search share one row of equal slots,
+   kept off the screen's edges as the floating bar keeps them off its ends. */
+:root:not([data-nav-position="bottom"]) .app-tab-group {
+  display: contents;
+}
+
+:root:not([data-nav-position="bottom"]) .app-tab-row {
+  padding-inline: 0.375rem;
+}
+
 /* On a phone with the nav at the bottom, the tabs and the round Search float
    side by side as two surfaces of the bar's material, as iOS 26 places them.
    The bar keeps its box, so the safe areas, the keyboard and the cinematic
@@ -266,13 +276,25 @@
     box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
   }
 
-  /* The bar's full height, a gap from the tabs. */
+  /* Room for a tab's count inside the bar's top edge, and an even margin
+     above and below the icon and label. */
+  :root[data-nav-position="bottom"] .app-tab-row {
+    height: var(--tab-bar-height);
+  }
+
+  /* Round, the bar's full height, a gap from the tabs; just the icon. */
   :root[data-nav-position="bottom"] .app-tab-search {
-    width: 3rem;
-    height: 3rem;
+    flex: none;
+    width: var(--tab-bar-height);
+    height: var(--tab-bar-height);
     margin-right: 0;
     margin-left: 0.5rem;
+    color: var(--foreground);
     transition: transform 0.15s ease;
+  }
+
+  :root[data-nav-position="bottom"] .app-tab-search-label {
+    display: none;
   }
 
   :root[data-nav-position="bottom"] .app-tab-search:active {
@@ -309,7 +331,7 @@
 }
 
 /* What app chrome takes from the foot of the viewport: the home indicator, plus
-   the 3rem tab bar when the nav sits at the bottom of a phone. Anything floating
+   the tab bar (--tab-bar-height) when the nav sits at the bottom of a phone. Anything floating
    at the bottom (save bars, toasts) offsets by this, so it sits above the tab
    bar instead of under it, and off the home indicator.
 
@@ -329,9 +351,10 @@
 
 @media (max-width: 767.98px) {
   :root[data-nav-position="bottom"] {
+    --tab-bar-height: 3.5rem;
     --tab-bar-foot: max(env(safe-area-inset-bottom, 0px), 0.5rem);
-    --footer-height: calc(3rem + var(--tab-bar-foot));
-    --footer-bar-bottom: calc(3rem + var(--tab-bar-foot));
+    --footer-height: calc(var(--tab-bar-height) + var(--tab-bar-foot));
+    --footer-bar-bottom: calc(var(--tab-bar-height) + var(--tab-bar-foot));
     --footer-bar-inset: 0px;
   }
 }

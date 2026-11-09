@@ -39,25 +39,30 @@ beforeEach(() => {
 });
 
 describe('BottomNav', () => {
-  // The four tabs and More fill the bar; Search is a round button beside them.
+  // The four tabs and More fill the bar; Search sits beside them.
   const slots = () => {
     const search = within(screen.getByRole('navigation')).getByRole('button', { name: 'Search' });
     return Array.from(search.previousElementSibling!.children).map((slot) => slot.textContent);
   };
 
-  it('shows the default tabs and More in five slots, with Search as a round button beside them', () => {
+  it('shows the default tabs and More in five slots, with Search beside them', () => {
     render(<BottomNav />);
     const bar = within(screen.getByRole('navigation'));
     expect(bar.getAllByRole('link').map((link) => link.textContent)).toEqual(['Dashboard', 'Movies', 'Series', 'Activity']);
     expect(slots()).toEqual(['Dashboard', 'Movies', 'Series', 'Activity', 'More']);
     const search = bar.getByRole('button', { name: 'Search' });
-    expect(search.textContent).toBe('');
-    expect(search.classList).toContain('rounded-full');
-    expect(search.classList).toContain('shrink-0');
+    // A tab-like slot with its label; at the bottom globals.css makes it round and hides the label.
+    expect(search.textContent).toBe('Search');
+    expect(search.querySelector('.app-tab-search-label')!.textContent).toBe('Search');
+    // The same slot classes as an idle tab.
+    expect([...search.classList]).toEqual(expect.arrayContaining(
+      [...bar.getByRole('link', { name: 'Movies' }).classList].filter((name) => !['touch-manipulation', 'active:opacity-70'].includes(name)),
+    ));
     // Last in the bar, so it sits at its right (bottom-right with the nav at the bottom).
     expect(search.parentElement!.lastElementChild).toBe(search);
-    // At the bottom, globals.css floats the tabs and Search as two surfaces (see floating-tab-bar.test.ts).
-    expect(search.previousElementSibling!.classList).toContain('app-tab-surface');
+    // At the bottom, globals.css floats the tabs and Search as two surfaces; at the
+    // top the tab group gives way so Search is one more slot (floating-tab-bar.test.ts).
+    expect([...search.previousElementSibling!.classList]).toEqual(expect.arrayContaining(['app-tab-surface', 'app-tab-group']));
     expect([...search.classList]).toEqual(expect.arrayContaining(['app-tab-search', 'app-tab-surface']));
   });
 
@@ -88,6 +93,13 @@ describe('BottomNav', () => {
     mocks.counts = { ...EMPTY_BADGE_COUNTS, notifications: { total: 3, attention: 3 }, requests: { total: 2, attention: 2 } };
     render(<BottomNav />);
     expect(screen.getByRole('button', { name: /More/ }).textContent).toBe('5More');
+  });
+
+  it("sits a tab's count on its icon's corner, low enough to stay inside the bar", () => {
+    mocks.counts = { ...EMPTY_BADGE_COUNTS, notifications: { total: 44, attention: 44 } };
+    render(<BottomNav />);
+    const badge = within(screen.getByRole('button', { name: /More/ })).getByText('44');
+    expect([...badge.classList]).toEqual(expect.arrayContaining(['absolute', '-top-1', '-right-3', 'h-4']));
   });
 
   it('does not count the same downloads twice when Activity and Torrents are both in More', () => {

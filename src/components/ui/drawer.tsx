@@ -8,7 +8,12 @@ import { cn } from "@/lib/utils"
 function Drawer({
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Root>) {
-  return <DrawerPrimitive.Root data-slot="drawer" {...props} />
+  // vaul's iOS scroll lock scrolls the page to the top while a drawer is open
+  // and back to where it was on every press inside it. iOS drops a tap whose
+  // page scrolls under the finger, so from a scrolled page links and buttons in
+  // a drawer did nothing. The dialog under vaul already locks the page scroll.
+  // (vaul's flag is inverted: false turns its scroll lock off.)
+  return <DrawerPrimitive.Root data-slot="drawer" disablePreventScroll={false} {...props} />
 }
 
 function DrawerTrigger({

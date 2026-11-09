@@ -33,24 +33,34 @@ describe('floating phone tab bar (nav at the bottom)', () => {
     });
   });
 
-  it('draws the tabs and Search as two rounded, tappable surfaces, with Search the bar height beside the tabs', () => {
+  it('draws the tabs and Search as two rounded, tappable surfaces, with Search a round icon the bar height beside the tabs', () => {
     expect(decls(':root[data-nav-position="bottom"] .app-tab-surface')[PHONE]).toMatchObject({
       'pointer-events': 'auto',
       'border-radius': '9999px',
     });
+    expect(decls(':root[data-nav-position="bottom"] .app-tab-row')[PHONE]).toMatchObject({ height: 'var(--tab-bar-height)' });
     expect(decls(':root[data-nav-position="bottom"] .app-tab-search')[PHONE]).toMatchObject({
-      width: '3rem',
-      height: '3rem',
+      flex: 'none',
+      width: 'var(--tab-bar-height)',
+      height: 'var(--tab-bar-height)',
       'margin-left': '0.5rem',
       'margin-right': '0',
     });
+    expect(decls(':root[data-nav-position="bottom"] .app-tab-search-label')[PHONE]).toMatchObject({ display: 'none' });
+  });
+
+  it('with the nav at the top, lets the tab group give way so Search is one more slot in the row', () => {
+    expect(decls(':root:not([data-nav-position="bottom"]) .app-tab-group')['']).toMatchObject({ display: 'contents' });
+    expect(decls(':root:not([data-nav-position="bottom"]) .app-tab-row')['']).toMatchObject({ 'padding-inline': '0.375rem' });
   });
 
   it('reserves the same foot the bar sits on for everything that clears it', () => {
     const root = decls(':root[data-nav-position="bottom"]')[PHONE];
+    // Tall enough for a tab's count to sit inside the bar's top edge.
+    expect(root['--tab-bar-height']).toBe('3.5rem');
     expect(root['--tab-bar-foot']).toBe('max(env(safe-area-inset-bottom, 0px), 0.5rem)');
-    expect(root['--footer-height']).toBe('calc(3rem + var(--tab-bar-foot))');
-    expect(root['--footer-bar-bottom']).toBe('calc(3rem + var(--tab-bar-foot))');
+    expect(root['--footer-height']).toBe('calc(var(--tab-bar-height) + var(--tab-bar-foot))');
+    expect(root['--footer-bar-bottom']).toBe('calc(var(--tab-bar-height) + var(--tab-bar-foot))');
   });
 
   it('gives the bar its surface and taps back while a full-width bar rests on it', () => {

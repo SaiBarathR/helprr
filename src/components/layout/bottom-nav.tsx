@@ -21,6 +21,13 @@ import type { BadgeSlice } from '@/types/badges';
 // --hpr-tab-label, which is the text colour for the cyan accent (dashboard-theme.ts).
 const GLASS_ACTIVE_LABEL = '[html[data-glass]_&]:text-foreground';
 const ACTIVE_LABEL = 'text-[color:var(--hpr-tab-label,var(--primary))]';
+// One tab slot: an icon over a 10px label, as iOS sets them. The label
+// truncates rather than run into the next slot or the bar's rounded end.
+const SLOT = 'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 h-full min-h-11 text-[10px] font-medium leading-tight transition-colors';
+const SLOT_LABEL = 'max-w-full truncate px-0.5';
+// A count sits on the icon's top-right corner, as on iOS tabs, low enough to
+// stay inside the floating bar's top edge.
+const SLOT_BADGE = 'absolute -right-3 -top-1 h-4 min-w-[1rem] px-1 text-[10px]';
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -72,9 +79,11 @@ export function BottomNav() {
       className="app-tab-bar md:hidden z-50 border-border app-chrome-bar bg-background/95 backdrop-blur-sm"
     >
       {/* With the nav at the bottom of a phone, the tabs and the round Search
-          float as two surfaces of their own (app-tab-surface, globals.css). */}
-      <div className="flex items-center h-12">
-        <div className="app-tab-surface flex flex-1 min-w-0 items-center justify-around h-full">
+          float as two surfaces of their own (app-tab-surface, globals.css).
+          At the top the tab group steps aside (app-tab-group), so Search is
+          one more slot in the same row. */}
+      <div className="app-tab-row flex items-center h-12">
+        <div className="app-tab-surface app-tab-group flex flex-1 min-w-0 items-center justify-around h-full px-1.5">
           {tabs.map(({ href, icon: Icon, shortLabel, badgeArea }) => {
             const slice = badgeArea ? counts[badgeArea] : undefined;
             const isActive = href === activeHref;
@@ -85,7 +94,7 @@ export function BottomNav() {
                 href={href}
                 prefetch={null}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-11 text-[11px] font-medium transition-colors',
+                  SLOT,
                   isActive ? cn(ACTIVE_LABEL, GLASS_ACTIVE_LABEL) : 'text-muted-foreground',
                   isPending && 'opacity-70'
                 )}
@@ -96,9 +105,9 @@ export function BottomNav() {
                   ) : (
                     <Icon className={cn('h-5 w-5', isActive && 'text-primary')} strokeWidth={isActive ? 2.5 : 2} />
                   )}
-                  <NavBadge slice={slice} className="absolute -right-2.5 -top-1.5 h-4 min-w-[1rem] px-1 text-[10px]" />
+                  <NavBadge slice={slice} className={SLOT_BADGE} />
                 </span>
-                {shortLabel}
+                <span className={SLOT_LABEL}>{shortLabel}</span>
               </Link>
             );
           })}
@@ -111,15 +120,15 @@ export function BottomNav() {
               trigger={(
                 <button
                   className={cn(
-                    'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-11 text-[11px] font-medium transition-colors',
+                    SLOT,
                     isMoreActive ? cn(ACTIVE_LABEL, GLASS_ACTIVE_LABEL) : 'text-muted-foreground'
                   )}
                 >
                   <span className="relative">
                     <MoreHorizontal className={cn('h-5 w-5', isMoreActive && 'text-primary')} strokeWidth={isMoreActive ? 2.5 : 2} />
-                    <NavBadge slice={moreBadge} className="absolute -right-2.5 -top-1.5 h-4 min-w-[1rem] px-1 text-[10px]" />
+                    <NavBadge slice={moreBadge} className={SLOT_BADGE} />
                   </span>
-                  More
+                  <span className={SLOT_LABEL}>More</span>
                 </button>
               )}
               footer={(
@@ -173,16 +182,17 @@ export function BottomNav() {
         </div>
 
         {/* Phone search: the sidebar's search and its shortcut hint are md+ only.
-            A round button of its own beside the five slots, so it never takes a
-            tab's place: detached beside the bar at the bottom, as iOS 26 apps
-            place it, and inside the bar's right end when the nav is at the top. */}
+            It never takes a tab's place: at the bottom a round button detached
+            beside the bar, as iOS 26 apps place it (globals.css hides its label
+            there), and at the top a last slot that looks like the tabs. */}
         <button
           type="button"
           aria-label="Search"
           onClick={() => openSearch(true)}
-          className="app-tab-search app-tab-surface mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-foreground/10 bg-foreground/[0.06] text-foreground shadow-sm transition-colors active:bg-foreground/[0.12]"
+          className={cn('app-tab-search app-tab-surface', SLOT, 'text-muted-foreground')}
         >
           <Search className="h-5 w-5" />
+          <span className={cn('app-tab-search-label', SLOT_LABEL)}>Search</span>
         </button>
       </div>
     </nav>
