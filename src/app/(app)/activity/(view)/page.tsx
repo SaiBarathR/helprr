@@ -5,15 +5,11 @@ import { useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { Button } from '@/components/ui/button';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuCheckboxItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+  ResponsiveMenuLabel,
+  ResponsiveMenuSeparator,
+} from '@/components/ui/responsive-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { PageTitle } from '@/components/layout/page-title';
@@ -277,8 +273,10 @@ export default function ActivityPage() {
 
         <div className="ml-auto flex items-center md:gap-1 gap-2">
           {/* Filter */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          <ResponsiveMenu
+            title="Filter and sort"
+            align="end"
+            trigger={(
               <Button
                 variant="ghost"
                 size="icon"
@@ -288,88 +286,76 @@ export default function ActivityPage() {
                 <SlidersHorizontal className="h-4 w-4" />
                 <FilterDot active={activeFilters.length > 0} />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Sources</DropdownMenuLabel>
-              <DropdownMenuCheckboxItem
-                checked={sources.length === 0}
-                onCheckedChange={() => updateSources([])}
-                onSelect={(e) => e.preventDefault()}
+            )}
+          >
+            <ResponsiveMenuLabel>Sources</ResponsiveMenuLabel>
+            <ResponsiveMenuCheckboxItem
+              checked={sources.length === 0}
+              onCheckedChange={() => updateSources([])}
+            >
+              All
+            </ResponsiveMenuCheckboxItem>
+            {FILTER_OPTIONS.filter((opt) => opt.key !== 'all').map((opt) => (
+              <ResponsiveMenuCheckboxItem
+                key={opt.key}
+                checked={sources.includes(opt.key)}
+                onCheckedChange={() => updateSources(
+                  sources.includes(opt.key)
+                    ? sources.filter((s) => s !== opt.key)
+                    : [...sources, opt.key]
+                )}
               >
-                All
-              </DropdownMenuCheckboxItem>
-              {FILTER_OPTIONS.filter((opt) => opt.key !== 'all').map((opt) => (
-                <DropdownMenuCheckboxItem
-                  key={opt.key}
-                  checked={sources.includes(opt.key)}
-                  onCheckedChange={() => updateSources(
-                    sources.includes(opt.key)
-                      ? sources.filter((s) => s !== opt.key)
-                      : [...sources, opt.key]
-                  )}
-                  onSelect={(e) => e.preventDefault()}
+                {opt.label}
+              </ResponsiveMenuCheckboxItem>
+            ))}
+            {/* Instance sub-filter, folded into this same dropdown to save mobile width. */}
+            {instanceOptions.length > 1 && (
+              <>
+                <ResponsiveMenuSeparator />
+                <ResponsiveMenuLabel>Instance</ResponsiveMenuLabel>
+                <ResponsiveMenuCheckboxItem
+                  checked={instanceFilter === 'all'}
+                  onCheckedChange={() => updateInstance('all')}
                 >
-                  {opt.label}
-                </DropdownMenuCheckboxItem>
-              ))}
-              {/* Instance sub-filter, folded into this same dropdown to save mobile width. */}
-              {instanceOptions.length > 1 && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Instance</DropdownMenuLabel>
-                  <DropdownMenuCheckboxItem
-                    checked={instanceFilter === 'all'}
-                    onCheckedChange={() => updateInstance('all')}
-                    onSelect={(e) => e.preventDefault()}
+                  All instances
+                </ResponsiveMenuCheckboxItem>
+                {instanceOptions.map((inst) => (
+                  <ResponsiveMenuCheckboxItem
+                    key={inst.id}
+                    checked={instanceFilter === inst.id}
+                    onCheckedChange={() => updateInstance(inst.id)}
                   >
-                    All instances
-                  </DropdownMenuCheckboxItem>
-                  {instanceOptions.map((inst) => (
-                    <DropdownMenuCheckboxItem
-                      key={inst.id}
-                      checked={instanceFilter === inst.id}
-                      onCheckedChange={() => updateInstance(inst.id)}
-                      onSelect={(e) => e.preventDefault()}
+                    {inst.label}
+                  </ResponsiveMenuCheckboxItem>
+                ))}
+              </>
+            )}
+            {availableSortOptions.length > 0 && (
+              <>
+                <ResponsiveMenuSeparator />
+                <ResponsiveMenuLabel>Sort by</ResponsiveMenuLabel>
+                {availableSortOptions.map((opt) => {
+                  const selected = sortBy === opt.key;
+                  const DirectionIcon = sortDirection === 'asc' ? ArrowUp : ArrowDown;
+                  return (
+                    <ResponsiveMenuCheckboxItem
+                      key={opt.key}
+                      checked={selected}
+                      ariaLabel={
+                        selected
+                          ? `${opt.label}, ${sortDirection === 'asc' ? 'ascending' : 'descending'}. Select again to reverse.`
+                          : opt.label
+                      }
+                      onCheckedChange={() => handleSortSelect(opt.key)}
                     >
-                      {inst.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </>
-              )}
-              {availableSortOptions.length > 0 && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-                  <DropdownMenuRadioGroup
-                    value={sortBy}
-                  >
-                    {availableSortOptions.map((opt) => {
-                      const selected = sortBy === opt.key;
-                      const DirectionIcon = sortDirection === 'asc' ? ArrowUp : ArrowDown;
-                      return (
-                        <DropdownMenuRadioItem
-                          key={opt.key}
-                          value={opt.key}
-                          aria-label={
-                            selected
-                              ? `${opt.label}, ${sortDirection === 'asc' ? 'ascending' : 'descending'}. Select again to reverse.`
-                              : opt.label
-                          }
-                          onSelect={(e) => {
-                            e.preventDefault();
-                            handleSortSelect(opt.key);
-                          }}
-                        >
-                          {opt.label}
-                          {selected && <DirectionIcon className="ml-auto h-3.5 w-3.5" />}
-                        </DropdownMenuRadioItem>
-                      );
-                    })}
-                  </DropdownMenuRadioGroup>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                      {opt.label}
+                      {selected && <DirectionIcon className="ml-auto h-3.5 w-3.5" />}
+                    </ResponsiveMenuCheckboxItem>
+                  );
+                })}
+              </>
+            )}
+          </ResponsiveMenu>
 
           {/* History and Blocklist keep their words: touch screens get no tooltips. */}
           <Button

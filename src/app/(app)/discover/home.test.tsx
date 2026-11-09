@@ -51,6 +51,13 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuItem: ({ children, onSelect }: { children: React.ReactNode; onSelect?: () => void }) => <button type="button" role="menuitem" onClick={onSelect}>{children}</button>,
 }));
 type MockAction = { id: string; label: string; href?: string; onSelect?: () => void };
+// The content-type menu as the dropdown, whatever useIsMobile says above.
+vi.mock('@/components/ui/responsive-menu', () => ({
+  ResponsiveMenu: ({ trigger, children }: { trigger: React.ReactNode; children: React.ReactNode }) => <div>{trigger}<div role="menu">{children}</div></div>,
+  ResponsiveMenuCheckboxItem: ({ children, checked, onCheckedChange }: { children: React.ReactNode; checked: boolean; onCheckedChange: () => void }) => (
+    <button type="button" role="menuitemcheckbox" aria-checked={checked} onClick={onCheckedChange}>{children}</button>
+  ),
+}));
 vi.mock('@/components/ui/quick-context-menu', () => ({
   QuickContextMenu: ({ children, label, actions }: { children: React.ReactNode; label: string; actions?: MockAction[] }) => (
     <>
@@ -236,7 +243,7 @@ describe('Discover home (characterization)', () => {
   it('browses with a chosen content type or sort, and refreshes on choosing the active one', async () => {
     const user = renderHome();
     await waitFor(() => expect(sectionTitles()).toContain('Trending'));
-    await user.click(screen.getByRole('menuitem', { name: 'Movies' }));
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Movies' }));
     await waitFor(() => expect(lastGrid()).toEqual(expect.objectContaining({ contentType: 'movie', sortBy: 'trending' })));
     expect(screen.getByText('Custom search and filters')).toBeTruthy();
 
@@ -278,7 +285,7 @@ describe('Discover home (characterization)', () => {
   it('stays on the results when the sheet is reset and applied while browsing a content type', async () => {
     const user = renderHome();
     await waitFor(() => expect(sectionTitles()).toContain('Trending'));
-    await user.click(screen.getByRole('menuitem', { name: 'Movies' }));
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Movies' }));
     await waitFor(() => expect(lastGrid()).toEqual(expect.objectContaining({ contentType: 'movie' })));
     await user.click(screen.getByRole('button', { name: 'Advanced filters' }));
     const sheet = screen.getByRole('dialog', { name: 'Advanced Filters' });

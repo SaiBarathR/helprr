@@ -54,6 +54,13 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuLabel: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
   DropdownMenuSeparator: () => <hr />,
 }));
+// The sort and filter menus as the dropdown, whatever useIsMobile says above.
+vi.mock('@/components/ui/responsive-menu', () => ({
+  ResponsiveMenu: ({ trigger, children }: { trigger: React.ReactNode; children: React.ReactNode }) => <div>{trigger}<div role="menu">{children}</div></div>,
+  ResponsiveMenuCheckboxItem: ({ children, checked, onCheckedChange }: { children: React.ReactNode; checked: boolean; onCheckedChange: () => void }) => (
+    <button type="button" role="menuitemcheckbox" aria-checked={checked} onClick={onCheckedChange}>{children}</button>
+  ),
+}));
 type MockAction = { id: string; label: string; onSelect?: () => void };
 vi.mock('@/components/ui/quick-context-menu', () => ({
   QuickContextMenu: ({ children, label, groups }: { children: React.ReactNode; label: string; groups?: Array<{ actions: MockAction[] }> }) => (

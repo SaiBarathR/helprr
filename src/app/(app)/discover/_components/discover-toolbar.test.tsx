@@ -18,6 +18,7 @@ const props: ComponentProps<typeof DiscoverToolbar> = {
 let chipBounds: { left: number; right: number };
 
 beforeEach(() => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   sessionStorage.clear();
   clearRouteScrollStateForTests();
   window.history.replaceState(null, '', '/discover?section=upcoming');

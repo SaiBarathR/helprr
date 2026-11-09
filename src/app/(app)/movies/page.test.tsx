@@ -31,6 +31,7 @@ let toolbarHeight: number;
 let notifyToolbarResize: () => void;
 
 beforeEach(() => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   localStorage.clear();
   sessionStorage.clear();
   toolbarHeight = 132;

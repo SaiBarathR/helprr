@@ -15,13 +15,9 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+} from '@/components/ui/responsive-menu';
 import { ErrorState } from '@/components/ui/error-state';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { Progress } from '@/components/ui/progress';
@@ -299,24 +295,25 @@ export function CreatorQueuePage() {
         active="queue"
         actions={(
           <>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <ResponsiveMenu
+              title="Filter"
+              titleInDropdown
+              closeOnPick
+              contentClassName="w-48"
+              trigger={(
                 <button className={toolbarButtonClass()} aria-label={`Filter: ${SECTIONS.find((item) => item.id === section)?.label ?? 'All'}`}>
                   <Filter className="h-5 w-5" />
                   <FilterDot active={Boolean(section)} />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                <DropdownMenuLabel>Filter</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuCheckboxItem checked={!section} onCheckedChange={() => setSection('')}>All</DropdownMenuCheckboxItem>
-                {SECTIONS.map((item) => (
-                  <DropdownMenuCheckboxItem key={item.id} checked={section === item.id} onCheckedChange={() => setSection(item.id)}>
-                    {item.label} ({grouped[item.id].length})
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
+            >
+              <ResponsiveMenuCheckboxItem checked={!section} onCheckedChange={() => setSection('')}>All</ResponsiveMenuCheckboxItem>
+              {SECTIONS.map((item) => (
+                <ResponsiveMenuCheckboxItem key={item.id} checked={section === item.id} onCheckedChange={() => setSection(item.id)}>
+                  {item.label} ({grouped[item.id].length})
+                </ResponsiveMenuCheckboxItem>
+              ))}
+            </ResponsiveMenu>
             <ToolbarButton label="Refresh" disabled={jobsQuery.isRefetching} onClick={() => void refresh()}>
               <RefreshCw className={`h-5 w-5 ${jobsQuery.isRefetching ? 'animate-spin' : ''}`} />
             </ToolbarButton>

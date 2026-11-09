@@ -18,19 +18,28 @@ import { cn } from '@/lib/utils';
 
 // True inside the phone drawer, where the dropdown's items have no menu to live in.
 const InDrawer = createContext(false);
+// Set when a pick should also close the menu: a single list of one-choice options.
+const CloseOnPick = createContext<(() => void) | null>(null);
 
 /**
  * A long menu: a dropdown from md up, and below md the app's bottom drawer, so
  * a phone gets a titled sheet it can scroll instead of a popover taller than
  * the screen. Build its body from the ResponsiveMenu* parts below.
  */
-export function ResponsiveMenu({ trigger, title, titleInDropdown, open, onOpenChange, contentClassName, footer, children }: {
+export function ResponsiveMenu({ trigger, title, titleInDropdown, align = 'start', closeOnPick, open, onOpenChange, contentClassName, footer, children }: {
   /** One element; it becomes the trigger. */
   trigger: ReactNode;
   /** The drawer's heading. */
   title: string;
   /** Also head the dropdown with the title. */
   titleInDropdown?: boolean;
+  /** Where the dropdown lines up with its trigger. */
+  align?: 'start' | 'center' | 'end';
+  /**
+   * A single list of one-choice options (a sort, an instance): a pick applies
+   * and closes. Menus with several sections or multi-select stay open for Done.
+   */
+  closeOnPick?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   /** Classes for the dropdown only. */
@@ -41,17 +50,26 @@ export function ResponsiveMenu({ trigger, title, titleInDropdown, open, onOpenCh
 }) {
   // Tailwind's md starts at 768px, so "below md" is up to 767px.
   const isPhone = useIsMobile(767);
+  // Open state is held here unless the caller controls it, so a pick can close the menu.
+  const [ownOpen, setOwnOpen] = useState(false);
+  const isOpen = open ?? ownOpen;
+  const setOpen = (next: boolean) => {
+    if (open === undefined) setOwnOpen(next);
+    onOpenChange?.(next);
+  };
+  const close = closeOnPick ? () => setOpen(false) : null;
 
   if (isPhone) {
     return (
-      <Drawer open={open} onOpenChange={onOpenChange}>
+      <Drawer open={isOpen} onOpenChange={setOpen}>
         <DrawerTrigger asChild>{trigger}</DrawerTrigger>
-        <DrawerContent>
+        {/* A short menu hugs its rows; a long one still stops at the base drawer's 90dvh and scrolls. */}
+        <DrawerContent className="data-[vaul-drawer-direction=bottom]:h-auto">
           <DrawerHeader>
             <DrawerTitle>{title}</DrawerTitle>
           </DrawerHeader>
           <InDrawer.Provider value>
-            <DrawerBody>{children}</DrawerBody>
+            <DrawerBody><CloseOnPick.Provider value={close}>{children}</CloseOnPick.Provider></DrawerBody>
             <div className="shrink-0 border-t border-border px-2 py-2">
               {footer ?? (
                 <DrawerClose asChild>
@@ -66,16 +84,16 @@ export function ResponsiveMenu({ trigger, title, titleInDropdown, open, onOpenCh
   }
 
   return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+    <DropdownMenu open={isOpen} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className={contentClassName}>
+      <DropdownMenuContent align={align} className={contentClassName}>
         {titleInDropdown && (
           <>
             <DropdownMenuLabel>{title}</DropdownMenuLabel>
             <DropdownMenuSeparator />
           </>
         )}
-        {children}
+        <CloseOnPick.Provider value={close}>{children}</CloseOnPick.Provider>
         {footer && (
           <>
             <DropdownMenuSeparator />
@@ -123,24 +141,31 @@ export function ResponsiveMenuSeparator() {
   return <DropdownMenuSeparator />;
 }
 
-/** A choice that stays open to pick from others, like a filter or sort. */
-export function ResponsiveMenuCheckboxItem({ checked, onCheckedChange, children }: {
+/** A choice; the menu stays open to pick others unless it closes on a pick. */
+export function ResponsiveMenuCheckboxItem({ checked, onCheckedChange, ariaLabel, children }: {
   checked: boolean;
   onCheckedChange: () => void;
+  ariaLabel?: string;
   children: ReactNode;
 }) {
-  if (useContext(InDrawer)) {
+  const inDrawer = useContext(InDrawer);
+  const close = useContext(CloseOnPick);
+  if (inDrawer) {
     return (
       <button
         type="button"
         aria-pressed={checked}
-        onClick={onCheckedChange}
+        aria-label={ariaLabel}
+        onClick={() => {
+          onCheckedChange();
+          close?.();
+        }}
         className={cn(
           'flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-colors hover:bg-accent active:bg-accent/80',
           checked && 'font-medium text-primary',
         )}
       >
-        <span className="min-w-0 flex-1">{children}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
         {checked && <Check className="h-4 w-4 shrink-0" />}
       </button>
     );
@@ -148,12 +173,33 @@ export function ResponsiveMenuCheckboxItem({ checked, onCheckedChange, children 
   return (
     <DropdownMenuCheckboxItem
       checked={checked}
+      aria-label={ariaLabel}
       onCheckedChange={onCheckedChange}
-      onSelect={(event) => event.preventDefault()}
+      // The dropdown closes itself on a pick unless told not to.
+      onSelect={close ? undefined : (event) => event.preventDefault()}
     >
       {children}
     </DropdownMenuCheckboxItem>
   );
+}
+
+/** A one-off action, such as Reset filters. */
+export function ResponsiveMenuActionItem({ onSelect, children }: {
+  onSelect: () => void;
+  children: ReactNode;
+}) {
+  if (useContext(InDrawer)) {
+    return (
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-colors hover:bg-accent active:bg-accent/80"
+      >
+        {children}
+      </button>
+    );
+  }
+  return <DropdownMenuItem onClick={onSelect}>{children}</DropdownMenuItem>;
 }
 
 /** A row that is its own element, such as a link; in the dropdown it is a menu item. */

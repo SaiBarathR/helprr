@@ -4,13 +4,9 @@ import { Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FilterDot } from '@/components/ui/active-filter-bar';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuCheckboxItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+} from '@/components/ui/responsive-menu';
 
 export interface InstanceOption {
   id: string;
@@ -80,8 +76,12 @@ export function InstanceFilter({
   const current = value === 'all' ? 'All instances' : (instances.find((i) => i.id === value)?.label ?? 'All instances');
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <ResponsiveMenu
+      title="Instance"
+      titleInDropdown
+      closeOnPick
+      align={align}
+      trigger={(
         <Button
           variant="outline"
           size="sm"
@@ -95,23 +95,20 @@ export function InstanceFilter({
           <span className="hidden sm:inline max-w-[10rem] truncate">{current}</span>
           <span className="sm:hidden"><FilterDot active={value !== 'all'} /></span>
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align={align}>
-        <DropdownMenuLabel>Instance</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuCheckboxItem checked={value === 'all'} onCheckedChange={() => onChange('all')}>
-          All instances
-        </DropdownMenuCheckboxItem>
-        {instances.map((inst) => (
-          <DropdownMenuCheckboxItem
-            key={inst.id}
-            checked={value === inst.id}
-            onCheckedChange={() => onChange(inst.id)}
-          >
-            {inst.label}
-          </DropdownMenuCheckboxItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      )}
+    >
+      <ResponsiveMenuCheckboxItem checked={value === 'all'} onCheckedChange={() => onChange('all')}>
+        All instances
+      </ResponsiveMenuCheckboxItem>
+      {instances.map((inst) => (
+        <ResponsiveMenuCheckboxItem
+          key={inst.id}
+          checked={value === inst.id}
+          onCheckedChange={() => onChange(inst.id)}
+        >
+          {inst.label}
+        </ResponsiveMenuCheckboxItem>
+      ))}
+    </ResponsiveMenu>
   );
 }

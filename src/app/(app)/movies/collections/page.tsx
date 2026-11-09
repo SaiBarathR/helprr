@@ -5,13 +5,11 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuCheckboxItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+  ResponsiveMenuLabel,
+  ResponsiveMenuSeparator,
+} from '@/components/ui/responsive-menu';
 import { ArrowUpDown, Eye, EyeOff, Filter, Layers, Plus, Search as SearchIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -246,8 +244,13 @@ export default function MovieCollectionsPage() {
             />
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          <ResponsiveMenu
+            title="Filter"
+            titleInDropdown
+            closeOnPick={!multiInstance}
+            align="end"
+            contentClassName="w-48"
+            trigger={(
               <button
                 className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
                 aria-label={filterButtonLabel(
@@ -258,70 +261,65 @@ export default function MovieCollectionsPage() {
                 <Filter className="h-5 w-5" />
                 <FilterDot active={menuFilters.length > 0} />
               </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>Filter</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {(Object.keys(FILTER_LABELS) as FilterMode[]).map((mode) => (
-                <DropdownMenuCheckboxItem
-                  key={mode}
-                  checked={filter === mode}
-                  onCheckedChange={() => setFilter(mode)}
-                  onSelect={(e) => e.preventDefault()}
+            )}
+          >
+            {(Object.keys(FILTER_LABELS) as FilterMode[]).map((mode) => (
+              <ResponsiveMenuCheckboxItem
+                key={mode}
+                checked={filter === mode}
+                onCheckedChange={() => setFilter(mode)}
+              >
+                {FILTER_LABELS[mode]}
+              </ResponsiveMenuCheckboxItem>
+            ))}
+            {multiInstance && (
+              <>
+                <ResponsiveMenuSeparator />
+                <ResponsiveMenuLabel>Instance</ResponsiveMenuLabel>
+                <ResponsiveMenuCheckboxItem
+                  checked={instanceFilter === 'all'}
+                  onCheckedChange={() => setInstanceFilter('all')}
                 >
-                  {FILTER_LABELS[mode]}
-                </DropdownMenuCheckboxItem>
-              ))}
-              {multiInstance && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Instance</DropdownMenuLabel>
-                  <DropdownMenuCheckboxItem
-                    checked={instanceFilter === 'all'}
-                    onCheckedChange={() => setInstanceFilter('all')}
-                    onSelect={(e) => e.preventDefault()}
+                  All instances
+                </ResponsiveMenuCheckboxItem>
+                {instances.map((inst) => (
+                  <ResponsiveMenuCheckboxItem
+                    key={inst.id}
+                    checked={instanceFilter === inst.id}
+                    onCheckedChange={() => setInstanceFilter(inst.id)}
                   >
-                    All instances
-                  </DropdownMenuCheckboxItem>
-                  {instances.map((inst) => (
-                    <DropdownMenuCheckboxItem
-                      key={inst.id}
-                      checked={instanceFilter === inst.id}
-                      onCheckedChange={() => setInstanceFilter(inst.id)}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      {inst.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                    {inst.label}
+                  </ResponsiveMenuCheckboxItem>
+                ))}
+              </>
+            )}
+          </ResponsiveMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          <ResponsiveMenu
+            title="Sort by"
+            titleInDropdown
+            closeOnPick
+            align="end"
+            contentClassName="w-48"
+            trigger={(
               <button
                 className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
                 aria-label={`Sort: ${SORT_LABELS[sort]}`}
               >
                 <ArrowUpDown className="h-5 w-5" />
               </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>Sort By</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {(Object.keys(SORT_LABELS) as SortMode[]).map((mode) => (
-                <DropdownMenuCheckboxItem
-                  key={mode}
-                  checked={sort === mode}
-                  onCheckedChange={() => setSort(mode)}
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  {SORT_LABELS[mode]}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            )}
+          >
+            {(Object.keys(SORT_LABELS) as SortMode[]).map((mode) => (
+              <ResponsiveMenuCheckboxItem
+                key={mode}
+                checked={sort === mode}
+                onCheckedChange={() => setSort(mode)}
+              >
+                {SORT_LABELS[mode]}
+              </ResponsiveMenuCheckboxItem>
+            ))}
+          </ResponsiveMenu>
         </div>
       </div>
       {/* Below the sticky toolbar, so it can't push over sticky table headers;
