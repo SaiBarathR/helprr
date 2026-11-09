@@ -111,10 +111,21 @@ describe('BottomNav', () => {
     render(<BottomNav />);
     const bar = within(screen.getByRole('navigation'));
     expect(bar.getByRole('button', { name: 'More, 59 unread' })).toBeTruthy();
-    expect(bar.getByRole('link', { name: 'Activity, 3 unread' })).toBeTruthy();
+    expect(bar.getByRole('link', { name: 'Activity, 3 in queue' })).toBeTruthy();
     // Tabs without a count keep their plain label.
     expect(bar.getByRole('link', { name: 'Movies' })).toBeTruthy();
     expect(bar.getByRole('button', { name: 'Search' })).toBeTruthy();
+  });
+
+  it('names More sheet rows with a count the same way', async () => {
+    mocks.counts = { ...EMPTY_BADGE_COUNTS, notifications: { total: 44, attention: 44 }, requests: { total: 2, attention: 2 }, downloads: { total: 1, attention: 0 } };
+    render(<BottomNav />);
+    await userEvent.click(screen.getByRole('button', { name: /^More/ }));
+    const sheet = within(await screen.findByRole('dialog', { name: 'More' }));
+    expect(sheet.getByRole('link', { name: 'Notifications, 44 unread' })).toBeTruthy();
+    expect(sheet.getByRole('link', { name: 'Requests, 2 items' })).toBeTruthy();
+    expect(sheet.getByRole('link', { name: 'Torrents, 1 item' })).toBeTruthy();
+    expect(sheet.getByRole('link', { name: 'Discover' })).toBeTruthy();
   });
 
   it('caps the spoken count the way the badge shows it', () => {

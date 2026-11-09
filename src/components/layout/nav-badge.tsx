@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import type { BadgeSlice } from '@/types/badges';
+import type { BadgeArea, BadgeSlice } from '@/types/badges';
 
 /**
  * Nav count indicator. Renders nothing when the slice is empty. Shows `total`
@@ -42,7 +42,27 @@ export function NavBadge({
         className,
       )}
     >
-      {slice.total > 99 ? '99+' : slice.total}
+      {countText(slice.total)}
     </span>
   );
+}
+
+function countText(total: number): string {
+  return total > 99 ? '99+' : String(total);
+}
+
+/**
+ * A nav item's accessible name while it shows a count: its label, a pause,
+ * then what the count is ("Notifications, 44 unread"), instead of the bare
+ * "Notifications44" its text reads as. Undefined without a count, so the
+ * item keeps its plain label. Activity counts the Arr download queue; the
+ * other areas (downloading torrents, pending requests, new videos) and a
+ * plain count say "items". More rolls its hidden items into one count.
+ */
+export function navBadgeName(label: string, slice: BadgeSlice | undefined, area: BadgeArea | 'more' | undefined): string | undefined {
+  if (!slice || slice.total <= 0) return undefined;
+  const what = area === 'notifications' || area === 'more' ? 'unread'
+    : area === 'activity' ? 'in queue'
+    : slice.total === 1 ? 'item' : 'items';
+  return `${label}, ${countText(slice.total)} ${what}`;
 }

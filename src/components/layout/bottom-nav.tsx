@@ -11,7 +11,7 @@ import { getActiveNavHref, getEnabledNavItems, getBottomNavLayout, navItemAllowe
 import { usePendingHref } from '@/components/layout/navigation-provider';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useBadgeCounts } from '@/components/layout/badge-provider';
-import { NavBadge } from '@/components/layout/nav-badge';
+import { NavBadge, navBadgeName } from '@/components/layout/nav-badge';
 import { useSearchPalette } from '@/components/search/search-store';
 import type { BadgeSlice } from '@/types/badges';
 
@@ -30,12 +30,6 @@ const SLOT_LABEL = 'max-w-full truncate tracking-[-0.01em]';
 // padding and the 5px rise keep the badge inside the floating bar's rounded
 // end on the last slot at 375px, even for 99+.
 const SLOT_BADGE = 'absolute -top-[5px] left-[calc(100%-4px)] h-4 min-w-[1rem] px-1 text-[10px] ring-2 ring-background [html[data-glass]_&]:ring-[color:var(--hpr-glass-bg)]';
-
-/** A tab's name for screen readers: its label first, then its count ("More, 59 unread"), not "59More". */
-function slotName(label: string, slice: BadgeSlice | undefined): string | undefined {
-  if (!slice || slice.total <= 0) return undefined;
-  return `${label}, ${slice.total > 99 ? '99+' : slice.total} unread`;
-}
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -101,7 +95,7 @@ export function BottomNav() {
                 key={href}
                 href={href}
                 prefetch={null}
-                aria-label={slotName(shortLabel, slice)}
+                aria-label={navBadgeName(shortLabel, slice, badgeArea)}
                 className={cn(
                   SLOT,
                   isActive ? cn(ACTIVE_LABEL, GLASS_ACTIVE_LABEL) : 'text-muted-foreground',
@@ -128,7 +122,7 @@ export function BottomNav() {
               onOpenChange={setMoreOpen}
               trigger={(
                 <button
-                  aria-label={slotName('More', moreBadge)}
+                  aria-label={navBadgeName('More', moreBadge, 'more')}
                   className={cn(
                     SLOT,
                     isMoreActive ? cn(ACTIVE_LABEL, GLASS_ACTIVE_LABEL) : 'text-muted-foreground'
@@ -165,6 +159,7 @@ export function BottomNav() {
                       <Link
                         href={href}
                         prefetch={null}
+                        aria-label={navBadgeName(label, slice, badgeArea)}
                         onClick={(event) => {
                           if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
                             return;
