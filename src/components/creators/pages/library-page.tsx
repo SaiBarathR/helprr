@@ -9,7 +9,10 @@ import { SearchBar } from '@/components/media/search-bar';
 import { ViewSelector } from '@/components/media/view-selector';
 import { ActiveFilterBar, FilterDot, filterButtonLabel, searchFilter, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+} from '@/components/ui/responsive-menu';
 import { ErrorState } from '@/components/ui/error-state';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
@@ -191,8 +194,10 @@ export function CreatorLibraryPage() {
         active="library"
         actions={(
           <>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <ResponsiveMenu
+              title="Filter"
+              contentClassName="max-h-[70dvh] w-56 overflow-y-auto"
+              trigger={(
                 <button
                   className={toolbarButtonClass()}
                   aria-label={filterButtonLabel(`Filter: ${menuFilters.map((item) => item.label).join(', ') || 'All'}`, menuFilters.length > 0)}
@@ -200,33 +205,38 @@ export function CreatorLibraryPage() {
                   <Filter className="h-5 w-5" />
                   <FilterDot active={menuFilters.length > 0} />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="max-h-[70dvh] w-56 overflow-y-auto">
-                <FilterGroup label="Show" options={SHOW} value={filter} onChange={setFilter} separated={false} />
-                {(stats?.streamers.length ?? 0) > 1 && !showingDeleted && (
-                  <FilterGroup
-                    label={platform.creatorLabel}
-                    options={[
-                      { id: '', label: `All ${platform.creatorsLabel.toLowerCase()}` },
-                      ...(stats?.streamers ?? []).map((item) => ({ id: item.id, label: `${item.displayName} (${formatBytes(item.bytes)})` })),
-                    ]}
-                    value={streamer}
-                    onChange={setStreamer}
-                  />
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
+            >
+              <FilterGroup label="Show" options={SHOW} value={filter} onChange={setFilter} separated={false} />
+              {(stats?.streamers.length ?? 0) > 1 && !showingDeleted && (
+                <FilterGroup
+                  label={platform.creatorLabel}
+                  options={[
+                    { id: '', label: `All ${platform.creatorsLabel.toLowerCase()}` },
+                    ...(stats?.streamers ?? []).map((item) => ({ id: item.id, label: `${item.displayName} (${formatBytes(item.bytes)})` })),
+                  ]}
+                  value={streamer}
+                  onChange={setStreamer}
+                />
+              )}
+            </ResponsiveMenu>
             {!showingDeleted && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+              <ResponsiveMenu
+                title="Sort by"
+                titleInDropdown
+                contentClassName="w-52"
+                trigger={(
                   <button className={toolbarButtonClass()} aria-label={`Sort: ${SORTS.find((item) => item.id === sort)?.label}`}>
                     <ArrowUpDown className="h-5 w-5" />
                   </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-52">
-                  <FilterGroup label="Sort by" options={SORTS} value={sort} onChange={setSort} separated={false} />
-                </DropdownMenuContent>
-              </DropdownMenu>
+                )}
+              >
+                {SORTS.map((option) => (
+                  <ResponsiveMenuCheckboxItem key={option.id} checked={sort === option.id} onCheckedChange={() => setSort(option.id)}>
+                    {option.label}
+                  </ResponsiveMenuCheckboxItem>
+                ))}
+              </ResponsiveMenu>
             )}
             {!showingDeleted && (
               <ViewSelector

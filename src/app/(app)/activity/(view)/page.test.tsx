@@ -73,6 +73,7 @@ const initialStore = useUIStore.getState();
 
 beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   useUIStore.setState(initialStore, true);
   mocks.search = new URLSearchParams();
   mocks.push.mockClear();
@@ -529,7 +530,7 @@ describe('Activity: wanted tabs, sorting and refresh', () => {
     await waitFor(() => expect(text()).toContain('2 Tasks'));
     const trigger = document.querySelector('[aria-label^="Filter and sort"]') as HTMLButtonElement;
     await act(async () => trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
-    const sizeItem = () => [...document.querySelectorAll('[role="menuitemradio"]')].find((item) => item.textContent?.trim() === 'Size') as HTMLElement;
+    const sizeItem = () => [...document.querySelectorAll('[role="menuitemcheckbox"]')].find((item) => item.textContent?.trim() === 'Size') as HTMLElement;
     await waitFor(() => expect(sizeItem()).toBeTruthy());
     const order = () => ['Small.Show', 'Big.Movie'].sort((a, b) => text().indexOf(a) - text().indexOf(b));
 

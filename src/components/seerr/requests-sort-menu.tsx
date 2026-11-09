@@ -4,13 +4,10 @@ import { useMemo } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+  ResponsiveMenuSeparator,
+} from '@/components/ui/responsive-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   type RequestsSortDirectionPreference,
@@ -48,8 +45,11 @@ export function RequestsSortMenu({
 
   return (
     <div className="flex items-center">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      <ResponsiveMenu
+        title="Sort by"
+        titleInDropdown
+        contentClassName="w-48"
+        trigger={(
           <Button
             variant="ghost"
             size="icon"
@@ -58,37 +58,31 @@ export function RequestsSortMenu({
           >
             <ArrowUpDown className="h-4 w-4" />
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-48">
-          <DropdownMenuLabel>Sort By</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {SORT_OPTIONS.map((opt) => (
-            <DropdownMenuCheckboxItem
-              key={opt.value}
-              checked={sort === opt.value}
-              onCheckedChange={() => onSortChange(opt.value)}
-              onSelect={(e) => e.preventDefault()}
-            >
-              {opt.label}
-            </DropdownMenuCheckboxItem>
-          ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuCheckboxItem
-            checked={sortDirection === 'asc'}
-            onCheckedChange={() => onSortDirectionChange('asc')}
-            onSelect={(e) => e.preventDefault()}
+        )}
+      >
+        {SORT_OPTIONS.map((opt) => (
+          <ResponsiveMenuCheckboxItem
+            key={opt.value}
+            checked={sort === opt.value}
+            onCheckedChange={() => onSortChange(opt.value)}
           >
-            Ascending
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem
-            checked={sortDirection === 'desc'}
-            onCheckedChange={() => onSortDirectionChange('desc')}
-            onSelect={(e) => e.preventDefault()}
-          >
-            Descending
-          </DropdownMenuCheckboxItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            {opt.label}
+          </ResponsiveMenuCheckboxItem>
+        ))}
+        <ResponsiveMenuSeparator />
+        <ResponsiveMenuCheckboxItem
+          checked={sortDirection === 'asc'}
+          onCheckedChange={() => onSortDirectionChange('asc')}
+        >
+          Ascending
+        </ResponsiveMenuCheckboxItem>
+        <ResponsiveMenuCheckboxItem
+          checked={sortDirection === 'desc'}
+          onCheckedChange={() => onSortDirectionChange('desc')}
+        >
+          Descending
+        </ResponsiveMenuCheckboxItem>
+      </ResponsiveMenu>
 
       <Tooltip>
         <TooltipTrigger asChild>

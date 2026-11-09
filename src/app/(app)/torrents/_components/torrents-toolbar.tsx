@@ -4,13 +4,9 @@ import type { Ref } from 'react';
 import { SearchInput } from '@/components/media/search-input';
 import { FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuCheckboxItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+} from '@/components/ui/responsive-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { ArrowDown, ArrowUp, ArrowUpDown, Filter, Gauge, Link2, Plus, RefreshCw, Search, Settings } from 'lucide-react';
 import type { QBittorrentTransferInfo } from '@/types';
@@ -60,8 +56,11 @@ export function TorrentsToolbar({
   return (
     <div ref={ref} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
       <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        <ResponsiveMenu
+          title="Filter"
+          titleInDropdown
+          contentClassName="w-48"
+          trigger={(
             <button
               className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
               aria-label={filterButtonLabel(
@@ -72,61 +71,55 @@ export function TorrentsToolbar({
               <Filter className="h-5 w-5" />
               <FilterDot active={menuFilters.length > 0} />
             </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-48">
-            <DropdownMenuLabel>Filter</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
-              checked={filter.length === 0}
-              onCheckedChange={() => setFilter([])}
-              onSelect={(e) => e.preventDefault()}
+          )}
+        >
+          <ResponsiveMenuCheckboxItem
+            checked={filter.length === 0}
+            onCheckedChange={() => setFilter([])}
+          >
+            All
+          </ResponsiveMenuCheckboxItem>
+          {filterOptions.map((opt) => (
+            <ResponsiveMenuCheckboxItem
+              key={opt.value}
+              checked={filter.includes(opt.value)}
+              onCheckedChange={() => setFilter(
+                filter.includes(opt.value)
+                  ? filter.filter((f) => f !== opt.value)
+                  : [...filter, opt.value]
+              )}
             >
-              All
-            </DropdownMenuCheckboxItem>
-            {filterOptions.map((opt) => (
-              <DropdownMenuCheckboxItem
-                key={opt.value}
-                checked={filter.includes(opt.value)}
-                onCheckedChange={() => setFilter(
-                  filter.includes(opt.value)
-                    ? filter.filter((f) => f !== opt.value)
-                    : [...filter, opt.value]
-                )}
-                onSelect={(e) => e.preventDefault()}
-              >
-                {opt.label}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {opt.label}
+            </ResponsiveMenuCheckboxItem>
+          ))}
+        </ResponsiveMenu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        <ResponsiveMenu
+          title="Sort by"
+          titleInDropdown
+          contentClassName="w-52 max-h-80 overflow-y-auto"
+          trigger={(
             <button
               className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
               aria-label="Sort"
             >
               <ArrowUpDown className="h-5 w-5" />
             </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-52 max-h-80 overflow-y-auto">
-            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {SORT_OPTIONS.map((opt) => (
-              <DropdownMenuCheckboxItem
-                key={opt.key}
-                checked={sortKey === opt.key}
-                onCheckedChange={() => handleHeaderSort(opt.key)}
-                onSelect={(e) => e.preventDefault()}
-              >
-                {opt.label}
-                {sortKey === opt.key && (
-                  <span className="ml-auto text-[10px] text-muted-foreground">{sortDir === 'asc' ? '↑' : '↓'}</span>
-                )}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          )}
+        >
+          {SORT_OPTIONS.map((opt) => (
+            <ResponsiveMenuCheckboxItem
+              key={opt.key}
+              checked={sortKey === opt.key}
+              onCheckedChange={() => handleHeaderSort(opt.key)}
+            >
+              {opt.label}
+              {sortKey === opt.key && (
+                sortDir === 'asc' ? <ArrowUp className="ml-auto h-3.5 w-3.5" /> : <ArrowDown className="ml-auto h-3.5 w-3.5" />
+              )}
+            </ResponsiveMenuCheckboxItem>
+          ))}
+        </ResponsiveMenu>
 
         <Tooltip>
           <TooltipTrigger asChild>

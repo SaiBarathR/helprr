@@ -24,13 +24,15 @@ const InDrawer = createContext(false);
  * a phone gets a titled sheet it can scroll instead of a popover taller than
  * the screen. Build its body from the ResponsiveMenu* parts below.
  */
-export function ResponsiveMenu({ trigger, title, titleInDropdown, open, onOpenChange, contentClassName, footer, children }: {
+export function ResponsiveMenu({ trigger, title, titleInDropdown, align = 'start', open, onOpenChange, contentClassName, footer, children }: {
   /** One element; it becomes the trigger. */
   trigger: ReactNode;
   /** The drawer's heading. */
   title: string;
   /** Also head the dropdown with the title. */
   titleInDropdown?: boolean;
+  /** Where the dropdown lines up with its trigger. */
+  align?: 'start' | 'center' | 'end';
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   /** Classes for the dropdown only. */
@@ -46,7 +48,8 @@ export function ResponsiveMenu({ trigger, title, titleInDropdown, open, onOpenCh
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerTrigger asChild>{trigger}</DrawerTrigger>
-        <DrawerContent>
+        {/* A short menu hugs its rows; a long one still stops at the base drawer's 90dvh and scrolls. */}
+        <DrawerContent className="data-[vaul-drawer-direction=bottom]:h-auto">
           <DrawerHeader>
             <DrawerTitle>{title}</DrawerTitle>
           </DrawerHeader>
@@ -68,7 +71,7 @@ export function ResponsiveMenu({ trigger, title, titleInDropdown, open, onOpenCh
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className={contentClassName}>
+      <DropdownMenuContent align={align} className={contentClassName}>
         {titleInDropdown && (
           <>
             <DropdownMenuLabel>{title}</DropdownMenuLabel>
@@ -124,9 +127,10 @@ export function ResponsiveMenuSeparator() {
 }
 
 /** A choice that stays open to pick from others, like a filter or sort. */
-export function ResponsiveMenuCheckboxItem({ checked, onCheckedChange, children }: {
+export function ResponsiveMenuCheckboxItem({ checked, onCheckedChange, ariaLabel, children }: {
   checked: boolean;
   onCheckedChange: () => void;
+  ariaLabel?: string;
   children: ReactNode;
 }) {
   if (useContext(InDrawer)) {
@@ -134,13 +138,14 @@ export function ResponsiveMenuCheckboxItem({ checked, onCheckedChange, children 
       <button
         type="button"
         aria-pressed={checked}
+        aria-label={ariaLabel}
         onClick={onCheckedChange}
         className={cn(
           'flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-colors hover:bg-accent active:bg-accent/80',
           checked && 'font-medium text-primary',
         )}
       >
-        <span className="min-w-0 flex-1">{children}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
         {checked && <Check className="h-4 w-4 shrink-0" />}
       </button>
     );
@@ -148,12 +153,32 @@ export function ResponsiveMenuCheckboxItem({ checked, onCheckedChange, children 
   return (
     <DropdownMenuCheckboxItem
       checked={checked}
+      aria-label={ariaLabel}
       onCheckedChange={onCheckedChange}
       onSelect={(event) => event.preventDefault()}
     >
       {children}
     </DropdownMenuCheckboxItem>
   );
+}
+
+/** A one-off action, such as Reset filters. */
+export function ResponsiveMenuActionItem({ onSelect, children }: {
+  onSelect: () => void;
+  children: ReactNode;
+}) {
+  if (useContext(InDrawer)) {
+    return (
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-colors hover:bg-accent active:bg-accent/80"
+      >
+        {children}
+      </button>
+    );
+  }
+  return <DropdownMenuItem onClick={onSelect}>{children}</DropdownMenuItem>;
 }
 
 /** A row that is its own element, such as a link; in the dropdown it is a menu item. */

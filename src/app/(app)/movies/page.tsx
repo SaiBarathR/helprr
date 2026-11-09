@@ -6,13 +6,11 @@ import { useAppRouter } from '@/components/layout/navigation-provider';
 import { MediaGridSkeleton } from '@/components/ui/media-grid-skeleton';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuCheckboxItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+  ResponsiveMenuLabel,
+  ResponsiveMenuSeparator,
+} from '@/components/ui/responsive-menu';
 import { MediaCard } from '@/components/media/media-card';
 import { MediaOverviewItem } from '@/components/media/media-overview';
 import { MediaTable } from '@/components/media/media-table';
@@ -755,8 +753,11 @@ export default function MoviesPage() {
       <PageTitle>Movies</PageTitle>
       <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
         <div className="flex items-center md:gap-2 w-full overflow-x-auto scrollbar-hide">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          <ResponsiveMenu
+            title="Filter"
+            titleInDropdown
+            contentClassName="w-48"
+            trigger={(
               <button
                 className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
                 aria-label={filterButtonLabel(
@@ -767,123 +768,110 @@ export default function MoviesPage() {
                 <Filter className="h-5 w-5" />
                 <FilterDot active={menuFilters.length > 0} />
               </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuLabel>Filter</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
-                checked={filter.length === 0}
-                onCheckedChange={() => setFilter([])}
-                onSelect={(e) => e.preventDefault()}
+            )}
+          >
+            <ResponsiveMenuCheckboxItem
+              checked={filter.length === 0}
+              onCheckedChange={() => setFilter([])}
+            >
+              All
+            </ResponsiveMenuCheckboxItem>
+            {filterOptions.map((opt) => (
+              <ResponsiveMenuCheckboxItem
+                key={opt.value}
+                checked={filter.includes(opt.value)}
+                onCheckedChange={() => setFilter(
+                  filter.includes(opt.value)
+                    ? filter.filter((f) => f !== opt.value)
+                    : [...filter, opt.value]
+                )}
               >
-                All
-              </DropdownMenuCheckboxItem>
-              {filterOptions.map((opt) => (
-                <DropdownMenuCheckboxItem
-                  key={opt.value}
-                  checked={filter.includes(opt.value)}
-                  onCheckedChange={() => setFilter(
-                    filter.includes(opt.value)
-                      ? filter.filter((f) => f !== opt.value)
-                      : [...filter, opt.value]
-                  )}
-                  onSelect={(e) => e.preventDefault()}
+                {opt.label}
+              </ResponsiveMenuCheckboxItem>
+            ))}
+            {canFilterByWatchStatus && (
+              <>
+                <ResponsiveMenuSeparator />
+                <ResponsiveMenuLabel>Watch status</ResponsiveMenuLabel>
+                <ResponsiveMenuCheckboxItem
+                  checked={watchFilter === 'all'}
+                  onCheckedChange={() => setWatchFilter('all')}
                 >
-                  {opt.label}
-                </DropdownMenuCheckboxItem>
-              ))}
-              {canFilterByWatchStatus && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Watch status</DropdownMenuLabel>
-                  <DropdownMenuCheckboxItem
-                    checked={watchFilter === 'all'}
-                    onCheckedChange={() => setWatchFilter('all')}
-                    onSelect={(e) => e.preventDefault()}
+                  All
+                </ResponsiveMenuCheckboxItem>
+                <ResponsiveMenuCheckboxItem
+                  checked={watchFilter === 'watched'}
+                  onCheckedChange={() => setWatchFilter('watched')}
+                >
+                  Watched
+                </ResponsiveMenuCheckboxItem>
+                <ResponsiveMenuCheckboxItem
+                  checked={watchFilter === 'unwatched'}
+                  onCheckedChange={() => setWatchFilter('unwatched')}
+                >
+                  Not watched
+                </ResponsiveMenuCheckboxItem>
+              </>
+            )}
+            {multiInstance && (
+              <>
+                <ResponsiveMenuSeparator />
+                <ResponsiveMenuLabel>Instance</ResponsiveMenuLabel>
+                <ResponsiveMenuCheckboxItem
+                  checked={instanceFilter === 'all'}
+                  onCheckedChange={() => setInstanceFilter('all')}
+                >
+                  All instances
+                </ResponsiveMenuCheckboxItem>
+                {instances.map((inst) => (
+                  <ResponsiveMenuCheckboxItem
+                    key={inst.id}
+                    checked={instanceFilter === inst.id}
+                    onCheckedChange={() => setInstanceFilter(inst.id)}
                   >
-                    All
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem
-                    checked={watchFilter === 'watched'}
-                    onCheckedChange={() => setWatchFilter('watched')}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    Watched
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem
-                    checked={watchFilter === 'unwatched'}
-                    onCheckedChange={() => setWatchFilter('unwatched')}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    Not watched
-                  </DropdownMenuCheckboxItem>
-                </>
-              )}
-              {multiInstance && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Instance</DropdownMenuLabel>
-                  <DropdownMenuCheckboxItem
-                    checked={instanceFilter === 'all'}
-                    onCheckedChange={() => setInstanceFilter('all')}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    All instances
-                  </DropdownMenuCheckboxItem>
-                  {instances.map((inst) => (
-                    <DropdownMenuCheckboxItem
-                      key={inst.id}
-                      checked={instanceFilter === inst.id}
-                      onCheckedChange={() => setInstanceFilter(inst.id)}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      {inst.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                    {inst.label}
+                  </ResponsiveMenuCheckboxItem>
+                ))}
+              </>
+            )}
+          </ResponsiveMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          <ResponsiveMenu
+            title="Sort by"
+            titleInDropdown
+            contentClassName="w-52"
+            trigger={(
               <button
                 className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
                 aria-label={`Sort: ${activeSortLabel} ${sortDir === 'asc' ? 'Ascending' : 'Descending'}`}
               >
                 <ArrowUpDown className="h-5 w-5" />
               </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52">
-              <DropdownMenuLabel>Sort By</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {sortOptions.map((opt) => (
-                <DropdownMenuCheckboxItem
-                  key={opt.value}
-                  checked={sort === opt.value}
-                  onCheckedChange={() => setSort(opt.value)}
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  {opt.label}
-                </DropdownMenuCheckboxItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
-                checked={sortDir === 'asc'}
-                onCheckedChange={() => setSortDir('asc')}
-                onSelect={(e) => e.preventDefault()}
+            )}
+          >
+            {sortOptions.map((opt) => (
+              <ResponsiveMenuCheckboxItem
+                key={opt.value}
+                checked={sort === opt.value}
+                onCheckedChange={() => setSort(opt.value)}
               >
-                Ascending
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem
-                checked={sortDir === 'desc'}
-                onCheckedChange={() => setSortDir('desc')}
-                onSelect={(e) => e.preventDefault()}
-              >
-                Descending
-              </DropdownMenuCheckboxItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {opt.label}
+              </ResponsiveMenuCheckboxItem>
+            ))}
+            <ResponsiveMenuSeparator />
+            <ResponsiveMenuCheckboxItem
+              checked={sortDir === 'asc'}
+              onCheckedChange={() => setSortDir('asc')}
+            >
+              Ascending
+            </ResponsiveMenuCheckboxItem>
+            <ResponsiveMenuCheckboxItem
+              checked={sortDir === 'desc'}
+              onCheckedChange={() => setSortDir('desc')}
+            >
+              Descending
+            </ResponsiveMenuCheckboxItem>
+          </ResponsiveMenu>
 
           <ViewSelector value={viewMode} onChange={setViewMode} />
           <FieldToggles

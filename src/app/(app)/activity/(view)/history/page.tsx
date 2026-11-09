@@ -11,11 +11,9 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+} from '@/components/ui/responsive-menu';
 import { Filter, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { InstanceFilter, type InstanceOption, withAppName } from '@/components/instance-filter';
@@ -153,8 +151,11 @@ export default function HistoryPage() {
         rightContent={
           <div className="flex items-center gap-2">
             <InstanceFilter instances={instanceOptions} value={instanceFilter} onChange={setInstanceFilter} />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <ResponsiveMenu
+              title="Event"
+              titleInDropdown
+              align="end"
+              trigger={(
                 <Button
                   variant="ghost"
                   size="icon"
@@ -164,19 +165,18 @@ export default function HistoryPage() {
                   <Filter className="h-4 w-4" />
                   <FilterDot active={eventFilter !== 'all'} />
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {EVENT_FILTERS.map((opt) => (
-                  <DropdownMenuItem
-                    key={opt.key}
-                    onClick={() => setEventFilter(opt.key)}
-                    className={eventFilter === opt.key ? 'bg-accent' : ''}
-                  >
-                    {opt.label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
+            >
+              {EVENT_FILTERS.map((opt) => (
+                <ResponsiveMenuCheckboxItem
+                  key={opt.key}
+                  checked={eventFilter === opt.key}
+                  onCheckedChange={() => setEventFilter(opt.key)}
+                >
+                  {opt.label}
+                </ResponsiveMenuCheckboxItem>
+              ))}
+            </ResponsiveMenu>
           </div>
         }
       />

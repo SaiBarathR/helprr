@@ -50,12 +50,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+} from '@/components/ui/responsive-menu';
 import { ScheduledAlertSummary } from '@/components/scheduled-alerts/scheduled-alert-summary';
 import { ScheduledAlertDialog, type ScheduledAlertDraft } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { jsonFetcher } from '@/lib/query-fetch';
@@ -311,25 +311,22 @@ export default function ScheduledAlertsPage() {
       <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
 
       <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        <ResponsiveMenu
+          title="Sort by"
+          titleInDropdown
+          trigger={(
             <Button variant="outline" size="sm" className="h-8">
               <ArrowUpDown data-icon="inline-start" />
               {SORT_OPTIONS.find((o) => o.value === sort)?.label}
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuRadioGroup value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-              {SORT_OPTIONS.map((opt) => (
-                <DropdownMenuRadioItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          )}
+        >
+          {SORT_OPTIONS.map((opt) => (
+            <ResponsiveMenuCheckboxItem key={opt.value} checked={sort === opt.value} onCheckedChange={() => setSort(opt.value)}>
+              {opt.label}
+            </ResponsiveMenuCheckboxItem>
+          ))}
+        </ResponsiveMenu>
         <Badge variant="secondary" className="text-xs">
           {totalRecords} alert{totalRecords === 1 ? '' : 's'}
         </Badge>

@@ -52,15 +52,18 @@ import {
 } from '@/components/ui/dialog';
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+  ResponsiveMenuLabel,
+  ResponsiveMenuSeparator,
+  ResponsiveMenuActionItem,
+} from '@/components/ui/responsive-menu';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useCan } from '@/components/permission-provider';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
@@ -128,6 +131,12 @@ const SOURCE_OPTIONS: Array<{ value: Source; label: string }> = [
   { value: 'TVDB', label: 'TVDB' },
   { value: 'SONARR', label: 'Sonarr' },
   { value: 'RADARR', label: 'Radarr' },
+];
+
+const LIBRARY_OPTIONS: Array<{ value: 'all' | 'in' | 'out'; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'in', label: 'In library' },
+  { value: 'out', label: 'Not in library' },
 ];
 
 // v2: `type` (segmented control) replaced the v1 `mediaTypes` checkbox array.
@@ -711,8 +720,10 @@ export default function WatchlistPage() {
         className="page-toolbar page-toolbar-flush space-y-2 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
       >
         <div className="flex items-center gap-2 flex-wrap">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          <ResponsiveMenu
+            title="Filter"
+            contentClassName="w-56"
+            trigger={(
               <button
                 type="button"
                 className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors relative"
@@ -721,86 +732,67 @@ export default function WatchlistPage() {
                 <Filter className="h-5 w-5" />
                 <FilterDot active={hasActiveFilters} />
               </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuLabel>Media type</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuRadioGroup
-                value={view.type}
-                onValueChange={(v) =>
-                  setView((prev) => ({ ...prev, type: (v as ViewState['type']) ?? 'all' }))
-                }
+            )}
+          >
+            <ResponsiveMenuLabel>Media type</ResponsiveMenuLabel>
+            {TYPE_OPTIONS.map((opt) => (
+              <ResponsiveMenuCheckboxItem
+                key={opt.value}
+                checked={view.type === opt.value}
+                onCheckedChange={() => setView((prev) => ({ ...prev, type: opt.value }))}
               >
-                {TYPE_OPTIONS.map((opt) => (
-                  <DropdownMenuRadioItem
-                    key={opt.value}
-                    value={opt.value}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    {opt.label}
-                    {opt.value !== 'all' && (
-                      <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-                        {typeCounts[opt.value]}
-                      </span>
-                    )}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Source</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {SOURCE_OPTIONS.map((opt) => (
-                <DropdownMenuCheckboxItem
-                  key={opt.value}
-                  checked={view.sources.includes(opt.value)}
-                  onCheckedChange={() =>
-                    setView((v) => ({
-                      ...v,
-                      sources: v.sources.includes(opt.value)
-                        ? v.sources.filter((s) => s !== opt.value)
-                        : [...v.sources, opt.value],
-                    }))
-                  }
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  {opt.label}
-                </DropdownMenuCheckboxItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Library</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuRadioGroup
-                value={view.libraryOnly}
-                onValueChange={(v) =>
-                  setView((prev) => ({
-                    ...prev,
-                    libraryOnly: (v as ViewState['libraryOnly']) ?? 'all',
+                {opt.label}
+                {opt.value !== 'all' && (
+                  <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                    {typeCounts[opt.value]}
+                  </span>
+                )}
+              </ResponsiveMenuCheckboxItem>
+            ))}
+            <ResponsiveMenuSeparator />
+            <ResponsiveMenuLabel>Source</ResponsiveMenuLabel>
+            {SOURCE_OPTIONS.map((opt) => (
+              <ResponsiveMenuCheckboxItem
+                key={opt.value}
+                checked={view.sources.includes(opt.value)}
+                onCheckedChange={() =>
+                  setView((v) => ({
+                    ...v,
+                    sources: v.sources.includes(opt.value)
+                      ? v.sources.filter((s) => s !== opt.value)
+                      : [...v.sources, opt.value],
                   }))
                 }
               >
-                <DropdownMenuRadioItem value="all" onSelect={(e) => e.preventDefault()}>
-                  All
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="in" onSelect={(e) => e.preventDefault()}>
-                  In library
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="out" onSelect={(e) => e.preventDefault()}>
-                  Not in library
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-              {hasActiveFilters && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={resetFilters}>
-                    Reset filters
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {opt.label}
+              </ResponsiveMenuCheckboxItem>
+            ))}
+            <ResponsiveMenuSeparator />
+            <ResponsiveMenuLabel>Library</ResponsiveMenuLabel>
+            {LIBRARY_OPTIONS.map((opt) => (
+              <ResponsiveMenuCheckboxItem
+                key={opt.value}
+                checked={view.libraryOnly === opt.value}
+                onCheckedChange={() => setView((prev) => ({ ...prev, libraryOnly: opt.value }))}
+              >
+                {opt.label}
+              </ResponsiveMenuCheckboxItem>
+            ))}
+            {hasActiveFilters && (
+              <>
+                <ResponsiveMenuSeparator />
+                <ResponsiveMenuActionItem onSelect={resetFilters}>
+                  Reset filters
+                </ResponsiveMenuActionItem>
+              </>
+            )}
+          </ResponsiveMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          <ResponsiveMenu
+            title="Sort by"
+            titleInDropdown
+            contentClassName="w-52"
+            trigger={(
               <button
                 type="button"
                 className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
@@ -808,46 +800,38 @@ export default function WatchlistPage() {
               >
                 <ArrowUpDown className="h-5 w-5" />
               </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52">
-              <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuRadioGroup
-                value={view.sort}
-                onValueChange={(v) =>
-                  setView((prev) => ({ ...prev, sort: v as SortKey }))
-                }
+            )}
+          >
+            {SORT_OPTIONS.map((opt) => (
+              <ResponsiveMenuCheckboxItem
+                key={opt.value}
+                checked={view.sort === opt.value}
+                onCheckedChange={() => setView((prev) => ({ ...prev, sort: opt.value }))}
               >
-                {SORT_OPTIONS.map((opt) => (
-                  <DropdownMenuRadioItem
-                    key={opt.value}
-                    value={opt.value}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    {opt.label}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuRadioGroup
-                value={view.sortDir}
-                onValueChange={(v) =>
-                  setView((prev) => ({ ...prev, sortDir: v as SortDir }))
-                }
-              >
-                <DropdownMenuRadioItem value="asc" onSelect={(e) => e.preventDefault()}>
-                  Ascending
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="desc" onSelect={(e) => e.preventDefault()}>
-                  Descending
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {opt.label}
+              </ResponsiveMenuCheckboxItem>
+            ))}
+            <ResponsiveMenuSeparator />
+            <ResponsiveMenuCheckboxItem
+              checked={view.sortDir === 'asc'}
+              onCheckedChange={() => setView((prev) => ({ ...prev, sortDir: 'asc' }))}
+            >
+              Ascending
+            </ResponsiveMenuCheckboxItem>
+            <ResponsiveMenuCheckboxItem
+              checked={view.sortDir === 'desc'}
+              onCheckedChange={() => setView((prev) => ({ ...prev, sortDir: 'desc' }))}
+            >
+              Descending
+            </ResponsiveMenuCheckboxItem>
+          </ResponsiveMenu>
 
           {visibleTags.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <ResponsiveMenu
+              title="Tags"
+              titleInDropdown
+              contentClassName="w-56"
+              trigger={(
                 <button
                   type="button"
                   className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors relative"
@@ -856,41 +840,37 @@ export default function WatchlistPage() {
                   <Tag className="h-5 w-5" />
                   <FilterDot active={selectedTagIds.length > 0} />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuLabel>Tags</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {visibleTags.map((t) => (
-                  <DropdownMenuCheckboxItem
-                    key={t.id}
-                    checked={selectedTagIds.includes(t.id)}
-                    onCheckedChange={() =>
-                      setSelectedTagIds((prev) =>
-                        prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id]
-                      )
-                    }
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    <span
-                      className="h-2.5 w-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: t.color ?? '#6366f1' }}
-                    />
-                    <span className="truncate">{t.name}</span>
-                    <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-                      {t.count}
-                    </span>
-                  </DropdownMenuCheckboxItem>
-                ))}
-                {selectedTagIds.length > 0 && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setSelectedTagIds([])}>
-                      Clear tags
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
+            >
+              {visibleTags.map((t) => (
+                <ResponsiveMenuCheckboxItem
+                  key={t.id}
+                  checked={selectedTagIds.includes(t.id)}
+                  onCheckedChange={() =>
+                    setSelectedTagIds((prev) =>
+                      prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id]
+                    )
+                  }
+                >
+                  <span
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: t.color ?? '#6366f1' }}
+                  />
+                  <span className="truncate">{t.name}</span>
+                  <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                    {t.count}
+                  </span>
+                </ResponsiveMenuCheckboxItem>
+              ))}
+              {selectedTagIds.length > 0 && (
+                <>
+                  <ResponsiveMenuSeparator />
+                  <ResponsiveMenuActionItem onSelect={() => setSelectedTagIds([])}>
+                    Clear tags
+                  </ResponsiveMenuActionItem>
+                </>
+              )}
+            </ResponsiveMenu>
           )}
 
           <div className="text-xs text-muted-foreground ml-auto tabular-nums">

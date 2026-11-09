@@ -1,15 +1,13 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isFreshArrival, readRouteScrollState, routeScrollKey } from '@/lib/route-scroll-state';
 import { SearchBar } from '@/components/media/search-bar';
 import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from '@/components/ui/dropdown-menu';
-import { Check, Compass, Film, Filter, Tv } from 'lucide-react';
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+} from '@/components/ui/responsive-menu';
+import { Compass, Film, Filter, Tv } from 'lucide-react';
 import { SORT_OPTIONS, formatWait, type RateLimitInfo } from './discover-data';
 import type { DiscoverView } from './link-view';
 import { formatTime } from '@/lib/date-format';
@@ -48,6 +46,7 @@ export function DiscoverToolbar({
   const sortRowRef = useRef<HTMLDivElement>(null);
   const selectedSortRef = useRef<HTMLButtonElement>(null);
   const arrivedKeyRef = useRef<string | null>(null);
+  const [contentTypeOpen, setContentTypeOpen] = useState(false);
 
   useEffect(() => {
     // On arriving at a URL by Back/Forward or reload, the row's saved offset
@@ -82,41 +81,50 @@ export function DiscoverToolbar({
             historyKey="discover"
           />
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            aria-label="Content type"
-            className="h-10 w-10 rounded-lg border border-border/60 flex items-center justify-center"
-          >
-            {discoverContentType === 'movie' ? (
-              <Film className="h-4 w-4" />
-            ) : discoverContentType === 'show' ? (
-              <Tv className="h-4 w-4" />
-            ) : (
-              <Compass className="h-4 w-4" />
-            )}
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-36">
-            {[
-              { value: 'all', label: 'All', icon: Compass },
-              { value: 'movie', label: 'Movies', icon: Film },
-              { value: 'show', label: 'Shows', icon: Tv },
-            ].map((option) => {
-              const Icon = option.icon;
-              const active = discoverContentType === option.value;
-              return (
-                <DropdownMenuItem
-                  key={option.value}
-                  onSelect={() => handleSelectContentType(option.value as 'all' | 'movie' | 'show')}
-                  className={active ? 'text-primary font-semibold' : ''}
-                >
-                  <Icon className="h-4 w-4" />
-                  {option.label}
-                  {active && <Check className="h-3.5 w-3.5 ml-auto" />}
-                </DropdownMenuItem>
-              );
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <ResponsiveMenu
+          title="Content type"
+          open={contentTypeOpen}
+          onOpenChange={setContentTypeOpen}
+          align="end"
+          contentClassName="w-36"
+          trigger={(
+            <button
+              type="button"
+              aria-label="Content type"
+              className="h-10 w-10 rounded-lg border border-border/60 flex items-center justify-center"
+            >
+              {discoverContentType === 'movie' ? (
+                <Film className="h-4 w-4" />
+              ) : discoverContentType === 'show' ? (
+                <Tv className="h-4 w-4" />
+              ) : (
+                <Compass className="h-4 w-4" />
+              )}
+            </button>
+          )}
+        >
+          {[
+            { value: 'all', label: 'All', icon: Compass },
+            { value: 'movie', label: 'Movies', icon: Film },
+            { value: 'show', label: 'Shows', icon: Tv },
+          ].map((option) => {
+            const Icon = option.icon;
+            return (
+              <ResponsiveMenuCheckboxItem
+                key={option.value}
+                checked={discoverContentType === option.value}
+                onCheckedChange={() => {
+                  // Picking a type opens its results, so the menu closes rather than cover them.
+                  setContentTypeOpen(false);
+                  handleSelectContentType(option.value as 'all' | 'movie' | 'show');
+                }}
+              >
+                <Icon className="h-4 w-4" />
+                {option.label}
+              </ResponsiveMenuCheckboxItem>
+            );
+          })}
+        </ResponsiveMenu>
         <button
           onClick={handleOpenFilters}
           className="relative h-10 w-10 rounded-lg border border-border/60 flex items-center justify-center"

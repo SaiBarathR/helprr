@@ -7,13 +7,11 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+  ResponsiveMenuLabel,
+  ResponsiveMenuSeparator,
+} from '@/components/ui/responsive-menu';
 import {
   type RequestsFilterPreference,
   type RequestsTypeFilterPreference,
@@ -140,8 +138,10 @@ export function RequestsFilterMenu({
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <ResponsiveMenu
+      title="Filter"
+      contentClassName="w-52"
+      trigger={(
         <Button
           variant="ghost"
           size="icon"
@@ -154,64 +154,58 @@ export function RequestsFilterMenu({
           <Filter className="h-4 w-4" />
           <FilterDot active={activeFilters.length > 0} />
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-52">
-        <DropdownMenuLabel>Status</DropdownMenuLabel>
-        {STATUS_FILTERS.map((opt) => (
-          <DropdownMenuCheckboxItem
-            key={opt.value}
-            checked={statusFilter === opt.value}
-            onCheckedChange={() => onStatusFilterChange(opt.value)}
-            onSelect={(e) => e.preventDefault()}
-          >
-            {opt.label}
-          </DropdownMenuCheckboxItem>
-        ))}
-
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>Type</DropdownMenuLabel>
-        <DropdownMenuCheckboxItem
-          checked={typeFilter.length === 0}
-          onCheckedChange={() => onTypeFilterChange([])}
-          onSelect={(e) => e.preventDefault()}
+      )}
+    >
+      <ResponsiveMenuLabel>Status</ResponsiveMenuLabel>
+      {STATUS_FILTERS.map((opt) => (
+        <ResponsiveMenuCheckboxItem
+          key={opt.value}
+          checked={statusFilter === opt.value}
+          onCheckedChange={() => onStatusFilterChange(opt.value)}
         >
-          All
-        </DropdownMenuCheckboxItem>
-        {TYPE_OPTIONS.map((opt) => (
-          <DropdownMenuCheckboxItem
-            key={opt.value}
-            checked={typeFilter.includes(opt.value)}
-            onCheckedChange={() => toggleType(opt.value)}
-            onSelect={(e) => e.preventDefault()}
-          >
-            {opt.label}
-          </DropdownMenuCheckboxItem>
-        ))}
+          {opt.label}
+        </ResponsiveMenuCheckboxItem>
+      ))}
 
-        {showUserSection ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>User</DropdownMenuLabel>
-            <DropdownMenuCheckboxItem
-              checked={userFilter === null}
-              onCheckedChange={() => onUserFilterChange(null)}
-              onSelect={(e) => e.preventDefault()}
+      <ResponsiveMenuSeparator />
+      <ResponsiveMenuLabel>Type</ResponsiveMenuLabel>
+      <ResponsiveMenuCheckboxItem
+        checked={typeFilter.length === 0}
+        onCheckedChange={() => onTypeFilterChange([])}
+      >
+        All
+      </ResponsiveMenuCheckboxItem>
+      {TYPE_OPTIONS.map((opt) => (
+        <ResponsiveMenuCheckboxItem
+          key={opt.value}
+          checked={typeFilter.includes(opt.value)}
+          onCheckedChange={() => toggleType(opt.value)}
+        >
+          {opt.label}
+        </ResponsiveMenuCheckboxItem>
+      ))}
+
+      {showUserSection ? (
+        <>
+          <ResponsiveMenuSeparator />
+          <ResponsiveMenuLabel>User</ResponsiveMenuLabel>
+          <ResponsiveMenuCheckboxItem
+            checked={userFilter === null}
+            onCheckedChange={() => onUserFilterChange(null)}
+          >
+            All users
+          </ResponsiveMenuCheckboxItem>
+          {users.map((user) => (
+            <ResponsiveMenuCheckboxItem
+              key={user.id}
+              checked={userFilter === user.id}
+              onCheckedChange={() => onUserFilterChange(user.id)}
             >
-              All users
-            </DropdownMenuCheckboxItem>
-            {users.map((user) => (
-              <DropdownMenuCheckboxItem
-                key={user.id}
-                checked={userFilter === user.id}
-                onCheckedChange={() => onUserFilterChange(user.id)}
-                onSelect={(e) => e.preventDefault()}
-              >
-                <span className="truncate">{userLabel(user)}</span>
-              </DropdownMenuCheckboxItem>
-            ))}
-          </>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+              <span className="truncate">{userLabel(user)}</span>
+            </ResponsiveMenuCheckboxItem>
+          ))}
+        </>
+      ) : null}
+    </ResponsiveMenu>
   );
 }
