@@ -95,11 +95,15 @@ describe('BottomNav', () => {
     expect(screen.getByRole('button', { name: /More/ }).textContent).toBe('5More');
   });
 
-  it("sits a tab's count on its icon's corner, low enough to stay inside the bar", () => {
+  it("overlaps only its icon's top-right corner, ringed in the bar's colour", () => {
     mocks.counts = { ...EMPTY_BADGE_COUNTS, notifications: { total: 44, attention: 44 } };
     render(<BottomNav />);
     const badge = within(screen.getByRole('button', { name: /More/ })).getByText('44');
-    expect([...badge.classList]).toEqual(expect.arrayContaining(['absolute', '-top-1', '-right-3', 'h-4']));
+    // Its left edge 4px inside the icon's right edge, 5px above the icon (the
+    // bar's 14px inner padding keeps a 99+ on the last slot inside the pill).
+    expect([...badge.classList]).toEqual(expect.arrayContaining(['absolute', 'left-[calc(100%-4px)]', '-top-[5px]', 'h-4', 'ring-2', 'ring-background', '[html[data-glass]_&]:ring-[color:var(--hpr-glass-bg)]']));
+    expect(badge.parentElement!.querySelector('svg')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /More/ }).parentElement!.classList).toContain('px-3.5');
   });
 
   it('does not count the same downloads twice when Activity and Torrents are both in More', () => {

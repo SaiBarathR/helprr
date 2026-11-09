@@ -24,10 +24,12 @@ const ACTIVE_LABEL = 'text-[color:var(--hpr-tab-label,var(--primary))]';
 // One tab slot: an icon over a 10px label, as iOS sets them. The label
 // truncates rather than run into the next slot or the bar's rounded end.
 const SLOT = 'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 h-full min-h-11 text-[10px] font-medium leading-tight transition-colors';
-const SLOT_LABEL = 'max-w-full truncate px-0.5';
-// A count sits on the icon's top-right corner, as on iOS tabs, low enough to
-// stay inside the floating bar's top edge.
-const SLOT_BADGE = 'absolute -right-3 -top-1 h-4 min-w-[1rem] px-1 text-[10px]';
+const SLOT_LABEL = 'max-w-full truncate tracking-[-0.01em]';
+// A count overlaps only the icon's top-right corner, as on iOS tabs, ringed
+// in the bar's colour so it reads apart from the icon. The bar's 14px inner
+// padding and the 5px rise keep the badge inside the floating bar's rounded
+// end on the last slot at 375px, even for 99+.
+const SLOT_BADGE = 'absolute -top-[5px] left-[calc(100%-4px)] h-4 min-w-[1rem] px-1 text-[10px] ring-2 ring-background [html[data-glass]_&]:ring-[color:var(--hpr-glass-bg)]';
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -83,7 +85,7 @@ export function BottomNav() {
           At the top the tab group steps aside (app-tab-group), so Search is
           one more slot in the same row. */}
       <div className="app-tab-row flex items-center h-12">
-        <div className="app-tab-surface app-tab-group flex flex-1 min-w-0 items-center justify-around h-full px-1.5">
+        <div className="app-tab-surface app-tab-group flex flex-1 min-w-0 items-center justify-around h-full px-3.5">
           {tabs.map(({ href, icon: Icon, shortLabel, badgeArea }) => {
             const slice = badgeArea ? counts[badgeArea] : undefined;
             const isActive = href === activeHref;

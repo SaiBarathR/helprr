@@ -1690,11 +1690,15 @@ html[data-glass] .app-chrome-bar {
 }
 
 /* The floating phone tabs and round Search (nav at the bottom) take the same
-   material, with the overlays' top highlight. */
+   material, with the overlays' top highlight, frosted harder (the -tab vars,
+   which a theme saved before them lacks) so text behind blurs into colour.
+   Chromium stops blurring cleanly past ~16px at a phone's pixel density and
+   letters come back, so it is capped there; WebKit, which ignores the cap,
+   reads the -webkit- alias declared last and gets the full blur. */
 html[data-glass][data-nav-position='bottom'] .app-tab-surface {
   background: var(--hpr-glass-bg);
-  -webkit-backdrop-filter: blur(var(--hpr-glass-blur)) saturate(var(--hpr-glass-saturate));
-  backdrop-filter: blur(var(--hpr-glass-blur)) saturate(var(--hpr-glass-saturate));
+  backdrop-filter: blur(min(var(--hpr-glass-blur-tab, var(--hpr-glass-blur)), 16px)) saturate(var(--hpr-glass-saturate-tab, var(--hpr-glass-saturate)));
+  -webkit-backdrop-filter: blur(var(--hpr-glass-blur-tab, var(--hpr-glass-blur))) saturate(var(--hpr-glass-saturate-tab, var(--hpr-glass-saturate)));
   border-color: var(--hpr-glass-border);
   box-shadow: inset 0 1px 0 0 var(--hpr-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.18);
 }

@@ -288,6 +288,10 @@ function glassMaterialVars(scheme: GlassScheme, intensity: number): Record<strin
   return {
     '--hpr-glass-blur': `${Math.round(36 * t)}px`,
     '--hpr-glass-saturate': String(round3(1 + 0.8 * t)),
+    // The floating phone tab bar and its round Search: page text passes right
+    // under labels there, so they frost harder at the same opacity.
+    '--hpr-glass-blur-tab': `${Math.round(72 * t)}px`,
+    '--hpr-glass-saturate-tab': String(round3(1 + 1.3 * t)),
     '--hpr-glass-bg': `rgba(${bgBase},${round3(Math.min(0.97, 0.55 + 0.55 * t))})`,
     '--hpr-glass-bg-strong': `rgba(${bgBase},${round3(Math.min(0.97, 0.7 + 0.5 * t))})`,
     '--hpr-glass-fill': `rgba(${fillBase},${round3(0.45 + 0.5 * t)})`,

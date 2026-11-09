@@ -76,6 +76,15 @@ describe.each<GlassScheme>(['light', 'dark'])('Liquid Glass %s contrast at the d
     expect(parse(vars['--hpr-glass-bg'])[3]).toBeLessThanOrEqual(0.9);
   });
 
+  // Page text passes right under the floating tab bar's labels: same opacity,
+  // a stronger frost, so what shows through is colour, not words.
+  it('frosts the floating tab bar harder than the other chrome', () => {
+    expect(vars['--hpr-glass-blur-tab']).toBe('43px');
+    expect(vars['--hpr-glass-saturate-tab']).toBe('1.78');
+    expect(parseFloat(vars['--hpr-glass-blur-tab'])).toBeGreaterThan(parseFloat(vars['--hpr-glass-blur']));
+    expect(Number(vars['--hpr-glass-saturate-tab'])).toBeGreaterThan(Number(vars['--hpr-glass-saturate']));
+  });
+
   it('text and grey labels reach AA on the bars over the worst backdrop', () => {
     const bg = over(vars['--hpr-glass-bg'], WORST_BACKDROP[scheme]);
     for (const token of ['--hpr-fg', '--hpr-fgMute']) {

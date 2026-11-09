@@ -77,6 +77,13 @@ describe('floating phone tab bar (nav at the bottom)', () => {
     const selector = "html[data-glass][data-nav-position='bottom'] .app-tab-surface";
     const found = decls(selector);
     expect(found['']).toMatchObject({ background: 'var(--hpr-glass-bg)', 'border-color': 'var(--hpr-glass-border)' });
+    // Frosted harder than the other chrome so page text behind never reads, at the same opacity.
+    // Chromium gets a blur capped where it still renders cleanly; WebKit reads the -webkit- alias, declared last.
+    expect(found['']['backdrop-filter']).toBe('blur(min(var(--hpr-glass-blur-tab, var(--hpr-glass-blur)), 16px)) saturate(var(--hpr-glass-saturate-tab, var(--hpr-glass-saturate)))');
+    expect(found['']['-webkit-backdrop-filter']).toBe('blur(var(--hpr-glass-blur-tab, var(--hpr-glass-blur))) saturate(var(--hpr-glass-saturate-tab, var(--hpr-glass-saturate)))');
+    const rule = css.nodes.find((node): node is Rule => node.type === 'rule' && node.selectors.includes(selector))!;
+    const props = rule.nodes.filter((node) => node.type === 'decl').map((node) => (node as { prop: string }).prop);
+    expect(props.indexOf('-webkit-backdrop-filter')).toBeGreaterThan(props.indexOf('backdrop-filter'));
     expect(found['(prefers-reduced-transparency: reduce)']).toMatchObject({ background: 'var(--hpr-surface)', 'backdrop-filter': 'none' });
     const unsupported = Object.keys(found).find((media) => media.startsWith('not'));
     expect(unsupported && found[unsupported]).toMatchObject({ background: 'var(--hpr-surface)', 'backdrop-filter': 'none' });
