@@ -48,12 +48,11 @@ import { SortKey } from './view-state';
  * Renders the Queue tab UI for activity, showing current download/import queue items.
  *
  * Polls the server for queue records at a configurable interval, applies the provided filter and sort,
- * reports the visible item count via `onCountChange`, and exposes per-item details and removal from the queue.
+ * shows the visible item count, and exposes per-item details and removal from the queue.
  *
  * @param sortBy - Key used to sort visible queue items (title, progress, timeleft, or size)
  * @param sortDirection - Direction applied to the selected queue sort
  * @param filterBy - Selected sources to limit items to (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources.
- * @param onCountChange - Callback invoked with the current number of visible items after filtering and sorting
  * @returns The rendered Queue tab content as a JSX element
  */
 export function QueueTab({
@@ -61,13 +60,11 @@ export function QueueTab({
   sortDirection,
   filterBy,
   instanceFilter,
-  onCountChange,
 }: {
   sortBy: SortKey;
   sortDirection: ActivitySortDirectionPreference;
   filterBy: string[];
   instanceFilter: string;
-  onCountChange: (count: number) => void;
 }) {
   const router = useRouter();
   const canManageActivity = useCan('activity.manage');
@@ -151,10 +148,6 @@ export function QueueTab({
   const sorted = [...groups].sort((a, b) => {
     return compareActivityQueueItems(a.rep, b.rep, sortBy, sortDirection);
   });
-
-  useEffect(() => {
-    onCountChange(sorted.length);
-  }, [sorted.length, onCountChange]);
 
   // Only visible downloads count: a filter change drops hidden ones from the removal.
   const selectedGroups = sorted.filter((group) => selectedKeys.has(group.key));
@@ -370,20 +363,24 @@ export function QueueTab({
           Live updates paused — retrying…
         </div>
       )}
-      {canManageActivity && (
-        <div className="flex justify-end pb-2">
+      {/* The count and Select share one row, so the list starts right under the toolbar. */}
+      <div className="flex min-h-8 items-center justify-between gap-2 pb-2">
+        <p className="text-xs text-muted-foreground">
+          {sorted.length} {sorted.length === 1 ? 'Task' : 'Tasks'}
+        </p>
+        {canManageActivity && (
           <Button
             variant={selectionMode ? 'default' : 'ghost'}
             size="sm"
-            className="h-7"
+            className="relative touch-target h-8 md:h-11"
             onClick={() => (selectionMode ? exitSelection() : setSelectionMode(true))}
             aria-pressed={selectionMode}
           >
             <ListChecks className="h-4 w-4" />
             {selectionMode ? 'Done' : 'Select'}
           </Button>
-        </div>
-      )}
+        )}
+      </div>
       <div className={`space-y-2 animate-list-in ${selectionMode ? 'pb-20' : ''}`}>
         {sorted.map((group) => {
           const selected = selectedKeys.has(group.key);

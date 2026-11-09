@@ -68,6 +68,8 @@ beforeEach(() => {
     return frameId;
   }));
   vi.stubGlobal('cancelAnimationFrame', vi.fn((id: number) => frames.delete(id)));
+  // The toolbar's filter menus ask which layout (sheet or dropdown) applies.
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   vi.stubGlobal('ResizeObserver', class {
     disconnect = vi.fn();
     constructor(private callback: () => void) {}

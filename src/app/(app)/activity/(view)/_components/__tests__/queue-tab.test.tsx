@@ -60,7 +60,7 @@ function renderTab() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <QueueTab sortBy="title" sortDirection="asc" filterBy={[]} instanceFilter="all" onCountChange={() => {}} />
+      <QueueTab sortBy="title" sortDirection="asc" filterBy={[]} instanceFilter="all" />
     </QueryClientProvider>,
   );
 }
@@ -88,6 +88,13 @@ describe('Queue tab: grab now', () => {
 });
 
 describe('Queue tab: bulk remove', () => {
+  it('puts Select in the task-count row, not a row of its own', async () => {
+    renderTab();
+    const select = await screen.findByRole('button', { name: /Select/ });
+    expect(select.parentElement?.textContent).toMatch(/^\d+ Tasks?Select$/);
+    expect(select.className).toContain('touch-target');
+  });
+
   it('removes the selected downloads with one request per instance, a pack with every record', async () => {
     renderTab();
     await userEvent.click(await screen.findByRole('button', { name: /Select/ }));

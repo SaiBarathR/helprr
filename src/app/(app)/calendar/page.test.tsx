@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
 import { useInsertionEffect, type ComponentProps, type ReactNode } from 'react';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const route = vi.hoisted(() => ({ pathname: '/calendar', loading: false }));
+// The shared filter menus are a sheet on phones and a dropdown from md up.
+const viewport = vi.hoisted(() => ({ phone: false }));
 const calendar = vi.hoisted(() => ({
   loading: false,
   refetch: (() => Promise.resolve()) as () => Promise<void>,
@@ -37,6 +40,9 @@ vi.mock('@/components/ui/app-link', () => ({
 vi.mock('@/components/ui/quick-context-menu', () => ({
   QuickContextMenu: ({ children }: { children: ReactNode }) => children,
 }));
+vi.mock('@/components/calendar/calendar-feed-dialog', () => ({
+  CalendarFeedDialog: () => <p>Calendar feed dialog</p>,
+}));
 vi.mock('@/components/scheduled-alerts/scheduled-alert-dialog', () => ({
   ScheduledAlertButton: () => null,
 }));
@@ -46,6 +52,10 @@ import { useUIStore } from '@/lib/store';
 import { resetRouteViewStateForTests } from '@/lib/hooks/use-route-view-state';
 import { RouteScrollRestoration } from '@/components/layout/route-scroll-restoration';
 import { clearRouteScrollStateForTests, NAVIGATION_START_EVENT, readRouteScrollState } from '@/lib/route-scroll-state';
+
+// The phone sheet's drag handling.
+HTMLElement.prototype.setPointerCapture ??= () => {};
+HTMLElement.prototype.releasePointerCapture ??= () => {};
 
 let scrollY = 0;
 const scrollIntoView = vi.fn();
@@ -84,6 +94,12 @@ beforeEach(() => {
     disconnect() {}
     unobserve() {}
   });
+  viewport.phone = false;
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    get matches() { return query === '(max-width: 767px)' && viewport.phone; },
+    addEventListener() {},
+    removeEventListener() {},
+  }));
   Element.prototype.scrollIntoView = scrollIntoView;
   vi.spyOn(window, 'scrollY', 'get').mockImplementation(() => scrollY);
   vi.spyOn(document.documentElement, 'scrollHeight', 'get').mockReturnValue(2400);
@@ -293,4 +309,42 @@ it('refetches the shown range on pull to refresh', async () => {
   render(<CalendarPage />);
   await act(async () => { await calendar.pullToRefresh!.onRefresh(); });
   expect(refetch).toHaveBeenCalledTimes(1);
+});
+
+it('keeps the toggles in the ⋯ menu below xl (tablet dropdown) and marks it while they hide events', async () => {
+  render(<CalendarPage />);
+  const user = userEvent.setup();
+  // The phone row's menu comes first; the wide row repeats it.
+  const options = () => screen.getAllByRole('button', { name: /^Calendar options/ })[0];
+  expect(options().getAttribute('aria-label')).toBe('Calendar options');
+
+  await user.click(options());
+  await user.click(screen.getByRole('menuitemcheckbox', { name: 'Monitored only' }));
+  expect(useUIStore.getState().calendarMonitoredOnly).toBe(true);
+  // A toggle leaves the menu open for the next one.
+  expect(screen.getByRole('menuitemcheckbox', { name: 'Monitored only' }).getAttribute('aria-checked')).toBe('true');
+  expect(screen.getByRole('menuitem', { name: 'Subscribe in Calendar' })).toBeTruthy();
+  await user.keyboard('{Escape}');
+  expect(options().getAttribute('aria-label')).toBe('Calendar options (filters active)');
+});
+
+it('opens Type and the ⋯ options as phone sheets, like the instance filter', async () => {
+  viewport.phone = true;
+  render(<CalendarPage />);
+  const user = userEvent.setup();
+  await user.click(screen.getAllByTitle('All types')[0]);
+  const typeSheet = await screen.findByRole('dialog', { name: 'Type' });
+  await user.click(within(typeSheet).getByRole('button', { name: /Movies/ }));
+  expect(useUIStore.getState().calendarTypeFilter).toBe('movie');
+  // A single list of one-choice options closes on the pick, like the instance filter.
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Type' })).toBeNull());
+
+  await user.click(screen.getAllByRole('button', { name: /^Calendar options/ })[0]);
+  const options = await screen.findByRole('dialog', { name: 'Calendar options' });
+  await user.click(within(options).getByRole('button', { name: 'Scheduled alerts' }));
+  expect(useUIStore.getState().calendarShowScheduled).toBe(false);
+  // Subscribe closes the sheet before its dialog opens.
+  await user.click(within(options).getByRole('button', { name: /Subscribe in Calendar/ }));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Calendar options' })).toBeNull());
+  expect(screen.getByText('Calendar feed dialog')).toBeTruthy();
 });
