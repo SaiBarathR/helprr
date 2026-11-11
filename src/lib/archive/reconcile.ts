@@ -63,7 +63,7 @@ async function linkMissingItems(now: Date, profile: ReconcileProfile): Promise<v
     where: { platform: profile.platform, jellyfinItemId: null },
     orderBy: { createdAt: 'desc' },
     take: LINK_BATCH,
-    select: { id: true, video: { select: { externalId: true } } },
+    select: { id: true, relativePath: true, video: { select: { externalId: true } } },
   });
   if (files.length === 0) return;
   const libraryItemId = await profile.libraryItemId();
@@ -76,12 +76,13 @@ async function linkMissingItems(now: Date, profile: ReconcileProfile): Promise<v
       IncludeItemTypes: 'Episode',
       Recursive: true,
       Tags: files.map((file) => profile.itemTag(file.video.externalId)).join('|'),
-      Fields: 'Tags',
+      Fields: 'Tags,Path',
     });
     for (const file of files) {
       const tag = profile.itemTag(file.video.externalId);
-      const matches = (Items ?? []).filter((item) => item.Tags?.includes(tag));
-      // Two items with one tag means a stray copy, and the wrong one could clear this file.
+      // The path too: an item left behind by an earlier copy of this video, deleted while Jellyfin
+      // was away, still carries the tag. Two matches means a stray copy, so neither is trusted.
+      const matches = (Items ?? []).filter((item) => item.Tags?.includes(tag) && item.Path?.endsWith(`/${file.relativePath}`));
       if (matches.length !== 1) continue;
       await prisma.archiveMediaFile.updateMany({ where: { id: file.id, jellyfinItemId: null }, data: { jellyfinItemId: matches[0].Id } });
     }
