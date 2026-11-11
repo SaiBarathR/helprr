@@ -125,6 +125,7 @@ export interface JellyfinItem {
   CommunityRating?: number;
   RunTimeTicks?: number;
   Genres?: string[];
+  Tags?: string[];
   ImageTags?: Record<string, string>;
   BackdropImageTags?: string[];
   UserData?: JellyfinUserData;

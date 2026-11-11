@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   job: { findMany: vi.fn(), update: vi.fn(), count: vi.fn() },
-  mediaFile: { updateMany: vi.fn() },
+  mediaFile: { updateMany: vi.fn(), findMany: vi.fn() },
   subscription: { findMany: vi.fn() },
   heartbeat: { findFirst: vi.fn() },
   notifyAndLog: vi.fn(),
@@ -41,6 +41,7 @@ function pending(rows: unknown[], failed: unknown[] = []) {
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.job.count.mockResolvedValue(0);
+  mocks.mediaFile.findMany.mockResolvedValue([]);
   mocks.getTwitchSettings.mockResolvedValue({ jellyfinLibraryItemId: 'lib', toolsPausedAt: null });
   mocks.getJellyfinClient.mockResolvedValue({ refreshItem: mocks.refreshItem, queryItems: mocks.queryItems, scanAllLibraries: mocks.scanAllLibraries });
   mocks.refreshItem.mockResolvedValue(undefined);
@@ -204,5 +205,69 @@ describe('reconcileTwitchJobs', () => {
     await reconcileTwitchJobs(now);
 
     expect(mocks.notifyAndLog).not.toHaveBeenCalled();
+  });
+});
+
+describe('linking files that Jellyfin found late', () => {
+  const unlinked = [{ id: 'f1', video: { externalId: '555' } }, { id: 'f2', video: { externalId: '777' } }];
+  let reconcile: typeof reconcileTwitchJobs;
+
+  // A fresh module each time, so the ten-minute wait starts clean.
+  beforeEach(async () => {
+    vi.resetModules();
+    ({ reconcileTwitchJobs: reconcile } = await import('@/lib/twitch/reconcile'));
+    mocks.job.findMany.mockResolvedValue([]);
+    mocks.mediaFile.findMany.mockResolvedValue(unlinked);
+  });
+
+  it('links a file once its item appears, long after the download stopped looking', async () => {
+    mocks.queryItems.mockResolvedValue({ Items: [{ Id: 'item', Tags: ['video', 'twitch-v555'] }] });
+
+    await reconcile(now);
+
+    expect(mocks.mediaFile.findMany.mock.calls[0][0]).toMatchObject({ where: { platform: 'TWITCH', jellyfinItemId: null } });
+    expect(mocks.queryItems).toHaveBeenCalledWith(expect.objectContaining({ ParentId: 'lib', Tags: 'twitch-v555|twitch-v777', Fields: 'Tags' }));
+    expect(mocks.mediaFile.updateMany).toHaveBeenCalledTimes(1);
+    expect(mocks.mediaFile.updateMany).toHaveBeenCalledWith({ where: { id: 'f1', jellyfinItemId: null }, data: { jellyfinItemId: 'item' } });
+    expect(mocks.notifyAndLog).not.toHaveBeenCalled();
+  });
+
+  it('leaves a file unlinked when two items carry its tag', async () => {
+    mocks.queryItems.mockResolvedValue({ Items: [{ Id: 'a', Tags: ['twitch-v555'] }, { Id: 'b', Tags: ['twitch-v555'] }] });
+    await reconcile(now);
+    expect(mocks.mediaFile.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('asks Jellyfin nothing when every file is linked or there is no library', async () => {
+    mocks.mediaFile.findMany.mockResolvedValue([]);
+    await reconcile(now);
+    expect(mocks.getJellyfinClient).not.toHaveBeenCalled();
+
+    vi.resetModules();
+    ({ reconcileTwitchJobs: reconcile } = await import('@/lib/twitch/reconcile'));
+    mocks.mediaFile.findMany.mockResolvedValue(unlinked);
+    mocks.getTwitchSettings.mockResolvedValue({ jellyfinLibraryItemId: null, toolsPausedAt: null });
+    await reconcile(now);
+    expect(mocks.getJellyfinClient).not.toHaveBeenCalled();
+  });
+
+  it('looks at most every ten minutes', async () => {
+    mocks.queryItems.mockResolvedValue({ Items: [] });
+    await reconcile(now);
+    await reconcile(new Date(now.getTime() + 9 * 60_000));
+    expect(mocks.mediaFile.findMany).toHaveBeenCalledTimes(1);
+    await reconcile(new Date(now.getTime() + 11 * 60_000));
+    expect(mocks.mediaFile.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('survives Jellyfin being down, and tries again later', async () => {
+    mocks.getJellyfinClient.mockRejectedValue(new Error('down'));
+    await expect(reconcile(now)).resolves.toBeUndefined();
+    expect(mocks.mediaFile.updateMany).not.toHaveBeenCalled();
+
+    mocks.getJellyfinClient.mockResolvedValue({ refreshItem: mocks.refreshItem, queryItems: mocks.queryItems, scanAllLibraries: mocks.scanAllLibraries });
+    mocks.queryItems.mockResolvedValue({ Items: [{ Id: 'item', Tags: ['twitch-v777'] }] });
+    await reconcile(new Date(now.getTime() + 11 * 60_000));
+    expect(mocks.mediaFile.updateMany).toHaveBeenCalledWith({ where: { id: 'f2', jellyfinItemId: null }, data: { jellyfinItemId: 'item' } });
   });
 });
