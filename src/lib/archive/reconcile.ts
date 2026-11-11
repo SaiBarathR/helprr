@@ -9,6 +9,8 @@ const WORKER_OFFLINE_MS = 10 * 60_000;
 const REFRESH_GIVE_UP_MS = 30 * 60_000;
 const BATCH = 10;
 const FULL_SCAN_EVERY_MS = 10 * 60_000;
+const LINK_EVERY_MS = 10 * 60_000;
+const LINK_BATCH = 50;
 
 /** What a platform tells the shared steps below. */
 export interface ReconcileProfile {
@@ -29,6 +31,7 @@ export interface ReconcileProfile {
 }
 
 const lastFullScan = new Map<ArchivePlatform, number>();
+const lastLinkCheck = new Map<ArchivePlatform, number>();
 
 // Jellyfin skips a folder that was empty when the library was made, and refreshing that library
 // never looks again, so its first download would not appear. Only a full scan does, and a full
@@ -47,6 +50,45 @@ async function scanWholeLibrary(
 export async function reconcileJobs(now: Date, profile: ReconcileProfile): Promise<void> {
   await finishPublishedJobs(now, profile);
   await notifyFailedJobs(now, profile);
+  await linkMissingItems(now, profile);
+}
+
+// A download stops looking for its item after half an hour, so a longer Jellyfin outage left the
+// file unlinked for good, and an unlinked file can never count as watched. This only reads.
+async function linkMissingItems(now: Date, profile: ReconcileProfile): Promise<void> {
+  if (now.getTime() - (lastLinkCheck.get(profile.platform) ?? 0) < LINK_EVERY_MS) return;
+  lastLinkCheck.set(profile.platform, now.getTime());
+
+  const files = await prisma.archiveMediaFile.findMany({
+    where: { platform: profile.platform, jellyfinItemId: null },
+    orderBy: { createdAt: 'desc' },
+    take: LINK_BATCH,
+    select: { id: true, relativePath: true, video: { select: { externalId: true } } },
+  });
+  if (files.length === 0) return;
+  const libraryItemId = await profile.libraryItemId();
+  if (!libraryItemId) return;
+
+  try {
+    const client = await getJellyfinClient();
+    const { Items } = await client.queryItems({
+      ParentId: libraryItemId,
+      IncludeItemTypes: 'Episode',
+      Recursive: true,
+      Tags: files.map((file) => profile.itemTag(file.video.externalId)).join('|'),
+      Fields: 'Tags,Path',
+    });
+    for (const file of files) {
+      const tag = profile.itemTag(file.video.externalId);
+      // The path too: an item left behind by an earlier copy of this video, deleted while Jellyfin
+      // was away, still carries the tag. Two matches means a stray copy, so neither is trusted.
+      const matches = (Items ?? []).filter((item) => item.Tags?.includes(tag) && item.Path?.endsWith(`/${file.relativePath}`));
+      if (matches.length !== 1) continue;
+      await prisma.archiveMediaFile.updateMany({ where: { id: file.id, jellyfinItemId: null }, data: { jellyfinItemId: matches[0].Id } });
+    }
+  } catch (error) {
+    logger.warn(`${profile.label} Jellyfin link check failed`, { error: errorMessage(error) }, { scope: 'polling' });
+  }
 }
 
 export async function checkToolsPaused(profile: ReconcileProfile): Promise<void> {

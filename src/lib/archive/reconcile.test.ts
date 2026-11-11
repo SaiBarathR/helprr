@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   job: { findMany: vi.fn(), update: vi.fn(), count: vi.fn() },
-  mediaFile: { updateMany: vi.fn() },
+  mediaFile: { updateMany: vi.fn(), findMany: vi.fn() },
   subscription: { findMany: vi.fn() },
   heartbeat: { findFirst: vi.fn() },
   notifyAndLog: vi.fn(),
@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   scanAllLibraries: vi.fn(),
   getJellyfinClient: vi.fn(),
   getTwitchSettings: vi.fn(),
+  getYoutubeSettings: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -25,6 +26,7 @@ vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn() } }));
 vi.mock('@/lib/polling/shared', () => ({ notifyAndLog: mocks.notifyAndLog, errorMessage: String }));
 vi.mock('@/lib/service-helpers', () => ({ getJellyfinClient: mocks.getJellyfinClient }));
 vi.mock('@/lib/twitch/settings', () => ({ getTwitchSettings: mocks.getTwitchSettings }));
+vi.mock('@/lib/youtube/settings', () => ({ getYoutubeSettings: mocks.getYoutubeSettings }));
 
 import { reconcileTwitchJobs } from '@/lib/twitch/reconcile';
 
@@ -41,6 +43,7 @@ function pending(rows: unknown[], failed: unknown[] = []) {
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.job.count.mockResolvedValue(0);
+  mocks.mediaFile.findMany.mockResolvedValue([]);
   mocks.getTwitchSettings.mockResolvedValue({ jellyfinLibraryItemId: 'lib', toolsPausedAt: null });
   mocks.getJellyfinClient.mockResolvedValue({ refreshItem: mocks.refreshItem, queryItems: mocks.queryItems, scanAllLibraries: mocks.scanAllLibraries });
   mocks.refreshItem.mockResolvedValue(undefined);
@@ -204,5 +207,96 @@ describe('reconcileTwitchJobs', () => {
     await reconcileTwitchJobs(now);
 
     expect(mocks.notifyAndLog).not.toHaveBeenCalled();
+  });
+});
+
+describe('linking files that Jellyfin found late', () => {
+  const unlinked = [
+    { id: 'f1', relativePath: 'n/Season 2026/one [555].mkv', video: { externalId: '555' } },
+    { id: 'f2', relativePath: 'n/Season 2026/two [777].mkv', video: { externalId: '777' } },
+  ];
+  const item = (Id: string, tag: string, relativePath: string) => ({ Id, Tags: ['video', tag], Path: `/media/twitch/${relativePath}` });
+  const client = () => ({ refreshItem: mocks.refreshItem, queryItems: mocks.queryItems, scanAllLibraries: mocks.scanAllLibraries });
+  let reconcile: typeof reconcileTwitchJobs;
+
+  // A fresh module each time, so the ten-minute wait starts clean.
+  beforeEach(async () => {
+    vi.resetModules();
+    ({ reconcileTwitchJobs: reconcile } = await import('@/lib/twitch/reconcile'));
+    mocks.job.findMany.mockResolvedValue([]);
+    mocks.mediaFile.findMany.mockResolvedValue(unlinked);
+  });
+
+  it('links a file with no download waiting once Jellyfin has its item, by exact tag and path', async () => {
+    mocks.queryItems.mockResolvedValue({ Items: [item('near', 'twitch-v55', unlinked[0].relativePath), item('item', 'twitch-v555', unlinked[0].relativePath)] });
+
+    await reconcile(now);
+
+    expect(mocks.mediaFile.findMany.mock.calls[0][0]).toMatchObject({ where: { platform: 'TWITCH', jellyfinItemId: null } });
+    expect(mocks.queryItems).toHaveBeenCalledWith(expect.objectContaining({ ParentId: 'lib', Tags: 'twitch-v555|twitch-v777', Fields: 'Tags,Path' }));
+    expect(mocks.mediaFile.updateMany).toHaveBeenCalledTimes(1);
+    expect(mocks.mediaFile.updateMany).toHaveBeenCalledWith({ where: { id: 'f1', jellyfinItemId: null }, data: { jellyfinItemId: 'item' } });
+    expect(mocks.notifyAndLog).not.toHaveBeenCalled();
+  });
+
+  it('ignores an item left behind by an earlier copy at another path', async () => {
+    mocks.queryItems.mockResolvedValue({ Items: [item('old', 'twitch-v555', 'n/Season 2026/old title [555].mkv')] });
+    await reconcile(now);
+    expect(mocks.mediaFile.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('leaves a file unlinked when two items match it', async () => {
+    mocks.queryItems.mockResolvedValue({ Items: [item('a', 'twitch-v555', unlinked[0].relativePath), item('b', 'twitch-v555', unlinked[0].relativePath)] });
+    await reconcile(now);
+    expect(mocks.mediaFile.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('asks Jellyfin nothing when every file is linked or there is no library', async () => {
+    mocks.mediaFile.findMany.mockResolvedValue([]);
+    await reconcile(now);
+    expect(mocks.getJellyfinClient).not.toHaveBeenCalled();
+
+    vi.resetModules();
+    ({ reconcileTwitchJobs: reconcile } = await import('@/lib/twitch/reconcile'));
+    mocks.mediaFile.findMany.mockResolvedValue(unlinked);
+    mocks.getTwitchSettings.mockResolvedValue({ jellyfinLibraryItemId: null, toolsPausedAt: null });
+    await reconcile(now);
+    expect(mocks.getJellyfinClient).not.toHaveBeenCalled();
+  });
+
+  it('looks at most every ten minutes', async () => {
+    mocks.queryItems.mockResolvedValue({ Items: [] });
+    await reconcile(now);
+    await reconcile(new Date(now.getTime() + 9 * 60_000));
+    expect(mocks.mediaFile.findMany).toHaveBeenCalledTimes(1);
+    await reconcile(new Date(now.getTime() + 11 * 60_000));
+    expect(mocks.mediaFile.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['no connection', () => mocks.getJellyfinClient.mockRejectedValue(new Error('down'))],
+    ['a query that times out', () => mocks.queryItems.mockRejectedValue(new Error('timeout of 30000ms exceeded'))],
+  ])('survives Jellyfin being away (%s), and tries again later', async (_name, fail) => {
+    fail();
+    await expect(reconcile(now)).resolves.toBeUndefined();
+    expect(mocks.mediaFile.updateMany).not.toHaveBeenCalled();
+
+    mocks.getJellyfinClient.mockResolvedValue(client());
+    mocks.queryItems.mockResolvedValue({ Items: [item('item', 'twitch-v777', unlinked[1].relativePath)] });
+    await reconcile(new Date(now.getTime() + 11 * 60_000));
+    expect(mocks.mediaFile.updateMany).toHaveBeenCalledWith({ where: { id: 'f2', jellyfinItemId: null }, data: { jellyfinItemId: 'item' } });
+  });
+
+  it('links YouTube files inside the YouTube library, with YouTube tags', async () => {
+    mocks.getYoutubeSettings.mockResolvedValue({ jellyfinLibraryItemId: 'ytlib', toolsPausedAt: null, cookies: null });
+    mocks.mediaFile.findMany.mockResolvedValue([{ id: 'y1', relativePath: 'theo/Season 2026/x [abc-_1].mkv', video: { externalId: 'abc-_1' } }]);
+    mocks.queryItems.mockResolvedValue({ Items: [{ Id: 'yt', Tags: ['video', 'youtube-abc-_1'], Path: '/media/youtube/theo/Season 2026/x [abc-_1].mkv' }] });
+    const { reconcileYoutubeJobs } = await import('@/lib/youtube/reconcile');
+
+    await reconcileYoutubeJobs(now);
+
+    expect(mocks.mediaFile.findMany.mock.calls[0][0]).toMatchObject({ where: { platform: 'YOUTUBE', jellyfinItemId: null } });
+    expect(mocks.queryItems).toHaveBeenCalledWith(expect.objectContaining({ ParentId: 'ytlib', Tags: 'youtube-abc-_1' }));
+    expect(mocks.mediaFile.updateMany).toHaveBeenCalledWith({ where: { id: 'y1', jellyfinItemId: null }, data: { jellyfinItemId: 'yt' } });
   });
 });
