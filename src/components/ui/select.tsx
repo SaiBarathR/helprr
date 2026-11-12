@@ -7,10 +7,71 @@ import { Select as SelectPrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 import { useSafeAreaPadding } from "@/lib/hooks/use-safe-area-padding"
 
+// Opens the list from the trigger once a phone keyboard has closed.
+const OpenSelect = React.createContext<(() => void) | null>(null)
+
 function Select({
+  open: openProp,
+  defaultOpen = false,
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  return <SelectPrimitive.Root data-slot="select" {...props} />
+  // Held here unless the caller controls it, so the trigger can open the list later.
+  const [ownOpen, setOwnOpen] = React.useState(defaultOpen)
+  const open = openProp ?? ownOpen
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      if (openProp === undefined) setOwnOpen(next)
+      onOpenChange?.(next)
+    },
+    [openProp, onOpenChange]
+  )
+  const openList = React.useCallback(() => setOpen(true), [setOpen])
+  return (
+    <OpenSelect.Provider value={openList}>
+      <SelectPrimitive.Root data-slot="select" open={open} onOpenChange={setOpen} {...props} />
+    </OpenSelect.Provider>
+  )
+}
+
+/**
+ * True while an on-screen keyboard covers part of the window. A pinch zoom
+ * shrinks the visual viewport too, but changes its scale; a keyboard leaves it at 1.
+ */
+function keyboardIsOpen() {
+  const viewport = window.visualViewport
+  return !!viewport && viewport.scale <= 1.01 && window.innerHeight - viewport.height > 80
+}
+
+function isTextField(element: Element | null) {
+  return (
+    element instanceof HTMLElement &&
+    (element.isContentEditable ||
+      element.matches("textarea, input:not([type=checkbox], [type=radio], [type=button], [type=submit], [type=reset])"))
+  )
+}
+
+/**
+ * Opens the list once the keyboard has closed and the window has stopped
+ * resizing (or after 800 ms) — unless by then the select is gone or disabled,
+ * or another field has been tapped and has the keyboard.
+ */
+function openAfterKeyboardCloses(trigger: HTMLButtonElement, openList: () => void) {
+  const viewport = window.visualViewport
+  let settle = 0
+  const finish = () => {
+    viewport?.removeEventListener("resize", check)
+    window.clearTimeout(settle)
+    window.clearTimeout(fallback)
+    if (trigger.isConnected && !trigger.disabled && !isTextField(document.activeElement)) openList()
+  }
+  const check = () => {
+    window.clearTimeout(settle)
+    if (!keyboardIsOpen()) settle = window.setTimeout(finish, 150)
+  }
+  const fallback = window.setTimeout(finish, 800)
+  viewport?.addEventListener("resize", check)
+  check()
 }
 
 function SelectGroup({
@@ -29,14 +90,33 @@ function SelectTrigger({
   className,
   size = "default",
   children,
+  onClick,
+  onPointerDown,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
   size?: "sm" | "default"
 }) {
+  const openList = React.useContext(OpenSelect)
+  const pointerType = React.useRef("")
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       data-size={size}
+      onPointerDown={(event) => {
+        pointerType.current = event.pointerType
+        onPointerDown?.(event)
+      }}
+      onClick={(event) => {
+        onClick?.(event)
+        // A mouse opens the list on press; this is for a tap with the keyboard up.
+        if (event.defaultPrevented || !openList || pointerType.current === "mouse" || !keyboardIsOpen()) return
+        // A tap opens the list, and the list closes on any window resize, so
+        // the keyboard closing a moment later would make it flash and vanish.
+        // Close the keyboard first and open the list once the screen settles.
+        event.preventDefault()
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+        openAfterKeyboardCloses(event.currentTarget, openList)
+      }}
       className={cn(
         "border-input data-[placeholder]:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-fit items-center justify-between gap-2 rounded-md border bg-transparent px-3 py-2 text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none disabled:cursor-not-allowed disabled:opacity-50 data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className

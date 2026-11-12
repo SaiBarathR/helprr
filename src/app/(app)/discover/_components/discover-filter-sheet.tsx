@@ -172,6 +172,7 @@ export function DiscoverFilterSheet({
                 value={draftFilters.language}
                 onChange={(code) => setDraftFilters({ ...draftFilters, language: code })}
                 options={filtersMeta?.languages || []}
+                title="Language"
                 placeholder="Any language"
                 emptyLabel="Any language"
                 searchPlaceholder="Search language"
@@ -183,6 +184,7 @@ export function DiscoverFilterSheet({
                 value={draftFilters.region}
                 onChange={(code) => setDraftFilters({ ...draftFilters, region: code })}
                 options={filtersMeta?.regions || []}
+                title="Region"
                 placeholder="Any region"
                 emptyLabel="Any region"
                 searchPlaceholder="Search region"

@@ -43,6 +43,11 @@ async function postJson<T>(url: string, method: 'POST' | 'DELETE', body: unknown
   return data;
 }
 
+/** Closes a phone keyboard by taking focus off the field typed in. */
+function blurField() {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+}
+
 /** "ABCD EFGH IJKL …": easier to type into an app by hand. */
 function groupKey(secret: string): string {
   return secret.match(/.{1,4}/g)?.join(' ') ?? secret;
@@ -110,6 +115,9 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
       '/api/me/totp/setup', 'POST', { currentPassword: password }, 'Failed to start setup',
     ),
     onSuccess: (data) => {
+      // The next step is a code to scan: close the phone keyboard rather than
+      // leave it covering the QR code.
+      blurField();
       setSetup(data);
       setPassword('');
     },
@@ -121,9 +129,10 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
       '/api/me/totp/enable', 'POST', { code, signOutOtherDevices: signOutOthers }, 'Failed to turn on two-step sign-in',
     ),
     onSuccess: (data) => {
+      blurField();
+      // No toast: the codes sheet says it is on, and a toast would sit over its Copy and Download.
       setRecoveryCodes(data.recoveryCodes);
       setSetup(null);
-      toast.success('Two-step sign-in is on');
       queryClient.invalidateQueries({ queryKey: queryKeys.twoFactor() });
     },
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Failed to turn on two-step sign-in'),
@@ -178,7 +187,8 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
             }
           }}
         >
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2 space-y-4">
+          {/* Keyed by step, so each step starts at its top, not where the last one was scrolled. */}
+          <div key={recoveryCodes ? 'codes' : setup ? 'scan' : 'password'} className="min-h-0 flex-1 overflow-y-auto px-4 pb-2 space-y-4">
             {recoveryCodes ? (
               <>
                 <ul className="grid grid-cols-2 gap-2 rounded-lg bg-muted/40 p-3 font-mono text-sm" aria-label="Recovery codes">

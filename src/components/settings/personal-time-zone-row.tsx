@@ -4,8 +4,8 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
+import { ResponsiveCombobox } from '@/components/ui/responsive-combobox';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { getSupportedTimeZones } from '@/lib/timezone';
 
@@ -75,8 +75,13 @@ export function PersonalTimeZoneRow() {
   return (
     <div className="grouped-row">
       <span className="text-sm shrink-0">Your time zone</span>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
+      <ResponsiveCombobox
+        open={open}
+        onOpenChange={setOpen}
+        title="Your time zone"
+        searchPlaceholder="Search time zones"
+        align="end"
+        trigger={
           <button
             type="button"
             aria-label="Your time zone"
@@ -86,29 +91,23 @@ export function PersonalTimeZoneRow() {
             <span className="truncate">{data ? (current ? zoneLabel(current) : 'Same as the server') : ''}</span>
             <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
           </button>
-        </PopoverTrigger>
-        <PopoverContent className="p-0 w-[280px]" align="end">
-          <Command>
-            <CommandInput placeholder="Search time zones" />
-            <CommandList>
-              <CommandEmpty>No matches.</CommandEmpty>
-              <CommandGroup>
-                <CommandItem value={`Same as the server ${data?.serverTimeZone ?? ''}`} onSelect={() => pick(null)}>
-                  <span className="flex-1">Same as the server</span>
-                  <span className="text-xs text-muted-foreground">{data ? zoneLabel(data.serverTimeZone) : ''}</span>
-                  {current === null && <Check className="h-3.5 w-3.5 ml-1" />}
-                </CommandItem>
-                {zones.map((zone) => (
-                  <CommandItem key={zone} value={zoneLabel(zone)} onSelect={() => pick(zone)}>
-                    <span className="flex-1 truncate">{zoneLabel(zone)}</span>
-                    {current === zone && <Check className="h-3.5 w-3.5 ml-1" />}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+        }
+      >
+        <CommandEmpty>No matches.</CommandEmpty>
+        <CommandGroup>
+          <CommandItem value={`Same as the server ${data?.serverTimeZone ?? ''}`} onSelect={() => pick(null)}>
+            <span className="flex-1">Same as the server</span>
+            <span className="text-xs text-muted-foreground">{data ? zoneLabel(data.serverTimeZone) : ''}</span>
+            {current === null && <Check className="h-3.5 w-3.5 ml-1" />}
+          </CommandItem>
+          {zones.map((zone) => (
+            <CommandItem key={zone} value={zoneLabel(zone)} onSelect={() => pick(zone)}>
+              <span className="flex-1 truncate">{zoneLabel(zone)}</span>
+              {current === zone && <Check className="h-3.5 w-3.5 ml-1" />}
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      </ResponsiveCombobox>
     </div>
   );
 }

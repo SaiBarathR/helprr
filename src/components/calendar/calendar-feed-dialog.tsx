@@ -112,6 +112,8 @@ export function CalendarFeedDialog({
       });
       const body = (await res.json().catch(() => null)) as { token?: string; name?: string; error?: string } | null;
       if (!res.ok || !body?.token) throw new Error(body?.error ?? 'Failed to make the calendar link');
+      // The link replaces the form: close a phone keyboard the Name field left open.
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
       setMade({ name: body.name ?? name.trim(), token: body.token });
       await queryClient.invalidateQueries({ queryKey: LINKS_KEY });
     } catch (error) {
