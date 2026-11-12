@@ -117,21 +117,6 @@ export const MediaCard = memo(function MediaCard({
           {(show('title') || showYear || instanceLabel) && (
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent" />
           )}
-          {(show('title') || showYear || instanceLabel) && (
-          <div className="absolute bottom-0 left-0 right-0 p-2">
-            {show('title') && (
-              <p className="text-xs font-semibold text-white truncate leading-tight">{title}</p>
-            )}
-            {(showYear || instanceLabel) && (
-              <p className="text-[10px] text-white/75 truncate">
-                {showYear && year}
-                {instanceLabel && (
-                  <span className="hpr-scrim-accent font-medium">{showYear ? ' · ' : ''}{instanceLabel}</span>
-                )}
-              </p>
-            )}
-          </div>
-          )}
           {/* Rating badge - top right */}
           {show('rating') && rating !== undefined && rating > 0 && (
             <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 bg-black/55 rounded px-1 py-0.5">
@@ -150,9 +135,26 @@ export const MediaCard = memo(function MediaCard({
             </div>
           )}
       {/* Unmonitored overlay — dark dim in both themes (a background-based
-          fill whitewashes the poster in light mode) */}
+          fill whitewashes the poster in light mode). The caption paints above
+          it, so it keeps 4.5:1 on a bright poster; the poster, scrim and badges
+          stay dimmed as before. */}
       {show('monitored') && monitored === false && (
         <div className="absolute inset-0 bg-black/35" />
+      )}
+      {(show('title') || showYear || instanceLabel) && (
+      <div className="absolute bottom-0 left-0 right-0 p-2">
+        {show('title') && (
+          <p className="text-xs font-semibold text-white truncate leading-tight">{title}</p>
+        )}
+        {(showYear || instanceLabel) && (
+          <p className="text-[10px] text-white/75 truncate">
+            {showYear && year}
+            {instanceLabel && (
+              <span className="hpr-scrim-accent font-medium">{showYear ? ' · ' : ''}{instanceLabel}</span>
+            )}
+          </p>
+        )}
+      </div>
       )}
       {/* Jellyfin watch status — hidden in selection mode to avoid the top-left check clash */}
       {!selectable && show('watchStatus') && <PosterWatchOverlay status={watchStatus} />}

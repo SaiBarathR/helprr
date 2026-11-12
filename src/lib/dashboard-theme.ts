@@ -418,16 +418,20 @@ function resolveThemeTokens(prefs: DashboardThemePrefs) {
   const font = prefs.font in FONTS ? FONTS[prefs.font] : FONTS.system;
   const gradient = prefs.gradient in GRADIENTS ? GRADIENTS[prefs.gradient].value : GRADIENTS.none.value;
 
-  // Cyan is too light on a light palette (Cream: 2.3:1), so there it is
-  // darkened until it reads as text, 4.5:1, on the page, sidebar and cards,
-  // which also takes the active tab icon past 3:1. A light palette is one
-  // with a light page (as data-scheme decides it), or text darker than its page.
+  // The accents are made for dark pages: on a light palette they are too light
+  // (Cream: Amber 1.4:1, Forest 1.7:1, Cyan 2.3:1), so there any accent is
+  // darkened (same hue) until it reads as text, 4.5:1, on the page, sidebar
+  // and cards, also on the 20% wash of itself that active filter chips and
+  // selected rows put under it, like the category colours. That takes the
+  // active tab icon past 3:1, and a primary button's label (the page colour on
+  // the accent) to 4.5:1. A light palette is one with a light page (as
+  // data-scheme decides it), or text darker than its page.
   const isLight = schemeFromBackground(palette.inkSoft) === 'light' || (
     /^#[0-9a-f]{6}$/i.test(palette.fg) && /^#[0-9a-f]{6}$/i.test(palette.inkSoft)
     && relativeLuminance(palette.fg) < relativeLuminance(palette.inkSoft)
   );
-  const accent = isCyan && isLight
-    ? darkenToContrast(chosenAccent, [palette.ink, palette.inkSoft, palette.surface, palette.surfaceHi], 4.5)
+  const accent = isLight
+    ? darkenToContrast(chosenAccent, [palette.ink, palette.inkSoft, palette.surface, palette.surfaceHi], 4.5, CATEGORY_TINT)
     : chosenAccent;
 
   return { accent, isCyan, palette, font, gradient };
