@@ -5,6 +5,7 @@ import { SkipLink } from '@/components/layout/skip-link';
 import { CommandPalette } from '@/components/search/command-palette';
 import { WhatsNewOnUpdate } from '@/components/whats-new/whats-new-dialog';
 import { StandaloneLaunchRedirect } from '@/components/layout/standalone-launch-redirect';
+import { PageCacheWarmup } from '@/components/page-cache-warmup';
 import { DiscoverLayoutHydrator } from '@/components/discover-layout-hydrator';
 import { PermissionProvider, type MePayload } from '@/components/permission-provider';
 import { QueryProvider } from '@/components/query-provider';
@@ -100,6 +101,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               {/* Must stay the first focusable element, ahead of the sidebar. */}
               <SkipLink />
               <StandaloneLaunchRedirect />
+              <PageCacheWarmup />
               <DiscoverLayoutHydrator />
               <CommandPalette />
               <WhatsNewOnUpdate />
