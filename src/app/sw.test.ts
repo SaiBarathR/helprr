@@ -4,6 +4,7 @@ import type { Strategy } from 'serwist';
 
 const recorded = vi.hoisted(() => ({
   disableNavigationPreload: vi.fn(),
+  handleRequest: vi.fn(),
   listeners: new Map<string, (event: unknown) => void>(),
   options: null as null | {
     runtimeCaching: Array<{ handler: Strategy }>;
@@ -18,6 +19,9 @@ vi.mock('serwist', async (importOriginal) => ({
       recorded.options = options;
     }
     addEventListeners() {}
+    handleRequest(options: { request: Request }) {
+      return recorded.handleRequest(options);
+    }
     async matchPrecache(url: string) {
       return url === '/offline.html' ? new Response('Offline fallback') : undefined;
     }
@@ -58,6 +62,7 @@ const cache = {
   put: async (request: Request, response: Response) => { entries.set(request.url, response.clone()); },
   delete: vi.fn(async (request: Request) => entries.delete(request.url)),
 };
+const deleteCache = vi.fn(async () => true);
 
 beforeAll(async () => {
   vi.stubEnv('NODE_ENV', 'production');
@@ -73,11 +78,16 @@ beforeAll(async () => {
 beforeEach(() => {
   entries.clear();
   cache.delete.mockClear();
+  deleteCache.mockClear();
+  recorded.handleRequest.mockReset();
+  recorded.handleRequest.mockImplementation(async () => new Response('asset'));
   vi.stubEnv('NODE_ENV', 'production');
   vi.stubGlobal('self', globalThis);
   vi.stubGlobal('FetchEvent', NavigationEvent);
   vi.stubGlobal('ExtendableEvent', NavigationEvent);
-  vi.stubGlobal('caches', { open: async () => cache, match: cache.match });
+  vi.stubGlobal('caches', { open: async () => cache, match: cache.match, delete: deleteCache });
+  vi.stubGlobal('location', new URL('https://helprr.test/sw.js'));
+  vi.stubGlobal('clients', { matchAll: async () => [] });
   vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 503 })));
 });
 
@@ -306,5 +316,150 @@ describe('unhandled rejection logging', () => {
       message: 'Service worker unhandled rejection',
       metadata: { reason: String(reason) },
     }));
+  });
+});
+
+describe('keeping pages opened in the app', () => {
+  class MessageEvent {
+    pending: Promise<unknown>[] = [];
+    ports: MessagePort[] = [];
+    constructor(readonly data: unknown) {}
+    waitUntil(promise: Promise<unknown>) {
+      this.pending.push(promise);
+    }
+  }
+  const send = (data: unknown) => {
+    const event = new MessageEvent(data);
+    recorded.listeners.get('message')!(event);
+    return event;
+  };
+  // Strategies add more waitUntil work while they run.
+  const settle = async (event: MessageEvent) => {
+    while (event.pending.length) await Promise.allSettled(event.pending.splice(0));
+  };
+  const keep = (url: string) => send({ type: 'helprr-cache-page', url });
+  const page = (body: string, headers: Record<string, string> = {}) => new Response(body, {
+    headers: { 'content-type': 'text/html', ...headers },
+  });
+  let n = 0;
+  // Warm-ups are remembered for the worker's lifetime; each test uses its own page.
+  const fresh = () => `https://helprr.test/page-${++n}`;
+
+  it('writes nothing for a warm-up still in flight when the user caches are cleared', async () => {
+    const url = fresh();
+    let release!: (response: Response) => void;
+    vi.mocked(fetch).mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    const warm = keep(url);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+
+    const clear = send({ type: 'helprr-clear-user-caches' });
+    release(shell('same', 'same'));
+    await Promise.all([settle(warm), settle(clear)]);
+    expect(deleteCache).toHaveBeenCalledWith('pages');
+    expect(entries.has(url)).toBe(false);
+  });
+
+  it('asks for the document without following redirects, and keeps neither an opaque redirect nor a 401', async () => {
+    const redirect = Object.defineProperties(new Response(null), {
+      status: { value: 0 }, ok: { value: false }, type: { value: 'opaqueredirect' },
+    });
+    for (const response of [redirect, new Response('<html>Sign in</html>', { status: 401, headers: { 'content-type': 'text/html' } })]) {
+      const url = fresh();
+      vi.mocked(fetch).mockResolvedValueOnce(response);
+      await settle(keep(url));
+      const request = vi.mocked(fetch).mock.lastCall![0] as Request;
+      expect(request.url).toBe(url);
+      expect(request.redirect).toBe('manual');
+      expect(entries.has(url)).toBe(false);
+    }
+    expect(recorded.handleRequest).not.toHaveBeenCalled();
+  });
+
+  it('keeps the document and requests only its own /_next/static/ files', async () => {
+    const url = fresh();
+    vi.mocked(fetch).mockResolvedValue(page([
+      '<script src="/_next/static/chunks/app/page-1.js"></script>',
+      String.raw`<script>self.__next_f.push([1,"7:"static/chunks/68771-a.js""])</script>`,
+      // Server-rendered text from elsewhere, e.g. a TMDB overview.
+      '<p>static/chunks/../../../api/radarr/queue?x.js</p>',
+      '<p>"static/chunks/%2e%2e/%2e%2e/%2e%2e/api/sonarr/series.js"</p>',
+      '<p>"static/chunks/main.js?/api/me.js"</p>',
+    ].join('')));
+    await settle(keep(url));
+
+    expect(entries.has(url)).toBe(true);
+    const requested = recorded.handleRequest.mock.calls.map(([{ request }]) => new URL(request.url).pathname);
+    expect(requested.sort()).toEqual(['/_next/static/chunks/68771-a.js', '/_next/static/chunks/app/page-1.js']);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores other origins, API routes and the invite page', async () => {
+    for (const url of ['https://evil.example/dashboard', '/api/calendar', '/invite']) {
+      const event = keep(url);
+      await settle(event);
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps each page once per worker run, and again after the user caches are cleared', async () => {
+    const url = fresh();
+    vi.mocked(fetch).mockImplementation(async () => page('<html>page</html>'));
+    await settle(keep(url));
+    entries.delete(url);
+    await settle(keep(url));
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    await settle(send({ type: 'helprr-clear-user-caches' }));
+    await settle(keep(url));
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('tries a page again later when the warm-up failed', async () => {
+    const url = fresh();
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('offline'));
+    await settle(keep(url));
+    vi.mocked(fetch).mockResolvedValue(page('<html>page</html>'));
+    await settle(keep(url));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(entries.has(url)).toBe(true);
+  });
+
+  it.each([
+    ['an hour', 60 * 60 * 1000, 0],
+    ['two days', 2 * 24 * 60 * 60 * 1000, 1],
+  ])('refetches a kept page fetched %s ago only once it is a day old', async (_label, age, fetches) => {
+    const url = fresh();
+    entries.set(url, page('<html>old</html>', {
+      'x-helprr-shell-version': 'build-a',
+      date: new Date(Date.now() - age).toUTCString(),
+    }));
+    vi.mocked(fetch).mockResolvedValue(page('<html>new</html>'));
+    await settle(keep(url));
+    expect(fetch).toHaveBeenCalledTimes(fetches);
+    expect(await entries.get(url)!.text()).toBe(fetches ? '<html>new</html>' : '<html>old</html>');
+  });
+});
+
+describe('labelled offline reads', () => {
+  const readonly = () => (recorded.options!.runtimeCaching as Array<{ handler: Strategy }>)
+    .find((entry) => entry.handler.cacheName === 'api-readonly')!.handler;
+
+  it.each([
+    ['/api/calendar?start=a&end=b', 'no-cache'],
+    ['/api/library-gaps', 'no-cache'],
+    ['/api/activity/history?page=1', 'no-cache'],
+    ['/api/sonarr/qualityprofiles', 'default'],
+    ['/api/radarr/tags', 'default'],
+    ['/api/sonarr/series', 'default'],
+  ])('fetches %s with cache mode %s', async (path, mode) => {
+    const event = new NavigationEvent();
+    event.request = new Request(`https://helprr.test${path}`);
+    vi.mocked(fetch).mockResolvedValue(Response.json([]));
+    await readonly().handle({ request: event.request, event: event as never });
+    await Promise.all(event.pending);
+    const sent = vi.mocked(fetch).mock.lastCall!;
+    const request = sent[0] as Request;
+    expect(request.url).toBe(event.request.url);
+    expect((sent[1] as RequestInit | undefined)?.cache ?? request.cache).toBe(mode);
   });
 });

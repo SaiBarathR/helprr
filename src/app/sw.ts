@@ -16,7 +16,7 @@ import {
   Serwist,
   StaleWhileRevalidate,
 } from 'serwist';
-import { cacheBrowseSnapshot, READONLY_API_NETWORK_FIRST, staleBrowseSnapshot } from '@/lib/offline-snapshot';
+import { cacheBrowseSnapshot, READONLY_API_NETWORK_FIRST, SNAPSHOT_REVALIDATE, staleBrowseSnapshot } from '@/lib/offline-snapshot';
 import { cacheShellResponse, hasMatchingShellNonce, matchingShellResponse } from '@/lib/shell-cache';
 import { isImageResponseCacheable } from '@/lib/image-response-cache-policy';
 import { NOTIFICATION_SUBSCRIPTIONS_CHANGED } from '@/lib/notification-subscriptions';
@@ -44,12 +44,21 @@ const cacheValidatedImageResponses: SerwistPlugin = {
 // one. First in each user-scoped cache's plugins.
 const userCacheFence = createUserCacheFence();
 
+// Pages this worker run has already kept (see warmPage), so in-app navigation
+// does not fetch and scan them again. Forgotten with the user-scoped caches.
+const warmedPages = new Set<string>();
+
+function fenceUserCaches(): void {
+  userCacheFence.advance();
+  warmedPages.clear();
+}
+
 const browseSnapshots: SerwistPlugin = {
   cacheWillUpdate: ({ response }) => cacheBrowseSnapshot(response),
   cachedResponseWillBeUsed: async ({ cachedResponse }) => staleBrowseSnapshot(cachedResponse),
   fetchDidSucceed: async ({ response }) => {
     if (response.status === 401 || response.status === 403) {
-      userCacheFence.advance();
+      fenceUserCaches();
       await caches.delete('api-readonly');
     }
     return response;
@@ -107,18 +116,37 @@ const pagePlugins = (): SerwistPlugin[] => [
   }),
 ];
 
-// A page opened in the app: a fresh cached copy is kept as it is (no
-// network), anything else is fetched and cached like a navigation.
+// A page opened in the app: a cached copy fetched within the last day is kept
+// as it is (no network); anything else is fetched and cached like a
+// navigation. The day matters because a page used daily never reaches the
+// last-used expiry, and CacheFirst alone would keep its first copy for good.
 const pageWarmup = new CacheFirst({ cacheName: 'pages', plugins: pagePlugins() });
+const pageRefresh = new NetworkFirst({ cacheName: 'pages', plugins: pagePlugins() });
+const PAGE_REFRESH_MS = 24 * 60 * 60 * 1000;
 
 // The document, then the build assets it loads, through their usual routes
 // (precache or next-static-assets), which skip anything already cached.
 async function warmPage(request: Request, event: ExtendableEvent): Promise<void> {
-  const response = await pageWarmup.handle({ request, event });
-  if (!response.ok || !response.headers.get('content-type')?.includes('text/html')) return;
-  const assets = pageAssetPaths(await response.text());
-  await Promise.all(assets.map((path) => serwist.handleRequest({ request: new Request(path), event })?.catch(() => {})));
+  const cached = await (await caches.open('pages')).match(request);
+  const fetchedAt = Date.parse(cached?.headers.get('date') ?? '');
+  const strategy = Date.now() - fetchedAt < PAGE_REFRESH_MS ? pageWarmup : pageRefresh;
+  const response = await strategy.handle({ request, event });
+  // A redirect (signed out) or an error was not kept; a later visit tries again.
+  if (!response.ok || !response.headers.get('content-type')?.includes('text/html')) {
+    warmedPages.delete(request.url);
+    return;
+  }
+  const assets = pageAssetPaths(await response.text(), self.location.origin);
+  await Promise.all(assets.map((path) => (
+    serwist.handleRequest({ request: new Request(new URL(path, self.location.origin)), event })?.catch(() => {})
+  )));
 }
+
+const revalidateLabelledReads: SerwistPlugin = {
+  requestWillFetch: async ({ request }) => (
+    SNAPSHOT_REVALIDATE.test(new URL(request.url).pathname) ? new Request(request, { cache: 'no-cache' }) : request
+  ),
+};
 
 const runtimeCaching: RuntimeCaching[] =
   process.env.NODE_ENV !== 'production'
@@ -144,14 +172,10 @@ const runtimeCaching: RuntimeCaching[] =
             // A stalled read may show a clearly labelled saved snapshot;
             // healthy network responses (including 401/403) stay authoritative.
             networkTimeoutSeconds: 2,
-            // Some of these routes allow the browser to keep a copy for a few
-            // minutes (Calendar: max-age=120). Offline, the browser answered
-            // the worker with that copy, unlabelled, so the page showed saved
-            // data as live. Revalidate instead; offline then falls back to
-            // the labelled snapshot below.
-            fetchOptions: { cache: 'no-cache' },
             plugins: [
               userCacheFence.plugin,
+              // Calendar, Library Gaps, History: past the browser's own copy (SNAPSHOT_REVALIDATE).
+              revalidateLabelledReads,
               browseSnapshots,
               new ExpirationPlugin({
                 maxEntries: 128,
@@ -612,19 +636,21 @@ self.addEventListener('message', (event) => {
   const type = (event.data as { type?: string } | undefined)?.type;
   // A page clearing the caches itself asks for the fence first, and waits for this answer.
   if (type === 'helprr-fence-user-caches') {
-    userCacheFence.advance();
+    fenceUserCaches();
     event.ports[0]?.postMessage({ ok: true });
     return;
   }
   if (type === CACHE_PAGE_MESSAGE_TYPE) {
     const request = pageWarmupRequest((event.data as { url?: unknown }).url, self.location.origin);
-    // Offline or a server error: the page stays uncached, as before.
-    if (request) event.waitUntil(warmPage(request, event).catch(() => {}));
+    if (!request || warmedPages.has(request.url)) return;
+    warmedPages.add(request.url);
+    // Offline or a server error: the page stays uncached, and a later visit tries again.
+    event.waitUntil(warmPage(request, event).catch(() => { warmedPages.delete(request.url); }));
     return;
   }
   if (type === 'helprr-clear-user-caches') {
     const replyPort = event.ports[0];
-    userCacheFence.advance();
+    fenceUserCaches();
     event.waitUntil(
       Promise.all(USER_SCOPED_CACHES.map((name) => caches.delete(name)))
         .then(() => {

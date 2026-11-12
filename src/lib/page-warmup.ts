@@ -34,15 +34,34 @@ export function pageWarmupRequest(rawUrl: unknown, origin: string): Request | nu
 // Script/style tags name `/_next/static/...`; the inline flight data names the
 // route's lazy chunks as `static/chunks/...` (Next adds the prefix at runtime).
 const PAGE_ASSET = /(?:\/_next\/)?(static\/(?:chunks|css)\/[^"'\\\s<>]+?\.(?:js|css))(?=["'\\])/g;
+// A route names ~20-50; anything past this is not a build's page.
+export const MAX_PAGE_ASSETS = 200;
 
 /**
  * The build assets a cached page document loads. A page kept without being
  * rendered (the start URL, the default page) has never loaded its route
  * chunks, so offline it would fail to hydrate unless these are cached too.
+ *
+ * The document also carries server-rendered text from elsewhere (a TMDB
+ * overview, a title), and the worker fetches these with the user's cookies,
+ * so a match only counts if it stays a plain same-origin `/_next/static/`
+ * file: no `..`, no query or fragment.
  */
-export function pageAssetPaths(html: string): string[] {
+export function pageAssetPaths(html: string, origin: string): string[] {
   const paths = new Set<string>();
-  for (const match of html.matchAll(PAGE_ASSET)) paths.add(`/_next/${match[1]}`);
+  for (const match of html.matchAll(PAGE_ASSET)) {
+    if (paths.size >= MAX_PAGE_ASSETS) break;
+    const raw = `/_next/${match[1]}`;
+    if (/\.\.|%2e/i.test(raw) || /[?#]/.test(raw)) continue;
+    let url: URL;
+    try {
+      url = new URL(raw, origin);
+    } catch {
+      continue;
+    }
+    if (url.origin !== origin || !url.pathname.startsWith('/_next/static/') || url.search || url.hash) continue;
+    paths.add(url.pathname);
+  }
   return [...paths];
 }
 
