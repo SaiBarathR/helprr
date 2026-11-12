@@ -62,8 +62,12 @@ export default function InvitePage() {
       cache: 'no-store',
     })
       .then(async (res) => {
+        // Another link was opened meanwhile: its own check answers for it.
+        if (tokenRef.current !== token) return;
         if (res.ok) {
-          setInfo((await res.json()) as LinkInfo);
+          const linkInfo = (await res.json()) as LinkInfo;
+          if (tokenRef.current !== token) return;
+          setInfo(linkInfo);
           setStatus('ready');
           return;
         }
@@ -72,10 +76,13 @@ export default function InvitePage() {
           return;
         }
         // Throttled or unavailable: say so, and offer a retry.
-        setNotice(await errorMessage(res, "Couldn't reach Helprr."));
+        const message = await errorMessage(res, "Couldn't reach Helprr.");
+        if (tokenRef.current !== token) return;
+        setNotice(message);
         setStatus('unreachable');
       })
       .catch(() => {
+        if (tokenRef.current !== token) return;
         setNotice("Couldn't reach Helprr.");
         setStatus('unreachable');
       });
@@ -97,6 +104,12 @@ export default function InvitePage() {
       if (!next) return;
       tokenRef.current = next;
       window.history.replaceState(null, '', '/invite');
+      // A new link starts a new form: nothing typed for the last one carries over.
+      setInfo(null);
+      setNotice('');
+      setPassword('');
+      setConfirm('');
+      setError('');
       setStatus('checking');
       loadState();
     };

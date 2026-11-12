@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
-import { StepUpFields, useStepUp } from '@/components/settings/step-up-fields';
+import { StepUpFields, StepUpRefusal, isStepUpRefusal, useStepUp } from '@/components/settings/step-up-fields';
 import { findServiceBySlug, type ServiceConfigType } from '@/lib/settings/service-config';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 import { invalidateInstances } from '@/lib/query-invalidation';
@@ -377,7 +377,8 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        if (data && typeof data === 'object') stepUp.onRefused(data);
+        // A refused password or code shows under its fields, not in a toast too.
+        if (data && typeof data === 'object' && stepUp.onRefused(data, res.status)) throw new StepUpRefusal(data.error);
         throw new ApiError(res.status, data?.error || 'Failed to save connection');
       }
       return res.json().catch(() => null);
@@ -395,7 +396,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
       }
     },
     onError: (err) => {
-      if (err instanceof ApiError && err.status === 401) return;
+      if (isStepUpRefusal(err) || (err instanceof ApiError && err.status === 401)) return;
       toast.error(err instanceof Error ? err.message : 'Failed to save connection');
     },
   });

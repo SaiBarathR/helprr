@@ -11,10 +11,10 @@ import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { useIsMobile } from "@/hooks/use-is-mobile"
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  // On a phone (Sonner's own breakpoint, under 600px) toasts come from the
+  // On a phone (Sonner's own breakpoint, 600px and under) toasts come from the
   // top, as iOS banners do: at the bottom they sat over the buttons of every
   // bottom sheet (Copy/Download, Make link, Create) while they showed.
-  const phone = useIsMobile(599)
+  const phone = useIsMobile(600)
   return (
     <Sonner
       className="toaster group"

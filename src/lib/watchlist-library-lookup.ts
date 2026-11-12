@@ -38,7 +38,9 @@ const LOOKUPS_TTL_MS = 5 * 60 * 1000;
 // Keyed by which datasets the caller asked for so a request for
 // {tmdbMovie:true} doesn't get served a cached value that was populated with
 // only Radarr data (empty Sonarr maps) — and vice versa.
-let lookupsCache: { key: string; at: number; value: LibraryHrefLookups } | null = null;
+// One entry per combination (at most 8), so the watchlist and Requests, which
+// ask for different ones, don't keep evicting each other.
+const lookupsCache = new Map<string, { at: number; value: LibraryHrefLookups }>();
 
 function cacheKeyFor(needs: LookupNeeds): string {
   return `${needs.tmdbMovie ? 1 : 0}${needs.tvdbSeries ? 1 : 0}${needs.tmdbSeries ? 1 : 0}`;
@@ -47,8 +49,9 @@ function cacheKeyFor(needs: LookupNeeds): string {
 export async function getLibraryLookups(needs: LookupNeeds): Promise<LibraryHrefLookups> {
   const now = Date.now();
   const cacheKey = cacheKeyFor(needs);
-  if (lookupsCache && lookupsCache.key === cacheKey && now - lookupsCache.at < LOOKUPS_TTL_MS) {
-    return lookupsCache.value;
+  const cached = lookupsCache.get(cacheKey);
+  if (cached && now - cached.at < LOOKUPS_TTL_MS) {
+    return cached.value;
   }
 
   const needRadarr = needs.tmdbMovie;
@@ -108,7 +111,7 @@ export async function getLibraryLookups(needs: LookupNeeds): Promise<LibraryHref
 
   const value: LibraryHrefLookups = { radarrByTmdbId, sonarrByTvdbId, sonarrByTmdbId, radarrById, sonarrById };
   if (!radarrFailed && !sonarrFailed) {
-    lookupsCache = { key: cacheKey, at: now, value };
+    lookupsCache.set(cacheKey, { at: now, value });
   }
   return value;
 }

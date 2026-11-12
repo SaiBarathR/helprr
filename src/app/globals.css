@@ -1734,9 +1734,6 @@ html[data-glass][data-nav-position='bottom']:has([data-now-playing-bar], [data-f
   backdrop-filter: blur(var(--hpr-glass-blur)) saturate(var(--hpr-glass-saturate));
 }
 
-/* Floating overlays get the stronger material (alpha floor for legibility). */
-html[data-glass] [data-slot='dialog-content'],
-html[data-glass] [data-slot='alert-dialog-content'],
 /* Sonner's close button takes its light-theme greys (the Toaster has no theme
    prop), so on a dark toast it was a faint ring with an invisible ✕. */
 html [data-sonner-toast][data-styled='true'] [data-close-button] {
@@ -1752,6 +1749,9 @@ html [data-sonner-toast][data-styled='true'] [data-close-button] {
   }
 }
 
+/* Floating overlays get the stronger material (alpha floor for legibility). */
+html[data-glass] [data-slot='dialog-content'],
+html[data-glass] [data-slot='alert-dialog-content'],
 html[data-glass] [data-slot='sheet-content'],
 html[data-glass] [data-slot='drawer-content'],
 html[data-glass] [data-slot='popover-content'],

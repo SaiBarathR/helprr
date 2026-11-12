@@ -91,9 +91,11 @@ const EVENT_APP = { episode: 'sonarr', movie: 'radarr', album: 'lidarr' } as con
  * Radarr and Lidarr give a release day as an instant (often UTC midnight), not
  * a time: "5:30 AM" in India was that midnight. All day, as the calendar feed has it.
  */
-function eventTimeLabel(event: { type: string; origin?: string }, date: Date): string {
-  // A scheduled alert is at the time it notifies.
-  return event.type === 'episode' || event.origin === 'scheduled' ? formatTime(date) : 'All day';
+function eventTimeLabel(event: { type: string; origin?: string; date: string; notifyAt?: string }, date: Date): string {
+  // A scheduled alert sits on its release day when it has one (all day too),
+  // else at the time it notifies.
+  const atNotifyTime = event.origin === 'scheduled' && event.notifyAt === event.date;
+  return event.type === 'episode' || atNotifyTime ? formatTime(date) : 'All day';
 }
 function eventHref(event: CalendarEvent): string {
   if (event.href) return event.href;
