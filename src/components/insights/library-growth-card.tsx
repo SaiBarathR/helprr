@@ -17,7 +17,7 @@ import type { InsightsLibraryResponse } from '@/types/insights';
 
 const SERIES = [
   { key: 'Movies', field: 'movies' as const, color: HPR.blue },
-  { key: 'Series', field: 'series' as const, color: HPR.purple },
+  { key: 'Series', field: 'series' as const, color: HPR.purpleMark },
   { key: 'Music', field: 'music' as const, color: HPR.pink },
 ];
 

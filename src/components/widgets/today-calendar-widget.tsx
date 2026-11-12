@@ -20,12 +20,18 @@ import {
   LIST_ROW_HEIGHT,
   Pill,
   Poster,
+  SECTION_HEADER_HEIGHT,
   SectionHeader,
   ViewModeToggle,
   toneFromString,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { formatTime as formatDisplayTime } from '@/lib/date-format';
+
+// The header plus a carousel card's poster (with its badges and air time) and
+// title line. A shorter cell, such as a phone's two-row default, cut the
+// poster and hid the title and time, so it shows the list, which scrolls.
+const CAROUSEL_FIT_HEIGHT = SECTION_HEADER_HEIGHT + CAROUSEL_CARD_HEIGHT + 24;
 
 function formatTime(dateStr: string): string {
   const d = new Date(dateStr);
@@ -109,8 +115,10 @@ export function TodayCalendarWidget({
     cacheKey: 'today-calendar',
   });
   const list = data ?? [];
-  const useList = narrow || layoutVariant !== 'carousel';
-  const toggleNode = !narrow && instanceId ? (
+  // Unmeasured (0) keeps the chosen layout until the cell's height is known.
+  const carouselFits = height === 0 || height >= CAROUSEL_FIT_HEIGHT;
+  const useList = narrow || layoutVariant !== 'carousel' || !carouselFits;
+  const toggleNode = !narrow && carouselFits && instanceId ? (
     <ViewModeToggle
       value={useList ? 'list' : 'carousel'}
       onChange={(next) => setWidgetLayoutOverride(instanceId, next, { mobile: mobileGrid })}
@@ -298,7 +306,8 @@ export function TodayCalendarWidget({
   }
 
   return (
-    <div ref={ref}>
+    // The cell's full height, as in the list, so the fit above measures the cell.
+    <div ref={ref} style={{ height: '100%', minHeight: 0 }}>
       <SectionHeader
         title="Today"
         badge={<Pill color={HPR.amber}>{list.length}</Pill>}

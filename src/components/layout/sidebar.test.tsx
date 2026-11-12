@@ -106,11 +106,11 @@ describe('Sidebar names', () => {
 });
 
 describe('Sidebar active item', () => {
-  it('in dark Liquid Glass tints only the icon, keeping the label the primary text colour', async () => {
+  it('in Liquid Glass (dark and light) tints only the icon, keeping the label the primary text colour', async () => {
     mocks.collapsed = false;
     await render();
     const active = document.querySelector('aside a[href="/dashboard"]')!;
-    expect([...active.classList]).toEqual(expect.arrayContaining(['text-[color:var(--hpr-tab-label,var(--primary))]', '[html[data-glass][data-scheme=dark]_&]:text-foreground']));
+    expect([...active.classList]).toEqual(expect.arrayContaining(['text-[color:var(--hpr-tab-label,var(--primary))]', '[html[data-glass]_&]:text-foreground']));
     expect(active.querySelector('svg')!.classList).toContain('text-primary');
     expect(document.querySelector('aside a[href="/movies"] svg')!.classList).not.toContain('text-primary');
   });

@@ -123,11 +123,12 @@ export function Sidebar() {
           // 44px rows in a touch screen's icon rail; expanded (a landscape
           // tablet) the rows stay 36px, so the whole list fits on screen.
           'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-          // In dark Liquid Glass only the icon takes the blue tint; the label
-          // stays white. Light Glass and other themes tint the label through
-          // --hpr-tab-label (the text colour for the cyan accent).
+          // In Liquid Glass (dark and light) only the icon takes the blue
+          // tint and the label keeps the text colour, as on the phone tabs.
+          // Other themes tint the label through --hpr-tab-label (the text
+          // colour for the cyan accent).
           isActive
-            ? 'bg-primary/10 text-[color:var(--hpr-tab-label,var(--primary))] [html[data-glass][data-scheme=dark]_&]:text-foreground'
+            ? 'bg-primary/10 text-[color:var(--hpr-tab-label,var(--primary))] [html[data-glass]_&]:text-foreground'
             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
           isPending && 'opacity-70',
           sidebarCollapsed && 'justify-center px-2 pointer-coarse:min-h-11'

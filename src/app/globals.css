@@ -200,6 +200,15 @@
   [tabindex]:not([tabindex="-1"]) {
     cursor: pointer;
   }
+
+  /* A long press on a poster (an in-app link around an image) never opens
+     iOS's link preview ("Add to Reading List", "Open"), which leaves the
+     installed app for Safari; the app's own long-press menus are
+     pointer-driven and set the same (quick-context-menu.tsx). Links out of
+     the app (new tab) keep Copy link and Share. */
+  a:not([target="_blank"]):has(img) {
+    -webkit-touch-callout: none;
+  }
 }
 
 /* Touch devices only (phones + tablets): strip shadcn's amber focus ring for
@@ -488,6 +497,13 @@
 .page-bleed {
   margin-inline: calc(-1 * var(--main-pad-x));
   padding-inline: var(--main-pad-x);
+}
+
+/* Accent text over a poster's black scrim (a card's instance name). The
+   accent can be a deep blue there (Liquid Glass: 1.6-3.4:1 on the scrim), so
+   it is mostly white and keeps only a tint of the accent. */
+.hpr-scrim-accent {
+  color: color-mix(in oklab, var(--hpr-amber) 30%, white);
 }
 
 /* Light theme contrast. Tinted pills and banners (a translucent 400/500 tint
@@ -815,6 +831,11 @@ html {
   --hpr-violet: #877bc8;
   --hpr-cyan: #00a4dc;
   --hpr-pink: #d97da1;
+  /* The Series line beside Movies (blue) and Music (pink) in Library growth:
+     a purple a lightness step from both (CIEDE2000 14 to 20 from pink). Every
+     theme sets its own (purpleMark in dashboard-theme.ts); this is Warm Ink's,
+     for the first paint. */
+  --hpr-purple-mark: #836590;
   --hpr-font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
   --hpr-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
   --hpr-font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
