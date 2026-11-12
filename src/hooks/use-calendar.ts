@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { recordBrowseFreshness } from '@/lib/browse-freshness';
 import type { CalendarEvent } from '@/types';
 
 interface UseCalendarParams {
@@ -49,7 +50,10 @@ export function useCalendar({ start, end, type, includeScheduled }: UseCalendarP
         params.set('includeScheduled', 'true');
       }
 
-      const res = await fetch(`/api/calendar?${params.toString()}`, { signal });
+      const path = `/api/calendar?${params.toString()}`;
+      const res = await fetch(path, { signal });
+      // An offline snapshot from the worker shows the shared "saved data" notice, as library pages do.
+      recordBrowseFreshness(path, res);
 
       if (!res.ok) {
         throw new Error('Failed to fetch calendar events');

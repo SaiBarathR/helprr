@@ -1065,6 +1065,24 @@ preserving streaming and fast cached starts. A mismatched navigation response,
 including navigation preload, is retried once with a plain fetch; if that fails
 or still mismatches, the worker returns the precached `/offline.html`. The retry
 is served directly; subsequent background revalidation can refill the cache.
+In-app navigation fetches RSC payloads (network-only), never a document, so
+the (app) layout's `PageCacheWarmup` posts `helprr-cache-page` to the worker
+for each page it opens, and for `/` and the default page it redirects to (the
+installed app's way in). The worker builds the request (`src/lib/page-warmup.ts`:
+same origin, not `/api/` or `/invite`, `redirect: 'manual'` so a signed-out
+redirect stays an uncacheable opaque redirect) and runs it CacheFirst through the
+same `pages` plugins as a navigation (refetched once the kept copy is a day old),
+then runs the build assets the document names through their usual routes, so a
+page kept without being rendered can still hydrate offline. Only plain
+same-origin `/_next/static/` paths count (no `..`, query or fragment, at most
+200), because the document also carries server-rendered third-party text. Each
+page is warmed once per worker run; that memory is cleared with the user-scoped
+caches. Offline, a failed RSC fetch falls back to a hard navigation, which the
+cached document answers. Calendar, Library Gaps and History reads revalidate past
+the browser HTTP cache (`SNAPSHOT_REVALIDATE`: their routes send a `max-age`
+and their screens show the saved-data notice), so offline they come from the
+labelled `api-readonly` snapshot (at most five minutes old) rather than an
+unlabelled browser copy. Reference data keeps its browser cache.
 `/offline.html` (also the fallback for a never-visited route) reloads itself
 every 10 seconds with a meta refresh so it leaves on its own once the connection
 returns; it cannot use a script because it is served with the nonce CSP.
