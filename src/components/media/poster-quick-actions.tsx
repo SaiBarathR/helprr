@@ -99,12 +99,13 @@ export function PosterQuickActions({
               <Bell className="h-3 w-3" />
             </button>
           </DropdownMenuTrigger>
+          {/* Only touch screens open this menu: rows a finger can hit. */}
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => setWatchlistOpen(true)}>
+            <DropdownMenuItem className="min-h-11" onSelect={() => setWatchlistOpen(true)}>
               <Bookmark className="h-4 w-4" />
               Add to watchlist…
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setScheduleOpen(true)}>
+            <DropdownMenuItem className="min-h-11" onSelect={() => setScheduleOpen(true)}>
               <Bell className="h-4 w-4" />
               Schedule alert…
             </DropdownMenuItem>

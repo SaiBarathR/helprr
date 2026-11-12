@@ -179,7 +179,12 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      {/* On a touch screen, focusing Title opens the keyboard over the dialog before anything is tapped. */}
+      <DialogContent
+        onOpenAutoFocus={(e) => {
+          if (window.matchMedia('(pointer: coarse)').matches) e.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Add to watchlist</DialogTitle>
         </DialogHeader>

@@ -292,7 +292,8 @@ export default function NotificationsSettingsPage() {
         >
           <div className="text-sm font-medium">Check push setup</div>
           <div className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
-            <span>Why push is off</span>
+            {/* Also used while push is on: it sends a test notification too. */}
+            <span>Test and troubleshoot</span>
             <ChevronRight className="h-4 w-4" />
           </div>
         </Link>

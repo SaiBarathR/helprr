@@ -55,9 +55,13 @@ export function WatchingWindowRow() {
 
   if (data && !data.jellyfinLinked) {
     return (
-      <p className="px-4 pb-3 -mt-1 text-xs text-muted-foreground">
-        Needs your Jellyfin account.{' '}
-        <Link href="/settings/account" className="text-primary">Link it in Account</Link>
+      // Its own row, where the days picker goes once linked (a note pulled up
+      // under the switch sat on the divider between them).
+      <p className="grouped-row text-xs text-muted-foreground">
+        <span>
+          Needs your Jellyfin account.{' '}
+          <Link href="/settings/account" className="text-primary">Link it in Account</Link>
+        </span>
       </p>
     );
   }

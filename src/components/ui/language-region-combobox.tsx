@@ -61,7 +61,8 @@ export function LanguageRegionCombobox({
           <span className="flex-1">{emptyLabel}</span>
           {!value && <Check className="h-3.5 w-3.5" />}
         </CommandItem>
-        {options.map((opt) => (
+        {/* The current pick first, so its tick is in view, not 200 rows down. */}
+        {(selected ? [selected, ...options.filter((opt) => opt !== selected)] : options).map((opt) => (
           <CommandItem
             key={opt.code}
             value={`${opt.name} ${opt.code}`}

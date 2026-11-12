@@ -363,7 +363,9 @@ self.addEventListener('push', (event) => {
   const options: NotificationOptions = {
     body: data.body ?? 'You have a new notification — open Helprr to see it.',
     icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
+    // White on transparent: Android masks the badge to one colour, and the
+    // opaque app icon became a white square in the status bar.
+    badge: '/icons/badge-96.png',
     tag: data.tag || 'helprr-notification',
     // Action buttons (Approve/Decline, Retry, Remove from watchlist) render on Android/desktop Chrome.
     // iOS Web Push ignores `actions`, so iPhone users fall back to tapping the
@@ -455,7 +457,9 @@ async function confirm(body: string, tag: string): Promise<void> {
   await self.registration.showNotification('Helprr', {
     body,
     icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
+    // White on transparent: Android masks the badge to one colour, and the
+    // opaque app icon became a white square in the status bar.
+    badge: '/icons/badge-96.png',
     tag,
   });
 }

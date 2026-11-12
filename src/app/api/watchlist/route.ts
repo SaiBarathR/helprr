@@ -64,7 +64,7 @@ function serialize(
     addedAt: item.addedAt.toISOString(),
     reminderAt: item.reminderAt ? item.reminderAt.toISOString() : null,
     reminderNotifiedAt: item.reminderNotifiedAt ? item.reminderNotifiedAt.toISOString() : null,
-    href: resolveHrefFromLookups(item.source, item.externalId, item.mediaType, lookups),
+    href: resolveHrefFromLookups(item.source, item.externalId, item.mediaType, lookups, item.title),
   };
 }
 
@@ -93,9 +93,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     orderBy: { addedAt: 'desc' },
   });
 
+  // RADARR/SONARR items need the library too: their id is per instance.
   const needed = {
-    tmdbMovie: items.some((i) => i.source === 'TMDB' && i.mediaType === 'movie'),
-    tvdbSeries: items.some((i) => i.source === 'TVDB' && i.mediaType === 'series'),
+    tmdbMovie: items.some((i) => (i.source === 'TMDB' || i.source === 'RADARR') && i.mediaType === 'movie'),
+    tvdbSeries: items.some((i) => (i.source === 'TVDB' || i.source === 'SONARR') && i.mediaType === 'series'),
     tmdbSeries: items.some((i) => i.source === 'TMDB' && i.mediaType === 'series'),
   };
   const lookups =
