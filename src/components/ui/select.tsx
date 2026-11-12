@@ -7,10 +7,60 @@ import { Select as SelectPrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 import { useSafeAreaPadding } from "@/lib/hooks/use-safe-area-padding"
 
+// Opens the list from the trigger once a phone keyboard has closed.
+const OpenSelect = React.createContext<(() => void) | null>(null)
+
 function Select({
+  open: openProp,
+  defaultOpen = false,
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  return <SelectPrimitive.Root data-slot="select" {...props} />
+  // Held here unless the caller controls it, so the trigger can open the list later.
+  const [ownOpen, setOwnOpen] = React.useState(defaultOpen)
+  const open = openProp ?? ownOpen
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      if (openProp === undefined) setOwnOpen(next)
+      onOpenChange?.(next)
+    },
+    [openProp, onOpenChange]
+  )
+  const openList = React.useCallback(() => setOpen(true), [setOpen])
+  return (
+    <OpenSelect.Provider value={openList}>
+      <SelectPrimitive.Root data-slot="select" open={open} onOpenChange={setOpen} {...props} />
+    </OpenSelect.Provider>
+  )
+}
+
+/** True while an on-screen keyboard covers part of the window. */
+function keyboardIsOpen() {
+  const viewport = window.visualViewport
+  return viewport !== null && window.innerHeight - viewport.height > 80
+}
+
+/** Runs `then` once the keyboard has closed and the window has stopped resizing (or after 800 ms). */
+function afterKeyboardCloses(then: () => void) {
+  const viewport = window.visualViewport
+  let done = false
+  let settle = 0
+  const finish = () => {
+    if (done) return
+    done = true
+    viewport?.removeEventListener("resize", check)
+    window.clearTimeout(settle)
+    window.clearTimeout(fallback)
+    then()
+  }
+  const check = () => {
+    if (keyboardIsOpen()) return
+    window.clearTimeout(settle)
+    settle = window.setTimeout(finish, 150)
+  }
+  const fallback = window.setTimeout(finish, 800)
+  viewport?.addEventListener("resize", check)
+  check()
 }
 
 function SelectGroup({
@@ -29,14 +79,26 @@ function SelectTrigger({
   className,
   size = "default",
   children,
+  onClick,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
   size?: "sm" | "default"
 }) {
+  const openList = React.useContext(OpenSelect)
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       data-size={size}
+      onClick={(event) => {
+        onClick?.(event)
+        if (event.defaultPrevented || !openList || !keyboardIsOpen()) return
+        // A tap opens the list, and the list closes on any window resize, so
+        // the keyboard closing a moment later would make it flash and vanish.
+        // Close the keyboard first and open the list once the screen settles.
+        event.preventDefault()
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+        afterKeyboardCloses(openList)
+      }}
       className={cn(
         "border-input data-[placeholder]:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-fit items-center justify-between gap-2 rounded-md border bg-transparent px-3 py-2 text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none disabled:cursor-not-allowed disabled:opacity-50 data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className

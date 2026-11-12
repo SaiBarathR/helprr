@@ -13,7 +13,81 @@ function Drawer({
   // page scrolls under the finger, so from a scrolled page links and buttons in
   // a drawer did nothing. The dialog under vaul already locks the page scroll.
   // (vaul's flag is inverted: false turns its scroll lock off.)
-  return <DrawerPrimitive.Root data-slot="drawer" disablePreventScroll={false} {...props} />
+  //
+  // vaul's own keyboard handling is off too: it guesses whether the keyboard
+  // is open by flipping a flag on each large viewport change and remembers the
+  // drawer's first height for good, so a form whose next step appears while
+  // the keyboard is up was left lifted by the keyboard's height, cut to the
+  // old step's height. DrawerContent places itself from the viewport instead.
+  return (
+    <DrawerPrimitive.Root
+      data-slot="drawer"
+      disablePreventScroll={false}
+      repositionInputs={false}
+      {...props}
+    />
+  )
+}
+
+/**
+ * Keeps a bottom drawer above the on-screen keyboard and below the top of the
+ * screen. iOS and Android Chrome shrink only the visual viewport for the
+ * keyboard; the layout viewport the drawer is fixed to stays full height, so
+ * at `bottom: 0` the keyboard would cover it. Every change is worked out from
+ * the viewport as it is now, so once the keyboard closes the drawer is back
+ * on its own classes, whatever happened while it was open.
+ */
+function fitAboveKeyboard(node: HTMLElement): () => void {
+  const viewport = window.visualViewport
+  if (!viewport) return () => {}
+  let frame = 0
+  let lastCovered = 0
+  const place = () => {
+    frame = 0
+    if (node.getAttribute("data-vaul-drawer-direction") !== "bottom") return
+    // The part of the layout viewport the keyboard covers, under the visible part.
+    const covered = Math.round(window.innerHeight - viewport.height - viewport.offsetTop)
+    if (covered < 1) {
+      node.style.removeProperty("bottom")
+      node.style.removeProperty("max-height")
+      node.style.removeProperty("padding-bottom")
+    } else {
+      node.style.bottom = `${covered}px`
+      node.style.maxHeight = `calc(${viewport.height}px - max(env(safe-area-inset-top), 0.75rem))`
+      // The keyboard covers the home indicator the padding keeps clear of.
+      node.style.paddingBottom = "0px"
+      if (covered !== lastCovered) revealFocusedField(node)
+    }
+    lastCovered = Math.max(covered, 0)
+  }
+  const schedule = () => {
+    if (!frame) frame = requestAnimationFrame(place)
+  }
+  viewport.addEventListener("resize", schedule)
+  // iOS pans the visual viewport to show a field the keyboard would hide.
+  viewport.addEventListener("scroll", schedule)
+  place()
+  return () => {
+    viewport.removeEventListener("resize", schedule)
+    viewport.removeEventListener("scroll", schedule)
+    cancelAnimationFrame(frame)
+  }
+}
+
+/** Scrolls the drawer's body so the field being typed in shows above the keyboard. */
+function revealFocusedField(node: HTMLElement) {
+  const field = document.activeElement
+  if (!(field instanceof HTMLElement) || !node.contains(field)) return
+  for (let box = field.parentElement; box && box !== node; box = box.parentElement) {
+    if (box.scrollHeight <= box.clientHeight) continue
+    const overflow = getComputedStyle(box).overflowY
+    if (overflow !== "auto" && overflow !== "scroll") continue
+    const fieldRect = field.getBoundingClientRect()
+    const boxRect = box.getBoundingClientRect()
+    if (fieldRect.bottom > boxRect.bottom) box.scrollTop += fieldRect.bottom - boxRect.bottom + 12
+    else if (fieldRect.top < boxRect.top) box.scrollTop -= boxRect.top - fieldRect.top + 12
+    return
+  }
 }
 
 function DrawerTrigger({
@@ -62,29 +136,19 @@ function DrawerContent({
    *  panel whose body fills it with `flex-1 min-h-0` and scrolls. */
   size?: "full" | "content"
 }) {
-  // vaul sizes a drawer above the phone keyboard, and when the keyboard
-  // closes it writes back, as an inline px height, the height the drawer had
-  // when a keyboard first opened in it. A content-sized drawer whose content
-  // has changed since (the next step of a form) would stay at that old height,
-  // so once the keyboard is closed the inline height is dropped again.
   const contentRef = React.useCallback(
     (node: HTMLDivElement | null) => {
       if (typeof ref === "function") ref(node)
       else if (ref) ref.current = node
-      if (!node || size !== "content") return
-      const observer = new MutationObserver(() => {
-        const viewport = window.visualViewport
-        const keyboardOpen = viewport ? window.innerHeight - viewport.height > 60 : false
-        if (node.style.height && !keyboardOpen) node.style.height = ""
-      })
-      observer.observe(node, { attributes: true, attributeFilter: ["style"] })
+      if (!node) return
+      const stop = fitAboveKeyboard(node)
       return () => {
-        observer.disconnect()
+        stop()
         if (typeof ref === "function") ref(null)
         else if (ref) ref.current = null
       }
     },
-    [ref, size]
+    [ref]
   )
 
   return (

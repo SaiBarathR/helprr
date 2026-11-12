@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Drawer, DrawerContent, DrawerTitle } from './drawer';
 
 function open(size?: 'full' | 'content') {
@@ -28,31 +28,55 @@ describe('DrawerContent size', () => {
     expect(panel.className).toContain('data-[vaul-drawer-direction=bottom]:max-h-[90dvh]');
     expect(panel.hasAttribute('size')).toBe(false);
   });
+});
 
-  // vaul writes back, on every keyboard close, the height the drawer had when a
-  // keyboard first opened in it: a later, taller step would be cut to that.
-  it('drops the inline height vaul restores once the keyboard is closed, only for a content drawer', async () => {
+describe('DrawerContent above the keyboard', () => {
+  function stubViewport(height: number, offsetTop = 0) {
+    const listeners = new Set<() => void>();
+    const viewport = {
+      height,
+      offsetTop,
+      addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+    };
+    vi.stubGlobal('visualViewport', viewport);
+    return {
+      viewport,
+      fire: () => listeners.forEach((listener) => listener()),
+    };
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('sits on top of the keyboard and keeps its top on screen', () => {
+    stubViewport(window.innerHeight - 300);
     const panel = open('content');
-    panel.style.height = '330px';
-    await waitFor(() => expect(panel.style.height).toBe(''));
+    expect(panel.style.bottom).toBe('300px');
+    expect(panel.style.maxHeight).toContain(`${window.innerHeight - 300}px`);
+    expect(panel.style.paddingBottom).toBe('0px');
   });
 
-  it('keeps vaul\'s height while the keyboard is open', async () => {
-    vi.stubGlobal('visualViewport', { height: window.innerHeight - 300, addEventListener: () => {}, removeEventListener: () => {} });
-    try {
-      const panel = open('content');
-      panel.style.height = '330px';
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(panel.style.height).toBe('330px');
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it('leaves a full drawer\'s inline height to vaul', async () => {
+  it('allows for iOS scrolling the visible part up to a field', () => {
+    stubViewport(window.innerHeight - 400, 100);
     const panel = open();
-    panel.style.height = '330px';
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(panel.style.height).toBe('330px');
+    expect(panel.style.bottom).toBe('300px');
+  });
+
+  it('goes back to its own classes once the keyboard closes, whatever happened while it was open', async () => {
+    const { viewport, fire } = stubViewport(window.innerHeight - 300);
+    const panel = open('content');
+    expect(panel.style.bottom).toBe('300px');
+    viewport.height = window.innerHeight;
+    fire();
+    await waitFor(() => expect(panel.style.bottom).toBe(''));
+    expect(panel.style.maxHeight).toBe('');
+    expect(panel.style.paddingBottom).toBe('');
+  });
+
+  it('leaves a drawer alone while no keyboard is open', () => {
+    stubViewport(window.innerHeight);
+    const panel = open('content');
+    expect(panel.style.bottom).toBe('');
+    expect(panel.style.maxHeight).toBe('');
   });
 });

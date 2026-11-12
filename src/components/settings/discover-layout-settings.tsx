@@ -394,6 +394,7 @@ function CustomCarouselEditor({
               value={filters.language ?? ''}
               onChange={(code) => setFilters({ ...filters, language: code })}
               options={filtersMeta?.languages || []}
+              title="Language"
               placeholder="Any language"
               emptyLabel="Any language"
               searchPlaceholder="Search language"
@@ -405,6 +406,7 @@ function CustomCarouselEditor({
               value={filters.region ?? ''}
               onChange={(code) => setFilters({ ...filters, region: code })}
               options={filtersMeta?.regions || []}
+              title="Region"
               placeholder="Any region"
               emptyLabel="Any region"
               searchPlaceholder="Search region"
