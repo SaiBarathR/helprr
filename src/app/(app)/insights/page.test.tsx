@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 
-import type { RefObject } from 'react';
 import { act, render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  pullToRefresh: null as null | { onRefresh: () => unknown; scrollContainerRef?: RefObject<HTMLElement | null> },
+  pullToRefresh: null as null | { onRefresh: () => unknown },
 }));
 vi.mock('@/components/ui/pull-to-refresh', () => ({
   PullToRefresh: (props: NonNullable<typeof mocks.pullToRefresh>) => {
@@ -37,7 +36,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
 });
 
-it('pull to refresh refetches the insights cards, gated on the cards scroller being at the top', async () => {
+it('pull to refresh refetches the insights cards', async () => {
   const client = new QueryClient();
   const invalidate = vi.spyOn(client, 'invalidateQueries');
   render(<QueryClientProvider client={client}><InsightsPage /></QueryClientProvider>);
@@ -45,7 +44,6 @@ it('pull to refresh refetches the insights cards, gated on the cards scroller be
   const statsFetches = () => fetchMock.mock.calls.filter(([url]) => url === '/api/services/stats').length;
   expect(statsFetches()).toBe(1);
 
-  expect(mocks.pullToRefresh!.scrollContainerRef!.current?.dataset.scrollRestorationKey).toBe('insights-content');
   await act(async () => { await mocks.pullToRefresh!.onRefresh(); });
   expect(statsFetches()).toBe(2);
   expect(invalidate.mock.calls.map(([filters]) => filters)).toEqual([

@@ -83,7 +83,6 @@ export default function ActivityPage() {
     const t = searchParams.get('tab');
     return t && isTabKey(t) ? t : 'queue';
   });
-  const contentScrollRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   // arr instances for the per-instance filter (shown only when >1 instance).
   const { data: arrConnections = [] } = useQuery({
@@ -255,7 +254,7 @@ export default function ActivityPage() {
 
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
-      <PullToRefresh onRefresh={handleRefreshActivity} scrollContainerRef={contentScrollRef} />
+      <PullToRefresh onRefresh={handleRefreshActivity} />
       <PageTitle>Activity</PageTitle>
       {/* One row on phones too: History, Blocklist and Refresh fold into a ⋯
           menu below md. From md up the row may wrap rather than clip. */}
@@ -435,7 +434,7 @@ export default function ActivityPage() {
       <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} className="pt-2" />
 
       {/* Tab content */}
-      <div ref={contentScrollRef} data-scroll-restoration-key="activity-content" className="flex-1">
+      <div data-scroll-restoration-key="activity-content" className="flex-1">
         {tab === 'queue' && (
           <QueueTab
             sortBy={sortBy}
