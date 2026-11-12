@@ -46,4 +46,16 @@ describe('landscape safe areas', () => {
   it('shrinks the top padding on a short (landscape phone) viewport', () => {
     expect(decls(':root')['(min-width: 768px) and (max-height: 500px)']['--main-pad-top']).toBe('0.5rem');
   });
+
+  // .page-toolbar already spans main's padding; a bleed wrapper around a
+  // detail page's header runs the bar past the content into the right inset.
+  it('keeps the series and movie detail headers out of a bleed wrapper', () => {
+    for (const page of ['series/[id]/page.tsx', 'movies/[id]/page.tsx']) {
+      const src = readFileSync(join(__dirname, '..', '(app)', page), 'utf8');
+      const main = src.slice(src.lastIndexOf('<PageHeader'));
+      const before = src.slice(0, src.length - main.length);
+      const open = before.slice(before.lastIndexOf('return ('));
+      expect(open, page).not.toMatch(/-mx-/);
+    }
+  });
 });

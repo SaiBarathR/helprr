@@ -183,7 +183,7 @@ describe('Arr polling concurrency', () => {
     expect(mocks.updateState).toHaveBeenCalledTimes(5);
   });
 
-  it('asks Sonarr and Radarr, but not Lidarr, for downloads they could not match', async () => {
+  it('asks every arr for downloads it could not match', async () => {
     const instance = () => {
       const getQueue = vi.fn(async () => queue(0));
       return { getQueue, client: { getTags: async () => [], getQueue, getHistory: async () => history(), getHealth: async () => [] } };
@@ -199,8 +199,7 @@ describe('Arr polling concurrency', () => {
 
     expect(sonarr.getQueue).toHaveBeenCalledWith(1, 200, true);
     expect(radarr.getQueue).toHaveBeenCalledWith(1, 200, true);
-    // Lidarr's unmatched downloads are not listed in Activity either.
-    expect(lidarr.getQueue).toHaveBeenCalledWith(1, 200, false);
+    expect(lidarr.getQueue).toHaveBeenCalledWith(1, 200, true);
   });
 
   // What each arr returns for a torrent added by hand into its category that
@@ -219,6 +218,12 @@ describe('Arr polling concurrency', () => {
       trackedDownloadState: 'importBlocked', trackedDownloadStatus: 'warning',
       statusMessages: [{ title: 'Some.Movie.2026.BD.1080p-grp', messages: ['Movie title mismatch; automatic import is not possible.'] }],
     },
+    lidarr: {
+      id: 7, title: 'Some Band - Demo (2026) [FLAC]', downloadId: 'D', artistId: null, albumId: null, artist: null, album: null,
+      quality: { quality: { name: 'FLAC' } },
+      trackedDownloadState: 'importBlocked', trackedDownloadStatus: 'warning',
+      statusMessages: [{ title: 'Some Band - Demo', messages: ['Artist name mismatch, automatic import is not possible.'] }],
+    },
   };
   const matchedQueueItem = { id: 1, title: 'Known.Item', trackedDownloadState: 'downloading', trackedDownloadStatus: 'ok' };
   const savedState = (id: string, lastQueueIds: unknown[]) => ({
@@ -227,14 +232,15 @@ describe('Arr polling concurrency', () => {
   const arrClient = (records: unknown[]) => ({
     getTags: async () => [], getQueue: async () => queue(records.length, records), getHistory: async () => history(), getHealth: async () => [],
   });
-  const pollOnce = async (source: 'sonarr' | 'radarr', records: unknown[]) => {
-    (source === 'sonarr' ? mocks.getSonarrClients : mocks.getRadarrClients)
-      .mockResolvedValue([{ connection: connection(`${source}-1`), client: arrClient(records) }]);
+  const pollOnce = async (source: 'sonarr' | 'radarr' | 'lidarr', records: unknown[]) => {
+    const clients = { sonarr: mocks.getSonarrClients, radarr: mocks.getRadarrClients, lidarr: mocks.getLidarrClients }[source];
+    clients.mockResolvedValue([{ connection: connection(`${source}-1`), client: arrClient(records) }]);
     const service = new PollingService() as unknown as InternalPollingService;
-    await (source === 'sonarr' ? service.pollSonarr(cycleContext()) : service.pollRadarr(cycleContext()));
+    const poll = { sonarr: service.pollSonarr, radarr: service.pollRadarr, lidarr: service.pollLidarr }[source];
+    await poll.call(service, cycleContext());
   };
 
-  it.each(['sonarr', 'radarr'] as const)('counts an unmatched %s download in the badge and announces it once', async (source) => {
+  it.each(['sonarr', 'radarr', 'lidarr'] as const)('counts an unmatched %s download in the badge and announces it once', async (source) => {
     const unmatched = UNMATCHED[source];
     // The matched download was already known; the unmatched one is new this cycle.
     mocks.findState.mockResolvedValue(savedState(`${source}-1`, [{ id: 1, state: 'downloading', status: 'ok' }]));

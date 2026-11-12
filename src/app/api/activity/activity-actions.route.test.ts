@@ -214,7 +214,7 @@ describe('DELETE /api/activity/queue', () => {
     mocks.fetchAllQueueRecords.mockResolvedValueOnce({ records: [{ id: 4 }, { id: 99 }], totalRecords: 2 });
     const res = await bulkRemove(request('DELETE', '/api/activity/queue', { source: 'lidarr', instanceId: 'lid-1', ids: [3, 4] }));
     expect(res.status).toBe(200);
-    expect(mocks.fetchAllQueueRecords).toHaveBeenCalledWith(mocks.lidarr, false);
+    expect(mocks.fetchAllQueueRecords).toHaveBeenCalledWith(mocks.lidarr, true);
     expect(mocks.recordOperationAudit).toHaveBeenCalledWith(expect.objectContaining({
       success: true,
       itemCount: 1,

@@ -92,6 +92,22 @@ describe('/invite', () => {
     expect(screen.queryByLabelText('New password')).toBeNull();
   });
 
+  it('reads a new link opened in the same tab, where only the fragment changes', async () => {
+    state = () => Promise.resolve(Response.json({ error: 'gone' }, { status: 404 }));
+    await open('#old-link');
+    expect(screen.getByRole('alert').textContent).toBe(INVALID);
+
+    state = () => Promise.resolve(Response.json({ purpose: 'invite', username: 'newbie', displayName: 'New Person' }));
+    await act(async () => {
+      window.history.replaceState(null, '', `/invite#${TOKEN}`);
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    await waitFor(() => expect(screen.getByText('Welcome, New Person')).toBeDefined());
+    await submit(PASSWORD);
+    const [, init] = vi.mocked(fetch).mock.calls.at(-1) as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ token: TOKEN, password: PASSWORD });
+  });
+
   it('shows the same answer when the link stops working before the password is sent', async () => {
     accept = () => Promise.resolve(Response.json({ error: INVALID }, { status: 404 }));
     await open();

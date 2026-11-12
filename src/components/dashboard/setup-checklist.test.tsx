@@ -239,6 +239,17 @@ describe('SetupChecklist', () => {
     expect(screen.getByRole('dialog', { name: 'Open on your phone' })).toBeTruthy();
   });
 
+  it("keeps a step's buttons together after its text, so a narrow row wraps them below it", () => {
+    render(<SetupChecklist initial={fresh} mobile />);
+    const code = screen.getByRole('button', { name: 'Show a code to open Helprr on your phone' });
+    const group = code.parentElement!;
+    expect(group.contains(screen.getByRole('button', { name: 'Done: Install on your phone' }))).toBe(true);
+    const link = group.previousElementSibling as HTMLElement;
+    expect(link.getAttribute('href')).toBe('/settings/appearance#install');
+    expect(link.style.flex).toBe('1 1 13rem');
+    expect((group.parentElement as HTMLElement).style.flexWrap).toBe('wrap');
+  });
+
   it('keeps the drawer mounted after closing, so it can slide away and open again', async () => {
     respond(fresh);
     render(<SetupChecklist initial={fresh} mobile={false} />);

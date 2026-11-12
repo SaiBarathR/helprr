@@ -47,7 +47,7 @@ export async function pollLidarr(context: CycleContext) {
       const { state, firstRun } = await getPollingState(instanceId);
 
       const tagMap = await buildTagMap(client);
-      const queue = await fetchAllQueueRecords(client);
+      const queue = await fetchAllQueueRecords(client, true);
       const prevMap = readQueueSnapshots(state.lastQueueIds);
       const currentSnapshots: QueueSnapshot[] = queue.records.map((r) => ({
         id: r.id,

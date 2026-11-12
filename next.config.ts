@@ -18,7 +18,7 @@ const withSerwist = withSerwistInit({
   reloadOnOnline: false,
   // Install only the offline shell and its build-graph dependencies. Route and
   // optional feature chunks use the existing runtime cache on first visit.
-  globPublicPatterns: ['offline.html', 'manifest.json', 'favicon.ico', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'],
+  globPublicPatterns: ['offline.html', 'manifest.json', 'favicon.ico', 'icons/icon-192.png', 'icons/badge-96.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'],
   exclude: [
     /\.map$/,
     /^manifest.*\.js$/,

@@ -325,12 +325,14 @@ export class LidarrClient {
   }
 
   // Queue
-  async getQueue(page: number = 1, pageSize: number = 20): Promise<QueueResponse> {
+  // `includeUnknownArtistItems`: see SonarrClient.getQueue.
+  async getQueue(page: number = 1, pageSize: number = 20, includeUnknownArtistItems: boolean = false): Promise<QueueResponse> {
     return this.get<QueueResponse>('/api/v1/queue', {
       page,
       pageSize,
       includeArtist: true,
       includeAlbum: true,
+      ...(includeUnknownArtistItems ? { includeUnknownArtistItems: true } : {}),
     });
   }
 

@@ -188,8 +188,29 @@ export async function previewScheduledAlert(
     ? opts.releaseTypes
     : defaultReleaseTypes(scope, draft.mediaType);
   const offsetMinutes = opts.offsetMinutes ?? 60;
-  const scheduleMode = opts.scheduleMode ?? defaultScheduleMode(draft);
-  const absoluteDefault = defaultReminderLocal(draft.releaseDate, timeZone);
+  const requestedMode = opts.scheduleMode ?? defaultScheduleMode(draft);
+
+  const resolved = requestedMode === 'release_relative'
+    ? await resolveReleaseCandidates(
+        {
+          ...draft,
+          seasonNumber: opts.seasonNumber ?? draft.seasonNumber,
+          episodeId: opts.episodeId ?? draft.episodeId,
+        },
+        {
+          scope,
+          releaseTypes,
+          offsetMinutes,
+          timeZone,
+        },
+      )
+    : null;
+  // The same verdict the save gives (Lidarr's album, 9:00 on its day in this
+  // time zone): an album already out opens on a custom date from tomorrow, as
+  // its release reminder could never go off.
+  const albumReleased = resolved?.albumReleased === true;
+  const scheduleMode = albumReleased && !opts.scheduleMode ? 'absolute' : requestedMode;
+  const absoluteDefault = defaultReminderLocal(albumReleased ? null : draft.releaseDate, timeZone);
 
   const candidates =
     scheduleMode === 'absolute'
@@ -203,21 +224,7 @@ export async function previewScheduledAlert(
             draft.subtitle ?? draft.title,
           ),
         ]
-      : (
-          await resolveReleaseCandidates(
-            {
-              ...draft,
-              seasonNumber: opts.seasonNumber ?? draft.seasonNumber,
-              episodeId: opts.episodeId ?? draft.episodeId,
-            },
-            {
-              scope,
-              releaseTypes,
-              offsetMinutes,
-              timeZone,
-            },
-          )
-        ).candidates;
+      : resolved?.candidates ?? [];
 
   return {
     defaults: {
@@ -228,6 +235,7 @@ export async function previewScheduledAlert(
       absoluteNotifyAt: scheduleMode === 'absolute' ? absoluteDefault : null,
     },
     candidates,
+    ...(albumReleased ? { albumReleased: true as const } : {}),
   };
 }
 
@@ -248,6 +256,7 @@ async function resolveReleaseCandidates(
   const endIso = ctx?.calendarEndIso ?? lookupWindow.end.toISOString();
   const out: OccurrenceCandidate[] = [];
   const upcomingAlbums: UpcomingAlbum[] = [];
+  let albumReleased = false;
 
   const outcomes: SourceOutcomes = {
     radarr: needsRadarr(draft) ? 'failure' : 'not_needed',
@@ -410,6 +419,7 @@ async function resolveReleaseCandidates(
           // Lidarr's release date is a calendar day (midnight UTC): remind on that local day.
           const releaseAt = dateOnlyAtLocalNine(album.releaseDate.slice(0, 10), opts.timeZone);
           if (!Number.isFinite(releaseAt.getTime())) continue;
+          if (opts.scope === 'album' && releaseAt <= notifyStart) albumReleased = true;
           const artistName = album.artist?.artistName ?? (opts.scope === 'album' ? draft.subtitle : draft.title);
           if (opts.scope === 'artist' && releaseAt > notifyStart) {
             upcomingAlbums.push({ key: `${connection.id}:${album.id}`, title: album.title, artistName: artistName || draft.title, releaseAt });
@@ -505,6 +515,7 @@ async function resolveReleaseCandidates(
     candidates: out,
     resolved: computeResolved(outcomes, draft, opts.releaseTypes, out),
     ...(opts.scope === 'artist' && needsLidarr(draft) ? { upcomingAlbums } : {}),
+    ...(albumReleased ? { albumReleased: true as const } : {}),
   };
 }
 

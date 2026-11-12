@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChevronDown, Clapperboard, Loader2 } from 'lucide-react';
-import { clearUserScopedBrowserCaches, subscribeToAuthenticationBoundaries } from '@/lib/client-cache';
+import { ACCOUNT_DELETED_KEY, clearUserScopedBrowserCaches, subscribeToAuthenticationBoundaries } from '@/lib/client-cache';
 import { completeBrowserSignIn, setDeviceCookieFromMatchMedia } from '@/lib/client-sign-in';
 import { SIGN_IN_HELP_URL } from '@/lib/docs-links';
 
@@ -80,6 +80,19 @@ export default function LoginPage() {
   // desktop-then-mobile reload thrash for iPhone users.
   useEffect(() => {
     setDeviceCookieFromMatchMedia();
+  }, []);
+
+  // Just deleted their own account: say so, once.
+  const [accountDeleted, setAccountDeleted] = useState(false);
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(ACCOUNT_DELETED_KEY) !== '1') return;
+      sessionStorage.removeItem(ACCOUNT_DELETED_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage is read after mount so the server render matches
+      setAccountDeleted(true);
+    } catch {
+      // Private mode: the usual line.
+    }
   }, []);
 
   // Back to the code step after a reload, while its token is still good.
@@ -295,7 +308,9 @@ export default function LoginPage() {
           <p className="text-sm text-muted-foreground">
             {mfaToken
               ? 'Two-step sign-in'
-              : pending === 'trusted' ? 'Signing you in…' : signedOut ? 'Signed out' : 'Sign in to continue'}
+              : pending === 'trusted'
+                ? 'Signing you in…'
+                : accountDeleted ? 'Your account was deleted' : signedOut ? 'Signed out' : 'Sign in to continue'}
           </p>
         </CardHeader>
         <CardContent>
@@ -325,7 +340,7 @@ export default function LoginPage() {
               {errorText}
               <Button
                 type="submit"
-                className="w-full"
+                className="w-full pointer-coarse:h-11"
                 disabled={pending !== null || retrySeconds > 0 || code.trim().length === 0}
               >
                 {pending === 'code' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -361,7 +376,7 @@ export default function LoginPage() {
               {errorText}
               <Button
                 type="button"
-                className="w-full"
+                className="w-full pointer-coarse:h-11"
                 disabled={pending !== null || retrySeconds > 0}
                 onClick={() => void signInAgain()}
               >
@@ -391,7 +406,7 @@ export default function LoginPage() {
             {errorText}
             <Button
               type="submit"
-              className="w-full"
+              className="w-full pointer-coarse:h-11"
               disabled={pending !== null || retrySeconds > 0}
             >
               {pending === 'local' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -426,7 +441,7 @@ export default function LoginPage() {
             <Button
               type="button"
               variant="outline"
-              className="w-full"
+              className="w-full pointer-coarse:h-11"
               disabled={pending !== null || retrySeconds > 0}
               onClick={() => submit('/api/auth/jellyfin', 'jellyfin')}
             >

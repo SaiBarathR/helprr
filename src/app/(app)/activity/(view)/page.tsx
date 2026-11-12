@@ -263,8 +263,13 @@ export default function ActivityPage() {
         <Tabs value={tab} onValueChange={(v) => isTabKey(v) && handleTabChange(v)} className="min-w-0 flex-1 gap-0 sm:flex-none">
           <TabsList variant="segmented">
             {TABS.map((t) => (
-              <TabsTrigger key={t.key} value={t.key}>
-                {t.label}
+              <TabsTrigger key={t.key} value={t.key} aria-label={t.shortLabel && t.label}>
+                {t.shortLabel ? (
+                  <>
+                    <span className="max-[359px]:hidden">{t.label}</span>
+                    <span className="min-[360px]:hidden">{t.shortLabel}</span>
+                  </>
+                ) : t.label}
               </TabsTrigger>
             ))}
           </TabsList>

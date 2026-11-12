@@ -18,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { jsonFetcher } from '@/lib/query-fetch';
 import type { FeedEventType, FeedFilters } from '@/lib/calendar-feed/filters';
@@ -85,7 +85,8 @@ export function CalendarFeedDialog({
   });
   // The token, held only while the dialog is mounted (the page mounts it only while open).
   const [made, setMade] = useState<{ name: string; token: string } | null>(null);
-  const [name, setName] = useState(filters.type ? TYPE_LABEL[filters.type] : 'Calendar');
+  const defaultName = filters.type ? TYPE_LABEL[filters.type] : 'Calendar';
+  const [name, setName] = useState(defaultName);
   const [draft, setDraft] = useState<FeedFilters>(filters);
   const [busy, setBusy] = useState(false);
   const [turningOff, setTurningOff] = useState<FeedLink | null>(null);
@@ -115,6 +116,9 @@ export function CalendarFeedDialog({
       // The link replaces the form: close a phone keyboard the Name field left open.
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
       setMade({ name: body.name ?? name.trim(), token: body.token });
+      // After Done the form starts afresh, not as a near-copy of the link just made.
+      setName(defaultName);
+      setDraft(filters);
       await queryClient.invalidateQueries({ queryKey: LINKS_KEY });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to make the calendar link');
@@ -157,6 +161,14 @@ export function CalendarFeedDialog({
     event.preventDefault();
     (event.currentTarget as HTMLElement).focus();
   };
+
+  const showForm = !(urls && made) && !status.isPending && !status.isError;
+  const makeButton = (
+    <Button type="button" disabled={busy || full || !name.trim()} onClick={() => void makeLink()}>
+      {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+      Make link
+    </Button>
+  );
 
   const body = urls && made ? (
     <div className="space-y-3">
@@ -246,7 +258,8 @@ export function CalendarFeedDialog({
             onChange={(event) => setName(event.target.value)}
           />
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        {/* One column: side by side, "Episodes, movies and music" was cut mid-word. */}
+        <div className="grid gap-3">
           <div className="space-y-1.5">
             <Label>Shows</Label>
             <Select
@@ -293,12 +306,7 @@ export function CalendarFeedDialog({
             You have {links.length} links, the most there can be. Turn one off to make another.
           </p>
         )}
-        <div className="flex justify-end">
-          <Button type="button" disabled={busy || full || !name.trim()} onClick={() => void makeLink()}>
-            {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Make link
-          </Button>
-        </div>
+        {!isPhone && <div className="flex justify-end">{makeButton}</div>}
       </section>
     </div>
   );
@@ -313,6 +321,8 @@ export function CalendarFeedDialog({
               <DrawerDescription>{intro}</DrawerDescription>
             </DrawerHeader>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">{body}</div>
+            {/* In the footer on a phone, so the keyboard from Name never covers it. */}
+            {showForm && <DrawerFooter className="border-t">{makeButton}</DrawerFooter>}
           </DrawerContent>
         </Drawer>
       ) : (

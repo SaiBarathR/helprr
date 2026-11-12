@@ -47,20 +47,15 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
   ResponsiveMenu,
+  ResponsiveMenuActionItem,
   ResponsiveMenuCheckboxItem,
 } from '@/components/ui/responsive-menu';
 import { ScheduledAlertSummary } from '@/components/scheduled-alerts/scheduled-alert-summary';
 import { ScheduledAlertDialog, type ScheduledAlertDraft } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { FadeInImage } from '@/components/media/fade-in-image';
-import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import type { SerializedAlert } from '@/lib/scheduled-alerts/serialize';
 import type { ReleaseKind } from '@/lib/scheduled-alerts/types';
 import { useCan } from '@/components/permission-provider';
@@ -78,6 +73,8 @@ const STATUS_LABELS: Record<Exclude<StatusFilter, 'all'>, string> = {
   cancelled: 'Cancelled',
 };
 const MEDIA_LABELS: Record<string, string> = { movie: 'Movies', series: 'Series', anime: 'Anime', music: 'Music' };
+// Which connection the proxy should try first for an alert's poster.
+const IMAGE_HINTS: Record<string, ImageServiceHint> = { TMDB: 'tmdb', ANILIST: 'anilist', SONARR: 'sonarr', RADARR: 'radarr', LIDARR: 'lidarr' };
 
 interface ListResponse {
   page: number;
@@ -369,11 +366,10 @@ export default function ScheduledAlertsPage() {
               )}
               <div className="flex flex-col gap-2">
                 {items.map((alert) => {
-                  const poster = alert.posterUrl
-                    ? isProtectedApiImageSrc(alert.posterUrl)
-                      ? toCachedImageSrc(alert.posterUrl)
-                      : alert.posterUrl
-                    : null;
+                  // Through the image proxy, as every other poster: an Arr's own
+                  // cover address (Lidarr's /MediaCover when it has no CDN copy)
+                  // is a local host the browser and Next's optimiser can't load.
+                  const poster = toCachedImageSrc(alert.posterUrl, IMAGE_HINTS[alert.source]);
                   return (
                     <QuickContextMenu
                       key={alert.id}
@@ -420,7 +416,7 @@ export default function ScheduledAlertsPage() {
                           actions: canEdit && alert.status === 'active'
                             ? [{
                                 id: 'cancel-all',
-                                label: 'Cancel all',
+                                label: 'Cancel alert',
                                 icon: <Trash2 className="h-4 w-4" />,
                                 destructive: true,
                                 onSelect: () => setCancelTarget(alert),
@@ -479,42 +475,43 @@ export default function ScheduledAlertsPage() {
                         )}
                       </div>
                       {canEdit && alert.status === 'active' && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
+                        <ResponsiveMenu
+                          title={alert.title}
+                          actions
+                          align="end"
+                          trigger={(
                             <button
                               type="button"
-                              className="p-1.5 rounded-md text-muted-foreground hover:bg-muted"
+                              className="relative touch-target p-1.5 rounded-md text-muted-foreground hover:bg-muted"
                               aria-label="Alert actions"
                             >
                               <MoreHorizontal className="h-4 w-4" />
                             </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setEditTarget(alert)}>
-                              Edit alert
-                            </DropdownMenuItem>
-                            {alert.nextOccurrence && (
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  setCancelOccurrence({
-                                    alertId: alert.id,
-                                    occurrenceId: alert.nextOccurrence!.id,
-                                    title: alert.title,
-                                  })
-                                }
-                              >
-                                Cancel next occurrence
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => setCancelTarget(alert)}
+                          )}
+                        >
+                          <ResponsiveMenuActionItem onSelect={() => setEditTarget(alert)}>
+                            <Pencil className="h-4 w-4" />
+                            Edit alert
+                          </ResponsiveMenuActionItem>
+                          {alert.nextOccurrence && (
+                            <ResponsiveMenuActionItem
+                              onSelect={() =>
+                                setCancelOccurrence({
+                                  alertId: alert.id,
+                                  occurrenceId: alert.nextOccurrence!.id,
+                                  title: alert.title,
+                                })
+                              }
                             >
-                              <Trash2 data-icon="inline-start" />
-                              Cancel all
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              <CalendarX2 className="h-4 w-4" />
+                              Cancel next occurrence
+                            </ResponsiveMenuActionItem>
+                          )}
+                          <ResponsiveMenuActionItem destructive onSelect={() => setCancelTarget(alert)}>
+                            <Trash2 className="h-4 w-4" />
+                            Cancel alert
+                          </ResponsiveMenuActionItem>
+                        </ResponsiveMenu>
                       )}
                       </div>
                     </QuickContextMenu>

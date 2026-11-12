@@ -61,6 +61,20 @@ vi.mock('@/components/ui/sheet', () => {
     SheetFooter: Pass,
   };
 });
+// On a phone the filters are the bottom drawer, reduced the same way.
+vi.mock('@/components/ui/drawer', () => {
+  const Pass = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>;
+  return {
+    Drawer: ({ open, children }: { open: boolean; children: React.ReactNode }) => (open ? <div data-testid="sheet">{children}</div> : null),
+    DrawerTrigger: Pass,
+    DrawerClose: Pass,
+    DrawerContent: Pass,
+    DrawerHeader: Pass,
+    DrawerTitle: Pass,
+    DrawerDescription: Pass,
+    DrawerFooter: Pass,
+  };
+});
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: () => null,
   DropdownMenuTrigger: () => null,

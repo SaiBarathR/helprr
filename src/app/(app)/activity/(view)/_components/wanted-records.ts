@@ -127,6 +127,28 @@ function filmSearch(data: unknown): { movieCount: number; queued: number; notQue
 
 const films = (n: number) => (n === 1 ? '1 film' : `${n} films`);
 
+/**
+ * Search all's confirm heading, counting what is searched. On Missing, Radarr
+ * is asked only for the films that are out (`skipsUnreleased`), so the films
+ * not released yet are left out of the count; until every page is loaded their
+ * number is unknown, and the heading gives none.
+ */
+export function searchAllTitle({ listName, totalRecords, notReleased, allLoaded, skipsUnreleased }: {
+  listName: string;
+  totalRecords: number;
+  /** The loaded rows that are films not released yet. */
+  notReleased: number;
+  allLoaded: boolean;
+  skipsUnreleased: boolean;
+}): string {
+  const items = (n: number) => `${n} ${listName} ${n === 1 ? 'item' : 'items'}`;
+  if (!skipsUnreleased) return `Search for all ${items(totalRecords)}?`;
+  if (!allLoaded) return `Search for every ${listName} item that is out?`;
+  const searched = Math.max(0, totalRecords - notReleased);
+  if (searched === totalRecords) return `Search for all ${items(totalRecords)}?`;
+  return `Search for the ${items(searched)} that ${searched === 1 ? 'is' : 'are'} out?`;
+}
+
 /** The toast for a Search all, one result per instance it was sent to. */
 export function searchAllOutcome(listName: string, results: SearchResult[]): SearchAllOutcome {
   const accepted = results.filter((r) => r.ok);

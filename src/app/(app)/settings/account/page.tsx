@@ -12,6 +12,7 @@ import { TwoFactorSection } from '@/components/settings/two-factor-section';
 import { useMe } from '@/components/permission-provider';
 import { endSessionInThisBrowser, requestSessionLogout } from '@/lib/client-cache';
 import { saveFile } from '@/lib/save-file';
+import { localDateStamp } from '@/lib/date-format';
 
 export default function AccountSettingsPage() {
   const me = useMe();
@@ -28,7 +29,7 @@ export default function AccountSettingsPage() {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error ?? 'Failed to download your data');
       }
-      await saveFile(await res.blob(), `helprr-my-data-${new Date().toISOString().slice(0, 10)}.json`);
+      await saveFile(await res.blob(), `helprr-my-data-${localDateStamp(new Date())}.json`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to download your data');
     } finally {

@@ -180,7 +180,10 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
       actor: user,
     });
     // 403, not 401: the client sends every 401 to /login, and the session is fine.
-    return NextResponse.json({ error: 'Current password is incorrect' }, { status: 403 });
+    return NextResponse.json(
+      { error: user.passwordHash ? 'Current password is incorrect' : 'That Jellyfin password is incorrect' },
+      { status: 403 },
+    );
   }
   for (const name of backoffNames) await clearUsernameBackoff(name);
 

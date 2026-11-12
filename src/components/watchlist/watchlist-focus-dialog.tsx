@@ -60,7 +60,8 @@ export function WatchlistFocusDialog<T extends FocusItem>({
 
   return (
     <Dialog open={target !== null} onOpenChange={(open) => { if (!open && !removing) setTarget(null); }}>
-      <DialogContent>
+      {/* Opened from a notification, nothing was tapped in it yet: no focus ring on its first button. */}
+      <DialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>Now in your library</DialogTitle>
           <DialogDescription>

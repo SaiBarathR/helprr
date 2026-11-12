@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
-import { StepUpFields, useStepUp } from '@/components/settings/step-up-fields';
+import { StepUpFields, StepUpRefusal, isStepUpRefusal, useStepUp } from '@/components/settings/step-up-fields';
 import { findServiceBySlug, type ServiceConfigType } from '@/lib/settings/service-config';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 import { invalidateInstances } from '@/lib/query-invalidation';
@@ -232,6 +232,8 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   // Jellyfin's external URL builds the "Open in Jellyfin" links, so only an
   // admin sets it (the server refuses a member's change).
   const externalUrlLocked = isJellyfin && !isAdminUser;
+  // The same for its address and key: a member sees them, read-only, from the start.
+  const jellyfinLocked = isJellyfin && !isAdminUser;
   const secretNoun = isQbt ? 'password' : 'API key';
 
   // Seed the form from the matching connection. Re-seeds when the edited entity
@@ -375,7 +377,8 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        if (data && typeof data === 'object') stepUp.onRefused(data);
+        // A refused password or code shows under its fields, not in a toast too.
+        if (data && typeof data === 'object' && stepUp.onRefused(data, res.status)) throw new StepUpRefusal(data.error);
         throw new ApiError(res.status, data?.error || 'Failed to save connection');
       }
       return res.json().catch(() => null);
@@ -393,7 +396,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
       }
     },
     onError: (err) => {
-      if (err instanceof ApiError && err.status === 401) return;
+      if (isStepUpRefusal(err) || (err instanceof ApiError && err.status === 401)) return;
       toast.error(err instanceof Error ? err.message : 'Failed to save connection');
     },
   });
@@ -629,7 +632,8 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
                 setUsername('');
               }
             }}
-            className="h-10"
+            readOnly={jellyfinLocked}
+            className={jellyfinLocked ? 'h-10 cursor-default text-muted-foreground' : 'h-10'}
             aria-invalid={fieldErrors.url ? true : undefined}
             aria-describedby={fieldErrors.url ? 'conn-url-error' : config.type === 'TMDB' ? undefined : 'conn-url-help'}
           />
@@ -692,6 +696,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
                 type="password"
                 placeholder={isJellyfin ? 'Enter Jellyfin API key' : 'Enter API key'}
                 value={apiKey}
+                readOnly={jellyfinLocked}
                 onChange={(e) => {
                   setApiKey(e.target.value);
                   clearFieldError('apiKey');
@@ -701,7 +706,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
                     setUsername('');
                   }
                 }}
-                className="h-10"
+                className={jellyfinLocked ? 'h-10 cursor-default text-muted-foreground' : 'h-10'}
                 aria-invalid={fieldErrors.apiKey ? true : undefined}
                 aria-describedby={fieldErrors.apiKey ? 'conn-apiKey-error' : savedKeyKept ? 'conn-apiKey-note conn-apiKey-help' : 'conn-apiKey-help'}
               />
@@ -743,7 +748,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
                   </SelectContent>
                 </Select>
                 <FieldError id="conn-jellyfinUser-error" message={fieldErrors.jellyfinUser} />
-                {jellyfinValidated ? (
+                {jellyfinLocked ? null : jellyfinValidated ? (
                   <p className="text-xs text-green-500">Admin API key validated — ready to save</p>
                 ) : apiKey ? (
                   <p className="text-xs text-muted-foreground">
@@ -817,7 +822,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
           </div>
         )}
 
-        {showStepUp && (
+        {(showStepUp || jellyfinLocked) && (
           <div className="px-4 py-3 border-b border-foreground/[0.06]">
             {isAdminUser ? (
               <StepUpFields

@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
-import { ownerScope } from '@/lib/user-dto';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { toNotificationDeviceSummary } from '@/lib/notification-subscriptions';
+
+/**
+ * This page is your own devices, admins included. With everyone's in it (by
+ * device name only), an admin's "Revoke all" turned off every person's pushes
+ * and deleted their notification choices.
+ */
+function ownDevices(user: { id: string }): { userId: string } {
+  return { userId: user.id };
+}
 
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('settings.notifications');
@@ -12,7 +20,7 @@ async function getHandler(): Promise<NextResponse> {
 
   try {
     const rows = await prisma.pushSubscription.findMany({
-      where: { revokedAt: null, ...ownerScope(auth.user) },
+      where: { revokedAt: null, ...ownDevices(auth.user) },
       orderBy: { createdAt: 'asc' },
       select: {
         id: true,
@@ -43,7 +51,7 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
 
     if (body.all === true) {
       const targets = await prisma.pushSubscription.findMany({
-        where: { revokedAt: null, ...ownerScope(auth.user) },
+        where: { revokedAt: null, ...ownDevices(auth.user) },
         select: { id: true },
       });
       const ids = targets.map((t) => t.id);
@@ -63,7 +71,7 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
     }
 
     const existing = await prisma.pushSubscription.findFirst({
-      where: { id: body.id, ...ownerScope(auth.user) },
+      where: { id: body.id, ...ownDevices(auth.user) },
       select: { id: true, revokedAt: true },
     });
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });

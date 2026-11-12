@@ -128,6 +128,9 @@ export function subscribeToSessionEnd(onSessionEnd: () => void): () => void {
   };
 }
 
+/** Set just before leaving for Login after deleting your own account; Login reads it once. */
+export const ACCOUNT_DELETED_KEY = 'helprr:account-deleted';
+
 /**
  * This browser's own session has ended: Account sign-out, or revoking the
  * current session from Sessions. Tells other tabs, then hands over to

@@ -158,9 +158,10 @@ function SessionGroupSection({ group, loadedAt, busy, onRename, onRevoke }: Sess
         >
           <div className="grouped-row gap-2 py-1.5 pr-2">
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium truncate">
-                {displayName(s)}
-                {s.isCurrent && <span className="text-primary font-normal"> · This device</span>}
+              {/* The device name gives way, so "This device" is never cut on a narrow phone. */}
+              <div className="flex min-w-0 text-sm font-medium">
+                <span className="truncate">{displayName(s)}</span>
+                {s.isCurrent && <span className="shrink-0 whitespace-pre text-primary font-normal"> · This device</span>}
               </div>
               {/* Two lines, so a phone shows the sign-in date instead of cutting it off. */}
               <div className="text-xs text-muted-foreground mt-0.5 truncate">
@@ -227,6 +228,8 @@ export default function SessionsPage() {
   } = useQuery({
     queryKey: queryKeys.sessions(),
     queryFn: jsonFetcher<{ groups: SessionGroup[] }>('/api/sessions'),
+    // "Seen 24s ago" and new sign-ins stay true while the page is open.
+    refetchInterval: 30_000,
   });
   const groups = data?.groups ?? null;
   const error = isError

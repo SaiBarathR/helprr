@@ -44,6 +44,20 @@ vi.mock('@/components/ui/sheet', () => ({
   SheetTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
   SheetFooter: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
+// On a phone the filters are the bottom drawer, reduced the same way.
+vi.mock('@/components/ui/drawer', () => {
+  const Pass = ({ children }: { children?: React.ReactNode }) => <>{children}</>;
+  return {
+    Drawer: ({ open, children }: { open: boolean; children: React.ReactNode }) => (open ? <div role="dialog" aria-label="Advanced Filters">{children}</div> : null),
+    DrawerTrigger: Pass,
+    DrawerClose: Pass,
+    DrawerContent: Pass,
+    DrawerHeader: Pass,
+    DrawerTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
+    DrawerDescription: Pass,
+    DrawerFooter: Pass,
+  };
+});
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children, ...props }: { children: React.ReactNode; 'aria-label'?: string }) => <button type="button" aria-label={props['aria-label']}>{children}</button>,

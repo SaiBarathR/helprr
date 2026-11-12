@@ -38,7 +38,7 @@ vi.mock('@/lib/api-logger', () => ({
   withApiLogging: (handler: unknown) => handler,
 }));
 
-import { GET } from '@/app/api/notifications/subscriptions/route';
+import { DELETE as DELETE_DEVICES, GET } from '@/app/api/notifications/subscriptions/route';
 import {
   DELETE as DELETE_PUSH_SUBSCRIPTION,
   POST,
@@ -180,5 +180,27 @@ describe('push subscription safe response contract', () => {
     expect(await response.json()).toEqual({
       error: 'Failed to remove push subscription',
     });
+  });
+});
+
+describe('the Devices list is your own, admins included', () => {
+  beforeEach(() => {
+    mocks.requireUserCapability.mockResolvedValue({ ok: true, user: { id: 'admin-1', role: 'admin' } });
+  });
+
+  it('lists only the admin\'s own devices', async () => {
+    await GET();
+    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { revokedAt: null, userId: 'admin-1' } }));
+  });
+
+  it('"Revoke all" from an admin reaches only their own devices', async () => {
+    mocks.findMany.mockResolvedValue([]);
+    const res = await DELETE_DEVICES(new NextRequest('http://localhost/api/notifications/subscriptions', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ all: true }),
+    }));
+    expect(await res.json()).toEqual({ revoked: 0 });
+    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { revokedAt: null, userId: 'admin-1' } }));
   });
 });

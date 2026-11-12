@@ -37,7 +37,8 @@ export function CategoryRow({
         <span className={cn('flex h-8 w-8 items-center justify-center rounded-md shrink-0', iconBg, iconColor)}>
           <Icon className="h-[18px] w-[18px]" />
         </span>
-        <div className="min-w-0 flex flex-col items-start">
+        {/* Stretched, not items-start: a span only as wide as its text never truncates, and ran under the chevron. */}
+        <div className="min-w-0 flex-1 flex flex-col">
           <span className="text-[15px] font-medium truncate">{label}</span>
           {subtitle && (
             <span className="text-xs text-muted-foreground truncate">{subtitle}</span>

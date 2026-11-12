@@ -187,6 +187,88 @@ describe('music alert access', () => {
   });
 });
 
+describe('an album already out', () => {
+  const post = (handler: (r: NextRequest) => Promise<Response>, path: string, body: unknown) =>
+    handler(new NextRequest(`http://helprr.test${path}`, { method: 'POST', body: JSON.stringify(body) }));
+  const releasedDraft = { ...albumDraft, releaseDate: lidarrDate(-130) };
+
+  it('is flagged by the resolver, while an album ahead and an artist alert are not', async () => {
+    client.getAlbumById.mockResolvedValueOnce(album(7, lidarrDate(-130)));
+    expect(await resolveAlertOccurrencesResult(alertRow('album', '7'), createResolverContext()))
+      .toEqual({ candidates: [], resolved: true, albumReleased: true });
+
+    client.getAlbumById.mockResolvedValueOnce(album(7, lidarrDate(10)));
+    expect(await resolveAlertOccurrencesResult(alertRow('album', '7'), createResolverContext())).not.toHaveProperty('albumReleased');
+
+    client.getAlbums.mockResolvedValueOnce([album(1, lidarrDate(-30))]);
+    expect(await resolveAlertOccurrencesResult(alertRow('artist', '9'), createResolverContext())).not.toHaveProperty('albumReleased');
+  });
+
+  it('refuses a release reminder with a clear message and saves nothing', async () => {
+    mocks.inPost = true;
+    client.getAlbumById.mockResolvedValue(album(7, lidarrDate(-130)));
+
+    const res = await post(createAlert, '/api/scheduled-alerts', { draft: releasedDraft, scheduleMode: 'release_relative', releaseTypes: ['album'], offsetMinutes: 60 });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/already out.*custom date/i);
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('still takes a custom date', async () => {
+    mocks.inPost = true;
+    const absoluteNotifyAt = new Date(Date.now() + DAY).toISOString();
+    // The stub transaction stops after the checks pass.
+    await expect(post(createAlert, '/api/scheduled-alerts', { draft: releasedDraft, scheduleMode: 'absolute', absoluteNotifyAt })).rejects.toThrow('stop after the checks');
+    expect(mocks.create).toHaveBeenCalledOnce();
+  });
+
+  it('opens on a custom date from tomorrow in the preview', async () => {
+    client.getAlbumById.mockResolvedValue(album(7, lidarrDate(-130)));
+    const res = await post(previewAlert, '/api/scheduled-alerts/preview', { draft: releasedDraft });
+    const { defaults } = await res.json();
+    expect(defaults).toMatchObject({ scope: 'album', scheduleMode: 'absolute' });
+    expect(new Date(defaults.absoluteNotifyAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('is out from 9:00 on its release day in the app time zone, for the preview and the save alike', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const today = (hour: number) => vi.setSystemTime(new Date(`2026-11-13T${String(hour).padStart(2, '0')}:00:00Z`));
+      const releaseDay = { ...albumDraft, releaseDate: '2026-11-13T00:00:00Z' };
+      client.getAlbumById.mockResolvedValue(album(7, '2026-11-13T00:00:00Z'));
+
+      today(8);
+      const before = await (await post(previewAlert, '/api/scheduled-alerts/preview', { draft: releaseDay })).json();
+      expect(before.defaults.scheduleMode).toBe('release_relative');
+      expect(before).not.toHaveProperty('albumReleased');
+
+      today(14);
+      const after = await (await post(previewAlert, '/api/scheduled-alerts/preview', { draft: releaseDay })).json();
+      expect(after).toMatchObject({ albumReleased: true, defaults: { scheduleMode: 'absolute' } });
+      mocks.inPost = true;
+      const res = await post(createAlert, '/api/scheduled-alerts', { draft: releaseDay, scheduleMode: 'release_relative', releaseTypes: ['album'], offsetMinutes: 0 });
+      expect(res.status).toBe(400);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refuses an edit that turns its custom reminder into a release reminder', async () => {
+    const existing = { ...alertRow('album', '7'), id: 'a1', userId: 'u1', scheduleMode: 'absolute', status: 'active', cancelledAt: null, createdAt: new Date(), updatedAt: new Date() };
+    mocks.alertFindFirst.mockResolvedValue(existing);
+    client.getAlbumById.mockResolvedValue(album(7, lidarrDate(-130)));
+
+    const res = await editAlert(
+      new NextRequest('http://helprr.test/api/scheduled-alerts/a1', { method: 'PATCH', body: JSON.stringify({ scheduleMode: 'release_relative', releaseTypes: ['album'] }) }),
+      { params: Promise.resolve({ id: 'a1' }) },
+    );
+
+    expect(res.status).toBe(400);
+    expect(mocks.alertUpdate).not.toHaveBeenCalled();
+  });
+});
+
 describe('importing music alerts', () => {
   it('keeps Lidarr album and artist alerts apart and skips a Lidarr alert that is not music', () => {
     const skipped: string[] = [];

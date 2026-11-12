@@ -4,7 +4,6 @@ import { memo } from 'react';
 import { Layers, Check, Eye } from 'lucide-react';
 import type { CollectionSummary } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
-import { cn } from '@/lib/utils';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
@@ -77,7 +76,7 @@ export const CollectionCard = memo(function CollectionCard({
             <p className="mt-0.5 text-[10px] text-white/75 truncate">
               {collection.movieCount} {collection.movieCount === 1 ? 'film' : 'films'}
               {multiInstance && collection.instanceLabel && (
-                <span className={cn('font-medium text-[var(--hpr-amber)]')}> · {collection.instanceLabel}</span>
+                <span className="hpr-scrim-accent font-medium"> · {collection.instanceLabel}</span>
               )}
             </p>
           </div>

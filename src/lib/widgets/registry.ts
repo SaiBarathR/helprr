@@ -248,8 +248,10 @@ const DEFAULT_MEMBER_POSITIONS: DefaultPosition[] = [
     mobileX: 0, mobileY: 9, mobileColSpan: 4, mobileRowSpan: 3, layoutOverride: 'carousel' },
   { id: 'm-upcoming-1', widgetId: 'upcoming', x: 0, y: 8, colSpan: 12, rowSpan: 3,
     mobileX: 0, mobileY: 12, mobileColSpan: 4, mobileRowSpan: 3, layoutOverride: 'carousel' },
+  // Two rows on a phone fit the list, not a carousel card (the widget would
+  // show the list there anyway).
   { id: 'm-today-calendar-1', widgetId: 'today-calendar', x: 0, y: 11, colSpan: 6, rowSpan: 3,
-    mobileX: 0, mobileY: 15, mobileColSpan: 4, mobileRowSpan: 2, layoutOverride: 'carousel' },
+    mobileX: 0, mobileY: 15, mobileColSpan: 4, mobileRowSpan: 2, layoutOverride: 'carousel', mobileLayoutOverride: 'list' },
   { id: 'm-for-you-1', widgetId: 'for-you', x: 6, y: 11, colSpan: 6, rowSpan: 3,
     mobileX: 0, mobileY: 17, mobileColSpan: 4, mobileRowSpan: 3, layoutOverride: 'carousel' },
   { id: 'm-active-downloads-1', widgetId: 'active-downloads', x: 0, y: 14, colSpan: 12, rowSpan: 2,

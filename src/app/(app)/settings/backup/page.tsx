@@ -59,7 +59,8 @@ export default function BackupSettingsPage() {
             <span className="flex h-8 w-8 items-center justify-center rounded-md shrink-0 bg-yellow-500/10 text-yellow-400">
               <DownloadIcon className="h-[18px] w-[18px]" />
             </span>
-            <div className="flex flex-col items-start min-w-0">
+            {/* Stretched, not items-start: a line sized to its text never truncates. */}
+            <div className="flex flex-col min-w-0">
               <span className="text-[15px] font-medium truncate">Export settings</span>
               <span className="text-xs text-muted-foreground truncate">Save preferences and service config to JSON</span>
             </div>
@@ -75,7 +76,7 @@ export default function BackupSettingsPage() {
             <span className="flex h-8 w-8 items-center justify-center rounded-md shrink-0 bg-sky-500/10 text-sky-400">
               <Upload className="h-[18px] w-[18px]" />
             </span>
-            <div className="flex flex-col items-start min-w-0">
+            <div className="flex flex-col min-w-0">
               <span className="text-[15px] font-medium truncate">Import settings</span>
               <span className="text-xs text-muted-foreground truncate">Restore from a previously exported file</span>
             </div>

@@ -35,6 +35,8 @@ export function defaultScopeForDraft(draft: Pick<ScheduledAlertDraft, 'mediaType
   return 'series';
 }
 
+export const ALBUM_RELEASED_ERROR = 'This album is already out, so a release reminder would never go off. Pick a custom date instead.';
+
 /**
  * A release reminder when a date is known. Music always: an artist's next album
  * has no date yet, and a reminder catches an album's date once Lidarr has one.

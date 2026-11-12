@@ -23,7 +23,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Helprr',
   description: 'Media management dashboard for Sonarr, Radarr & qBittorrent',
-  manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
@@ -58,6 +57,12 @@ export default async function RootLayout({
   const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Not through `metadata.manifest`: Next only sends cookies with it on
+            Vercel previews, and behind a sign-in proxy that guards every path a
+            manifest fetched without them gets the proxy's login page. */}
+        <link rel="manifest" href="/manifest.json" crossOrigin="use-credentials" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >

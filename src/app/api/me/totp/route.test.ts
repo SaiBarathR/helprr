@@ -263,7 +263,8 @@ describe('DELETE /api/me/totp', () => {
     mocks.verifyUserPassword.mockResolvedValue(false);
     const response = await DELETE(req('DELETE', { currentPassword: 'wrong password here', code: code() }));
     expect(response.status).toBe(403);
-    expect((await response.json()).field).toBeUndefined();
+    // Marked as the password's, so a confirm form shows it under that field.
+    expect((await response.json()).field).toBe('currentPassword');
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
 

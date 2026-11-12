@@ -8,7 +8,7 @@
  */
 
 import type * as React from 'react';
-import { darkenToContrast, generatePaletteFromBase, relativeLuminance, scaleColor, type PaletteTokens } from './color-utils';
+import { blendOver, contrastRatio, darkenToContrast, generatePaletteFromBase, relativeLuminance, scaleColor, type PaletteTokens } from './color-utils';
 
 export type DashboardAccent = string;
 export type DashboardPalette = string;
@@ -216,6 +216,7 @@ const GLASS_CHART_COLORS: Record<GlassScheme, Record<string, string>> = {
     '--hpr-rose': '#CD0207',
     '--hpr-blue': '#0261CD',
     '--hpr-purple': '#9637C3',
+    '--hpr-purple-mark': '#9637C3',
     '--hpr-violet': '#5856D6',
     '--hpr-cyan': '#016D96',
     '--hpr-pink': '#CC013B',
@@ -225,11 +226,14 @@ const GLASS_CHART_COLORS: Record<GlassScheme, Record<string, string>> = {
     '--hpr-rose': '#FF453A',
     '--hpr-blue': '#0A84FF',
     '--hpr-purple': '#BF5AF2',
+    '--hpr-purple-mark': '#BF5AF2',
     '--hpr-violet': '#5E5CE6',
     '--hpr-cyan': '#64D2FF',
     '--hpr-pink': '#FF375F',
   },
 };
+
+const HEX6 = /^#[0-9a-f]{6}$/i;
 
 /** The fixed category colours (media types, chart series, badges), as the
  *  globals.css :root sets them. A light custom palette darkens them below. */
@@ -366,6 +370,33 @@ function darkenCategoryColor(color: string, surfaces: string[]): string {
   return floor;
 }
 
+/**
+ * The purple of a chart line beside the blue and pink ones (Library growth's
+ * Series). The three share a lightness, and purple and pink blur together
+ * (Cream, darkened for text: CIEDE2000 9.9; the dark palettes: 14.2), so the
+ * line steps a lightness away from both while reading 3:1 on every surface:
+ * - a light page: darkened only to 3:1, lighter than the text purple (Cream
+ *   #9976a9, 21 or more from both);
+ * - a dark page: dimmed to 70% (#836590, 20.5 from pink) where that still
+ *   reads 3:1, else half white (#ddc8e7, 20.6), whiter where a lighter page
+ *   needs it for 3:1.
+ */
+function purpleMark(textPurple: string, surfaces: string[], light: boolean): string {
+  const purple = CATEGORY_COLORS['--hpr-purple'];
+  if (light) {
+    const mark = darkenToContrast(purple, surfaces, 3);
+    return relativeLuminance(mark) > relativeLuminance(textPurple) ? mark : textPurple;
+  }
+  const reads = (color: string) => surfaces.every((s) => !HEX6.test(s) || contrastRatio(color, s) >= 3);
+  const dimmed = scaleColor(purple, 0.7);
+  if (reads(dimmed)) return dimmed;
+  for (let share = 0.5; share > 0; share -= 0.01) {
+    const lighter = blendOver('#ffffff', purple, share);
+    if (reads(lighter)) return lighter;
+  }
+  return '#ffffff';
+}
+
 /** Resolve theme prefs into concrete token values (palette + per-tone overrides). */
 function resolveThemeTokens(prefs: DashboardThemePrefs) {
   const chosenAccent = prefs.accent in ACCENT_COLORS
@@ -413,12 +444,15 @@ export function buildDashboardThemeStyle(prefs: DashboardThemePrefs): React.CSSP
   // dark surfaces a light palette still has (globals.css, .hpr-on-dark). Light
   // here is the page alone, as data-scheme decides it, so that reset always
   // applies with it; a mid-tone page with dark text keeps the values.
-  const categoryColors = schemeFromBackground(palette.inkSoft) === 'light'
-    ? Object.fromEntries(Object.entries(CATEGORY_COLORS).map(([key, color]) => [
-        key,
-        darkenCategoryColor(color, [palette.ink, palette.inkSoft, palette.surface, palette.surfaceHi]),
-      ]))
+  const surfaces = [palette.ink, palette.inkSoft, palette.surface, palette.surfaceHi];
+  const light = schemeFromBackground(palette.inkSoft) === 'light';
+  const darkened: Record<string, string> = light
+    ? Object.fromEntries(Object.entries(CATEGORY_COLORS).map(([key, color]) => [key, darkenCategoryColor(color, surfaces)]))
     : {};
+  const categoryColors = {
+    ...darkened,
+    '--hpr-purple-mark': purpleMark(darkened['--hpr-purple'] ?? CATEGORY_COLORS['--hpr-purple'], surfaces, light),
+  };
   // The active tab's label (phone tabs, More, sidebar): with the cyan accent
   // only the icon takes it and the label keeps the text colour, as under
   // Liquid Glass. Every other accent tints the label. A var, so the pre-paint

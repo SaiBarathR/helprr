@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { ChevronRight, Copy, Download, Loader2 } from 'lucide-react';
+import { Check, ChevronRight, Copy, Download, Loader2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -100,6 +100,17 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
   const [signOutOthers, setSignOutOthers] = useState(true);
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // "Copied" shows on the button itself: a toast would sit over Copy and Download.
+  const [copied, setCopied] = useState<'codes' | 'key' | null>(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
+  // The error is under the fields at the end of a scrolling body: bring it into view.
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [error]);
 
   function reset() {
     setPassword('');
@@ -140,10 +151,12 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
 
   const pending = start.isPending || confirm.isPending;
 
-  async function copy(text: string, what: string) {
+  async function copy(text: string, what: 'codes' | 'key') {
     try {
       await navigator.clipboard.writeText(text);
-      toast.success(`${what} copied`);
+      setCopied(what);
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => setCopied(null), 2000);
     } catch {
       toast.error('Copy failed — select the text and copy it');
     }
@@ -195,9 +208,9 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
                   {recoveryCodes.map((c) => <li key={c} className="text-center">{c}</li>)}
                 </ul>
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" className="flex-1" onClick={() => copy(recoveryCodes.join('\n'), 'Codes')}>
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copy
+                  <Button type="button" variant="outline" className="flex-1" onClick={() => copy(recoveryCodes.join('\n'), 'codes')}>
+                    {copied === 'codes' ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+                    <span aria-live="polite">{copied === 'codes' ? 'Copied' : 'Copy'}</span>
                   </Button>
                   <Button
                     type="button"
@@ -234,8 +247,14 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
                       onFocus={(e) => e.currentTarget.select()}
                       className="font-mono text-xs"
                     />
-                    <Button type="button" variant="outline" size="icon" aria-label="Copy key" onClick={() => copy(setup.secret, 'Key')}>
-                      <Copy className="h-4 w-4" />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      aria-label={copied === 'key' ? 'Key copied' : 'Copy key'}
+                      onClick={() => copy(setup.secret, 'key')}
+                    >
+                      {copied === 'key' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                     </Button>
                   </div>
                 </div>
@@ -275,7 +294,7 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
                 />
               </div>
             )}
-            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+            {error && <p ref={errorRef} role="alert" className="text-sm text-destructive">{error}</p>}
           </div>
           <DrawerFooter>
             <Button
