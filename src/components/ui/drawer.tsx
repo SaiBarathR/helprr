@@ -77,24 +77,114 @@ function fitAboveKeyboard(node: HTMLElement): () => void {
   const schedule = () => {
     if (!frame) frame = requestAnimationFrame(place)
   }
-  viewport.addEventListener("resize", schedule)
+  // iOS can still be mid-way through the keyboard's move when it reports a
+  // size; look again once it has settled.
+  let settle: number[] = []
+  const onResize = () => {
+    schedule()
+    settle.forEach((timer) => window.clearTimeout(timer))
+    settle = [150, 400].map((ms) => window.setTimeout(schedule, ms))
+  }
+  viewport.addEventListener("resize", onResize)
   // iOS pans the visual viewport, or scrolls the page, to show a field the
   // keyboard would hide (also when an autocorrect suggestion is tapped).
   viewport.addEventListener("scroll", schedule)
-  window.addEventListener("resize", schedule)
+  window.addEventListener("resize", onResize)
   window.addEventListener("scroll", schedule)
   place()
   return () => {
-    viewport.removeEventListener("resize", schedule)
+    viewport.removeEventListener("resize", onResize)
     viewport.removeEventListener("scroll", schedule)
-    window.removeEventListener("resize", schedule)
+    window.removeEventListener("resize", onResize)
     window.removeEventListener("scroll", schedule)
+    settle.forEach((timer) => window.clearTimeout(timer))
     cancelAnimationFrame(frame)
     layout.remove()
   }
 }
 
-/** Scrolls the drawer's body so the field being typed in shows above the keyboard. */
+function isTextField(target: EventTarget | null): target is HTMLInputElement | HTMLTextAreaElement {
+  return (
+    target instanceof HTMLTextAreaElement ||
+    (target instanceof HTMLInputElement &&
+      !["checkbox", "radio", "button", "submit", "reset", "range", "color", "file"].includes(target.type))
+  )
+}
+
+function isIOS() {
+  return /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+}
+
+/**
+ * Stops iOS scrolling the page to show a field in a drawer; fitAboveKeyboard
+ * keeps the field in view instead. With the page scrolled under it, iOS drew
+ * the fixed drawer lower than it measured, by as much as it had scrolled, so
+ * the field and buttons ended up behind the keyboard. Only while a field in
+ * the drawer has focus does a scroll go back to where the page was then:
+ * opening and closing a drawer scrolls the page too (vaul holds it in place
+ * under the drawer in Safari) and must be left alone.
+ */
+function keepIosFromScrolling(node: HTMLElement): () => void {
+  if (!isIOS()) return () => {}
+  let pinned: { x: number; y: number } | null = null
+  let start: { x: number; y: number } | null = null
+  // Safari only scrolls to a field it thinks is off screen.
+  const hideFromSafari = (field: HTMLElement) => {
+    field.style.transform = "translateY(-2000px)"
+    requestAnimationFrame(() => {
+      field.style.transform = ""
+    })
+  }
+  const onTouchStart = (event: TouchEvent) => {
+    const touch = event.changedTouches[0]
+    start = touch ? { x: touch.clientX, y: touch.clientY } : null
+  }
+  const onTouchEnd = (event: TouchEvent) => {
+    const field = event.target
+    const touch = event.changedTouches[0]
+    if (!isTextField(field) || field === document.activeElement || !start || !touch) return
+    // A scroll that happens to end on a field is not a tap on it.
+    if (Math.abs(touch.clientX - start.x) > 10 || Math.abs(touch.clientY - start.y) > 10) return
+    // Tapped: focus it ourselves, hidden, so Safari has nothing to scroll to.
+    event.preventDefault()
+    hideFromSafari(field)
+    field.focus()
+  }
+  const onFocusIn = (event: FocusEvent) => {
+    if (!isTextField(event.target)) return
+    pinned ??= { x: window.scrollX, y: window.scrollY }
+    // Focus can also move another way, e.g. the keyboard's next and previous arrows.
+    hideFromSafari(event.target)
+  }
+  const onFocusOut = (event: FocusEvent) => {
+    if (!isTextField(event.relatedTarget) || !node.contains(event.relatedTarget)) pinned = null
+  }
+  const onScroll = () => {
+    // A drawer closing with a field still focused lets go at once: vaul
+    // scrolls the page back to where it was as the close starts.
+    const field = document.activeElement
+    if (node.getAttribute("data-state") !== "open" || !isTextField(field) || !node.contains(field)) pinned = null
+    if (pinned && (window.scrollX !== pinned.x || window.scrollY !== pinned.y)) window.scrollTo(pinned.x, pinned.y)
+  }
+  node.addEventListener("touchstart", onTouchStart, { capture: true, passive: true })
+  node.addEventListener("touchend", onTouchEnd, { capture: true, passive: false })
+  node.addEventListener("focusin", onFocusIn, true)
+  node.addEventListener("focusout", onFocusOut, true)
+  window.addEventListener("scroll", onScroll)
+  return () => {
+    node.removeEventListener("touchstart", onTouchStart, true)
+    node.removeEventListener("touchend", onTouchEnd, true)
+    node.removeEventListener("focusin", onFocusIn, true)
+    node.removeEventListener("focusout", onFocusOut, true)
+    window.removeEventListener("scroll", onScroll)
+  }
+}
+
+/**
+ * Scrolls the drawer's body so the field being typed in sits near its top,
+ * with what follows it (the next field, the button that sends the form) in
+ * view above the keyboard rather than under it.
+ */
 function revealFocusedField(node: HTMLElement) {
   const field = document.activeElement
   if (!(field instanceof HTMLElement) || !node.contains(field)) return
@@ -102,10 +192,8 @@ function revealFocusedField(node: HTMLElement) {
     if (box.scrollHeight <= box.clientHeight) continue
     const overflow = getComputedStyle(box).overflowY
     if (overflow !== "auto" && overflow !== "scroll") continue
-    const fieldRect = field.getBoundingClientRect()
-    const boxRect = box.getBoundingClientRect()
-    if (fieldRect.bottom > boxRect.bottom) box.scrollTop += fieldRect.bottom - boxRect.bottom + 12
-    else if (fieldRect.top < boxRect.top) box.scrollTop -= boxRect.top - fieldRect.top + 12
+    // Its label sits just above it.
+    box.scrollTop += field.getBoundingClientRect().top - box.getBoundingClientRect().top - 40
     return
   }
 }
@@ -161,9 +249,11 @@ function DrawerContent({
       if (typeof ref === "function") ref(node)
       else if (ref) ref.current = node
       if (!node) return
-      const stop = fitAboveKeyboard(node)
+      const stopFitting = fitAboveKeyboard(node)
+      const stopGuarding = keepIosFromScrolling(node)
       return () => {
-        stop()
+        stopFitting()
+        stopGuarding()
         if (typeof ref === "function") ref(null)
         else if (ref) ref.current = null
       }

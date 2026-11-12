@@ -104,3 +104,86 @@ describe('DrawerContent above the keyboard', () => {
     expect(panel.style.maxHeight).toBe('');
   });
 });
+
+describe('DrawerContent on iOS', () => {
+  const iPhone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)';
+
+  function openForm() {
+    render(
+      <Drawer open>
+        <DrawerContent size="content">
+          <DrawerTitle>Form</DrawerTitle>
+          <input aria-label="Name" />
+        </DrawerContent>
+      </Drawer>,
+    );
+    return screen.getByRole('textbox', { name: 'Name' });
+  }
+
+  function touch(target: Element, type: 'touchstart' | 'touchend', x = 10, y = 10) {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'changedTouches', { value: [{ clientX: x, clientY: y }] });
+    target.dispatchEvent(event);
+    return event;
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('focuses a tapped field itself, hidden for a frame, so Safari does not scroll the page to it', async () => {
+    vi.stubGlobal('navigator', { ...navigator, userAgent: iPhone });
+    const field = openForm();
+    touch(field, 'touchstart');
+    const end = touch(field, 'touchend');
+    expect(end.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(field);
+    expect(field.style.transform).toBe('translateY(-2000px)');
+    await waitFor(() => expect(field.style.transform).toBe(''));
+  });
+
+  it('leaves a scroll that ends on a field alone', () => {
+    vi.stubGlobal('navigator', { ...navigator, userAgent: iPhone });
+    const field = openForm();
+    touch(field, 'touchstart', 10, 10);
+    expect(touch(field, 'touchend', 10, 80).defaultPrevented).toBe(false);
+  });
+
+  it('while a field in it has focus, puts the page back where it was if iOS scrolls it', () => {
+    vi.stubGlobal('navigator', { ...navigator, userAgent: iPhone });
+    const scrollTo = vi.fn();
+    vi.stubGlobal('scrollTo', scrollTo);
+    Object.defineProperty(window, 'scrollY', { value: 400, configurable: true });
+    try {
+      const field = openForm();
+      touch(field, 'touchstart');
+      touch(field, 'touchend');
+      Object.defineProperty(window, 'scrollY', { value: 520, configurable: true });
+      window.dispatchEvent(new Event('scroll'));
+      expect(scrollTo).toHaveBeenCalledWith(0, 400);
+    } finally {
+      Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+    }
+  });
+
+  // Opening and closing a drawer scrolls the page too, and the user may scroll it after.
+  it('leaves page scrolls alone while no field in it has focus', () => {
+    vi.stubGlobal('navigator', { ...navigator, userAgent: iPhone });
+    const scrollTo = vi.fn();
+    vi.stubGlobal('scrollTo', scrollTo);
+    try {
+      const field = openForm();
+      field.focus();
+      field.blur();
+      Object.defineProperty(window, 'scrollY', { value: 300, configurable: true });
+      window.dispatchEvent(new Event('scroll'));
+      expect(scrollTo).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+    }
+  });
+
+  it('does nothing outside iOS', () => {
+    const field = openForm();
+    touch(field, 'touchstart');
+    expect(touch(field, 'touchend').defaultPrevented).toBe(false);
+  });
+});
