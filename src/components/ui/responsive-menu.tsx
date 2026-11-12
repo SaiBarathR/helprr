@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check } from 'lucide-react';
 import Link from '@/components/ui/app-link';
 import {
@@ -70,6 +70,10 @@ export function ResponsiveMenu({ trigger, title, titleInDropdown, align = 'start
   };
   const close = closeOnPick ? () => setOpen(false) : null;
   const closeOnAction = actions ? () => setOpen(false) : null;
+  // Last used with the pointer: the dropdown then leaves focus where the click
+  // put it instead of handing it back to the trigger, a script focus Chrome
+  // matches with :focus-visible, so a mouse pick left a focus ring on it.
+  const usedWithPointer = useRef(false);
 
   if (isPhone) {
     return (
@@ -106,7 +110,17 @@ export function ResponsiveMenu({ trigger, title, titleInDropdown, align = 'start
   return (
     <DropdownMenu open={isOpen} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-      <DropdownMenuContent align={align} className={contentClassName}>
+      <DropdownMenuContent
+        align={align}
+        className={contentClassName}
+        onPointerDown={() => { usedWithPointer.current = true; }}
+        onPointerDownOutside={() => { usedWithPointer.current = true; }}
+        onKeyDown={() => { usedWithPointer.current = false; }}
+        onCloseAutoFocus={(event) => {
+          if (usedWithPointer.current) event.preventDefault();
+          usedWithPointer.current = false;
+        }}
+      >
         {titleInDropdown && (
           <>
             <DropdownMenuLabel>{title}</DropdownMenuLabel>

@@ -70,5 +70,8 @@ export function haptic(kind: HapticKind = 'light'): void {
     }
     return;
   }
+  // Chromium refuses (and logs) a vibration before the user's first tap on the
+  // page, e.g. a match that lands on a pick opened from a push.
+  if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
   navigator.vibrate?.(VIBRATE_PATTERNS[kind]);
 }

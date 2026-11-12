@@ -5,6 +5,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { parseReleaseTypes, isAlertScope, isScheduleMode, musicAlertForbidden, scopeFitsMediaType } from '@/lib/scheduled-alerts/helpers';
 import { resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
+import { ALBUM_RELEASED_ERROR } from '@/lib/scheduled-alerts/constants';
 import { announceNewAlbums, upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
 import { serializeAlert } from '@/lib/scheduled-alerts/serialize';
 import type { ScheduledAlertMetadata } from '@/lib/scheduled-alerts/types';
@@ -90,6 +91,11 @@ async function patchHandler(
   }
 
   const modeChanged = existing.scheduleMode !== nextScheduleMode;
+  // An album alert turned into a release reminder after the album came out would never go off.
+  if (modeChanged && nextScheduleMode === 'release_relative' && existing.scope === 'album') {
+    const { albumReleased } = await resolveAlertOccurrencesResult({ ...existing, scheduleMode: 'release_relative' });
+    if (albumReleased) return NextResponse.json({ error: ALBUM_RELEASED_ERROR }, { status: 400 });
+  }
 
   const alert = await prisma.$transaction(async (tx) => {
     const updated = await tx.scheduledAlert.update({ where: { id }, data });

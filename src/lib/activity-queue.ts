@@ -61,8 +61,8 @@ type QueueClient = {
 // notify, and old items would look "new" when they finally scroll onto page 1.
 // We page until we've collected totalRecords, with a safety cap on runaway queues.
 //
-// `includeUnknown` (Sonarr/Radarr) adds downloads the *arr tracks but could not
-// match to a series or movie — a torrent added by hand into its category. They
+// `includeUnknown` adds downloads the *arr tracks but could not match to a
+// series, movie or artist — a torrent added by hand into its category. They
 // wait on a manual import like any other blocked download, so they count in the
 // Activity badge and raise the same notifications, matching what the Activity
 // page lists. Without it they would be listed there but never counted or
@@ -90,7 +90,7 @@ export async function fetchAllQueueRecords(
   return { ...first, records, totalRecords: first.totalRecords };
 }
 
-type QueueRead = (client: QueueClient, includeUnknown: boolean) => Promise<{ records: QueueItem[]; totalRecords: number }>;
+type QueueRead = (client: QueueClient) => Promise<{ records: QueueItem[]; totalRecords: number }>;
 
 async function loadQueue(read: QueueRead): Promise<{ result: QueueResult; complete: boolean }> {
   // Tracks whether every configured instance answered. A partial result (an
@@ -106,12 +106,10 @@ async function loadQueue(read: QueueRead): Promise<{ result: QueueResult; comple
     clients: Array<{ connection: ServiceConnection; client: QueueClient }>,
     source: 'sonarr' | 'radarr' | 'lidarr',
   ) => {
-    // Sonarr and Radarr also track downloads they cannot match to a series or
-    // movie (a torrent added by hand into their category). Those wait on a
+    // Each arr also tracks downloads it cannot match to a series, movie or
+    // artist (a torrent added by hand into its category). Those wait on a
     // manual import, so Activity must list them — as each arr's own queue page
-    // does. Lidarr is left on its default view: the import page cannot act on
-    // its items.
-    const includeUnknown = source !== 'lidarr';
+    // does. The import page lets the user pick what they are.
     const perInstance = await Promise.all(
       clients.map(async ({ connection, client }) => {
         if ((failedInstances.get(connection.id) ?? 0) > Date.now()) {
@@ -119,7 +117,7 @@ async function loadQueue(read: QueueRead): Promise<{ result: QueueResult; comple
           return { records: [] as QueueItem[], totalRecords: 0 };
         }
         try {
-          const q = await read(client, includeUnknown);
+          const q = await read(client);
           failedInstances.delete(connection.id);
           return {
             records: q.records.map((record: QueueItem) => ({
@@ -198,7 +196,7 @@ async function getQueueCachedBy(view: string, read: QueueRead): Promise<QueueRes
 
 /** One page of every instance's queue (page N holds each instance's Nth page). */
 export function getQueueCached(page: number, pageSize: number): Promise<QueueResult> {
-  return getQueueCachedBy(`${page}:${pageSize}`, (client, includeUnknown) => client.getQueue(page, pageSize, includeUnknown));
+  return getQueueCachedBy(`${page}:${pageSize}`, (client) => client.getQueue(page, pageSize, true));
 }
 
 /**
@@ -206,8 +204,8 @@ export function getQueueCached(page: number, pageSize: number): Promise<QueueRes
  * queue: the Needs import tab must find one however far down the queue it sits.
  */
 export function getQueueNeedingImportCached(): Promise<QueueResult> {
-  return getQueueCachedBy('needs-import', async (client, includeUnknown) => {
-    const { records } = await fetchAllQueueRecords(client, includeUnknown);
+  return getQueueCachedBy('needs-import', async (client) => {
+    const { records } = await fetchAllQueueRecords(client, true);
     const needing = records.filter((record) => classifyQueueIssue(record.trackedDownloadState, record.trackedDownloadStatus) === 'import');
     return { records: needing, totalRecords: needing.length };
   });

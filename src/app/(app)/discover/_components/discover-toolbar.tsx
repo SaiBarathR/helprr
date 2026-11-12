@@ -135,7 +135,8 @@ export function DiscoverToolbar({
 
       <div className="mt-3 space-y-2">
         {/* <p className="text-[11px] font-medium text-muted-foreground">Sort</p> */}
-        <div ref={sortRowRef} data-scroll-restoration-key="discover-sort" className="rail-bleed flex items-center gap-2 overflow-x-auto scrollbar-hide">
+        {/* py-2 -my-2: room inside the scroller for the chips' 44px tap areas, which it would clip, without moving the row. */}
+        <div ref={sortRowRef} data-scroll-restoration-key="discover-sort" className="rail-bleed -my-2 flex items-center gap-2 overflow-x-auto py-2 scrollbar-hide">
           {searching && (
             <span id="discover-sort-hint" className="text-[11px] text-muted-foreground whitespace-nowrap">
               Clear the search to sort
@@ -152,7 +153,7 @@ export function DiscoverToolbar({
                 aria-pressed={active}
                 disabled={searching}
                 aria-describedby={searching ? 'discover-sort-hint' : undefined}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 disabled:opacity-50 ${
+                className={`relative touch-target-y px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 disabled:opacity-50 ${
                   active ? 'bg-primary/20 text-primary border border-primary/40' : 'bg-accent/40 text-muted-foreground'
                 }`}
               >

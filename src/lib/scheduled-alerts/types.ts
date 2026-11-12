@@ -86,4 +86,6 @@ export interface ResolveResult {
   resolved: boolean;
   /** Artist alerts only: every album ahead Lidarr knows of, for the "new album" announcement. */
   upcomingAlbums?: UpcomingAlbum[];
+  /** Album alerts only: the album is already out, so a release reminder on it can never go off. */
+  albumReleased?: true;
 }

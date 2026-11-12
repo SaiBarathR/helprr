@@ -17,7 +17,14 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body ?? '{}'));
     if (url === '/api/scheduled-alerts/preview') {
-      return Response.json({ defaults: { scheduleMode: 'release_relative', scope: 'album', releaseTypes: ['album'], offsetMinutes: 60, absoluteNotifyAt: null }, candidates: [] });
+      // The server opens an album already out on a custom date, from tomorrow.
+      const released = typeof body.draft?.releaseDate === 'string';
+      return Response.json({
+        defaults: released
+          ? { scheduleMode: 'absolute', scope: 'album', releaseTypes: ['album'], offsetMinutes: 60, absoluteNotifyAt: new Date(Date.now() + 86_400_000).toISOString() }
+          : { scheduleMode: 'release_relative', scope: 'album', releaseTypes: ['album'], offsetMinutes: 60, absoluteNotifyAt: null },
+        candidates: [],
+      });
     }
     saves.push({ url, method: init?.method ?? 'GET', body });
     return Response.json({ alert: {} });
@@ -63,5 +70,19 @@ describe('the scheduled alert dialog for music', () => {
     expect(saves[0].url).toBe('/api/scheduled-alerts/a1');
     expect(saves[0].body).not.toHaveProperty('scope');
     expect(saves[0].body).not.toHaveProperty('draft');
+  });
+
+  it('offers only a custom date for an album already out', async () => {
+    renderDialog({ draft: { ...albumDraft, releaseDate: '2026-07-01T00:00:00Z' } });
+    const release = screen.getByRole('button', { name: 'Release reminder' }) as HTMLButtonElement;
+    expect(release.disabled).toBe(true);
+    expect(screen.getByText('This album is already out, so only a custom date can remind you.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Custom date' }).getAttribute('aria-pressed')).toBe('true');
+
+    const user = userEvent.setup();
+    await screen.findByDisplayValue(/T\d\d:\d\d$/);
+    await user.click(screen.getByRole('button', { name: 'Save alert' }));
+    expect(saves).toHaveLength(1);
+    expect(saves[0].body).toMatchObject({ scheduleMode: 'absolute', scope: 'album' });
   });
 });

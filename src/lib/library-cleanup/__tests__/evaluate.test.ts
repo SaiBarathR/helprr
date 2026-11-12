@@ -50,6 +50,11 @@ describe('library cleanup rule evaluation', () => {
     expect(result.reasons).toContain('Last watched 200 days ago');
   });
 
+  it('says "today" rather than "0 days ago"', () => {
+    const result = evaluateTitle(facts({ added: ago(0.2).toISOString(), lastWatchedAt: ago(0.1) }), { ...rule, addedDays: 0, unwatchedDays: 0 }, 'keep', NOW);
+    expect(result.reasons).toEqual(['Added today', 'Last watched today']);
+  });
+
   it('needs the title to be added more than M days ago', () => {
     expect(evaluateTitle(facts({ added: ago(30).toISOString() }), rule, 'keep', NOW).qualifies).toBe(false);
     expect(evaluateTitle(facts({ added: null }), rule, 'keep', NOW).exclusions).toContain('Unknown added date');

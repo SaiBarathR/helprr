@@ -68,6 +68,12 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
+/** "Added today" rather than "Added 0 days ago". */
+function whenLabel(what: string, date: Date, now: number): string {
+  const days = daysAgo(date, now);
+  return days === 0 ? `${what} today` : `${what} ${plural(days, 'day')} ago`;
+}
+
 /**
  * The always-on exclusions, shared by the preview and the execute-time re-check.
  * Anything that cannot be confirmed safe is excluded (unknown dates, no match in
@@ -105,12 +111,12 @@ export function evaluateTitle(t: TitleFacts, rule: LibraryRule, keepTag: string,
     exclusions.push('Unknown added date');
     meets = false;
   } else if (now - added.getTime() > rule.addedDays * DAY_MS) {
-    reasons.push(`Added ${plural(daysAgo(added, now), 'day')} ago`);
+    reasons.push(whenLabel('Added', added, now));
   } else {
     meets = false;
   }
 
-  if (t.lastWatchedAt) reasons.push(`Last watched ${plural(daysAgo(t.lastWatchedAt, now), 'day')} ago`);
+  if (t.lastWatchedAt) reasons.push(whenLabel('Last watched', t.lastWatchedAt, now));
   else reasons.push('Never watched');
 
   if (rule.minSizeGb !== null) {

@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScheduledAlertSummary } from '@/components/scheduled-alerts/scheduled-alert-summary';
 import type { ScheduledAlertDraft, ReleaseKind } from '@/lib/scheduled-alerts/types';
-import { RELEASE_KIND_LABELS, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
+import { RELEASE_KIND_LABELS, albumAlreadyOut, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
 import { cn } from '@/lib/utils';
 import { useCan } from '@/components/permission-provider';
 
@@ -77,6 +77,8 @@ export function ScheduledAlertDialog({
   const [previewCount, setPreviewCount] = useState(0);
   const [titleValue, setTitleValue] = useState('');
 
+  // A release reminder on an album already out would never go off.
+  const albumOut = draft ? albumAlreadyOut(draft) : false;
   const releaseOptions =
     draft?.mediaType === 'movie'
       ? MOVIE_RELEASE_OPTIONS
@@ -115,6 +117,8 @@ export function ScheduledAlertDialog({
         setReleaseTypes(initialReleaseTypes ?? []);
         setOffsetMinutes(initialOffsetMinutes ?? 60);
         setAbsoluteValue(toDatetimeLocalValue(initialAbsoluteNotifyAt));
+      } else if (albumAlreadyOut(draft)) {
+        setScheduleMode('absolute');
       }
     }
   }
@@ -244,11 +248,11 @@ export function ScheduledAlertDialog({
               <div role="group" aria-label="Alert type" className="grid grid-cols-2 gap-1 p-1 rounded-md bg-muted/40">
                 <button
                   type="button"
-                  disabled={saving}
+                  disabled={saving || albumOut}
                   aria-pressed={scheduleMode === 'release_relative'}
                   onClick={() => setScheduleMode('release_relative')}
                   className={cn(
-                    'py-2 rounded text-xs font-medium transition-colors',
+                    'py-2 rounded text-xs font-medium transition-colors disabled:opacity-50',
                     scheduleMode === 'release_relative'
                       ? 'bg-background text-foreground shadow-sm'
                       : 'text-muted-foreground',
@@ -271,6 +275,11 @@ export function ScheduledAlertDialog({
                   Custom date
                 </button>
               </div>
+              {albumOut && (
+                <p className="text-[11px] text-muted-foreground">
+                  This album is already out, so only a custom date can remind you.
+                </p>
+              )}
             </div>
 
             {scheduleMode === 'absolute' ? (

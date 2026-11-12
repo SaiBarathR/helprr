@@ -5,6 +5,7 @@ vi.mock('axios', () => ({
   default: { create: mocks.create.mockImplementation(() => ({ get: mocks.get })) },
 }));
 
+import { LidarrClient } from '@/lib/lidarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
 import { SonarrClient } from '@/lib/sonarr-client';
 
@@ -29,5 +30,14 @@ describe('arr queue: downloads the arr could not match', () => {
     expect(paramsOfLastCall()).toMatchObject({ page: 1, pageSize: 50, includeUnknownMovieItems: true });
     await radarr.getQueue(1, 50);
     expect(paramsOfLastCall()).not.toHaveProperty('includeUnknownMovieItems');
+  });
+
+  it('asks Lidarr for them with includeUnknownArtistItems, and only on request', async () => {
+    const lidarr = new LidarrClient('http://lidarr.local', 'key');
+    await lidarr.getQueue(1, 50, true);
+    expect(mocks.get).toHaveBeenLastCalledWith('/api/v1/queue', expect.anything());
+    expect(paramsOfLastCall()).toMatchObject({ page: 1, pageSize: 50, includeArtist: true, includeAlbum: true, includeUnknownArtistItems: true });
+    await lidarr.getQueue(1, 50);
+    expect(paramsOfLastCall()).not.toHaveProperty('includeUnknownArtistItems');
   });
 });

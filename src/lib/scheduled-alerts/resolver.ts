@@ -19,7 +19,7 @@ import type {
   ScheduledAlertMetadata,
   UpcomingAlbum,
 } from '@/lib/scheduled-alerts/types';
-import { defaultReleaseTypes, defaultScheduleMode, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
+import { albumAlreadyOut, defaultReleaseTypes, defaultScheduleMode, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
 import { getAppTimeZone, startOfLocalDay } from '@/lib/timezone';
 import type { MovieReleaseType } from '@/types';
 
@@ -188,8 +188,10 @@ export async function previewScheduledAlert(
     ? opts.releaseTypes
     : defaultReleaseTypes(scope, draft.mediaType);
   const offsetMinutes = opts.offsetMinutes ?? 60;
-  const scheduleMode = opts.scheduleMode ?? defaultScheduleMode(draft);
-  const absoluteDefault = defaultReminderLocal(draft.releaseDate, timeZone);
+  // An album already out opens on a custom date, from tomorrow: its release reminder could never go off.
+  const released = albumAlreadyOut(draft);
+  const scheduleMode = opts.scheduleMode ?? (released ? 'absolute' : defaultScheduleMode(draft));
+  const absoluteDefault = defaultReminderLocal(released ? null : draft.releaseDate, timeZone);
 
   const candidates =
     scheduleMode === 'absolute'
@@ -248,6 +250,7 @@ async function resolveReleaseCandidates(
   const endIso = ctx?.calendarEndIso ?? lookupWindow.end.toISOString();
   const out: OccurrenceCandidate[] = [];
   const upcomingAlbums: UpcomingAlbum[] = [];
+  let albumReleased = false;
 
   const outcomes: SourceOutcomes = {
     radarr: needsRadarr(draft) ? 'failure' : 'not_needed',
@@ -410,6 +413,7 @@ async function resolveReleaseCandidates(
           // Lidarr's release date is a calendar day (midnight UTC): remind on that local day.
           const releaseAt = dateOnlyAtLocalNine(album.releaseDate.slice(0, 10), opts.timeZone);
           if (!Number.isFinite(releaseAt.getTime())) continue;
+          if (opts.scope === 'album' && releaseAt <= notifyStart) albumReleased = true;
           const artistName = album.artist?.artistName ?? (opts.scope === 'album' ? draft.subtitle : draft.title);
           if (opts.scope === 'artist' && releaseAt > notifyStart) {
             upcomingAlbums.push({ key: `${connection.id}:${album.id}`, title: album.title, artistName: artistName || draft.title, releaseAt });
@@ -505,6 +509,7 @@ async function resolveReleaseCandidates(
     candidates: out,
     resolved: computeResolved(outcomes, draft, opts.releaseTypes, out),
     ...(opts.scope === 'artist' && needsLidarr(draft) ? { upcomingAlbums } : {}),
+    ...(albumReleased ? { albumReleased: true as const } : {}),
   };
 }
 

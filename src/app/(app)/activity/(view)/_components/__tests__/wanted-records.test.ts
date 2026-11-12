@@ -4,6 +4,7 @@ import {
   searchAllOutcome,
   searchAllRequests,
   searchAllTargets,
+  searchAllTitle,
   selectedSearchRequests,
   wantedDate,
   type WantedRecord,
@@ -153,5 +154,24 @@ describe('searchAllOutcome', () => {
     expect(searchAllOutcome('cutoff unmet', [sonarr, refused])).toEqual({ tone: 'error', message: 'Search started on 1 of 2 instances' });
     expect(searchAllOutcome('missing', [refused, refused])).toEqual({ tone: 'error', message: 'Search failed' });
     expect(searchAllOutcome('missing', [radarr(0, 0, 0), refused])).toEqual({ tone: 'error', message: 'No released films are missing. Search failed on 1 of 2 instances.' });
+  });
+});
+
+describe('searchAllTitle', () => {
+  const base = { listName: 'missing', totalRecords: 7, notReleased: 5, allLoaded: true, skipsUnreleased: true };
+
+  it('counts only what is searched when Radarr skips the films not out yet', () => {
+    expect(searchAllTitle(base)).toBe('Search for the 2 missing items that are out?');
+    expect(searchAllTitle({ ...base, notReleased: 6 })).toBe('Search for the 1 missing item that is out?');
+    expect(searchAllTitle({ ...base, notReleased: 0 })).toBe('Search for all 7 missing items?');
+  });
+
+  it('gives no number while later pages could hold more films not out yet', () => {
+    expect(searchAllTitle({ ...base, allLoaded: false })).toBe('Search for every missing item that is out?');
+  });
+
+  it('counts the whole list when nothing is skipped', () => {
+    expect(searchAllTitle({ ...base, listName: 'cutoff unmet', skipsUnreleased: false, allLoaded: false }))
+      .toBe('Search for all 7 cutoff unmet items?');
   });
 });

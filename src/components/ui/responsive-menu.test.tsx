@@ -43,6 +43,27 @@ function SortMenu() {
 }
 
 describe('ResponsiveMenu', () => {
+  it('hands focus back to its trigger after keyboard use only', async () => {
+    viewport.phone = false;
+    // A modal dropdown sets pointer-events: none on the page; the click outside is still delivered.
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(<SortMenu />);
+    const trigger = screen.getByRole('button', { name: 'Sort' });
+
+    await user.click(trigger);
+    await user.click(await screen.findByRole('menuitemcheckbox', { name: 'year' }));
+    await user.click(document.body);
+    expect(screen.queryByRole('menu')).toBeNull();
+    // Refocusing it by script would leave a :focus-visible ring after a mouse pick.
+    expect(document.activeElement).not.toBe(trigger);
+
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    await screen.findByRole('menu');
+    await user.keyboard('{Escape}');
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it('is a titled bottom sheet below md, staying open while a choice is picked', async () => {
     viewport.phone = true;
     render(<SortMenu />);

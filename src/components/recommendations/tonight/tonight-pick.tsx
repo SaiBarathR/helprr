@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ExternalLink, Film, Link2, Loader2, Play, Tv, X } from 'lucide-react';
@@ -20,6 +20,8 @@ export const TONIGHT_POLL_MS = 2_000;
 /** localStorage: the last pick this device opened, so Random can offer the way back. */
 export const TONIGHT_LAST_KEY = 'helprr:tonight:last';
 
+const subscribeToNothing = () => () => {};
+
 function isGone(error: unknown): boolean {
   return error instanceof ApiError && (error.status === 404 || error.status === 403);
 }
@@ -36,13 +38,14 @@ function Participants({ view }: { view: TonightView }) {
         return (
           <li
             key={p.id}
-            className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-xs ${p.joined
+            // Long names shrink to an ellipsis before the row scrolls.
+            className={`inline-flex min-w-16 max-w-28 items-center justify-center gap-1 sm:max-w-40 whitespace-nowrap rounded-full px-2.5 py-1 text-xs ${p.joined
               ? 'border border-primary/40 bg-primary/15 text-primary'
               : 'bg-accent/40 text-muted-foreground'
               }`}
           >
-            {done && <Check className="h-3 w-3" aria-hidden />}
-            <span>{p.name}</span>
+            {done && <Check className="h-3 w-3 shrink-0" aria-hidden />}
+            <span className="min-w-0 truncate">{p.name}</span>
             <span className="sr-only">
               {p.joined ? `, ${p.voted} of ${view.titles.length} voted` : ', not here yet'}
             </span>
@@ -121,6 +124,7 @@ function TitlePoster({ title, className }: { title: TonightTitle; className: str
  */
 export function TonightPick({ id, onClose, onOpenPick }: { id: string; onClose: () => void; onOpenPick: (id: string) => void }) {
   const queryClient = useQueryClient();
+  const isClient = useSyncExternalStore(subscribeToNothing, () => true, () => false);
   // Votes this device sent: shown at once, and never undone by an older poll.
   const [localVotes, setLocalVotes] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
@@ -360,7 +364,10 @@ export function TonightPick({ id, onClose, onOpenPick }: { id: string; onClose: 
     );
   }
 
-  if (typeof document === 'undefined') return null;
+  // The portal needs document.body: render nothing on the server and in the
+  // first (hydrating) browser render too, so a pick opened from a link hydrates
+  // the same markup the server sent.
+  if (!isClient) return null;
   return createPortal(
     <div
       ref={dialogRef}
