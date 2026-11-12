@@ -216,6 +216,7 @@ const GLASS_CHART_COLORS: Record<GlassScheme, Record<string, string>> = {
     '--hpr-rose': '#CD0207',
     '--hpr-blue': '#0261CD',
     '--hpr-purple': '#9637C3',
+    '--hpr-purple-mark': '#9637C3',
     '--hpr-violet': '#5856D6',
     '--hpr-cyan': '#016D96',
     '--hpr-pink': '#CC013B',
@@ -225,6 +226,7 @@ const GLASS_CHART_COLORS: Record<GlassScheme, Record<string, string>> = {
     '--hpr-rose': '#FF453A',
     '--hpr-blue': '#0A84FF',
     '--hpr-purple': '#BF5AF2',
+    '--hpr-purple-mark': '#BF5AF2',
     '--hpr-violet': '#5E5CE6',
     '--hpr-cyan': '#64D2FF',
     '--hpr-pink': '#FF375F',
@@ -366,6 +368,18 @@ function darkenCategoryColor(color: string, surfaces: string[]): string {
   return floor;
 }
 
+/**
+ * The purple of a chart line beside the blue and pink ones (Library growth's
+ * Series). Darkened for text, the three land on one lightness on a light page
+ * and purple and pink blur together (Cream: CIEDE2000 9.9), so the line takes
+ * only the 3:1 a chart mark needs and sits lighter than the other two (Cream:
+ * #9976a9, 21 or more from both). Never darker than the text purple.
+ */
+function purpleMark(textPurple: string, surfaces: string[]): string {
+  const mark = darkenToContrast(CATEGORY_COLORS['--hpr-purple'], surfaces, 3);
+  return relativeLuminance(mark) > relativeLuminance(textPurple) ? mark : textPurple;
+}
+
 /** Resolve theme prefs into concrete token values (palette + per-tone overrides). */
 function resolveThemeTokens(prefs: DashboardThemePrefs) {
   const chosenAccent = prefs.accent in ACCENT_COLORS
@@ -413,12 +427,13 @@ export function buildDashboardThemeStyle(prefs: DashboardThemePrefs): React.CSSP
   // dark surfaces a light palette still has (globals.css, .hpr-on-dark). Light
   // here is the page alone, as data-scheme decides it, so that reset always
   // applies with it; a mid-tone page with dark text keeps the values.
-  const categoryColors = schemeFromBackground(palette.inkSoft) === 'light'
-    ? Object.fromEntries(Object.entries(CATEGORY_COLORS).map(([key, color]) => [
-        key,
-        darkenCategoryColor(color, [palette.ink, palette.inkSoft, palette.surface, palette.surfaceHi]),
-      ]))
+  const surfaces = [palette.ink, palette.inkSoft, palette.surface, palette.surfaceHi];
+  const darkened: Record<string, string> = schemeFromBackground(palette.inkSoft) === 'light'
+    ? Object.fromEntries(Object.entries(CATEGORY_COLORS).map(([key, color]) => [key, darkenCategoryColor(color, surfaces)]))
     : {};
+  const categoryColors = darkened['--hpr-purple']
+    ? { ...darkened, '--hpr-purple-mark': purpleMark(darkened['--hpr-purple'], surfaces) }
+    : darkened;
   // The active tab's label (phone tabs, More, sidebar): with the cyan accent
   // only the icon takes it and the label keeps the text colour, as under
   // Liquid Glass. Every other accent tints the label. A var, so the pre-paint

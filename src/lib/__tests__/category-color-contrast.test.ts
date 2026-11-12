@@ -114,6 +114,49 @@ describe('category colours', () => {
     }
   });
 
+  // Library growth draws Series (purple) between Movies (blue) and Music
+  // (pink). Darkened for text the three share one lightness and Series and
+  // Music blurred together (Cream: CIEDE2000 9.9), so the line's purple only
+  // takes a chart mark's 3:1 and sits clearly lighter than both.
+  it.each(['cream', '#f0f0f0', '#d0d8e0', '#fff4e0'])('give the Series line its own lighter purple on the light %s palette', (palette) => {
+    const vars = style(palette);
+    const mark = vars['--hpr-purple-mark'];
+    expect(mark).toMatch(/^#[0-9a-f]{6}$/);
+    for (const surface of SURFACES) expect(contrastRatio(mark, vars[surface])).toBeGreaterThanOrEqual(3);
+    for (const key of ['--hpr-blue', '--hpr-pink']) expect(contrastRatio(mark, vars[key])).toBeGreaterThanOrEqual(1.5);
+  });
+
+  it('match the Cream Series line', () => {
+    expect(style('cream')['--hpr-purple-mark']).toBe('#9976a9');
+  });
+
+  it('never take the Series line darker than the text purple on a dim light palette', () => {
+    for (const base of ['#8e8e8e', '#00b4b4', '#fa5fff', '#80b480']) {
+      const vars = style(base);
+      if (vars['--hpr-purple'] === undefined) continue;
+      expect(relativeLuminance(vars['--hpr-purple-mark']), base).toBeGreaterThanOrEqual(relativeLuminance(vars['--hpr-purple']));
+    }
+  });
+
+  it('leave the Series line to globals.css on dark palettes: 3:1 on their cards, apart from pink', () => {
+    const mark = /--hpr-purple-mark: (#[0-9a-f]{6});/.exec(css)![1];
+    for (const palette of ['warm', 'slate', 'pure']) {
+      expect(style(palette)['--hpr-purple-mark']).toBeUndefined();
+      for (const surface of Object.values(PALETTES[palette].tokens).slice(0, 4)) {
+        expect(contrastRatio(mark, surface)).toBeGreaterThanOrEqual(3);
+      }
+    }
+    expect(contrastRatio(mark, CATEGORY_COLORS['--hpr-pink'])).toBeGreaterThanOrEqual(1.5);
+  });
+
+  it('use Liquid Glass purple for the Series line under Glass, and sweep it', () => {
+    for (const scheme of ['light', 'dark'] as const) {
+      const glass = buildGlassThemeStyle(scheme, 60);
+      expect(glass['--hpr-purple-mark']).toBe(glass['--hpr-purple']);
+    }
+    expect(THEME_VAR_KEYS).toContain('--hpr-purple-mark');
+  });
+
   it('stay darkened on Cream with a custom (light) text colour', () => {
     const vars = style('cream', { fg: '#fafafa' });
     for (const key of KEYS) expect(vars[key]).toBe(style('cream')[key]);

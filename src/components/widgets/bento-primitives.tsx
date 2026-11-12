@@ -27,6 +27,8 @@ export const HPR = {
   rose: 'var(--hpr-rose)',
   blue: 'var(--hpr-blue)',
   purple: 'var(--hpr-purple)',
+  // Chart lines beside blue and pink only (dashboard-theme.ts purpleMark).
+  purpleMark: 'var(--hpr-purple-mark)',
   violet: 'var(--hpr-violet)',
   cyan: 'var(--hpr-cyan)',
   pink: 'var(--hpr-pink)',

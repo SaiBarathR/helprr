@@ -126,7 +126,7 @@ export const MediaCard = memo(function MediaCard({
               <p className="text-[10px] text-white/75 truncate">
                 {showYear && year}
                 {instanceLabel && (
-                  <span className="text-[var(--hpr-amber)] font-medium">{showYear ? ' · ' : ''}{instanceLabel}</span>
+                  <span className="hpr-scrim-accent font-medium">{showYear ? ' · ' : ''}{instanceLabel}</span>
                 )}
               </p>
             )}

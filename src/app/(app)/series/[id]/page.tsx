@@ -287,9 +287,12 @@ export default function SeriesDetailPage() {
 
   return (
     <div
-      className="flex flex-col min-h-0 animate-content-in -mx-2 md:-mx-6"
+      className="flex flex-col min-h-0 animate-content-in"
     >
-      {/* Page Header */}
+      {/* Page Header. Its .page-toolbar already spans main's padding, so this
+          wrapper takes no bleed of its own: one would run the bar past the
+          content (1.5rem at md, into a landscape iPhone's safe area). The
+          movie header sits the same way. */}
       <PageHeader
         title={series.title}
         backHref="/series"
@@ -315,7 +318,7 @@ export default function SeriesDetailPage() {
         }
       />
 
-      <div ref={contentScrollRef} data-scroll-restoration-key="series-detail" className="flex-1 px-2 md:p-6">
+      <div ref={contentScrollRef} data-scroll-restoration-key="series-detail" className="flex-1 md:py-6">
         {/* Phones stack these in DOM order. On wide content areas .detail-grid
             (globals.css) puts the facts beside the overview, Play and AniList
             card and runs everything else full width; the hero's poster and
