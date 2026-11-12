@@ -1744,6 +1744,14 @@ html [data-sonner-toast][data-styled='true'] [data-close-button] {
   border-color: var(--border);
 }
 
+/* A toast's action ("Undo", "Turn off auto-download") is 24px tall by default. */
+@media (pointer: coarse) {
+  html [data-sonner-toast][data-styled='true'] [data-button] {
+    min-height: 2.75rem;
+    padding-inline: 0.75rem;
+  }
+}
+
 html[data-glass] [data-slot='sheet-content'],
 html[data-glass] [data-slot='drawer-content'],
 html[data-glass] [data-slot='popover-content'],

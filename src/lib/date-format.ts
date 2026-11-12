@@ -166,3 +166,8 @@ export function formatTime(
 ): string {
   return formatDateTime(input, options, prefs);
 }
+
+/** "2026-11-13" in this device's time zone, for file names (toISOString gives the UTC date). */
+export function localDateStamp(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}

@@ -340,7 +340,7 @@ export default function LoginPage() {
               {errorText}
               <Button
                 type="submit"
-                className="w-full"
+                className="w-full pointer-coarse:h-11"
                 disabled={pending !== null || retrySeconds > 0 || code.trim().length === 0}
               >
                 {pending === 'code' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -376,7 +376,7 @@ export default function LoginPage() {
               {errorText}
               <Button
                 type="button"
-                className="w-full"
+                className="w-full pointer-coarse:h-11"
                 disabled={pending !== null || retrySeconds > 0}
                 onClick={() => void signInAgain()}
               >
@@ -406,7 +406,7 @@ export default function LoginPage() {
             {errorText}
             <Button
               type="submit"
-              className="w-full"
+              className="w-full pointer-coarse:h-11"
               disabled={pending !== null || retrySeconds > 0}
             >
               {pending === 'local' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -441,7 +441,7 @@ export default function LoginPage() {
             <Button
               type="button"
               variant="outline"
-              className="w-full"
+              className="w-full pointer-coarse:h-11"
               disabled={pending !== null || retrySeconds > 0}
               onClick={() => submit('/api/auth/jellyfin', 'jellyfin')}
             >

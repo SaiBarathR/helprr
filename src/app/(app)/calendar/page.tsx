@@ -86,6 +86,15 @@ const EVENT_APP = { episode: 'sonarr', movie: 'radarr', album: 'lidarr' } as con
 
 /** Detail-page link for a calendar event, by media type. Carries the owning
  * instance so a non-default-instance item opens the correct instance. */
+
+/**
+ * Radarr and Lidarr give a release day as an instant (often UTC midnight), not
+ * a time: "5:30 AM" in India was that midnight. All day, as the calendar feed has it.
+ */
+function eventTimeLabel(event: { type: string; origin?: string }, date: Date): string {
+  // A scheduled alert is at the time it notifies.
+  return event.type === 'episode' || event.origin === 'scheduled' ? formatTime(date) : 'All day';
+}
 function eventHref(event: CalendarEvent): string {
   if (event.href) return event.href;
   const q = event.instanceId ? `?instance=${event.instanceId}` : '';
@@ -671,7 +680,7 @@ function AgendaEventRow({ row, showImages }: { row: AgendaRow; showImages: boole
                   </p>
                 </div>
                 <span className="ml-2 shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {formatTime(eventDate)}
+                  {eventTimeLabel(event, eventDate)}
                 </span>
               </div>
               <div className="mt-0.5 flex items-center gap-1.5 pl-[18px]">
@@ -801,7 +810,7 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
               <p className="text-xs text-muted-foreground line-clamp-2">{event.subtitle}</p>
             )}
             <p className="text-xs text-muted-foreground tabular-nums">
-              {formatDate(eventDate, { weekday: 'short', month: 'short', day: 'numeric' })} · {formatTime(eventDate)}
+              {formatDate(eventDate, { weekday: 'short', month: 'short', day: 'numeric' })} · {eventTimeLabel(event, eventDate)}
             </p>
             <div className="flex flex-wrap items-center gap-1 pt-0.5">
               {event.releaseType && <ReleaseTypeBadge type={event.releaseType} />}
@@ -904,7 +913,7 @@ function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: 
             </div>
           </div>
           <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-            {formatTime(eventDate)}
+            {eventTimeLabel(event, eventDate)}
           </span>
         </div>
         </Link>
@@ -1262,7 +1271,7 @@ function WeekView({
                           </p>
                         </div>
                         <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
-                          {formatTime(new Date(event.date))}
+                          {eventTimeLabel(event, new Date(event.date))}
                         </span>
                       </div>
                     </Link>

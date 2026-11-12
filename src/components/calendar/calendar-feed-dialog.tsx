@@ -85,7 +85,8 @@ export function CalendarFeedDialog({
   });
   // The token, held only while the dialog is mounted (the page mounts it only while open).
   const [made, setMade] = useState<{ name: string; token: string } | null>(null);
-  const [name, setName] = useState(filters.type ? TYPE_LABEL[filters.type] : 'Calendar');
+  const defaultName = filters.type ? TYPE_LABEL[filters.type] : 'Calendar';
+  const [name, setName] = useState(defaultName);
   const [draft, setDraft] = useState<FeedFilters>(filters);
   const [busy, setBusy] = useState(false);
   const [turningOff, setTurningOff] = useState<FeedLink | null>(null);
@@ -115,6 +116,9 @@ export function CalendarFeedDialog({
       // The link replaces the form: close a phone keyboard the Name field left open.
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
       setMade({ name: body.name ?? name.trim(), token: body.token });
+      // After Done the form starts afresh, not as a near-copy of the link just made.
+      setName(defaultName);
+      setDraft(filters);
       await queryClient.invalidateQueries({ queryKey: LINKS_KEY });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to make the calendar link');
@@ -246,7 +250,8 @@ export function CalendarFeedDialog({
             onChange={(event) => setName(event.target.value)}
           />
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        {/* One column: side by side, "Episodes, movies and music" was cut mid-word. */}
+        <div className="grid gap-3">
           <div className="space-y-1.5">
             <Label>Shows</Label>
             <Select

@@ -29,6 +29,7 @@ import {
   extractUiPrefsByCategory,
 } from '@/lib/settings-export';
 import type { ServiceType } from '@prisma/client';
+import { localDateStamp } from '@/lib/date-format';
 
 interface ExportSettingsDialogProps {
   open: boolean;
@@ -204,8 +205,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      const today = new Date().toISOString().slice(0, 10);
-      link.download = `helprr-settings-${today}.json`;
+      link.download = `helprr-settings-${localDateStamp()}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -237,6 +237,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
               <Checkbox
                 checked={allUiSelected ? true : noneUiSelected ? false : 'indeterminate'}
                 onCheckedChange={toggleAllUi}
+                aria-label="UI Preferences"
               />
               <span
                 className="text-sm font-medium cursor-pointer select-none"
@@ -308,6 +309,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
                 }
                 onCheckedChange={toggleAllServices}
                 disabled={availableServices.length === 0}
+                aria-label="Service Connections"
               />
               <span
                 className={`text-sm font-medium select-none ${availableServices.length === 0 ? 'opacity-50' : 'cursor-pointer'}`}

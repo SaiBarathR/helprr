@@ -73,7 +73,13 @@ export function DateTimeFormatSection({ children }: { children?: ReactNode }) {
   });
 
   return (
-    <GroupedSection title="Date & Time" footer="Saved to your account">
+    <GroupedSection
+      title="Date & Time"
+      // Said here, since picking a zone changes nothing on screen.
+      footer={children
+        ? 'Saved to your account. Your time zone is for your calendar feed and quiet hours; screens show this device’s time.'
+        : 'Saved to your account'}
+    >
       {children}
       <div className="grouped-row">
         <span className="text-sm">Time format</span>

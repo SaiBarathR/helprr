@@ -12,11 +12,7 @@ import { TwoFactorSection } from '@/components/settings/two-factor-section';
 import { useMe } from '@/components/permission-provider';
 import { endSessionInThisBrowser, requestSessionLogout } from '@/lib/client-cache';
 import { saveFile } from '@/lib/save-file';
-
-/** "2026-11-13" in this device's time zone (toISOString would give the UTC date). */
-function localDateStamp(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+import { localDateStamp } from '@/lib/date-format';
 
 export default function AccountSettingsPage() {
   const me = useMe();

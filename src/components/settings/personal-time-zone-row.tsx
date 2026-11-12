@@ -100,7 +100,8 @@ export function PersonalTimeZoneRow() {
             <span className="text-xs text-muted-foreground">{data ? zoneLabel(data.serverTimeZone) : ''}</span>
             {current === null && <Check className="h-3.5 w-3.5 ml-1" />}
           </CommandItem>
-          {zones.map((zone) => (
+          {/* The current zone first, with its tick in view, not hundreds of rows down. */}
+          {(current ? [current, ...zones.filter((zone) => zone !== current)] : zones).map((zone) => (
             <CommandItem key={zone} value={zoneLabel(zone)} onSelect={() => pick(zone)}>
               <span className="flex-1 truncate">{zoneLabel(zone)}</span>
               {current === zone && <Check className="h-3.5 w-3.5 ml-1" />}
