@@ -37,7 +37,7 @@ import {
   localPasswordValidationError,
 } from '@/lib/password-policy';
 import { useMe } from '@/components/permission-provider';
-import { StepUpFields, useStepUp } from '@/components/settings/step-up-fields';
+import { StepUpFields, StepUpRefusal, isStepUpRefusal, useStepUp } from '@/components/settings/step-up-fields';
 import { formatDate, formatDateTime } from '@/lib/date-format';
 
 interface SafeUser {
@@ -204,8 +204,9 @@ export default function UsersAdminPage() {
                     {u.displayName}{' '}
                     <span className="text-muted-foreground font-normal">@{u.username}</span>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5 capitalize">
-                    {u.role}
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {/* Only the role is capitalised: "Admin · two-step on", not "Two-Step On". */}
+                    {u.role.charAt(0).toUpperCase() + u.role.slice(1)}
                     {u.status !== 'active' ? ` · ${u.status}` : ''}
                     {linkSummary(u.passwordLink)}
                     {u.twoStepEnabled ? ' · two-step on' : u.hasPassword ? ' · two-step off' : ''}
@@ -458,7 +459,7 @@ function CreateUserDialog({
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string; needsStepUp?: boolean; needsCode?: boolean };
-        stepUp.onRefused(data);
+        if (stepUp.onRefused(data, res.status)) throw new StepUpRefusal(data.error);
         throw new Error(data.error ?? 'Failed to create user');
       }
       return (await res.json()) as SafeUser & { linkToken?: string; linkOrigin?: string | null };
@@ -475,7 +476,9 @@ function CreateUserDialog({
       }
       onCreated();
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to create user'),
+    onError: (err) => {
+      if (!isStepUpRefusal(err)) toast.error(err instanceof Error ? err.message : 'Failed to create user');
+    },
   });
   const busy = createMutation.isPending;
 
@@ -670,7 +673,7 @@ function EditUserDialog({
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string; needsStepUp?: boolean; needsCode?: boolean };
-        stepUp.onRefused(data);
+        if (stepUp.onRefused(data, res.status)) throw new StepUpRefusal(data.error);
         throw new Error(data.error ?? 'Failed to save user');
       }
     },
@@ -686,7 +689,9 @@ function EditUserDialog({
         queryKey: ['users', 'permissions', user.id],
       });
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to save user'),
+    onError: (err) => {
+      if (!isStepUpRefusal(err)) toast.error(err instanceof Error ? err.message : 'Failed to save user');
+    },
   });
   const busy = saveIdentityMutation.isPending;
 
@@ -704,7 +709,7 @@ function EditUserDialog({
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string; needsStepUp?: boolean; needsCode?: boolean };
-        templateStepUp.onRefused(data);
+        if (templateStepUp.onRefused(data, res.status)) throw new StepUpRefusal(data.error);
         throw new Error(data.error ?? 'Failed to apply template');
       }
       return (await res.json()) as {
@@ -722,7 +727,9 @@ function EditUserDialog({
       // Whether their API tokens work follows api.tokens.
       void queryClient.invalidateQueries({ queryKey: queryKeys.userApiTokens(user.id) });
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to apply template'),
+    onError: (err) => {
+      if (!isStepUpRefusal(err)) toast.error(err instanceof Error ? err.message : 'Failed to apply template');
+    },
   });
 
   const toggleCapMutation = useMutation({
@@ -739,7 +746,7 @@ function EditUserDialog({
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string; needsStepUp?: boolean; needsCode?: boolean };
-        templateStepUp.onRefused(data);
+        if (templateStepUp.onRefused(data, res.status)) throw new StepUpRefusal(data.error);
         throw new Error(data.error ?? 'Failed to update permission');
       }
       return (await res.json()) as { effective: Partial<Record<Capability, boolean>> };
@@ -785,7 +792,7 @@ function EditUserDialog({
     setEffective(next); // optimistic
     toggleCapMutation.mutate(next, {
       onError: (err) => {
-        toast.error(err instanceof Error ? err.message : 'Failed to update permission');
+        if (!isStepUpRefusal(err)) toast.error(err instanceof Error ? err.message : 'Failed to update permission');
         // Revert only this cap functionally so a failed toggle can't drop a
         // concurrent successful one.
         effectiveRef.current = effectiveRef.current
@@ -906,7 +913,7 @@ function EditUserDialog({
               onValueChange={(v) => void applyTemplate(v)}
               disabled={permBusy || isAdmin}
             >
-              <SelectTrigger className="w-36">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1052,7 +1059,7 @@ function PasswordLinkSection({ user, isSelf, myTwoStep }: { user: SafeUser; isSe
           needsCode?: boolean;
         };
         if (data.needsSecondFactor === true) setServerAsked(true);
-        otherAdminStepUp.onRefused(data);
+        if (otherAdminStepUp.onRefused(data, res.status)) throw new StepUpRefusal(data.error);
         throw new Error(data.error ?? 'Failed to make the link');
       }
       return (await res.json()) as IssuedLink;
@@ -1063,7 +1070,9 @@ function PasswordLinkSection({ user, isSelf, myTwoStep }: { user: SafeUser; isSe
       setCode('');
       void queryClient.invalidateQueries({ queryKey: queryKeys.users() });
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to make the link'),
+    onError: (err) => {
+      if (!isStepUpRefusal(err)) toast.error(err instanceof Error ? err.message : 'Failed to make the link');
+    },
   });
 
   const revokeMutation = useMutation({
@@ -1132,6 +1141,7 @@ function PasswordLinkSection({ user, isSelf, myTwoStep }: { user: SafeUser; isSe
               onChange={(e) => setCode(e.target.value)}
             />
           )}
+          {otherAdminStepUp.error && <p role="alert" className="text-sm text-destructive">{otherAdminStepUp.error}</p>}
         </div>
       )}
       {issued && <IssuedLinkPanel link={issued} username={user.username} />}
@@ -1183,7 +1193,7 @@ function TwoStepSection({ user, isSelf, myTwoStep }: { user: SafeUser; isSelf: b
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string; needsStepUp?: boolean; needsCode?: boolean };
-        stepUp.onRefused(data);
+        if (stepUp.onRefused(data, res.status)) throw new StepUpRefusal(data.error);
         throw new Error(data.error ?? 'Failed to turn off two-step sign-in');
       }
     },
@@ -1192,7 +1202,11 @@ function TwoStepSection({ user, isSelf, myTwoStep }: { user: SafeUser; isSelf: b
       setConfirming(false);
       stepUp.clear();
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to turn off two-step sign-in'),
+    onError: (err) => {
+      // A refused password or code shows under its field: close the confirm over it.
+      if (isStepUpRefusal(err)) setConfirming(false);
+      else toast.error(err instanceof Error ? err.message : 'Failed to turn off two-step sign-in');
+    },
     // Also after a 409: it may already be off (a reset link, another admin).
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.users() }),
   });

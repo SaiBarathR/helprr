@@ -72,7 +72,7 @@ again.
 
 ### `GET /api/v1/queue`
 
-Needs **Download queue**. The first 100 items of the combined queue, soonest to
+Needs **Download queue (size and items)**. The first 100 items of the combined queue, soonest to
 finish first:
 
 ```json
@@ -118,7 +118,7 @@ any other address in Helprr, a token is refused.
 ## iOS Shortcuts: "What's downloading?"
 
 This shortcut asks Helprr for the queue and reads it out, so you can ask Siri
-*"What's downloading?"*. Make a token with **Download queue** ticked first.
+*"What's downloading?"*. Make a token with **Download queue (size and items)** ticked first.
 
 1. In **Shortcuts**, tap **+** and name the shortcut **What's downloading**.
 2. Add **Get Contents of URL**. Set the URL to
@@ -145,7 +145,7 @@ Shortcuts widget. For a quick total instead, use `/api/v1/summary` and read
 
 [Homepage](https://gethomepage.dev/)'s **customapi** widget can show the summary
 on your dashboard. Make a token with **Downloading count and speeds**,
-**Download queue** and **Unread alerts** ticked, then add this to
+**Download queue (size and items)** and **Unread alerts** ticked, then add this to
 `services.yaml`:
 
 ```yaml

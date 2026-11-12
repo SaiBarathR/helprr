@@ -87,13 +87,15 @@ describe('the Jellyfin connection', () => {
     expect(sent[0]).toMatchObject({ url: 'http://new.lan:8096', currentPassword: 'my password', code: '123456' });
   });
 
-  it('tells a member it is for an admin, and keeps Save off', async () => {
+  it('shows a member the address and key read-only, saying it is for an admin', async () => {
     mocks.me = { role: 'member' };
     await renderPage();
-    await moveTo('http://new.lan:8096');
+    // Up front, not only after they try to change something.
     await screen.findByText('Only an admin can add Jellyfin or change its address or API key.');
+    expect((screen.getByLabelText('URL') as HTMLInputElement).readOnly).toBe(true);
+    expect((document.getElementById('conn-apiKey') as HTMLInputElement).readOnly).toBe(true);
+    expect(screen.queryByText('Admin API key validated — ready to save')).toBeNull();
     expect(screen.queryByLabelText('Your current password')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true);
   });
 });
 

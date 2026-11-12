@@ -54,7 +54,7 @@ export async function confirmCurrentPassword(
     await recordGlobalLoginFailure();
     await recordFailedSignIn(request, { username: user.username, method: 'password', user, actor: user });
     // 403, not 401: the client sends every 401 to /login, and the session is fine.
-    return NextResponse.json({ error: 'Current password is incorrect' }, { status: 403 });
+    return NextResponse.json({ error: 'Current password is incorrect', field: 'currentPassword' }, { status: 403 });
   }
   return null;
 }

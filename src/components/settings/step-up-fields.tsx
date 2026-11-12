@@ -7,6 +7,17 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 
 /**
+ * A refusal of the password or code. It is shown under those fields, not in a
+ * toast: on a phone a toast sits over the dialog's button.
+ */
+export class StepUpRefusal extends Error {}
+
+/** Whether a failed mutation was a step-up refusal already shown by StepUpFields. */
+export function isStepUpRefusal(err: unknown): boolean {
+  return err instanceof StepUpRefusal;
+}
+
+/**
  * What a step a session alone must not take needs from you (giving admin, a
  * way into another admin's account, importing users, changing Jellyfin): your
  * password, and a code while your two-step sign-in is on. `myTwoStep` is the
@@ -18,16 +29,27 @@ export function useStepUp(myTwoStep?: boolean) {
     queryFn: jsonFetcher<{ enabled: boolean }>('/api/me/totp'),
     enabled: myTwoStep === undefined,
   });
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [code, setCode] = useState('');
+  const [currentPassword, setPassword] = useState('');
+  const [code, setCodeValue] = useState('');
+  const [error, setError] = useState<string | null>(null);
   // The server's answer wins over the list's copy (it may be stale).
   const [serverNeedsCode, setServerNeedsCode] = useState<boolean | null>(null);
   const needsCode = serverNeedsCode ?? myTwoStep ?? own.data?.enabled === true;
   // Stable, so an effect can clear the fields when a dialog closes.
   const clear = useCallback(() => {
-    setCurrentPassword('');
-    setCode('');
+    setPassword('');
+    setCodeValue('');
     setServerNeedsCode(null);
+    setError(null);
+  }, []);
+  // Typing again takes the last refusal away.
+  const setCurrentPassword = useCallback((value: string) => {
+    setPassword(value);
+    setError(null);
+  }, []);
+  const setCode = useCallback((value: string) => {
+    setCodeValue(value);
+    setError(null);
   }, []);
   return {
     currentPassword,
@@ -35,17 +57,27 @@ export function useStepUp(myTwoStep?: boolean) {
     code,
     setCode,
     needsCode,
+    /** Why the last password or code was refused, shown under the fields. */
+    error,
     /** The server asked for them (the list's copy of a role may be stale). */
     asked: serverNeedsCode !== null,
     ready: currentPassword.length > 0 && (!needsCode || code.trim().length > 0),
     body: () => ({ currentPassword, ...(needsCode ? { code: code.trim() } : {}) }),
     /**
      * Reads a refusal: the server may ask for these. The code goes either way:
-     * one that passed is used up, even when a later step failed.
+     * one that passed is used up, even when a later step failed. True when it
+     * was about the password or code (then shown under the fields: throw a
+     * StepUpRefusal and skip the toast).
      */
-    onRefused: (data: { needsStepUp?: boolean; needsCode?: boolean }) => {
+    onRefused: (
+      data: { error?: string; field?: string; needsStepUp?: boolean; needsCode?: boolean },
+      status?: number,
+    ): boolean => {
       if (data.needsStepUp === true && typeof data.needsCode === 'boolean') setServerNeedsCode(data.needsCode);
-      setCode('');
+      setCodeValue('');
+      const aboutFactors = data.needsStepUp === true || data.field === 'currentPassword' || data.field === 'code' || status === 429;
+      if (aboutFactors) setError(data.error ?? 'That didn’t work. Try again.');
+      return aboutFactors;
     },
     clear,
   };
@@ -79,6 +111,7 @@ export function StepUpFields({ stepUp, reason }: { stepUp: ReturnType<typeof use
           onChange={(e) => stepUp.setCode(e.target.value)}
         />
       )}
+      {stepUp.error && <p role="alert" className="text-sm text-destructive">{stepUp.error}</p>}
     </div>
   );
 }

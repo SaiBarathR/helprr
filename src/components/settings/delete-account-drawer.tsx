@@ -11,7 +11,7 @@ import {
   DrawerDescription, DrawerFooter, DrawerClose,
 } from '@/components/ui/drawer';
 import { ApiError } from '@/lib/query-fetch';
-import { endSessionInThisBrowser } from '@/lib/client-cache';
+import { ACCOUNT_DELETED_KEY, endSessionInThisBrowser } from '@/lib/client-cache';
 
 /**
  * Delete the signed-in user's own account. A local account confirms with its
@@ -41,8 +41,16 @@ export function DeleteAccountDrawer({
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new ApiError(res.status, data.error ?? 'Failed to delete your account');
     },
-    // The account and its sessions are gone: leave for Login in every tab.
-    onSuccess: () => endSessionInThisBrowser(),
+    // The account and its sessions are gone: leave for Login in every tab,
+    // which then says so instead of looking like a plain sign-out.
+    onSuccess: () => {
+      try {
+        sessionStorage.setItem(ACCOUNT_DELETED_KEY, '1');
+      } catch {
+        // Private mode: Login just shows its usual line.
+      }
+      endSessionInThisBrowser();
+    },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to delete your account'),
   });
 
