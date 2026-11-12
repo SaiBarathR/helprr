@@ -51,6 +51,19 @@ describe('StepUpFields', () => {
     expect(screen.getByRole('alert').textContent).toBe('Giving admin access needs your current password.');
   });
 
+  it('counts a 429 as the sign-in throttle only after the password was sent', async () => {
+    renderFields();
+    act(() => {
+      expect(stepUp.onRefused({ error: 'Too many requests' }, 429)).toBe(false);
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+    await userEvent.type(screen.getByLabelText('Your current password'), 'secret');
+    act(() => {
+      expect(stepUp.onRefused({ error: 'Too many attempts. Try again in 60 seconds.' }, 429)).toBe(true);
+    });
+    expect(screen.getByRole('alert').textContent).toBe('Too many attempts. Try again in 60 seconds.');
+  });
+
   it('leaves other errors to the caller', () => {
     renderFields();
     act(() => {

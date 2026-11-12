@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { normalizeTagName } from '@/lib/watchlist-helpers';
+import { skipAutoFocusOnTouch } from '@/lib/touch-autofocus';
 
 export interface WatchlistDraft {
   source: 'TMDB' | 'TVDB' | 'ANILIST' | 'SONARR' | 'RADARR';
@@ -179,12 +180,7 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* On a touch screen, focusing Title opens the keyboard over the dialog before anything is tapped. */}
-      <DialogContent
-        onOpenAutoFocus={(e) => {
-          if (window.matchMedia('(pointer: coarse)').matches) e.preventDefault();
-        }}
-      >
+      <DialogContent onOpenAutoFocus={skipAutoFocusOnTouch}>
         <DialogHeader>
           <DialogTitle>Add to watchlist</DialogTitle>
         </DialogHeader>

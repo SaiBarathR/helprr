@@ -75,7 +75,12 @@ function describe(token: ApiToken, now: number): string {
  */
 export function ApiTokensSection() {
   const queryClient = useQueryClient();
-  const status = useQuery({ queryKey: API_TOKENS_KEY, queryFn: jsonFetcher<ApiTokens>('/api/me/api-tokens') });
+  // Refreshed while open: a token used from a Shortcut should not still say "not used yet".
+  const status = useQuery({
+    queryKey: API_TOKENS_KEY,
+    queryFn: jsonFetcher<ApiTokens>('/api/me/api-tokens'),
+    refetchInterval: 30_000,
+  });
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [scopes, setScopes] = useState<string[]>([]);

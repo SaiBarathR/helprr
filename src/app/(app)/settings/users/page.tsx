@@ -39,6 +39,7 @@ import {
 import { useMe } from '@/components/permission-provider';
 import { StepUpFields, StepUpRefusal, isStepUpRefusal, useStepUp } from '@/components/settings/step-up-fields';
 import { formatDate, formatDateTime } from '@/lib/date-format';
+import { skipAutoFocusOnTouch } from '@/lib/touch-autofocus';
 
 interface SafeUser {
   id: string;
@@ -102,6 +103,10 @@ export default function UsersAdminPage() {
   } = useQuery({
     queryKey: queryKeys.users(),
     queryFn: jsonFetcher<SafeUser[]>('/api/users'),
+    // A link is used on someone else's phone: look again now and then while
+    // one is out, so "invite out" turns into the account without a reload.
+    refetchInterval: (query) =>
+      query.state.data?.some((u) => u.passwordLink && linkIsLive(u.passwordLink)) ? 15_000 : false,
   });
   const error = isError
     ? queryError instanceof ApiError
@@ -511,14 +516,14 @@ function CreateUserDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-h-[85vh] overflow-y-auto" onOpenAutoFocus={skipAutoFocusOnTouch}>
         <DialogHeader>
           <DialogTitle>Add user</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="cu-username">Username</Label>
-            <Input id="cu-username" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
+            <Input id="cu-username" value={username} onChange={(e) => setUsername(e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="cu-name">Display name</Label>
@@ -805,7 +810,7 @@ function EditUserDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-h-[85vh] overflow-y-auto" onOpenAutoFocus={skipAutoFocusOnTouch}>
         <DialogHeader>
           <DialogTitle>
             {user.displayName} <span className="text-muted-foreground font-normal">@{user.username}</span>

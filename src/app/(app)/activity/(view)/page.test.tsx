@@ -133,10 +133,13 @@ const filterBar = () => document.querySelector('[aria-label="Active filters"]');
 const button = (name: string) =>
   [...document.querySelectorAll('button')].find((b) => (b.getAttribute('aria-label') ?? b.textContent?.trim()) === name);
 
+// A tab with a short label for narrow phones is named by its full label.
+const tabName = (tab: Element | null | undefined) => tab?.getAttribute('aria-label') ?? tab?.textContent;
+
 describe('Activity tab view', () => {
-  const activeTab = () => document.querySelector('[role="tab"][aria-selected="true"]')?.textContent;
+  const activeTab = () => tabName(document.querySelector('[role="tab"][aria-selected="true"]'));
   const selectTab = async (name: string) => {
-    const tab = [...document.querySelectorAll('[role="tab"]')].find((t) => t.textContent?.includes(name))!;
+    const tab = [...document.querySelectorAll('[role="tab"]')].find((t) => tabName(t)?.includes(name))!;
     await act(async () => tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })));
   };
   const visit = async (query: string) => {
@@ -144,6 +147,14 @@ describe('Activity tab view', () => {
     window.history.replaceState(null, '', query ? `/activity?${query}` : '/activity');
     await renderPage();
   };
+
+  it('shows Needs import as Import below 360px, keeping its full name', async () => {
+    await visit('');
+    const tab = [...document.querySelectorAll('[role="tab"]')].find((t) => tabName(t) === 'Needs import')!;
+    const [full, short] = [...tab.querySelectorAll('span')];
+    expect([full.textContent, full.className]).toEqual(['Needs import', 'max-[359px]:hidden']);
+    expect([short.textContent, short.className]).toEqual(['Import', 'min-[360px]:hidden']);
+  });
 
   it('restores the saved tab and filters when a link returns to plain Activity', async () => {
     useUIStore.setState({ activityTab: 'queue', activityFilterBy: ['radarr'] });

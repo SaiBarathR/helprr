@@ -75,7 +75,10 @@ export function useStepUp(myTwoStep?: boolean) {
     ): boolean => {
       if (data.needsStepUp === true && typeof data.needsCode === 'boolean') setServerNeedsCode(data.needsCode);
       setCodeValue('');
-      const aboutFactors = data.needsStepUp === true || data.field === 'currentPassword' || data.field === 'code' || status === 429;
+      // A 429 is the sign-in throttle only when the password went with it (the
+      // fields are on screen); otherwise it is someone else's, for the caller's toast.
+      const aboutFactors = data.needsStepUp === true || data.field === 'currentPassword' || data.field === 'code'
+        || (status === 429 && currentPassword.length > 0);
       if (aboutFactors) setError(data.error ?? 'That didn’t work. Try again.');
       return aboutFactors;
     },

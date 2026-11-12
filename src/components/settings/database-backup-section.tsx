@@ -59,8 +59,10 @@ const ALERT_OPTIONS = [0, 2, 3, 7, 14, 30];
 const SELECT_TRIGGER =
   'w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5';
 
+// backup.sh writes its dumps to its own folder, so only Last database backup
+// shows its runs; "On the server" lists Helprr's own files.
 const FOOTER =
-  'Saved in the backup folder on the server, never downloaded. Backups made with backup.sh show here too.';
+  'Saved in the backup folder on the server, never downloaded. Last database backup counts backup.sh runs too; their files stay where backup.sh saves them.';
 
 function withCurrent(options: number[], current: number): number[] {
   return options.includes(current) ? options : [...options, current].sort((a, b) => a - b);
@@ -175,16 +177,20 @@ export function DatabaseBackupSection() {
             <span className="flex h-8 w-8 items-center justify-center rounded-md shrink-0 bg-emerald-500/10 text-emerald-400">
               <DatabaseBackup className="h-[18px] w-[18px]" />
             </span>
-            <span className="text-[15px] font-medium truncate">Last database backup</span>
+            {/* The age goes under the label, as Back up now's hint does: beside it,
+                "less than a minute ago" left a phone too little room for the label. */}
+            <div className="flex flex-col items-start min-w-0">
+              <span className="text-[15px] font-medium">Last database backup</span>
+              <span
+                className={cn(
+                  'text-xs',
+                  stale ? 'text-amber-400 light:text-amber-700' : 'text-muted-foreground',
+                )}
+              >
+                {data ? (last ? formatDistanceToNowSafe(last) : 'None recorded') : isError ? 'Unavailable' : '…'}
+              </span>
+            </div>
           </div>
-          <span
-            className={cn(
-              'shrink-0 text-sm',
-              stale ? 'text-amber-400 light:text-amber-700' : 'text-muted-foreground',
-            )}
-          >
-            {data ? (last ? formatDistanceToNowSafe(last) : 'None recorded') : isError ? 'Unavailable' : '…'}
-          </span>
         </div>
         {folder && (
           <button
@@ -283,11 +289,15 @@ export function DatabaseBackupSection() {
             </div>
           ) : (
             data?.backups?.map((file) => (
+              // Size and age under the name: beside it they cut off the name's date
+              // and time on a phone, the part that tells the files apart.
               <div key={file.name} className="grouped-row">
-                <span className="text-sm min-w-0 flex-1 truncate">{file.name}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {formatBytes(file.sizeBytes)} · {formatDistanceToNowSafe(file.createdAt)}
-                </span>
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className="text-sm truncate">{file.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {formatBytes(file.sizeBytes)} · {formatDistanceToNowSafe(file.createdAt)}
+                  </span>
+                </div>
               </div>
             ))
           )}

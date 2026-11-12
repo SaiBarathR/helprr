@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useMe } from '@/components/permission-provider';
-import { StepUpFields, useStepUp } from '@/components/settings/step-up-fields';
+import { StepUpFields, StepUpRefusal, isStepUpRefusal, useStepUp } from '@/components/settings/step-up-fields';
 import { useUIStore, migrateUiPrefs, STORE_VERSION } from '@/lib/store';
 import { validateDiscoverLayout } from '@/lib/discover-layout-config';
 import {
@@ -521,10 +521,14 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         });
         const json = await res.json().catch(() => null);
         if (!res.ok) {
-          if (json && typeof json === 'object') stepUp.onRefused(json);
+          const refused = json && typeof json === 'object' ? stepUp.onRefused(json, res.status) : false;
           // Asked for the step-up it did not know it needed (a new Jellyfin
-          // address): back to the confirm step, which now shows the fields.
-          if (json?.needsStepUp === true) setPendingConfirm({ replaceAll });
+          // address), or the password or code was refused: back to the confirm
+          // step, which shows the fields and why, instead of a toast.
+          if (refused) {
+            setPendingConfirm({ replaceAll });
+            throw new StepUpRefusal(json?.error);
+          }
           throw new Error(json?.error || 'Import failed');
         }
         stepUp.clear();
@@ -556,7 +560,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       // Not a later opening's to close.
       if (lookupGeneration.current === opening) onOpenChange(false);
     } catch (err) {
-      toast.error((err as Error)?.message || 'Import failed');
+      if (!isStepUpRefusal(err)) toast.error((err as Error)?.message || 'Import failed');
     } finally {
       // Even on a failed request: the server may have saved part of it.
       forgetAppSettingsFetch();
