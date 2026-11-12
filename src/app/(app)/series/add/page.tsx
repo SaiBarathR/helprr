@@ -458,7 +458,8 @@ function AddSeriesPageContent() {
                     <Label className="text-sm shrink-0">Root Folder</Label>
                     <Select value={rootFolder} onValueChange={setRootFolder}>
                       <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5 max-w-[180px]">
-                        <SelectValue>{getRootFolderLabel(rootFolder)}</SelectValue>
+                        {/* A path has no spaces to wrap at: end it in "…" rather than clip it. */}
+                        <SelectValue><span className="truncate">{getRootFolderLabel(rootFolder)}</span></SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {rootFolders.map((f) => (

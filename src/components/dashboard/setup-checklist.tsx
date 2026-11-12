@@ -256,6 +256,8 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
           const done = state.done[step];
           const skipped = !done && Boolean(state.skipped?.includes(step));
           const Icon = copy.icon;
+          const showCode = !done && step === 'install' && !onPhone;
+          const showManual = !done && !skipped && MANUAL_SETUP_STEPS.has(step) && Boolean(copy.manualLabel);
           return (
             <li
               key={step}
@@ -285,59 +287,67 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
               >
                 {done ? <Check size={15} strokeWidth={2.5} /> : skipped ? <Minus size={14} /> : <Icon size={14} />}
               </span>
-              <Link
-                ref={(element: HTMLAnchorElement | null) => {
-                  links.current[step] = element;
-                }}
-                href={copy.href}
-                className="press-feedback"
-                style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', color: 'inherit', textDecoration: 'none' }}
-              >
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span
-                    style={{
-                      display: 'block',
-                      fontSize: 13.5,
-                      fontWeight: 600,
-                      color: done || skipped ? HPR.fgSubtle : HPR.fg,
-                      textDecoration: done ? 'line-through' : 'none',
-                    }}
-                  >
-                    {copy.title}
-                    {skipped ? (
-                      <span style={{ fontWeight: 400, color: HPR.fgSubtle }}> · Skipped</span>
-                    ) : OPTIONAL_SETUP_STEPS.has(step) && (
-                      <span style={{ fontWeight: 400, color: HPR.fgSubtle }}> (optional)</span>
-                    )}
-                    <span className="sr-only">{done ? ', done' : ''}</span>
+              {/* The step's buttons sit beside its text while the text keeps about
+                  13rem; on a narrower row they wrap below it, under the title. */}
+              <span style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 4 }}>
+                <Link
+                  ref={(element: HTMLAnchorElement | null) => {
+                    links.current[step] = element;
+                  }}
+                  href={copy.href}
+                  className="press-feedback"
+                  style={{ flex: '1 1 13rem', minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', color: 'inherit', textDecoration: 'none' }}
+                >
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span
+                      style={{
+                        display: 'block',
+                        fontSize: 13.5,
+                        fontWeight: 600,
+                        color: done || skipped ? HPR.fgSubtle : HPR.fg,
+                        textDecoration: done ? 'line-through' : 'none',
+                      }}
+                    >
+                      {copy.title}
+                      {skipped ? (
+                        <span style={{ fontWeight: 400, color: HPR.fgSubtle }}> · Skipped</span>
+                      ) : OPTIONAL_SETUP_STEPS.has(step) && (
+                        <span style={{ fontWeight: 400, color: HPR.fgSubtle }}> (optional)</span>
+                      )}
+                      <span className="sr-only">{done ? ', done' : ''}</span>
+                    </span>
+                    <span style={{ display: 'block', fontSize: 12, color: HPR.fgMute, marginTop: 1 }}>{copy.detail}</span>
                   </span>
-                  <span style={{ display: 'block', fontSize: 12, color: HPR.fgMute, marginTop: 1 }}>{copy.detail}</span>
-                </span>
-                {/* Every step opens its settings page; the chevron says so on each row alike. */}
-                <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0, color: HPR.fgSubtle }} />
-              </Link>
-              {!done && step === 'install' && !onPhone && (
-                <button
-                  type="button"
-                  className="touch-target press-feedback"
-                  aria-label="Show a code to open Helprr on your phone"
-                  onClick={openPhone}
-                  style={SMALL_BUTTON}
-                >
-                  Show code
-                </button>
-              )}
-              {!done && !skipped && MANUAL_SETUP_STEPS.has(step) && copy.manualLabel && (
-                <button
-                  type="button"
-                  className="touch-target press-feedback"
-                  aria-label={`${copy.manualLabel}: ${copy.title}`}
-                  onClick={() => markByHand(step)}
-                  style={SMALL_BUTTON}
-                >
-                  {copy.manualLabel}
-                </button>
-              )}
+                  {/* Every step opens its settings page; the chevron says so on each row alike. */}
+                  <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0, color: HPR.fgSubtle }} />
+                </Link>
+                {(showCode || showManual) && (
+                  <span style={{ display: 'flex', gap: 8 }}>
+                    {showCode && (
+                      <button
+                        type="button"
+                        className="touch-target press-feedback"
+                        aria-label="Show a code to open Helprr on your phone"
+                        onClick={openPhone}
+                        style={SMALL_BUTTON}
+                      >
+                        Show code
+                      </button>
+                    )}
+                    {showManual && (
+                      <button
+                        type="button"
+                        className="touch-target press-feedback"
+                        aria-label={`${copy.manualLabel}: ${copy.title}`}
+                        onClick={() => markByHand(step)}
+                        style={SMALL_BUTTON}
+                      >
+                        {copy.manualLabel}
+                      </button>
+                    )}
+                  </span>
+                )}
+              </span>
             </li>
           );
         })}

@@ -76,8 +76,11 @@ describe('DatabaseBackupSection', () => {
 
   it('shows the schedule and the backups on the server, never as downloads', async () => {
     show(new Response(JSON.stringify(status())));
-    expect(await screen.findByText('helprr-backup-20261106-030000.dump')).toBeTruthy();
-    expect(screen.getByText(/2(\.0)? KB/)).toBeTruthy();
+    const name = await screen.findByText('helprr-backup-20261106-030000.dump');
+    // Size and age sit on their own line, so they never cut the name's date off.
+    expect(name.nextElementSibling?.textContent).toMatch(/^2(\.0)? KB · 1 day ago$/);
+    // backup.sh keeps its dumps elsewhere: the footer says only its time is shown.
+    expect(screen.getByText(/Last database backup counts backup\.sh runs too/)).toBeTruthy();
     expect(screen.getByRole('combobox', { name: 'Frequency' }).textContent).toContain('Daily');
     expect(screen.getByRole('combobox', { name: 'Keep' }).textContent).toContain('Newest 7');
     expect(screen.getByText(/Times are in Europe\/Berlin/)).toBeTruthy();
