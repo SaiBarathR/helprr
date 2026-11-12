@@ -126,10 +126,13 @@ function SessionGroupSection({ group, loadedAt, busy, onRename, onRevoke }: Sess
     initialData: { pages: [group], pageParams: [0] },
     initialDataUpdatedAt: loadedAt,
   });
-  const pages = query.data?.pages ?? [group];
+  // The first page and the count come from the list, which refreshes every
+  // 30 s; initialData seeded this query once and never took a newer one, so
+  // new sign-ins and "Seen …" stayed as they were until a reload.
+  const pages = [group, ...(query.data?.pages.slice(1) ?? [])];
   // A sign-in between pages shifts the offsets by one; drop the repeat.
   const sessions = [...new Map(pages.flatMap((p) => p.sessions).map((s) => [s.id, s])).values()];
-  const total = pages[pages.length - 1]?.total ?? group.total;
+  const total = group.total;
   const title = group.isOwn ? 'Your sessions' : group.ownerName;
 
   return (

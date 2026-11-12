@@ -199,7 +199,17 @@ export function CalendarFeedDialog({
         copied link instead.
       </p>
       <div className="flex justify-end">
-        <Button type="button" variant="outline" onClick={() => setMade(null)}>Done</Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            setMade(null);
+            // The calendar app may have fetched the link meanwhile: show "last used".
+            void queryClient.invalidateQueries({ queryKey: LINKS_KEY });
+          }}
+        >
+          Done
+        </Button>
       </div>
     </div>
   ) : status.isPending ? (

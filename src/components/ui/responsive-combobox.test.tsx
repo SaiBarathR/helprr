@@ -24,15 +24,16 @@ beforeEach(() => {
   }));
 });
 
-function ZonePicker() {
+function ZonePicker({ initial = 'UTC' }: { initial?: string }) {
   const [open, setOpen] = useState(false);
-  const [zone, setZone] = useState('UTC');
+  const [zone, setZone] = useState(initial);
   return (
     <ResponsiveCombobox
       open={open}
       onOpenChange={setOpen}
       title="Your time zone"
       searchPlaceholder="Search time zones"
+      selectedValue={zone}
       trigger={<button type="button">{zone}</button>}
     >
       <CommandEmpty>No matches.</CommandEmpty>
@@ -63,6 +64,15 @@ describe('ResponsiveCombobox', () => {
     await userEvent.click(within(sheet).getByText('America/New_York'));
     expect(screen.queryByRole('dialog', { name: 'Your time zone' })).toBeNull();
     expect(screen.getByRole('button', { name: 'America/New_York' })).toBeTruthy();
+  });
+
+  it('starts with the current pick highlighted, where its tick is', async () => {
+    viewport.phone = true;
+    render(<ZonePicker initial="America/New_York" />);
+    await userEvent.click(screen.getByRole('button', { name: 'America/New_York' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Your time zone' });
+    const selected = within(sheet).getAllByRole('option').filter((o) => o.getAttribute('aria-selected') === 'true');
+    expect(selected.map((o) => o.textContent)).toEqual(['America/New_York']);
   });
 
   it('is a popover from md up', async () => {

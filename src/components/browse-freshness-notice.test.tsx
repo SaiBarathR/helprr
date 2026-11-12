@@ -21,8 +21,10 @@ it('shows saved provenance, retries, and disappears only after fresh data arrive
     } })));
     expect(container.textContent).toContain('Showing saved browse data');
     const notice = container.querySelector<HTMLElement>('[role="status"]')!;
-    // Normal flow reserves the notice's wrapped height instead of obscuring nav.
-    expect(getComputedStyle(notice).position).toBe('relative');
+    // Fixed above the bottom bar, so a page scrolled away from its top (Calendar
+    // jumps to today) still shows it.
+    expect(notice.parentElement!.className.split(' ')).toContain('fixed');
+    expect(notice.parentElement!.style.bottom).toContain('var(--footer-height)');
     const retry = container.querySelector('button')!;
     expect(getComputedStyle(retry).minHeight).toBe('44px');
     expect(getComputedStyle(retry).minWidth).toBe('44px');
@@ -39,12 +41,13 @@ it('shows saved provenance, retries, and disappears only after fresh data arrive
   }
 });
 
-it('leaves every safe-area inset to .app-main', () => {
+it('keeps clear of a landscape notch, and leaves the top inset alone', () => {
   // jsdom drops env() values; inspect React's actual emitted markup instead.
   const markup = renderToStaticMarkup(<BrowseFreshnessBanner at={1700000000000} onRetry={() => {}} />);
-  // The banner is in normal flow inside `.app-main`, which already owns the top
-  // inset and the landscape left/right ones. Reserving the top one here too left
-  // ~59px of dead space above the text on an iPhone PWA, and the side ones
-  // would double the landscape gutter.
-  expect(markup).not.toContain('safe-area-inset');
+  // Fixed, out of .app-main's flow: it pads itself for the side insets. It sits
+  // at the bottom, above the bar (whose height has the home indicator), so the
+  // top inset that once left ~59px of dead space is not used.
+  expect(markup).toContain('env(safe-area-inset-left');
+  expect(markup).toContain('env(safe-area-inset-right');
+  expect(markup).not.toContain('safe-area-inset-top');
 });

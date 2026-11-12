@@ -39,6 +39,7 @@ export function LanguageRegionCombobox({
       onOpenChange={setOpen}
       title={title}
       searchPlaceholder={searchPlaceholder}
+      selectedValue={selected ? `${selected.name} ${selected.code}` : emptyLabel}
       trigger={
         <button
           type="button"

@@ -112,7 +112,15 @@ describe('a member with settings.instances', () => {
     expectNothingSaved();
   });
 
-  it('can still re-save it with the same address and key (the masked key), e.g. another Jellyfin user', async () => {
+  it('cannot change which Jellyfin user the connection reads as', async () => {
+    const res = await save({ url: OLD_URL, apiKey: maskApiKey(STORED_KEY), username: 'jf-other' });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/Only an admin/);
+    expect(mocks.stepUp).not.toHaveBeenCalled();
+    expectNothingSaved();
+  });
+
+  it('can still re-save it with the same address, key (the masked key) and Jellyfin user', async () => {
     const res = await save({ url: `${OLD_URL}/`, apiKey: maskApiKey(STORED_KEY), username: 'jf-admin' });
     expect(res.status).toBe(200);
     expect(mocks.stepUp).not.toHaveBeenCalled();

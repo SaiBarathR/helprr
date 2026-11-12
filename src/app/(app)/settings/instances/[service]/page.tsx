@@ -232,7 +232,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   // Jellyfin's external URL builds the "Open in Jellyfin" links, so only an
   // admin sets it (the server refuses a member's change).
   const externalUrlLocked = isJellyfin && !isAdminUser;
-  // The same for its address and key: a member sees them, read-only, from the start.
+  // The same for its address, key and default user: a member sees them, read-only, from the start.
   const jellyfinLocked = isJellyfin && !isAdminUser;
   const secretNoun = isQbt ? 'password' : 'API key';
 
@@ -723,7 +723,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
                     setUsername(v);
                     clearFieldError('jellyfinUser');
                   }}
-                  disabled={!jellyfinValidated || jellyfinUsers.length === 0}
+                  disabled={jellyfinLocked || !jellyfinValidated || jellyfinUsers.length === 0}
                 >
                   <SelectTrigger
                     id="conn-jellyfinUser"
@@ -833,7 +833,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
               />
             ) : (
               <p className="text-xs text-muted-foreground">
-                Only an admin can add Jellyfin or change its address or API key.
+                Only an admin can add Jellyfin or change its address, API key or default user.
               </p>
             )}
           </div>
@@ -856,21 +856,24 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
               'Test'
             )}
           </Button>
-          <Button
-            size="sm"
-            className="flex-1 h-9"
-            onClick={handleSave}
-            disabled={testing || saving || (showStepUp && (!isAdminUser || !stepUp.ready))}
-          >
-            {saving ? (
-              <>
-                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                Saving…
-              </>
-            ) : (
-              'Save'
-            )}
-          </Button>
+          {/* A member has nothing to save on Jellyfin: every field is an admin's. */}
+          {!jellyfinLocked && (
+            <Button
+              size="sm"
+              className="flex-1 h-9"
+              onClick={handleSave}
+              disabled={testing || saving || (showStepUp && (!isAdminUser || !stepUp.ready))}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                'Save'
+              )}
+            </Button>
+          )}
         </div>
       </GroupedSection>
 

@@ -81,6 +81,7 @@ export function PersonalTimeZoneRow() {
         title="Your time zone"
         searchPlaceholder="Search time zones"
         align="end"
+        selectedValue={current ? zoneLabel(current) : `Same as the server ${data?.serverTimeZone ?? ''}`}
         trigger={
           <button
             type="button"

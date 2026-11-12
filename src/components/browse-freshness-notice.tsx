@@ -9,17 +9,29 @@ export function BrowseFreshnessNotice({ onRetry }: { onRetry: () => void }) {
 }
 
 /**
- * No safe-area insets here on purpose. This banner is in normal flow inside
- * AppShell's `<main>`, which already owns them: `.app-main` adds the top inset
- * in bottom-nav mode (in top-nav mode the nav itself covers that strip), and
- * keeps its content clear of the left/right insets of a landscape notch.
- * Reserving the top one again left ~59px of empty amber above the text on an
- * iPhone PWA, and the side ones would double the landscape gutter.
+ * A pill fixed just above the bottom tab bar (and the now-playing or a floating
+ * action bar), so it stays in view however far the page is scrolled: in the
+ * page flow at the top of <main>, Calendar's jump to today scrolled it ~950px
+ * out of sight on an offline start, and nothing on screen said the data was
+ * old. Toasts come from the top on a phone, so this spot is free; the page's
+ * bottom padding already keeps the last row clear of the bar.
  */
 export function BrowseFreshnessBanner({ at, onRetry }: { at: number; onRetry: () => void }) {
-  return <div role="status" className="flex items-center justify-center gap-3 bg-amber-950 px-3 py-2 text-xs text-amber-100"
-    style={{ position: 'relative' }}>
-    <span className="min-w-0">Showing saved browse data from {formatTime(at)}. Updates are unavailable.</span>
-    <button type="button" className="underline" style={{ minHeight: 44, minWidth: 44, flexShrink: 0 }} onClick={onRetry}>Retry</button>
+  return <div
+    className="pointer-events-none fixed right-0 z-30 flex justify-center"
+    style={{
+      left: 'var(--app-main-left, 0px)',
+      // Out of <main>'s flow, so it keeps clear of a landscape notch itself;
+      // the bottom inset is inside --footer-height.
+      paddingLeft: 'max(0.75rem, env(safe-area-inset-left, 0px))',
+      paddingRight: 'max(0.75rem, env(safe-area-inset-right, 0px))',
+      bottom: 'calc(var(--footer-height) + var(--player-bar-height, 0px) + var(--floating-bar-clearance, 0px) + 8px)',
+    }}
+  >
+    <div role="status" className="pointer-events-auto flex max-w-full items-center gap-2 rounded-full bg-amber-950 pl-4 text-xs text-amber-100 shadow-lg"
+      style={{ position: 'relative' }}>
+      <span className="min-w-0">Showing saved browse data from {formatTime(at)}. Updates are unavailable.</span>
+      <button type="button" className="underline pr-3" style={{ minHeight: 44, minWidth: 44, flexShrink: 0 }} onClick={onRetry}>Retry</button>
+    </div>
   </div>;
 }

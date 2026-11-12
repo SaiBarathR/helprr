@@ -15,7 +15,7 @@ import { useIsMobile } from '@/hooks/use-is-mobile';
  * the keyboard down and stays above it once the search field is tapped.
  * Children are the list's Command parts (CommandEmpty, CommandGroup…).
  */
-export function ResponsiveCombobox({ open, onOpenChange, trigger, title, searchPlaceholder, align = 'start', children }: {
+export function ResponsiveCombobox({ open, onOpenChange, trigger, title, searchPlaceholder, align = 'start', selectedValue, children }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** One element; it becomes the trigger. */
@@ -25,6 +25,12 @@ export function ResponsiveCombobox({ open, onOpenChange, trigger, title, searchP
   searchPlaceholder: string;
   /** Where the popover lines up with its trigger. */
   align?: 'start' | 'center' | 'end';
+  /**
+   * The CommandItem `value` of the current pick. The list starts highlighted
+   * there; without it cmdk highlights the first row, grey on "Same as the
+   * server" while the tick sat on the chosen zone.
+   */
+  selectedValue?: string;
   children: ReactNode;
 }) {
   // Tailwind's md starts at 768px, so "below md" is up to 767px.
@@ -39,7 +45,7 @@ export function ResponsiveCombobox({ open, onOpenChange, trigger, title, searchP
             <DrawerTitle>{title}</DrawerTitle>
           </DrawerHeader>
           {/* Rows as tall as the other phone sheets' (44px). */}
-          <Command className="min-h-0 flex-1 bg-transparent **:data-[slot=command-item]:min-h-11 **:data-[slot=command-item]:px-3">
+          <Command defaultValue={selectedValue} className="min-h-0 flex-1 bg-transparent **:data-[slot=command-item]:min-h-11 **:data-[slot=command-item]:px-3">
             <div className="shrink-0 px-2">
               <CommandInput placeholder={searchPlaceholder} />
             </div>
@@ -59,7 +65,7 @@ export function ResponsiveCombobox({ open, onOpenChange, trigger, title, searchP
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent className="p-0 w-[280px]" align={align}>
-        <Command>
+        <Command defaultValue={selectedValue}>
           <CommandInput placeholder={searchPlaceholder} />
           <CommandList>{children}</CommandList>
         </Command>

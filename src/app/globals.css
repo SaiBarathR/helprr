@@ -208,6 +208,10 @@
      the app (new tab) keep Copy link and Share. */
   a:not([target="_blank"]):has(img) {
     -webkit-touch-callout: none;
+    /* With the preview gone, a long press on a card with no menu selected its
+       rating and title text instead, handles running into the next card. */
+    -webkit-user-select: none;
+    user-select: none;
   }
 }
 
