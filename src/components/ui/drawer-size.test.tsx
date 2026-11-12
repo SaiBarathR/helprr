@@ -81,6 +81,22 @@ describe('DrawerContent above the keyboard', () => {
     expect(panel.style.bottom).toBe('');
   });
 
+  // iOS briefly reports the visible height as innerHeight while the keyboard moves.
+  it('places itself from the layout box, not from innerHeight', () => {
+    stubViewport(500);
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const bottom = this.style.inset === '0px' ? 874 : 0;
+      return { top: 0, bottom, left: 0, right: 0, width: 0, height: bottom, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+    try {
+      vi.stubGlobal('innerHeight', 500);
+      const panel = open('content');
+      expect(panel.style.bottom).toBe('374px');
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
   it('leaves a drawer alone while no keyboard is open', () => {
     stubViewport(window.innerHeight);
     const panel = open('content');

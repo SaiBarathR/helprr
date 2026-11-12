@@ -130,9 +130,9 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
     ),
     onSuccess: (data) => {
       blurField();
+      // No toast: the codes sheet says it is on, and a toast would sit over its Copy and Download.
       setRecoveryCodes(data.recoveryCodes);
       setSetup(null);
-      toast.success('Two-step sign-in is on');
       queryClient.invalidateQueries({ queryKey: queryKeys.twoFactor() });
     },
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Failed to turn on two-step sign-in'),

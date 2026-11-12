@@ -40,6 +40,13 @@ function Drawer({
 function fitAboveKeyboard(node: HTMLElement): () => void {
   const viewport = window.visualViewport
   if (!viewport) return () => {}
+  // The box fixed elements are placed in, measured rather than taken from
+  // window.innerHeight: iOS briefly reports the visible height there while the
+  // keyboard moves, and a drawer placed from that stayed behind the keyboard.
+  const layout = document.createElement("div")
+  layout.setAttribute("aria-hidden", "true")
+  layout.style.cssText = "position:fixed;inset:0;visibility:hidden;pointer-events:none"
+  document.body.appendChild(layout)
   let frame = 0
   let visibleHeight = 0
   const place = () => {
@@ -48,7 +55,9 @@ function fitAboveKeyboard(node: HTMLElement): () => void {
     // The part of the layout viewport the keyboard covers, under the visible
     // part. A pinch zoom shrinks the visual viewport too, but changes its
     // scale; a keyboard leaves it at 1.
-    const covered = viewport.scale > 1.01 ? 0 : Math.round(window.innerHeight - viewport.height - viewport.offsetTop)
+    // (Unmeasured, as in tests without layout, it falls back to innerHeight.)
+    const layoutBottom = layout.getBoundingClientRect().bottom || window.innerHeight
+    const covered = viewport.scale > 1.01 ? 0 : Math.round(layoutBottom - viewport.height - viewport.offsetTop)
     if (covered < 1) {
       node.style.removeProperty("bottom")
       node.style.removeProperty("max-height")
@@ -69,13 +78,19 @@ function fitAboveKeyboard(node: HTMLElement): () => void {
     if (!frame) frame = requestAnimationFrame(place)
   }
   viewport.addEventListener("resize", schedule)
-  // iOS pans the visual viewport to show a field the keyboard would hide.
+  // iOS pans the visual viewport, or scrolls the page, to show a field the
+  // keyboard would hide (also when an autocorrect suggestion is tapped).
   viewport.addEventListener("scroll", schedule)
+  window.addEventListener("resize", schedule)
+  window.addEventListener("scroll", schedule)
   place()
   return () => {
     viewport.removeEventListener("resize", schedule)
     viewport.removeEventListener("scroll", schedule)
+    window.removeEventListener("resize", schedule)
+    window.removeEventListener("scroll", schedule)
     cancelAnimationFrame(frame)
+    layout.remove()
   }
 }
 
