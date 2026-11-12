@@ -17,13 +17,14 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body ?? '{}'));
     if (url === '/api/scheduled-alerts/preview') {
-      // The server opens an album already out on a custom date, from tomorrow.
-      const released = typeof body.draft?.releaseDate === 'string';
+      // The server finds album 8 already out and opens it on a custom date, from tomorrow.
+      const released = body.draft?.albumId === 8;
       return Response.json({
         defaults: released
           ? { scheduleMode: 'absolute', scope: 'album', releaseTypes: ['album'], offsetMinutes: 60, absoluteNotifyAt: new Date(Date.now() + 86_400_000).toISOString() }
           : { scheduleMode: 'release_relative', scope: 'album', releaseTypes: ['album'], offsetMinutes: 60, absoluteNotifyAt: null },
         candidates: [],
+        ...(released ? { albumReleased: true } : {}),
       });
     }
     saves.push({ url, method: init?.method ?? 'GET', body });
@@ -72,11 +73,12 @@ describe('the scheduled alert dialog for music', () => {
     expect(saves[0].body).not.toHaveProperty('draft');
   });
 
-  it('offers only a custom date for an album already out', async () => {
-    renderDialog({ draft: { ...albumDraft, releaseDate: '2026-07-01T00:00:00Z' } });
+  it('offers only a custom date for an album the server finds already out', async () => {
+    // The draft's own date is not judged here: the server's verdict decides.
+    renderDialog({ draft: { ...albumDraft, externalId: '8', albumId: 8, releaseDate: '2099-01-01T00:00:00Z' } });
+    await screen.findByText('This album is already out, so only a custom date can remind you.');
     const release = screen.getByRole('button', { name: 'Release reminder' }) as HTMLButtonElement;
     expect(release.disabled).toBe(true);
-    expect(screen.getByText('This album is already out, so only a custom date can remind you.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Custom date' }).getAttribute('aria-pressed')).toBe('true');
 
     const user = userEvent.setup();

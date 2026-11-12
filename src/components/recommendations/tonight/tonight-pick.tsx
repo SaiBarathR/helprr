@@ -174,9 +174,10 @@ export function TonightPick({ id, onClose, onOpenPick }: { id: string; onClose: 
     }
   }, [id, expiresAt, status, gone]);
 
+  // The dialog mounts after hydration (see isClient), so focus it then.
   useEffect(() => {
-    dialogRef.current?.focus();
-  }, []);
+    if (isClient) dialogRef.current?.focus();
+  }, [isClient]);
 
   const votes = { ...(view?.myVotes ?? {}), ...localVotes };
   const nextIndex = view ? view.titles.findIndex((_, i) => votes[String(i)] === undefined) : -1;

@@ -35,24 +35,12 @@ export function defaultScopeForDraft(draft: Pick<ScheduledAlertDraft, 'mediaType
   return 'series';
 }
 
+export const ALBUM_RELEASED_ERROR = 'This album is already out, so a release reminder would never go off. Pick a custom date instead.';
+
 /**
  * A release reminder when a date is known. Music always: an artist's next album
  * has no date yet, and a reminder catches an album's date once Lidarr has one.
  */
-/**
- * An album whose release day is before today: a release reminder on it could
- * never go off, so only a custom date is offered. Lidarr's date is a calendar
- * day (midnight UTC); `today` is the caller's local day.
- */
-export function albumAlreadyOut(draft: Pick<ScheduledAlertDraft, 'mediaType' | 'albumId' | 'releaseDate'>, now = new Date()): boolean {
-  if (draft.mediaType !== 'music' || draft.albumId == null || !draft.releaseDate) return false;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  return draft.releaseDate.slice(0, 10) < today;
-}
-
-export const ALBUM_RELEASED_ERROR = 'This album is already out, so a release reminder would never go off. Pick a custom date instead.';
-
 export function defaultScheduleMode(draft: Pick<ScheduledAlertDraft, 'mediaType' | 'releaseDate'>): ScheduleMode {
   return draft.releaseDate || draft.mediaType === 'music' ? 'release_relative' : 'absolute';
 }

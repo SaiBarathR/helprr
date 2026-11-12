@@ -70,6 +70,8 @@ export interface PreviewResult {
     absoluteNotifyAt: string | null;
   };
   candidates: OccurrenceCandidate[];
+  /** Album alerts only: the album is already out, so only a custom date can remind. */
+  albumReleased?: true;
 }
 
 /** An album ahead that an artist alert found, however far off its release is. */

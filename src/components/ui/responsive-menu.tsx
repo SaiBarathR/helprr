@@ -70,10 +70,11 @@ export function ResponsiveMenu({ trigger, title, titleInDropdown, align = 'start
   };
   const close = closeOnPick ? () => setOpen(false) : null;
   const closeOnAction = actions ? () => setOpen(false) : null;
-  // Last used with the pointer: the dropdown then leaves focus where the click
-  // put it instead of handing it back to the trigger, a script focus Chrome
-  // matches with :focus-visible, so a mouse pick left a focus ring on it.
-  const usedWithPointer = useRef(false);
+  // Last used with a mouse: the dropdown then leaves focus where the click put
+  // it instead of handing it back to the trigger, a script focus Chrome matches
+  // with :focus-visible, so a mouse pick left a focus ring on it. Touch, pen and
+  // screen readers (VoiceOver's double-tap is a touch) keep the hand-back.
+  const usedWithMouse = useRef(false);
 
   if (isPhone) {
     return (
@@ -113,12 +114,12 @@ export function ResponsiveMenu({ trigger, title, titleInDropdown, align = 'start
       <DropdownMenuContent
         align={align}
         className={contentClassName}
-        onPointerDown={() => { usedWithPointer.current = true; }}
-        onPointerDownOutside={() => { usedWithPointer.current = true; }}
-        onKeyDown={() => { usedWithPointer.current = false; }}
+        onPointerDown={(event) => { usedWithMouse.current = event.pointerType === 'mouse'; }}
+        onPointerDownOutside={(event) => { usedWithMouse.current = event.detail.originalEvent.pointerType === 'mouse'; }}
+        onKeyDown={() => { usedWithMouse.current = false; }}
         onCloseAutoFocus={(event) => {
-          if (usedWithPointer.current) event.preventDefault();
-          usedWithPointer.current = false;
+          if (usedWithMouse.current) event.preventDefault();
+          usedWithMouse.current = false;
         }}
       >
         {titleInDropdown && (

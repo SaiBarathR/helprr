@@ -19,7 +19,7 @@ import type {
   ScheduledAlertMetadata,
   UpcomingAlbum,
 } from '@/lib/scheduled-alerts/types';
-import { albumAlreadyOut, defaultReleaseTypes, defaultScheduleMode, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
+import { defaultReleaseTypes, defaultScheduleMode, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
 import { getAppTimeZone, startOfLocalDay } from '@/lib/timezone';
 import type { MovieReleaseType } from '@/types';
 
@@ -188,10 +188,29 @@ export async function previewScheduledAlert(
     ? opts.releaseTypes
     : defaultReleaseTypes(scope, draft.mediaType);
   const offsetMinutes = opts.offsetMinutes ?? 60;
-  // An album already out opens on a custom date, from tomorrow: its release reminder could never go off.
-  const released = albumAlreadyOut(draft);
-  const scheduleMode = opts.scheduleMode ?? (released ? 'absolute' : defaultScheduleMode(draft));
-  const absoluteDefault = defaultReminderLocal(released ? null : draft.releaseDate, timeZone);
+  const requestedMode = opts.scheduleMode ?? defaultScheduleMode(draft);
+
+  const resolved = requestedMode === 'release_relative'
+    ? await resolveReleaseCandidates(
+        {
+          ...draft,
+          seasonNumber: opts.seasonNumber ?? draft.seasonNumber,
+          episodeId: opts.episodeId ?? draft.episodeId,
+        },
+        {
+          scope,
+          releaseTypes,
+          offsetMinutes,
+          timeZone,
+        },
+      )
+    : null;
+  // The same verdict the save gives (Lidarr's album, 9:00 on its day in this
+  // time zone): an album already out opens on a custom date from tomorrow, as
+  // its release reminder could never go off.
+  const albumReleased = resolved?.albumReleased === true;
+  const scheduleMode = albumReleased && !opts.scheduleMode ? 'absolute' : requestedMode;
+  const absoluteDefault = defaultReminderLocal(albumReleased ? null : draft.releaseDate, timeZone);
 
   const candidates =
     scheduleMode === 'absolute'
@@ -205,21 +224,7 @@ export async function previewScheduledAlert(
             draft.subtitle ?? draft.title,
           ),
         ]
-      : (
-          await resolveReleaseCandidates(
-            {
-              ...draft,
-              seasonNumber: opts.seasonNumber ?? draft.seasonNumber,
-              episodeId: opts.episodeId ?? draft.episodeId,
-            },
-            {
-              scope,
-              releaseTypes,
-              offsetMinutes,
-              timeZone,
-            },
-          )
-        ).candidates;
+      : resolved?.candidates ?? [];
 
   return {
     defaults: {
@@ -230,6 +235,7 @@ export async function previewScheduledAlert(
       absoluteNotifyAt: scheduleMode === 'absolute' ? absoluteDefault : null,
     },
     candidates,
+    ...(albumReleased ? { albumReleased: true as const } : {}),
   };
 }
 

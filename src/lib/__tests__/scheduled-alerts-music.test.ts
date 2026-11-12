@@ -224,10 +224,34 @@ describe('an album already out', () => {
   });
 
   it('opens on a custom date from tomorrow in the preview', async () => {
+    client.getAlbumById.mockResolvedValue(album(7, lidarrDate(-130)));
     const res = await post(previewAlert, '/api/scheduled-alerts/preview', { draft: releasedDraft });
     const { defaults } = await res.json();
     expect(defaults).toMatchObject({ scope: 'album', scheduleMode: 'absolute' });
     expect(new Date(defaults.absoluteNotifyAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('is out from 9:00 on its release day in the app time zone, for the preview and the save alike', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const today = (hour: number) => vi.setSystemTime(new Date(`2026-11-13T${String(hour).padStart(2, '0')}:00:00Z`));
+      const releaseDay = { ...albumDraft, releaseDate: '2026-11-13T00:00:00Z' };
+      client.getAlbumById.mockResolvedValue(album(7, '2026-11-13T00:00:00Z'));
+
+      today(8);
+      const before = await (await post(previewAlert, '/api/scheduled-alerts/preview', { draft: releaseDay })).json();
+      expect(before.defaults.scheduleMode).toBe('release_relative');
+      expect(before).not.toHaveProperty('albumReleased');
+
+      today(14);
+      const after = await (await post(previewAlert, '/api/scheduled-alerts/preview', { draft: releaseDay })).json();
+      expect(after).toMatchObject({ albumReleased: true, defaults: { scheduleMode: 'absolute' } });
+      mocks.inPost = true;
+      const res = await post(createAlert, '/api/scheduled-alerts', { draft: releaseDay, scheduleMode: 'release_relative', releaseTypes: ['album'], offsetMinutes: 0 });
+      expect(res.status).toBe(400);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('refuses an edit that turns its custom reminder into a release reminder', async () => {

@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScheduledAlertSummary } from '@/components/scheduled-alerts/scheduled-alert-summary';
 import type { ScheduledAlertDraft, ReleaseKind } from '@/lib/scheduled-alerts/types';
-import { RELEASE_KIND_LABELS, albumAlreadyOut, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
+import { RELEASE_KIND_LABELS, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
 import { cn } from '@/lib/utils';
 import { useCan } from '@/components/permission-provider';
 
@@ -77,8 +77,9 @@ export function ScheduledAlertDialog({
   const [previewCount, setPreviewCount] = useState(0);
   const [titleValue, setTitleValue] = useState('');
 
-  // A release reminder on an album already out would never go off.
-  const albumOut = draft ? albumAlreadyOut(draft) : false;
+  // The server's word (from the preview) that the album is already out: a
+  // release reminder on it would never go off.
+  const [albumOut, setAlbumOut] = useState(false);
   const releaseOptions =
     draft?.mediaType === 'movie'
       ? MOVIE_RELEASE_OPTIONS
@@ -112,13 +113,12 @@ export function ScheduledAlertDialog({
     if (open && draft) {
       setTitleValue(draft.title);
       setPreviewCount(0);
+      setAlbumOut(false);
       if (initialScheduleMode) {
         setScheduleMode(initialScheduleMode);
         setReleaseTypes(initialReleaseTypes ?? []);
         setOffsetMinutes(initialOffsetMinutes ?? 60);
         setAbsoluteValue(toDatetimeLocalValue(initialAbsoluteNotifyAt));
-      } else if (albumAlreadyOut(draft)) {
-        setScheduleMode('absolute');
       }
     }
   }
@@ -134,13 +134,14 @@ export function ScheduledAlertDialog({
       signal: controller.signal,
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { defaults?: PreviewDefaults; candidates?: unknown[] } | null) => {
+      .then((data: { defaults?: PreviewDefaults; candidates?: unknown[]; albumReleased?: boolean } | null) => {
         if (controller.signal.aborted || !data?.defaults) return;
         setScheduleMode(data.defaults.scheduleMode);
         setReleaseTypes(data.defaults.releaseTypes);
         setOffsetMinutes(data.defaults.offsetMinutes);
         setAbsoluteValue(toDatetimeLocalValue(data.defaults.absoluteNotifyAt));
         setPreviewCount(data.candidates?.length ?? 0);
+        setAlbumOut(data.albumReleased === true);
       })
       .catch(() => {});
 

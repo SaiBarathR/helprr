@@ -64,6 +64,20 @@ describe('ResponsiveMenu', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it('hands focus back after a touch pick (a tablet, VoiceOver\'s double-tap)', async () => {
+    viewport.phone = false;
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(<SortMenu />);
+    const trigger = screen.getByRole('button', { name: 'Sort' });
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    const year = await screen.findByRole('menuitemcheckbox', { name: 'year' });
+    await user.pointer([{ keys: '[TouchA]', target: year }]);
+    await user.pointer([{ keys: '[TouchA]', target: document.body }]);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it('is a titled bottom sheet below md, staying open while a choice is picked', async () => {
     viewport.phone = true;
     render(<SortMenu />);
