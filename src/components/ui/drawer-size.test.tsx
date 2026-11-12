@@ -140,6 +140,29 @@ describe('DrawerContent on iOS', () => {
     await waitFor(() => expect(field.style.transform).toBe(''));
   });
 
+  it('scrolls a field focused with the keyboard up into view itself, as Safari no longer does', async () => {
+    vi.stubGlobal('navigator', { ...navigator, userAgent: iPhone });
+    render(
+      <Drawer open>
+        <DrawerContent size="content">
+          <DrawerTitle>Form</DrawerTitle>
+          <div data-testid="body" style={{ overflowY: 'auto' }}>
+            <input aria-label="Password" />
+            <input aria-label="Code" />
+          </div>
+        </DrawerContent>
+      </Drawer>,
+    );
+    const body = screen.getByTestId('body');
+    Object.defineProperty(body, 'scrollHeight', { value: 600, configurable: true });
+    Object.defineProperty(body, 'clientHeight', { value: 200, configurable: true });
+    const code = screen.getByRole('textbox', { name: 'Code' });
+    vi.spyOn(code, 'getBoundingClientRect').mockReturnValue({ top: 500, bottom: 536 } as DOMRect);
+    vi.spyOn(body, 'getBoundingClientRect').mockReturnValue({ top: 100, bottom: 300 } as DOMRect);
+    code.focus();
+    await waitFor(() => expect(body.scrollTop).toBe(360));
+  });
+
   it('leaves a scroll that ends on a field alone', () => {
     vi.stubGlobal('navigator', { ...navigator, userAgent: iPhone });
     const field = openForm();
@@ -179,6 +202,20 @@ describe('DrawerContent on iOS', () => {
     } finally {
       Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
     }
+  });
+
+  it('in a Safari tab, keeps the sheet\'s content above Safari\'s floating address bar', () => {
+    vi.stubGlobal('navigator', { ...navigator, userAgent: iPhone });
+    vi.stubGlobal('visualViewport', { height: window.innerHeight - 300, scale: 1, offsetTop: 0, addEventListener() {}, removeEventListener() {} });
+    openForm();
+    expect(screen.getByRole('dialog', { name: 'Form' }).style.paddingBottom).toBe('3.75rem');
+  });
+
+  it('in the Home Screen app, needs no room for an address bar', () => {
+    vi.stubGlobal('navigator', { ...navigator, userAgent: iPhone, standalone: true });
+    vi.stubGlobal('visualViewport', { height: window.innerHeight - 300, scale: 1, offsetTop: 0, addEventListener() {}, removeEventListener() {} });
+    openForm();
+    expect(screen.getByRole('dialog', { name: 'Form' }).style.paddingBottom).toBe('0px');
   });
 
   it('does nothing outside iOS', () => {

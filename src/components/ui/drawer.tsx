@@ -67,8 +67,11 @@ function fitAboveKeyboard(node: HTMLElement): () => void {
     }
     node.style.bottom = `${covered}px`
     node.style.maxHeight = `calc(${viewport.height}px - max(env(safe-area-inset-top), 0.75rem))`
-    // The keyboard covers the home indicator the padding keeps clear of.
-    node.style.paddingBottom = "0px"
+    // The keyboard covers the home indicator the padding keeps clear of. In a
+    // Safari tab, Safari's floating address bar sits over the bottom of what
+    // is left, and a tap there goes to Safari, so keep the sheet's content
+    // above it.
+    node.style.paddingBottom = inSafariTab() ? "3.75rem" : "0px"
     // Only when the keyboard opens or changes size, not on every iOS pan, so
     // a body scrolled away from the field while typing stays where it is.
     if (viewport.height !== visibleHeight) revealFocusedField(node)
@@ -115,6 +118,14 @@ function isIOS() {
   return /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
 }
 
+/** iOS Safari in a tab, not the Home Screen app (which has no address bar). */
+function inSafariTab() {
+  const homeScreen =
+    (navigator as Navigator & { standalone?: boolean }).standalone === true ||
+    window.matchMedia?.("(display-mode: standalone)").matches
+  return isIOS() && !homeScreen
+}
+
 /**
  * Stops iOS scrolling the page to show a field in a drawer; fitAboveKeyboard
  * keeps the field in view instead. With the page scrolled under it, iOS drew
@@ -128,11 +139,14 @@ function keepIosFromScrolling(node: HTMLElement): () => void {
   if (!isIOS()) return () => {}
   let pinned: { x: number; y: number } | null = null
   let start: { x: number; y: number } | null = null
-  // Safari only scrolls to a field it thinks is off screen.
+  // Safari only scrolls to a field it thinks is off screen, so this does
+  // the scrolling itself, inside the drawer: focus moving to the next field
+  // with the keyboard up would otherwise leave it below the fold.
   const hideFromSafari = (field: HTMLElement) => {
     field.style.transform = "translateY(-2000px)"
     requestAnimationFrame(() => {
       field.style.transform = ""
+      revealFocusedField(node)
     })
   }
   const onTouchStart = (event: TouchEvent) => {
