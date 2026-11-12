@@ -49,7 +49,10 @@ export function ResponsiveCombobox({ open, onOpenChange, trigger, title, searchP
             <div className="shrink-0 px-2">
               <CommandInput placeholder={searchPlaceholder} />
             </div>
-            <CommandList className="max-h-none min-h-0 flex-1 overscroll-contain px-2 pb-2">{children}</CommandList>
+            {/* overflow-anchor: Chrome keeps the row that was in view where it was as
+                search re-sorts the list, which scrolled the best match out of sight
+                ("Lon" hid Europe/London). */}
+            <CommandList className="max-h-none min-h-0 flex-1 overscroll-contain px-2 pb-2 [overflow-anchor:none]">{children}</CommandList>
           </Command>
           <div className="shrink-0 border-t border-border px-2 py-2">
             <DrawerClose asChild>
@@ -67,7 +70,7 @@ export function ResponsiveCombobox({ open, onOpenChange, trigger, title, searchP
       <PopoverContent className="p-0 w-[280px]" align={align}>
         <Command defaultValue={selectedValue}>
           <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>{children}</CommandList>
+          <CommandList className="[overflow-anchor:none]">{children}</CommandList>
         </Command>
       </PopoverContent>
     </Popover>

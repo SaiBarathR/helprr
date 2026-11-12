@@ -203,9 +203,12 @@ export function CalendarFeedDialog({
           type="button"
           variant="outline"
           onClick={() => {
+            // Done closes the sheet, as on every other phone sheet; reopening it
+            // shows the links again (refetched: the calendar app may have fetched
+            // the new one meanwhile, so it reads "last used").
             setMade(null);
-            // The calendar app may have fetched the link meanwhile: show "last used".
             void queryClient.invalidateQueries({ queryKey: LINKS_KEY });
+            onOpenChange(false);
           }}
         >
           Done
