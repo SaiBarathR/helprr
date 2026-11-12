@@ -29,6 +29,7 @@ vi.mock('./dashboard-layout-context', () => ({ useDashboardLayout: () => ({ setW
 vi.mock('@/components/ui/app-link', () => ({ default: ({ children, ...props }: { children: ReactNode }) => <a {...props}>{children}</a> }));
 
 import { TodayCalendarWidget } from './today-calendar-widget';
+import { DEFAULT_DESKTOP_LAYOUT, DEFAULT_MEMBER_MOBILE_LAYOUT, DEFAULT_MOBILE_LAYOUT } from '@/lib/widgets/registry';
 
 const renderCarousel = () => render(
   <TodayCalendarWidget refreshInterval={60} layoutVariant="carousel" instanceId="today-1" />,
@@ -65,5 +66,19 @@ describe('Today widget in a carousel cell', () => {
   it('keeps the chosen layout until the cell is measured', () => {
     renderCarousel();
     expect(document.querySelector('[style*="overflow-x: auto"]')).not.toBeNull();
+  });
+});
+
+// A phone row is ~84px: two rows (160px inside the cell) hold the list only,
+// so no preset saves a carousel the widget would not show. Two columns or
+// fewer are narrow, which always shows the list (widget-grid-mobile.tsx).
+describe('Today widget presets', () => {
+  it('ask for a carousel on a phone only in three rows or more', () => {
+    for (const layout of [DEFAULT_DESKTOP_LAYOUT, DEFAULT_MOBILE_LAYOUT, DEFAULT_MEMBER_MOBILE_LAYOUT]) {
+      for (const w of layout.filter((item) => item.widgetId === 'today-calendar')) {
+        const mobile = w.mobileLayoutOverride ?? w.layoutOverride;
+        if (mobile === 'carousel' && (w.mobileColSpan ?? 4) > 2) expect(w.mobileRowSpan ?? 1, w.id).toBeGreaterThanOrEqual(3);
+      }
+    }
   });
 });

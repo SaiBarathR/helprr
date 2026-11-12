@@ -712,7 +712,8 @@ export default function WatchlistPage() {
       <div
         className="page-toolbar page-toolbar-flush space-y-2 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
       >
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* No gaps on phones, as on Movies and Series, so the row fits at 320px. */}
+        <div className="flex items-center md:gap-2 flex-wrap">
           <ResponsiveMenu
             title="Filter"
             contentClassName="w-56"
@@ -874,11 +875,12 @@ export default function WatchlistPage() {
             </button>
           )}
 
+          {/* Below 360px the row has no room for it; pull to refresh does the same. */}
           <button
             type="button"
             onClick={refresh}
             disabled={refreshing}
-            className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default"
+            className="max-[359px]:hidden p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default"
             aria-label="Refresh watchlist"
           >
             <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />

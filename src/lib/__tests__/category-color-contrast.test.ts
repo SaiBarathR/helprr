@@ -138,15 +138,25 @@ describe('category colours', () => {
     }
   });
 
-  it('leave the Series line to globals.css on dark palettes: 3:1 on their cards, apart from pink', () => {
-    const mark = /--hpr-purple-mark: (#[0-9a-f]{6});/.exec(css)![1];
-    for (const palette of ['warm', 'slate', 'pure']) {
-      expect(style(palette)['--hpr-purple-mark']).toBeUndefined();
-      for (const surface of Object.values(PALETTES[palette].tokens).slice(0, 4)) {
-        expect(contrastRatio(mark, surface)).toBeGreaterThanOrEqual(3);
-      }
-    }
-    expect(contrastRatio(mark, CATEGORY_COLORS['--hpr-pink'])).toBeGreaterThanOrEqual(1.5);
+  // Dark pages, built in and custom (data-scheme dark, mid-tones included):
+  // the purple is dimmed to 70% where that still reads 3:1, else lightened.
+  it.each(['warm', 'slate', 'pure', '#303030', '#2a2a40', '#1a1a1a', '#404040', '#606060', '#101418', '#808080', '#4040ff', '#8040c0'])(
+    'give the Series line a purple that reads 3:1 and stands apart on the dark %s palette',
+    (palette) => {
+      const vars = style(palette);
+      const mark = vars['--hpr-purple-mark'];
+      expect(mark).toMatch(/^#[0-9a-f]{6}$/);
+      for (const surface of SURFACES) expect(contrastRatio(mark, vars[surface]), surface).toBeGreaterThanOrEqual(3);
+      // The dark page keeps the globals.css blue and pink.
+      for (const key of ['--hpr-blue', '--hpr-pink']) expect(contrastRatio(mark, CATEGORY_COLORS[key]), key).toBeGreaterThanOrEqual(1.5);
+    },
+  );
+
+  it('match the dark Series lines: dimmed on the built-in palettes, lighter on brighter pages', () => {
+    for (const palette of ['warm', 'slate', 'pure']) expect(style(palette)['--hpr-purple-mark']).toBe('#836590');
+    expect(style('#303030')['--hpr-purple-mark']).toBe('#ddc8e7');
+    // The first paint, before the theme applies, uses Warm Ink's.
+    expect(css).toContain(`--hpr-purple-mark: ${style('warm')['--hpr-purple-mark']};`);
   });
 
   it('use Liquid Glass purple for the Series line under Glass, and sweep it', () => {

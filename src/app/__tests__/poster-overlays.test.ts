@@ -15,8 +15,10 @@ function decls(selector: string) {
 
 describe('poster overlays', () => {
   // The installed iOS app showed Safari's link preview on a long press.
-  it('turn off the iOS link callout on links around an image', () => {
-    expect(decls('a:has(img)')['-webkit-touch-callout']).toBe('none');
+  // Only in-app links: one that opens a new tab keeps Copy link and Share.
+  it('turn off the iOS link callout on in-app links around an image', () => {
+    expect(decls('a:not([target="_blank"]):has(img)')['-webkit-touch-callout']).toBe('none');
+    expect(decls('a:has(img)')['-webkit-touch-callout']).toBeUndefined();
   });
 
   // The accent itself is a deep blue under Liquid Glass (1.6-3.4:1 on the
