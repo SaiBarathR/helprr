@@ -90,7 +90,21 @@ export default function InvitePage() {
       : undefined;
     setDeviceCookieFromMatchMedia();
     loadState();
-    return () => window.clearTimeout(drop);
+    // Opening another link in a tab already on /invite changes only the
+    // fragment: no reload, so read the new link instead of the old answer.
+    const onHashChange = () => {
+      const next = window.location.hash.slice(1);
+      if (!next) return;
+      tokenRef.current = next;
+      window.history.replaceState(null, '', '/invite');
+      setStatus('checking');
+      loadState();
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => {
+      window.clearTimeout(drop);
+      window.removeEventListener('hashchange', onHashChange);
+    };
   }, [loadState]);
 
   function retry() {

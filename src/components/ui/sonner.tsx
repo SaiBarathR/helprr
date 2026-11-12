@@ -8,11 +8,17 @@ import {
   TriangleAlertIcon,
 } from "lucide-react"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
+import { useIsMobile } from "@/hooks/use-is-mobile"
 
 const Toaster = ({ ...props }: ToasterProps) => {
+  // On a phone (Sonner's own breakpoint, under 600px) toasts come from the
+  // top, as iOS banners do: at the bottom they sat over the buttons of every
+  // bottom sheet (Copy/Download, Make link, Create) while they showed.
+  const phone = useIsMobile(599)
   return (
     <Sonner
       className="toaster group"
+      position={phone ? "top-center" : "bottom-right"}
       closeButton
       // Sonner's defaults (24px, 16px on a phone) put toasts over the bottom tab
       // bar and the home indicator; keep them above both, and above a
@@ -23,7 +29,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
         left: "calc(env(safe-area-inset-left, 0px) + 24px)",
         right: "calc(env(safe-area-inset-right, 0px) + 24px)",
       }}
-      mobileOffset={{ bottom: "calc(var(--footer-height) + var(--player-bar-height, 0px) + var(--floating-bar-clearance, 0px) + 16px)" }}
+      mobileOffset={{ top: "calc(env(safe-area-inset-top, 0px) + 8px)" }}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,

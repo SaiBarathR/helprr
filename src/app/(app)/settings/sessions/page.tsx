@@ -228,6 +228,8 @@ export default function SessionsPage() {
   } = useQuery({
     queryKey: queryKeys.sessions(),
     queryFn: jsonFetcher<{ groups: SessionGroup[] }>('/api/sessions'),
+    // "Seen 24s ago" and new sign-ins stay true while the page is open.
+    refetchInterval: 30_000,
   });
   const groups = data?.groups ?? null;
   const error = isError
