@@ -42,6 +42,7 @@ describe('SelectTrigger with a phone keyboard open', () => {
     const listeners = new Set<() => void>();
     const viewport = {
       height,
+      scale: 1,
       offsetTop: 0,
       addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
       removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
@@ -93,6 +94,24 @@ describe('SelectTrigger with a phone keyboard open', () => {
     renderForm();
     fireEvent.click(screen.getByRole('combobox', { name: 'Shows' }));
     act(() => { vi.advanceTimersByTime(900); });
+    expect(screen.getByRole('listbox')).toBeTruthy();
+  });
+
+  it('does not open over a field tapped while the keyboard was closing', () => {
+    vi.useFakeTimers();
+    stubViewport(window.innerHeight - 300);
+    renderForm();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Shows' }));
+    screen.getByRole('textbox', { name: 'Name' }).focus();
+    act(() => { vi.advanceTimersByTime(900); });
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('leaves a pinch zoom alone: it shrinks the visible area but is no keyboard', () => {
+    const { viewport } = stubViewport(window.innerHeight / 2);
+    viewport.scale = 2;
+    renderForm();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Shows' }));
     expect(screen.getByRole('listbox')).toBeTruthy();
   });
 

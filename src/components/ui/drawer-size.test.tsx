@@ -35,6 +35,7 @@ describe('DrawerContent above the keyboard', () => {
     const listeners = new Set<() => void>();
     const viewport = {
       height,
+      scale: 1,
       offsetTop,
       addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
       removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
@@ -71,6 +72,13 @@ describe('DrawerContent above the keyboard', () => {
     await waitFor(() => expect(panel.style.bottom).toBe(''));
     expect(panel.style.maxHeight).toBe('');
     expect(panel.style.paddingBottom).toBe('');
+  });
+
+  it('takes a pinch zoom for no keyboard', () => {
+    const { viewport } = stubViewport(window.innerHeight / 2);
+    viewport.scale = 2;
+    const panel = open('content');
+    expect(panel.style.bottom).toBe('');
   });
 
   it('leaves a drawer alone while no keyboard is open', () => {

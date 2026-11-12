@@ -41,24 +41,29 @@ function fitAboveKeyboard(node: HTMLElement): () => void {
   const viewport = window.visualViewport
   if (!viewport) return () => {}
   let frame = 0
-  let lastCovered = 0
+  let visibleHeight = 0
   const place = () => {
     frame = 0
     if (node.getAttribute("data-vaul-drawer-direction") !== "bottom") return
-    // The part of the layout viewport the keyboard covers, under the visible part.
-    const covered = Math.round(window.innerHeight - viewport.height - viewport.offsetTop)
+    // The part of the layout viewport the keyboard covers, under the visible
+    // part. A pinch zoom shrinks the visual viewport too, but changes its
+    // scale; a keyboard leaves it at 1.
+    const covered = viewport.scale > 1.01 ? 0 : Math.round(window.innerHeight - viewport.height - viewport.offsetTop)
     if (covered < 1) {
       node.style.removeProperty("bottom")
       node.style.removeProperty("max-height")
       node.style.removeProperty("padding-bottom")
-    } else {
-      node.style.bottom = `${covered}px`
-      node.style.maxHeight = `calc(${viewport.height}px - max(env(safe-area-inset-top), 0.75rem))`
-      // The keyboard covers the home indicator the padding keeps clear of.
-      node.style.paddingBottom = "0px"
-      if (covered !== lastCovered) revealFocusedField(node)
+      visibleHeight = 0
+      return
     }
-    lastCovered = Math.max(covered, 0)
+    node.style.bottom = `${covered}px`
+    node.style.maxHeight = `calc(${viewport.height}px - max(env(safe-area-inset-top), 0.75rem))`
+    // The keyboard covers the home indicator the padding keeps clear of.
+    node.style.paddingBottom = "0px"
+    // Only when the keyboard opens or changes size, not on every iOS pan, so
+    // a body scrolled away from the field while typing stays where it is.
+    if (viewport.height !== visibleHeight) revealFocusedField(node)
+    visibleHeight = viewport.height
   }
   const schedule = () => {
     if (!frame) frame = requestAnimationFrame(place)
