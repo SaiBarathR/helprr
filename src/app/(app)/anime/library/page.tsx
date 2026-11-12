@@ -431,7 +431,7 @@ export default function AnimeLibraryPage() {
 
       {/* Status tabs */}
       <div className="page-toolbar pt-1 pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="rail-bleed flex gap-2 overflow-x-auto scrollbar-hide">
+        <div className="rail-bleed flex gap-2 overflow-x-auto overflow-y-hidden scrollbar-hide">
           {tabs.map((tab) => {
             const active = status === tab.value;
             return (

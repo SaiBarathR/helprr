@@ -315,7 +315,7 @@ export default function SeriesDetailPage() {
         }
       />
 
-      <div ref={contentScrollRef} data-scroll-restoration-key="series-detail" className="flex-1 overflow-y-auto px-2 md:p-6">
+      <div ref={contentScrollRef} data-scroll-restoration-key="series-detail" className="flex-1 px-2 md:p-6">
         {/* Phones stack these in DOM order. On wide content areas .detail-grid
             (globals.css) puts the facts beside the overview, Play and AniList
             card and runs everything else full width; the hero's poster and

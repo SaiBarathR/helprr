@@ -378,6 +378,32 @@ describe('Activity queue detail drawer', () => {
   });
 });
 
+// jsdom has no layout, so this pins the declarations: the page scrolls, not a
+// box around the list. That box had overflow but no height cap, so a row's 44px
+// tap area poking past its bottom (the Load more button) made it a 4px scroller
+// of its own, and a swipe that started on it moved only that box.
+describe('Activity list scrolling', () => {
+  it('leaves scrolling to the page instead of a box around the Cutoff list', async () => {
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    const queue = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<Response>;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/activity/wanted?')) {
+        return Response.json({ records: [{ id: 7, title: 'Low Res Film', year: 1999, mediaType: 'movie', source: 'radarr' }], totalRecords: 40 });
+      }
+      return queue(url, init);
+    });
+    await renderPage();
+    const tab = [...document.querySelectorAll('[role="tab"]')].find((t) => t.textContent?.includes('Cutoff'))!;
+    await act(async () => tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })));
+    const loadMore = await waitForElement(() => button('Load more') ?? null);
+    const scrollers: string[] = [];
+    for (let el = loadMore.parentElement; el && el.id !== 'root'; el = el.parentElement) {
+      if (/\boverflow-(y-)?(auto|scroll)\b/.test(el.className)) scrollers.push(el.className);
+    }
+    expect(scrollers).toEqual([]);
+  });
+});
+
 describe('Activity manual import from the queue', () => {
   it('offers Import on a queue item that needs a manual import', async () => {
     queueRecords = [...QUEUE, BLOCKED];

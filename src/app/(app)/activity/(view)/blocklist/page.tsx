@@ -232,7 +232,7 @@ export default function BlocklistPage() {
         <p className="pb-2 text-xs text-amber-400">Some instances could not be reached; their entries are missing.</p>
       )}
 
-      <div data-scroll-restoration-key="activity-blocklist" className="page-bleed flex-1 overflow-y-auto pb-4">
+      <div data-scroll-restoration-key="activity-blocklist" className="page-bleed flex-1 pb-4">
         {loading ? (
           <PageSpinner />
         ) : entries.length === 0 ? (

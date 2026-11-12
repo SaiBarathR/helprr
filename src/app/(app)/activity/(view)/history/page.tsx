@@ -185,7 +185,7 @@ export default function HistoryPage() {
       <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} className="pb-2" />
 
       {/* History list */}
-      <div data-scroll-restoration-key="activity-history" className="page-bleed flex-1 overflow-y-auto pb-4">
+      <div data-scroll-restoration-key="activity-history" className="page-bleed flex-1 pb-4">
         {loading ? (
           <PageSpinner />
         ) : history.length === 0 ? (
