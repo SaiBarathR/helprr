@@ -777,7 +777,9 @@ export default function NotificationsPage() {
                       type="button"
                       aria-label="View details"
                       onClick={(e) => { e.stopPropagation(); handleOpenDetail(n); }}
-                      className="shrink-0 -mr-1 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      // 28px drawn, with a 44px tap area (touch-target). The row clips at
+                      // its edge, so the area grows leftward from the button's right edge.
+                      className="relative touch-target after:left-auto after:right-0 after:[transform:translateY(-50%)] shrink-0 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                     >
                       <Info className="h-4 w-4" />
                     </button>

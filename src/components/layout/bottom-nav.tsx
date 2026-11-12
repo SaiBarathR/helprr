@@ -22,9 +22,10 @@ import type { BadgeSlice } from '@/types/badges';
 const GLASS_ACTIVE_LABEL = '[html[data-glass]_&]:text-foreground';
 const ACTIVE_LABEL = 'text-[color:var(--hpr-tab-label,var(--primary))]';
 // One tab slot: an icon over a 10px label, as iOS sets them. The label
-// truncates rather than run into the next slot or the bar's rounded end.
+// truncates rather than run into the next slot or the bar's rounded end
+// (below 360px app-tab-label sets it smaller, globals.css).
 const SLOT = 'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 h-full min-h-11 text-[10px] font-medium leading-tight transition-colors';
-const SLOT_LABEL = 'max-w-full truncate tracking-[-0.01em]';
+const SLOT_LABEL = 'app-tab-label max-w-full truncate tracking-[-0.01em]';
 // A count overlaps only the icon's top-right corner, as on iOS tabs, ringed
 // in the bar's colour so it reads apart from the icon. The bar's 14px inner
 // padding and the 5px rise keep the badge inside the floating bar's rounded

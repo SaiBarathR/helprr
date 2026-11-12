@@ -4,9 +4,11 @@ import { NAVIGATION_START_EVENT, type NavigationStartDetail } from '@/lib/route-
 
 export type TabKey = 'queue' | 'failed' | 'missing' | 'cutoff';
 
-export const TABS: { key: TabKey; label: string }[] = [
+// shortLabel is shown below 360px, where the full labels and the toolbar's two
+// icons don't fit on one row.
+export const TABS: { key: TabKey; label: string; shortLabel?: string }[] = [
   { key: 'queue', label: 'Queue' },
-  { key: 'failed', label: 'Needs import' },
+  { key: 'failed', label: 'Needs import', shortLabel: 'Import' },
   { key: 'missing', label: 'Missing' },
   { key: 'cutoff', label: 'Cutoff' },
 ];

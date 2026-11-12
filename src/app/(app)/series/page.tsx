@@ -870,12 +870,13 @@ export default function SeriesPage() {
             </Tooltip>
           )}
 
+          {/* Below 360px the row has no room for it; pull to refresh does the same. */}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={refresh}
                 disabled={refreshing}
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default"
+                className="max-[359px]:hidden p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default"
                 aria-label="Refresh Series"
               >
                 <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
@@ -889,7 +890,7 @@ export default function SeriesPage() {
               <TooltipTrigger asChild>
                 <Link
                   href="/series/add"
-                  className="relative touch-target touch-target-center ml-1 md:ml-0 md:p-2 md:min-h-[44px] md:min-w-[44px] p-1 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                  className="relative touch-target touch-target-center ml-1 max-[359px]:ml-0 md:ml-0 md:p-2 md:min-h-[44px] md:min-w-[44px] p-1 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
                   aria-label="Add Series"
                 >
                   <Plus className="md:h-5 md:w-5 h-6 w-6" />

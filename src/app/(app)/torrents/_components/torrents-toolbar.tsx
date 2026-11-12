@@ -58,7 +58,9 @@ export function TorrentsToolbar({
 }) {
   return (
     <div ref={ref} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
-      <div className="flex items-center gap-2">
+      {/* No gaps on phones, as on Movies and Series: seven 44px buttons and
+          their gaps were wider than a 375px phone. */}
+      <div className="flex items-center md:gap-2">
         <ResponsiveMenu
           title="Filter"
           titleInDropdown
@@ -124,10 +126,11 @@ export function TorrentsToolbar({
           ))}
         </ResponsiveMenu>
 
+        {/* Below 360px the row has no room for it; pull to refresh does the same. */}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
-              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default"
+              className="max-[359px]:hidden p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default"
               onClick={refresh}
               disabled={refreshing}
               aria-label="Refresh"

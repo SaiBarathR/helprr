@@ -254,7 +254,9 @@ export function TorrentQueueSection({
         </div>
       )}
       <div className="grouped-row">
-        <div className="grid w-full grid-cols-4 gap-2">
+        {/* Two by two on phones: a quarter of a phone's row is narrower than
+            "Bottom" and its icon. */}
+        <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
           {QUEUE_MOVES.map((entry) => (
             <Button
               key={entry.move}
