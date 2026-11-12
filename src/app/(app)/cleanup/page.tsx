@@ -60,7 +60,7 @@ export default function CleanupPage() {
         <div
           className="page-toolbar page-toolbar-flush mb-4 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
         >
-          <TabsList variant="segmented" data-scroll-restoration-key="cleanup:tabs" className="no-scrollbar overflow-x-auto">
+          <TabsList variant="segmented" data-scroll-restoration-key="cleanup:tabs" className="no-scrollbar overflow-x-auto overflow-y-hidden">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           {canManage && (
             <TabsTrigger value="queue">

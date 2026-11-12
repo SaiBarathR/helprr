@@ -62,7 +62,7 @@ export default function JellyfinPage() {
           </TabsList>
         </div>
 
-        <div className="page-bleed flex-1 overflow-y-auto pt-3 pb-4">
+        <div className="page-bleed flex-1 pt-3 pb-4">
           <TabsContent value="overview"><OverviewTab /></TabsContent>
           {canSessions && <TabsContent value="users"><UsersTab /></TabsContent>}
           <TabsContent value="history"><HistoryTab /></TabsContent>

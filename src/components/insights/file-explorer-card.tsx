@@ -288,7 +288,7 @@ export function FileExplorerCard({ kind }: { kind: MediaAnalysisKindFilter }) {
           placeholder="Search title or file name…"
           className="h-8 text-xs"
         />
-        <div data-scroll-restoration-key={`file-explorer:${kind}:filters`} className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-0.5">
+        <div data-scroll-restoration-key={`file-explorer:${kind}:filters`} className="flex items-center gap-2 overflow-x-auto overflow-y-hidden scrollbar-hide -mx-1 px-1 pb-0.5">
           <FilterSelect label="Resolution" value={resolution} options={data?.options.resolution ?? []} onChange={resetPage(setResolution)} />
           <FilterSelect label="Codec" value={videoCodec} options={data?.options.videoCodec ?? []} onChange={resetPage(setVideoCodec)} />
           <FilterSelect label="Range" value={dynamicRange} options={data?.options.dynamicRange ?? []} onChange={resetPage(setDynamicRange)} />

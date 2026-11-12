@@ -159,7 +159,7 @@ export default function InsightsPage() {
         </div>
       </div>
 
-      <div ref={contentRef} data-scroll-restoration-key="insights-content" className="page-bleed flex-1 overflow-y-auto pt-3 pb-6 space-y-4">
+      <div ref={contentRef} data-scroll-restoration-key="insights-content" className="page-bleed flex-1 pt-3 pb-6 space-y-4">
         {tabs.length > 1 && (
           // Radix Tabs: keeps the pill styling, adds roving focus + arrow keys.
           <Tabs
@@ -169,7 +169,7 @@ export default function InsightsPage() {
           >
             <TabsList
               aria-label="Insight sections"
-              className="rail-bleed flex h-auto w-[calc(100%+2*var(--main-pad-x))] justify-start gap-2 bg-transparent py-0 overflow-x-auto scrollbar-hide"
+              className="rail-bleed flex h-auto w-[calc(100%+2*var(--main-pad-x))] justify-start gap-2 bg-transparent py-0 overflow-x-auto overflow-y-hidden scrollbar-hide"
             >
               {tabs.map((id) => {
                 const meta = TAB_META[id];

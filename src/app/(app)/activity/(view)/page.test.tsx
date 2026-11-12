@@ -378,6 +378,23 @@ describe('Activity queue detail drawer', () => {
   });
 });
 
+// jsdom has no layout, so this pins the declarations: the page scrolls, not a
+// box around the list. That box had overflow but no height cap, so a row's 44px
+// tap area poking past its bottom (the Load more button) made it a 4px scroller
+// of its own, and a swipe that started on it moved only that box.
+describe('Activity list scrolling', () => {
+  it('leaves scrolling to the page instead of a box around the list', async () => {
+    await renderPage();
+    await waitFor(() => expect(text()).toContain('2 Tasks'));
+    const row = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Show.S01E01'))!;
+    const scrollers: string[] = [];
+    for (let el = row.parentElement; el && el.id !== 'root'; el = el.parentElement) {
+      if (/\boverflow-(y-)?(auto|scroll)\b/.test(el.className)) scrollers.push(el.className);
+    }
+    expect(scrollers).toEqual([]);
+  });
+});
+
 describe('Activity manual import from the queue', () => {
   it('offers Import on a queue item that needs a manual import', async () => {
     queueRecords = [...QUEUE, BLOCKED];

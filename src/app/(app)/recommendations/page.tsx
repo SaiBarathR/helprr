@@ -211,7 +211,7 @@ function RecommendationsPageInner() {
       {/* Sticky glass mode switcher — same page-toolbar convention as the
           library pages, so the chips stay reachable mid-feed. */}
       <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div data-scroll-restoration-key="recommendations:filters" className="flex flex-nowrap items-center gap-1.5 overflow-x-auto scrollbar-hide">
+        <div data-scroll-restoration-key="recommendations:filters" className="flex flex-nowrap items-center gap-1.5 overflow-x-auto overflow-y-hidden scrollbar-hide">
           {availableModes.map(({ id, label, icon: Icon }) => {
             const active = mode === id;
             return (

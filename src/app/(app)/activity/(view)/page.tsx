@@ -435,7 +435,7 @@ export default function ActivityPage() {
       <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} className="pt-2" />
 
       {/* Tab content */}
-      <div ref={contentScrollRef} data-scroll-restoration-key="activity-content" className="flex-1 overflow-y-auto">
+      <div ref={contentScrollRef} data-scroll-restoration-key="activity-content" className="flex-1">
         {tab === 'queue' && (
           <QueueTab
             sortBy={sortBy}
