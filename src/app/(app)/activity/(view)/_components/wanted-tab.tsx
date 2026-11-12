@@ -35,6 +35,7 @@ import {
   searchAllOutcome,
   searchAllRequests,
   searchAllTargets,
+  searchAllTitle,
   selectedSearchRequests,
   wantedDate,
   wantedRecordKey,
@@ -151,7 +152,8 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
   const searchAllInstances = searchAllTargets(instances, filterBy, instanceFilter);
   const listName = type === 'missing' ? 'missing' : 'cutoff unmet';
   // Helprr searches Radarr's missing films by id, leaving out the "Not released yet" ones.
-  const searchAllNote = type === 'missing' && searchAllInstances.some((i) => i.source === 'radarr')
+  const skipsUnreleased = type === 'missing' && searchAllInstances.some((i) => i.source === 'radarr');
+  const searchAllNote = skipsUnreleased
     ? ' Radarr searches only the films that are out: those not released yet are skipped.'
     : '';
 
@@ -450,7 +452,13 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
       <ConfirmDialog
         open={confirmSearchAll}
         onOpenChange={(open) => { if (!open && !bulkSearching) setConfirmSearchAll(false); }}
-        title={`Search for all ${totalRecords} ${listName} ${totalRecords === 1 ? 'item' : 'items'}?`}
+        title={searchAllTitle({
+          listName,
+          totalRecords,
+          notReleased: notReleased.length,
+          allLoaded: !wantedQuery.hasNextPage,
+          skipsUnreleased,
+        })}
         description={`${searchAllInstances.length === 1 ? 'The instance' : `Each of the ${searchAllInstances.length} instances`} this list covers searches your indexers for every monitored item on it. A long list can take a while and use up indexer request limits.${searchAllNote}`}
         confirmLabel="Search all"
         busy={bulkSearching}

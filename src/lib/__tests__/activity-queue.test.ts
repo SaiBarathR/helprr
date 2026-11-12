@@ -9,7 +9,7 @@ vi.mock('@/lib/service-helpers', () => ({
 vi.mock('@/lib/cache/json-cache', () => ({ getCachedJson: vi.fn().mockResolvedValue(null), setCachedJson: vi.fn() }));
 vi.mock('@/lib/redis', () => ({ getRedisClient: vi.fn().mockResolvedValue({ get: vi.fn().mockResolvedValue(null) }) }));
 
-import { getQueueCached } from '@/lib/activity-queue';
+import { getQueueCached, getQueueNeedingImportCached } from '@/lib/activity-queue';
 
 const instance = (id: string, records: unknown[]) => {
   const getQueue = vi.fn().mockResolvedValue({ records, totalRecords: records.length });
@@ -19,7 +19,7 @@ const instance = (id: string, records: unknown[]) => {
 describe('activity queue', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('asks Sonarr and Radarr for downloads they could not match, and tags them like any other', async () => {
+  it('asks every arr for downloads it could not match, and tags them like any other', async () => {
     // A torrent added by hand into Sonarr's category: tracked, but with no series.
     const sonarr = instance('son-1', [{ id: 1, downloadId: 'D', title: '[grp] Some Show 3rd Season', seriesId: null, trackedDownloadState: 'importBlocked' }]);
     const radarr = instance('rad-1', []);
@@ -32,10 +32,29 @@ describe('activity queue', () => {
 
     expect(sonarr.getQueue).toHaveBeenCalledWith(1, 50, true);
     expect(radarr.getQueue).toHaveBeenCalledWith(1, 50, true);
-    // The import page cannot act on Lidarr items, so its queue stays on the default view.
-    expect(lidarr.getQueue).toHaveBeenCalledWith(1, 50, false);
+    expect(lidarr.getQueue).toHaveBeenCalledWith(1, 50, true);
     expect(result).toEqual({
       records: [expect.objectContaining({ downloadId: 'D', seriesId: null, source: 'sonarr', instanceId: 'son-1', instanceLabel: 'son-1' })],
+      totalRecords: 1,
+    });
+  });
+
+  it('lists a hand-added Lidarr download under Needs import', async () => {
+    // A torrent put into Lidarr's category by hand: Lidarr tracks it but cannot
+    // match an artist, so it waits on a manual import with no artist or album.
+    const lidarr = instance('lid-1', [
+      { id: 7, downloadId: 'L', title: 'The Shaggs - Wink (1967)', artistId: null, albumId: null, trackedDownloadState: 'importBlocked', trackedDownloadStatus: 'warning' },
+      { id: 8, downloadId: 'M', title: 'Still downloading', artistId: 3, albumId: 4, trackedDownloadState: 'downloading', trackedDownloadStatus: 'ok' },
+    ]);
+    mocks.getSonarrClients.mockResolvedValue([]);
+    mocks.getRadarrClients.mockResolvedValue([]);
+    mocks.getLidarrClients.mockResolvedValue([lidarr.entry]);
+
+    const result = await getQueueNeedingImportCached();
+
+    expect(lidarr.getQueue).toHaveBeenCalledWith(1, 200, true);
+    expect(result).toEqual({
+      records: [expect.objectContaining({ id: 7, downloadId: 'L', source: 'lidarr', instanceId: 'lid-1' })],
       totalRecords: 1,
     });
   });

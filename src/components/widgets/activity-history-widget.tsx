@@ -119,14 +119,19 @@ function getEventIcon(eventType: string) {
     case 'downloadFolderImported':
     case 'episodeFileImported':
     case 'movieFileImported':
+    case 'downloadImported':
+    case 'trackFileImported':
+    case 'artistFolderImported':
     case 'imported':
       return <Import className="h-3.5 w-3.5 text-green-400" />;
     case 'downloadFailed':
     case 'importFailed':
+    case 'albumImportIncomplete':
       return <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />;
     case 'deleted':
     case 'episodeFileDeleted':
     case 'movieFileDeleted':
+    case 'trackFileDeleted':
       return <Trash2 className="h-3.5 w-3.5 text-rose-400" />;
     default:
       return <Download className="h-3.5 w-3.5 text-muted-foreground" />;
@@ -139,21 +144,30 @@ function getEventLabel(eventType: string): string {
     case 'downloadFolderImported': return 'Imported';
     case 'episodeFileImported': return 'Imported';
     case 'movieFileImported': return 'Imported';
+    // Lidarr: one downloadImported per album, one trackFileImported per track.
+    case 'downloadImported':
+    case 'trackFileImported':
+    case 'artistFolderImported': return 'Imported';
     case 'imported': return 'Imported';
     case 'downloadFailed': return 'Failed';
     case 'importFailed': return 'Import Failed';
-    case 'renamed': return 'Renamed';
+    case 'albumImportIncomplete': return 'Import Incomplete';
+    case 'renamed':
+    case 'trackFileRenamed': return 'Renamed';
+    case 'trackFileRetagged': return 'Retagged';
     case 'deleted':
     case 'episodeFileDeleted':
-    case 'movieFileDeleted': return 'Deleted';
-    case 'ignored': return 'Ignored';
+    case 'movieFileDeleted':
+    case 'trackFileDeleted': return 'Deleted';
+    case 'ignored':
+    case 'downloadIgnored': return 'Ignored';
     default: return eventType.replace(/([a-z])([A-Z])/g, '$1 $2');
   }
 }
 
 function eventKind(t: string): 'grabbed' | 'imported' | 'failed' {
   if (t === 'grabbed') return 'grabbed';
-  if (t.includes('Failed')) return 'failed';
+  if (t.includes('Failed') || t === 'albumImportIncomplete') return 'failed';
   return 'imported';
 }
 

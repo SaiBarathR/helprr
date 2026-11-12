@@ -93,13 +93,12 @@ const REMOVAL_REREAD_TIMEOUT_MS = 10_000;
 // the queue could not be read in full in time.
 async function readRemovalOutcome(
   client: Parameters<typeof fetchAllQueueRecords>[0],
-  includeUnknown: boolean,
   ids: number[],
 ): Promise<{ removedIds: number[]; remainingIds: number[] } | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const queue = await Promise.race([
-      fetchAllQueueRecords(client, includeUnknown),
+      fetchAllQueueRecords(client, true),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error('Queue re-read timed out')), REMOVAL_REREAD_TIMEOUT_MS);
       }),
@@ -168,7 +167,7 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
     }
     // Upstream removes item by item and skips ids it no longer has, so neither a
     // success nor a failure says what was removed: ask the queue again.
-    const outcome = await readRemovalOutcome(client, source !== 'lidarr', uniqueIds);
+    const outcome = await readRemovalOutcome(client, uniqueIds);
     await recordOperationAudit({
       user: auth.user,
       service,

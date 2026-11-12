@@ -39,7 +39,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function countdownLabel(deleteAfter: string, now = Date.now()): string {
   const left = Date.parse(deleteAfter) - now;
-  if (!Number.isFinite(left) || left <= 0) return 'Any day now';
+  // Past its countdown: an admin can delete it now (nothing deletes it on its own).
+  if (!Number.isFinite(left) || left <= 0) return 'Can be deleted now';
   const days = Math.ceil(left / DAY_MS);
   return days === 1 ? 'Leaves in 1 day' : `Leaves in ${days} days`;
 }

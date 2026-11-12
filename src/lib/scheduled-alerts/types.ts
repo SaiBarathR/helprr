@@ -70,6 +70,8 @@ export interface PreviewResult {
     absoluteNotifyAt: string | null;
   };
   candidates: OccurrenceCandidate[];
+  /** Album alerts only: the album is already out, so only a custom date can remind. */
+  albumReleased?: true;
 }
 
 /** An album ahead that an artist alert found, however far off its release is. */
@@ -86,4 +88,6 @@ export interface ResolveResult {
   resolved: boolean;
   /** Artist alerts only: every album ahead Lidarr knows of, for the "new album" announcement. */
   upcomingAlbums?: UpcomingAlbum[];
+  /** Album alerts only: the album is already out, so a release reminder on it can never go off. */
+  albumReleased?: true;
 }

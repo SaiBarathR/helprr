@@ -2,7 +2,9 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { act, type ReactNode } from 'react';
+import { hydrateRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TonightTitle, TonightView } from '@/types/tonight';
 import { TONIGHT_LAST_KEY, TONIGHT_POLL_MS, TonightPick } from './tonight-pick';
@@ -66,6 +68,28 @@ afterEach(() => {
 });
 
 describe('TonightPick', () => {
+  it('hydrates a pick opened from a link without a mismatch, and focuses the dialog', async () => {
+    fetchMock.mockImplementation(async () => respond(200, view()));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const pick = (
+      <QueryClientProvider client={client}>
+        <TonightPick id={ID} onClose={vi.fn()} onOpenPick={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    container.innerHTML = renderToString(pick);
+    const recoverable = vi.fn();
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+    await act(async () => { root = hydrateRoot(container, pick, { onRecoverableError: recoverable }); });
+
+    const dialog = await screen.findByRole('dialog', { name: 'Tonight pick' });
+    expect(recoverable).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(dialog);
+    act(() => root?.unmount());
+    container.remove();
+  });
+
   it('joins on open, records a vote, and shows the winner with Play and Open in Jellyfin', async () => {
     fetchMock.mockImplementation(async (input, init) => {
       if (input === `/api/tonight/${ID}/join`) return respond(200, view());

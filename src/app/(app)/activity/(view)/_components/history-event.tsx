@@ -39,6 +39,7 @@ function eventColor(eventType: string) {
     case 'downloadFolderImported':
     case 'episodeFileImported':
     case 'movieFileImported':
+    case 'downloadImported':
     case 'trackFileImported':
     case 'imported':
       return 'bg-green-500/10 text-green-400 border-green-500/20';
@@ -70,6 +71,7 @@ function eventLabel(eventType: string) {
     case 'downloadFolderImported':
     case 'episodeFileImported':
     case 'movieFileImported':
+    case 'downloadImported':
     case 'trackFileImported':
     case 'imported':
       return 'IMPORTED';
