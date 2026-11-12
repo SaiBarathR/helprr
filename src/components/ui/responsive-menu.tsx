@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Check } from 'lucide-react';
 import Link from '@/components/ui/app-link';
 import {
@@ -70,12 +70,6 @@ export function ResponsiveMenu({ trigger, title, titleInDropdown, align = 'start
   };
   const close = closeOnPick ? () => setOpen(false) : null;
   const closeOnAction = actions ? () => setOpen(false) : null;
-  // Last used with a mouse: the dropdown then leaves focus where the click put
-  // it instead of handing it back to the trigger, a script focus Chrome matches
-  // with :focus-visible, so a mouse pick left a focus ring on it. Touch, pen and
-  // screen readers (VoiceOver's double-tap is a touch) keep the hand-back.
-  const usedWithMouse = useRef(false);
-
   if (isPhone) {
     return (
       <Drawer open={isOpen} onOpenChange={setOpen}>
@@ -114,13 +108,6 @@ export function ResponsiveMenu({ trigger, title, titleInDropdown, align = 'start
       <DropdownMenuContent
         align={align}
         className={contentClassName}
-        onPointerDown={(event) => { usedWithMouse.current = event.pointerType === 'mouse'; }}
-        onPointerDownOutside={(event) => { usedWithMouse.current = event.detail.originalEvent.pointerType === 'mouse'; }}
-        onKeyDown={() => { usedWithMouse.current = false; }}
-        onCloseAutoFocus={(event) => {
-          if (usedWithMouse.current) event.preventDefault();
-          usedWithMouse.current = false;
-        }}
       >
         {titleInDropdown && (
           <>

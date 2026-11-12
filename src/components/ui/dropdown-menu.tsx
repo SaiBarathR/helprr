@@ -36,15 +36,40 @@ function DropdownMenuContent({
   className,
   sideOffset = 4,
   collisionPadding = 8,
+  onPointerDown,
+  onPointerDownOutside,
+  onKeyDown,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
   const padding = useSafeAreaPadding(collisionPadding)
+  // Closed with the mouse: no focus back to the trigger. Chrome draws its
+  // keyboard focus ring for that hand-back, a blue ring left on the ⋯ button
+  // after a pick. A key, a touch, a pen or VoiceOver still gets focus back.
+  const usedWithMouse = React.useRef(false)
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
         collisionPadding={padding}
+        onPointerDown={(event) => {
+          usedWithMouse.current = event.pointerType === "mouse"
+          onPointerDown?.(event)
+        }}
+        onPointerDownOutside={(event) => {
+          usedWithMouse.current = event.detail.originalEvent.pointerType === "mouse"
+          onPointerDownOutside?.(event)
+        }}
+        onKeyDown={(event) => {
+          usedWithMouse.current = false
+          onKeyDown?.(event)
+        }}
+        onCloseAutoFocus={(event) => {
+          if (usedWithMouse.current) event.preventDefault()
+          usedWithMouse.current = false
+          onCloseAutoFocus?.(event)
+        }}
         className={cn(
           "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border p-1 shadow-md",
           className
