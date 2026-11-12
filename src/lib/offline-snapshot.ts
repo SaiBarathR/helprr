@@ -18,6 +18,14 @@
 export const READONLY_API_NETWORK_FIRST =
   /^\/api\/(?:(?:sonarr|radarr|lidarr)(?!\/(?:command|rename|manualimport|release|lookup|moviefile|episodefile|trackfile|history|wanted)\b)|calendar|library-gaps|dashboard-layouts|watchlist|discover|recommendations\/for-you|activity\/(?:history|wanted))(?:\/.*)?$/;
 
+// Of those, the routes that let the browser keep its own copy (max-age) and
+// whose screens show the saved-data notice. Offline, the browser answered the
+// worker with that copy, unlabelled, so saved data looked live; the worker
+// revalidates these instead, so offline they fall back to the labelled
+// snapshot. Reference data (quality profiles, tags, root folders) keeps its
+// browser cache: no screen labels it, and it backstops reloads.
+export const SNAPSHOT_REVALIDATE = /^\/api\/(?:calendar|library-gaps|activity\/history)(?:\/|$)/;
+
 export const SNAPSHOT_TIME_HEADER = 'x-helprr-snapshot-at';
 export const SNAPSHOT_STALE_HEADER = 'x-helprr-stale';
 export const SNAPSHOT_MAX_AGE_MS = 5 * 60_000;
