@@ -57,6 +57,13 @@ describe('the scheduled alert dialog for a film', () => {
     expect(screen.getByText(/date in the next/)).toBeTruthy();
   });
 
+  it('gives no hint for an episode, whose date Sonarr\'s calendar may leave out', async () => {
+    renderDialog({ draft: { ...filmDraft, source: 'SONARR', mediaType: 'series', externalId: '3', episodeId: 11, seasonNumber: 1 } });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByText(/date in the next/)).toBeNull();
+  });
+
   it('gives no hint when the release is only due sooner than the notice', async () => {
     preview.tooSoon = true;
     renderDialog();
@@ -81,5 +88,15 @@ describe('the scheduled alert dialog for a film', () => {
     await screen.findByText(/date in the next/);
     await user.click(screen.getByRole('button', { name: 'Save alert' }));
     await vi.waitFor(() => expect(toast.success).toHaveBeenCalledWith('Alert scheduled'));
+  });
+
+  it('leaves the title unfocused on a touch screen, so the keyboard does not cover the form', async () => {
+    for (const coarse of [true, false]) {
+      vi.stubGlobal('matchMedia', (query: string) => ({ matches: coarse && query === '(pointer: coarse)', addEventListener() {}, removeEventListener() {} }));
+      const { unmount } = renderDialog({ allowTitleEdit: true });
+      const title = await screen.findByLabelText('Alert title');
+      await vi.waitFor(() => expect(document.activeElement === title).toBe(!coarse));
+      unmount();
+    }
   });
 });

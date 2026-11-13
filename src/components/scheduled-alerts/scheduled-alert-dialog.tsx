@@ -20,6 +20,7 @@ import type { ScheduledAlertDraft, ReleaseKind, ReleasedKind } from '@/lib/sched
 import { DEFAULT_HORIZON_DAYS, RELEASE_KIND_LABELS, defaultScopeForDraft, releasedNote } from '@/lib/scheduled-alerts/constants';
 import { cn } from '@/lib/utils';
 import { useCan } from '@/components/permission-provider';
+import { skipAutoFocusOnTouch } from '@/lib/touch-autofocus';
 
 export type { ScheduledAlertDraft };
 
@@ -224,14 +225,17 @@ export function ScheduledAlertDialog({
   }
 
   const saving = saveMutation.isPending;
-  // Saved now, it would wait for a date: say so rather than look scheduled.
+  // Saved now, a film's reminder would wait for a date: say so rather than
+  // look scheduled. Films only: Radarr's and TMDB's film dates are complete,
+  // while Sonarr's calendar leaves out unmonitored episodes that have a date.
   const noDateYet =
-    previewTypes != null && previewCount === 0 && !released && !tooSoon && draft?.mediaType !== 'music'
+    previewTypes != null && previewCount === 0 && !released && !tooSoon && draft?.mediaType === 'movie'
     && previewTypes.length === releaseTypes.length && previewTypes.every((k) => releaseTypes.includes(k));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      {/* On a phone the focused title would open the keyboard over the date and Save. */}
+      <DialogContent className="max-h-[90vh] overflow-y-auto" onOpenAutoFocus={skipAutoFocusOnTouch}>
         <DialogHeader>
           <DialogTitle>Schedule alert</DialogTitle>
         </DialogHeader>
@@ -302,6 +306,9 @@ export function ScheduledAlertDialog({
                 <Input
                   id="sa-datetime"
                   type="datetime-local"
+                  // iOS gives a native date field its own width, past the
+                  // dialog's padding; without its native look it fills the row.
+                  className="appearance-none [&::-webkit-date-and-time-value]:text-left"
                   value={absoluteValue}
                   onChange={(e) => setAbsoluteValue(e.target.value)}
                   disabled={saving}
@@ -322,8 +329,7 @@ export function ScheduledAlertDialog({
                 {noDateYet && (
                   <p className="text-[11px] text-muted-foreground">
                     No {releaseTypes.map((k) => RELEASE_KIND_LABELS[k]).join(' or ')} date in the next {DEFAULT_HORIZON_DAYS} days yet.
-                    The alert stays on and reminds you when one comes up.
-                    {draft.mediaType === 'movie' && ' Other releases are under More options.'}
+                    The alert stays on and reminds you when one comes up. Other releases are under More options.
                   </p>
                 )}
                 {draft.mediaType === 'music' && draft.albumId == null && (
