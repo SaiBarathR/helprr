@@ -4,10 +4,16 @@ import * as React from "react"
 import { Drawer as DrawerPrimitive } from "vaul"
 
 import { cn } from "@/lib/utils"
+import { useBackClosableOpen } from "@/lib/overlay-history"
 
 function Drawer({
+  open: openProp,
+  defaultOpen,
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Root>) {
+  // Back closes the drawer first (see overlay-history).
+  const [open, setOpen] = useBackClosableOpen(openProp, defaultOpen, onOpenChange)
   // vaul's iOS scroll lock scrolls the page to the top while a drawer is open
   // and back to where it was on every press inside it. iOS drops a tap whose
   // page scrolls under the finger, so from a scrolled page links and buttons in
@@ -25,6 +31,8 @@ function Drawer({
       disablePreventScroll={false}
       repositionInputs={false}
       {...props}
+      open={open}
+      onOpenChange={setOpen}
     />
   )
 }

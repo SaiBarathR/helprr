@@ -42,6 +42,7 @@ import {
 const QueuePanel = dynamic(() => import('@/components/jellyfin-streaming/queue-panel').then((module) => module.QueuePanel));
 import { LiveBadge } from '@/components/jellyfin-streaming/live-badge';
 import { usePlayerSheet } from '@/components/jellyfin-streaming/use-player-sheet';
+import { isOverlayPopState } from '@/lib/overlay-history';
 import { toggleFullscreen } from '@/lib/jellyfin-playback/browser';
 import { bitrateOptions } from '@/lib/jellyfin-playback/device-profile';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
@@ -243,8 +244,14 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
 
   // Browser back used to leave the video fullscreen over whatever route it
   // landed on. Collapse to the mini player instead, so back reveals the page.
+  // Not for a Back that only closed a sheet or dialog, or a dialog taking its
+  // own entry off as it closes (Play in the Watch modal expands the player
+  // in the same click).
   useEffect(() => {
-    const collapse = () => playbackRef.current.setVideoExpanded(false);
+    const collapse = (event: PopStateEvent) => {
+      if (isOverlayPopState(event)) return;
+      playbackRef.current.setVideoExpanded(false);
+    };
     window.addEventListener('popstate', collapse);
     return () => window.removeEventListener('popstate', collapse);
   }, []);
