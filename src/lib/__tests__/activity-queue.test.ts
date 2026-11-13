@@ -28,7 +28,7 @@ describe('activity queue', () => {
     mocks.getRadarrClients.mockResolvedValue([radarr.entry]);
     mocks.getLidarrClients.mockResolvedValue([lidarr.entry]);
 
-    const result = await getQueueCached(1, 50);
+    const result = await getQueueCached(1, 50, { includeLidarr: true });
 
     expect(sonarr.getQueue).toHaveBeenCalledWith(1, 50, true);
     expect(radarr.getQueue).toHaveBeenCalledWith(1, 50, true);
@@ -50,12 +50,43 @@ describe('activity queue', () => {
     mocks.getRadarrClients.mockResolvedValue([]);
     mocks.getLidarrClients.mockResolvedValue([lidarr.entry]);
 
-    const result = await getQueueNeedingImportCached();
+    const result = await getQueueNeedingImportCached({ includeLidarr: true });
 
     expect(lidarr.getQueue).toHaveBeenCalledWith(1, 200, true);
     expect(result).toEqual({
       records: [expect.objectContaining({ id: 7, downloadId: 'L', source: 'lidarr', instanceId: 'lid-1' })],
       totalRecords: 1,
     });
+  });
+
+  it('keeps the cache key of a viewer who may see Lidarr as it was', async () => {
+    mocks.getSonarrClients.mockResolvedValue([]);
+    mocks.getRadarrClients.mockResolvedValue([]);
+    mocks.getLidarrClients.mockResolvedValue([instance('lid-1', []).entry]);
+
+    await getQueueCached(1, 50, { includeLidarr: true });
+    await getQueueNeedingImportCached({ includeLidarr: true });
+
+    const { setCachedJson } = await import('@/lib/cache/json-cache');
+    expect(vi.mocked(setCachedJson).mock.calls.map(([, seed]) => seed)).toEqual(['0:1:50', '0:needs-import']);
+  });
+
+  it('leaves Lidarr out, rows and total, for a viewer without music.view, under its own cache key', async () => {
+    const sonarr = instance('son-1', [{ id: 1, downloadId: 'S', seriesId: 2, trackedDownloadState: 'downloading' }]);
+    const lidarr = instance('lid-1', [{ id: 7, downloadId: 'L', artistId: 3, albumId: 4, trackedDownloadState: 'importBlocked' }]);
+    mocks.getSonarrClients.mockResolvedValue([sonarr.entry]);
+    mocks.getRadarrClients.mockResolvedValue([]);
+    mocks.getLidarrClients.mockResolvedValue([lidarr.entry]);
+
+    const page = await getQueueCached(1, 50, { includeLidarr: false });
+    const needing = await getQueueNeedingImportCached({ includeLidarr: false });
+
+    expect(mocks.getLidarrClients).not.toHaveBeenCalled();
+    expect(lidarr.getQueue).not.toHaveBeenCalled();
+    expect(page).toEqual({ records: [expect.objectContaining({ downloadId: 'S', source: 'sonarr' })], totalRecords: 1 });
+    expect(needing).toEqual({ records: [], totalRecords: 0 });
+    // The full queue is cached for everyone else; the music-less one must never share its entry.
+    const { setCachedJson } = await import('@/lib/cache/json-cache');
+    expect(vi.mocked(setCachedJson).mock.calls.map(([, seed]) => seed)).toEqual(['0:1:50:no-lidarr', '0:needs-import:no-lidarr']);
   });
 });

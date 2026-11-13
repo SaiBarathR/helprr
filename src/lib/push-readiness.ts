@@ -2,9 +2,11 @@
  * Every way push can be off on this device, as rows for Settings → Notifications →
  * Check push setup. Pure: the page gathers the facts, this names each one.
  */
+import { hourLabel } from '@/lib/format';
+
 export type PushCheckState = 'ok' | 'fail' | 'warn' | 'checking' | 'skip';
 
-export type PushCheckId = 'secure' | 'browser' | 'server' | 'worker' | 'ios-version' | 'installed' | 'permission' | 'subscribed';
+export type PushCheckId = 'secure' | 'browser' | 'server' | 'worker' | 'ios-version' | 'installed' | 'permission' | 'subscribed' | 'quiet-hours';
 
 export interface PushCheck {
   id: PushCheckId;
@@ -38,6 +40,12 @@ export interface PushFacts {
   permission: NotificationPermission | null;
   /** null while checking. */
   subscribed: boolean | null;
+  /**
+   * The person's quiet hours when they are on (null: off or not known yet).
+   * Pushes are skipped during them, so an all-green page could still end in
+   * "No devices received" without this row.
+   */
+  quietHours?: { start: number; end: number; activeNow: boolean } | null;
   /** The push hook's own words for why turning push on failed, if it did. */
   deviceError?: string | null;
 }
@@ -45,8 +53,12 @@ export interface PushFacts {
 const INSTALL_PAGE = '/settings/appearance#install';
 
 /** The iOS version from a user agent: "iPhone OS 17_4" on iPhone, "Version/17.4" on an iPad that asks for desktop pages. */
+// Since iOS 26 the "OS 18_x" in the user agent is frozen (an iOS 27 iPhone says
+// 18_7), while Safari's "Version/27.0" still tells the truth, so it comes first.
+// The installed app's user agent can lack it; then only "too old" is told by
+// the number (the freeze is far above 16.4).
 export function parseIosVersion(userAgent: string): [number, number] | null {
-  const match = /OS (\d+)_(\d+)/.exec(userAgent) ?? /Version\/(\d+)\.(\d+)/.exec(userAgent);
+  const match = /Version\/(\d+)\.(\d+)/.exec(userAgent) ?? /OS (\d+)_(\d+)/.exec(userAgent);
   return match ? [Number(match[1]), Number(match[2])] : null;
 }
 
@@ -112,7 +124,7 @@ export function pushReadinessChecks(facts: PushFacts): PushCheck[] {
       !known
         ? { id: 'ios-version', state: 'warn', title: 'iOS version unknown', detail: 'Push needs iOS 16.4 or later.' }
         : recent
-          ? { id: 'ios-version', state: 'ok', title: `iOS ${major}.${minor}` }
+          ? { id: 'ios-version', state: 'ok', title: 'iOS supports push' }
           : {
               id: 'ios-version',
               state: 'fail',
@@ -202,5 +214,45 @@ export function pushReadinessChecks(facts: PushFacts): PushCheck[] {
       fixHref: '/settings/notifications',
     });
   }
+  if (facts.quietHours) {
+    const { start, end, activeNow } = facts.quietHours;
+    const window = `${hourLabel(start)}–${hourLabel(end)}`;
+    checks.push(
+      activeNow
+        ? {
+            id: 'quiet-hours',
+            state: 'warn',
+            title: 'Quiet hours are on now',
+            detail: `From ${window} pushes are skipped; they still show in Notifications. A test notification comes through.`,
+            fixHref: '/settings/notifications',
+          }
+        : { id: 'quiet-hours', state: 'ok', title: `Quiet hours ${window}: pushes are skipped then` },
+    );
+  }
   return checks;
 }
+
+/**
+ * The quiet-hours fact for the check page from /api/me/settings: the hour now
+ * in the person's own time zone (else the server's), against the same
+ * [start, end) window the server uses, crossing midnight when start > end.
+ */
+export function quietHoursFact(
+  settings: { quietHoursEnabled: boolean; quietHoursStart: number | null; quietHoursEnd: number | null; timeZone: string | null; serverTimeZone?: string | null } | undefined,
+  now: Date,
+): PushFacts['quietHours'] {
+  if (!settings?.quietHoursEnabled || settings.quietHoursStart == null || settings.quietHoursEnd == null) return null;
+  const start = settings.quietHoursStart;
+  const end = settings.quietHoursEnd;
+  if (start === end) return null;
+  const timeZone = settings.timeZone ?? settings.serverTimeZone ?? undefined;
+  let hour: number;
+  try {
+    hour = Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23', timeZone }).format(now));
+  } catch {
+    hour = now.getHours();
+  }
+  const activeNow = start < end ? hour >= start && hour < end : hour >= start || hour < end;
+  return { start, end, activeNow };
+}
+

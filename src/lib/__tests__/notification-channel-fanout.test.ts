@@ -88,6 +88,17 @@ describe('channel fan-out', () => {
     expect(dispatchedIds()).toEqual(['a']);
   });
 
+  it('sends a Lidarr album event only to those who may see the music library', async () => {
+    const noMusic = { ...member, id: 'no-music', permissions: { 'music.view': false } };
+    mocks.findChannels.mockResolvedValue([channel('a', admin), channel('m', member), channel('n', noMusic)]);
+    await notifyEvent({ eventType: 'imported', title: 'Album Imported', body: 'B', metadata: { source: 'lidarr' } });
+    expect(dispatchedIds()).toEqual(['a', 'm']);
+
+    mocks.dispatch.mockClear();
+    await notifyEvent({ eventType: 'imported', title: 'Episode Imported', body: 'B', metadata: { source: 'sonarr' } });
+    expect(dispatchedIds()).toEqual(['a', 'm', 'n']);
+  });
+
   it('sends admin-only events to admins, whatever a member was granted', async () => {
     mocks.findChannels.mockResolvedValue([channel('a', admin), channel('h', healthMember)]);
     await notifyEvent({ eventType: 'securityAlert', title: 'T', body: 'B' });

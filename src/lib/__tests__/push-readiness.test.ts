@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseIosVersion, pushReadinessChecks, type PushFacts } from '@/lib/push-readiness';
+import { parseIosVersion, pushReadinessChecks, quietHoursFact, type PushFacts } from '@/lib/push-readiness';
 
 const ready: PushFacts = {
   secure: true,
@@ -45,9 +45,11 @@ describe('pushReadinessChecks', () => {
   it('needs the installed app and iOS 16.4 on an iPhone', () => {
     const browser = byId({ ...ready, ios: true, iosVersion: [17, 2], standalone: false });
     expect(browser.installed).toMatchObject({ state: 'fail', fixHref: '/settings/appearance#install' });
-    expect(browser['ios-version']).toMatchObject({ state: 'ok', title: 'iOS 17.2' });
+    expect(browser['ios-version']).toMatchObject({ state: 'ok', title: 'iOS supports push' });
     expect(byId({ ...ready, ios: true, iosVersion: [16, 3] })['ios-version'].state).toBe('fail');
     expect(byId({ ...ready, ios: true, iosVersion: [16, 4] })['ios-version'].state).toBe('ok');
+    // No number when it passes: the installed app's user agent can carry the frozen 18.x.
+    expect(byId({ ...ready, ios: true, iosVersion: [18, 7] })['ios-version'].title).toBe('iOS supports push');
     expect(byId({ ...ready, ios: true, iosVersion: null })['ios-version'].state).toBe('warn');
     expect(byId(ready)['ios-version']).toBeUndefined();
   });
@@ -112,8 +114,34 @@ describe('parseIosVersion', () => {
     ['Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Version/17.4 Mobile/15E148 Safari/604.1', [17, 4]],
     ['Mozilla/5.0 (iPhone; CPU iPhone OS 16_3_1 like Mac OS X) AppleWebKit/605.1.15', [16, 3]],
     ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15', [18, 1]],
+    // iOS 27 Safari: the OS token is frozen at 18_7; Version/ is the real one.
+    ['Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1', [27, 0]],
     ['Mozilla/5.0 (Linux; Android 14)', null],
   ])('%s', (userAgent, expected) => {
     expect(parseIosVersion(userAgent)).toEqual(expected);
+  });
+});
+
+describe('quiet hours', () => {
+  const settings = { quietHoursEnabled: true, quietHoursStart: 12, quietHoursEnd: 18, timeZone: null, serverTimeZone: 'Asia/Kolkata' };
+
+  it('is on at 12:08 in India (06:38 UTC) and off at 18:08', () => {
+    expect(quietHoursFact(settings, new Date('2026-11-13T06:38:00Z'))).toEqual({ start: 12, end: 18, activeNow: true });
+    expect(quietHoursFact(settings, new Date('2026-11-13T12:38:00Z'))?.activeNow).toBe(false);
+  });
+
+  it('crosses midnight, and is nothing when off or zero-length', () => {
+    const night = { ...settings, quietHoursStart: 23, quietHoursEnd: 7, timeZone: 'UTC' };
+    expect(quietHoursFact(night, new Date('2026-11-13T02:00:00Z'))?.activeNow).toBe(true);
+    expect(quietHoursFact(night, new Date('2026-11-13T12:00:00Z'))?.activeNow).toBe(false);
+    expect(quietHoursFact({ ...settings, quietHoursEnabled: false }, new Date())).toBeNull();
+    expect(quietHoursFact({ ...settings, quietHoursEnd: 12 }, new Date())).toBeNull();
+  });
+
+  it('warns while they are on, and says so when they are off', () => {
+    const on = byId({ ...ready, quietHours: { start: 12, end: 18, activeNow: true } })['quiet-hours'];
+    expect(on).toMatchObject({ state: 'warn', title: 'Quiet hours are on now', fixHref: '/settings/notifications' });
+    expect(byId({ ...ready, quietHours: { start: 12, end: 18, activeNow: false } })['quiet-hours'].state).toBe('ok');
+    expect(byId({ ...ready, quietHours: null })['quiet-hours']).toBeUndefined();
   });
 });

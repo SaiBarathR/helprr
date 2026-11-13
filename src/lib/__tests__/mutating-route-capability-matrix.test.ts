@@ -657,6 +657,15 @@ describe('mutating API route capability matrix', () => {
     }
   });
 
+  it('makes the Lidarr command and release routes also need music.view', () => {
+    // Lidarr's searches, grabs and commands act on music: activity.manage alone is not enough.
+    for (const route of ['POST /api/lidarr/command', 'POST /api/lidarr/release']) {
+      const evidence = handlers.get(route)!;
+      expect(hasCall(evidence, 'requireUserAllCapabilities', 'activity.manage'), route).toBe(true);
+      expect(hasCall(evidence, 'requireUserAllCapabilities', 'music.view'), `${route} must require music.view`).toBe(true);
+    }
+  });
+
   it('locks dynamic, field-level, and ownership-aware policies to their fail-closed guards', () => {
     const known = new Set<string>(CAPABILITIES);
     for (const [route, policy] of Object.entries(SPECIAL_POLICIES)) {

@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/auth', () => ({
   requireUserCapability: mocks.requireUserCapability,
+  // One mock for both gates: a route asking for several capabilities is called with their list.
+  requireUserAllCapabilities: mocks.requireUserCapability,
 }));
 vi.mock('@/lib/api-logger', () => ({
   withApiLogging: (handler: unknown) => handler,
@@ -36,7 +38,7 @@ import { GET as lidarrRenameGet } from '@/app/api/lidarr/rename/route';
 
 type GetCase = {
   name: string;
-  capability: string;
+  capability: string | string[];
   invoke: () => Promise<Response>;
 };
 
@@ -81,7 +83,8 @@ const cases: GetCase[] = [
   },
   {
     name: 'Lidarr rename preview',
-    capability: 'activity.manage',
+    // Lidarr's files are music: previewing their rename also needs music.view.
+    capability: ['activity.manage', 'music.view'],
     invoke: () => lidarrRenameGet(request(
       '/api/lidarr/rename?artistId=10&albumId=9&instanceId=lidarr-lossless',
     )),

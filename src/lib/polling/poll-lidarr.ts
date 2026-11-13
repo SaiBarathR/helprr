@@ -176,6 +176,9 @@ export async function pollLidarr(context: CycleContext) {
           title: instanceTitle('Lidarr Health Warning', instanceLabel, n),
           body: health.map((h) => h.message).join('; ').slice(0, 200),
           url: '/settings',
+          // Tagged like Lidarr's other events, so the music.view rule (push and the
+          // digest without Lidarr) applies: a health message can name an artist.
+          metadata: { source: 'lidarr', instanceId },
         }, { service: 'lidarr', instanceId, reason: 'health-changed', healthCount: health.length });
       }
 
