@@ -11,7 +11,7 @@ import { useMe } from '@/components/permission-provider';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { isIosDevice } from '@/lib/push-availability';
-import { parseIosVersion, pushReadinessChecks, type PushCheck } from '@/lib/push-readiness';
+import { parseIosVersion, pushReadinessChecks, quietHoursFact, type PushCheck } from '@/lib/push-readiness';
 
 // Facts about this browser that never change within a session.
 const emptySubscribe = () => () => {};
@@ -76,6 +76,19 @@ export default function PushCheckPage() {
   });
   const serverConfigured = serverPush ? (serverPush.configured ?? Boolean(serverPush.publicKey)) : null;
 
+  // Quiet hours skip pushes, so an all-green page could still say "No devices
+  // received the test" with nothing here to tell why.
+  const { data: mySettings } = useQuery({
+    queryKey: ['me-settings'],
+    queryFn: jsonFetcher<{
+      quietHoursEnabled: boolean;
+      quietHoursStart: number | null;
+      quietHoursEnd: number | null;
+      timeZone: string | null;
+      serverTimeZone?: string | null;
+    }>('/api/me/settings'),
+  });
+
   // Is a service worker installed and running for this page? One that is still
   // installing (a first visit) gets ten seconds to become ready.
   const [workerActive, setWorkerActive] = useState<boolean | null>(null);
@@ -118,6 +131,7 @@ export default function PushCheckPage() {
     permission,
     subscribed: loading ? null : isSubscribed,
     deviceError,
+    quietHours: quietHoursFact(mySettings, new Date()),
   });
   const failing = checks.filter((check) => check.state === 'fail').length;
   const worthALook = checks.filter((check) => check.state === 'warn').length;

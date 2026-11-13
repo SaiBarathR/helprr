@@ -4,6 +4,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { readJsonBody } from '@/lib/bulk-editor';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { activitySourceForbidden } from '@/lib/activity-arr-target';
 
 // One download's files; far above any real pack, and bounds a hostile body.
 const MAX_ITEMS = 1000;
@@ -31,6 +32,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     if (source !== 'sonarr' && source !== 'radarr' && source !== 'lidarr') {
       return NextResponse.json({ error: 'source is required and must be "sonarr", "radarr" or "lidarr"' }, { status: 400 });
     }
+    const forbidden = activitySourceForbidden(auth.user, source);
+    if (forbidden) return forbidden;
     if (!Array.isArray(items) || items.length === 0 || items.length > MAX_ITEMS || !items.every(isRecord)) {
       return NextResponse.json({ error: `items must be an array of 1 to ${MAX_ITEMS} objects` }, { status: 400 });
     }

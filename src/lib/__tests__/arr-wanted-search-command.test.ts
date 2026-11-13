@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   logInfo: vi.fn(),
 }));
 vi.mock('@/lib/logger', () => ({ logger: { info: mocks.logInfo, warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
-vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.auth }));
+vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.auth, requireUserAllCapabilities: mocks.auth }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (fn: unknown) => fn }));
 vi.mock('@/lib/service-helpers', () => ({
   getSonarrClient: (id?: string) => mocks.getClient('sonarr', id),
@@ -52,7 +52,8 @@ describe.each([
   it.each(wholeList)('%s searches the %s list on the named instance', async (name, type) => {
     const res = await post(handler, service, name);
     expect(res.status).toBe(200);
-    expect(mocks.auth).toHaveBeenCalledWith('activity.manage');
+    // Lidarr's albums are music: its searches also need music.view.
+    expect(mocks.auth).toHaveBeenCalledWith(service === 'lidarr' ? ['activity.manage', 'music.view'] : 'activity.manage');
     expect(mocks.getClient).toHaveBeenCalledWith(service, 'inst-2');
     expect(mocks.client.searchWanted).toHaveBeenCalledWith(type);
   });

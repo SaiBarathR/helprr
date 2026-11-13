@@ -6,10 +6,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ search: new URLSearchParams() }));
+const mocks = vi.hoisted(() => ({ search: new URLSearchParams(), canViewMusic: true }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => mocks.search }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn() }) }));
-vi.mock('@/components/permission-provider', () => ({ useCan: () => true }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => cap !== 'music.view' || mocks.canViewMusic }));
 vi.mock('@/lib/client-refresh-settings', () => ({ getRefreshIntervalMs: vi.fn().mockResolvedValue(60_000) }));
 // The sheet's content renders only for a selected event, so a pass-through drawer shows whether it opened.
 vi.mock('@/components/ui/drawer', () => {
@@ -45,6 +45,7 @@ const fetchMock = vi.fn(async (url: string) => {
 
 beforeEach(() => {
   mocks.search = new URLSearchParams();
+  mocks.canViewMusic = true;
   historyRecords = [];
   historyPartial = false;
   downSource = null;
@@ -136,6 +137,14 @@ describe('Needs import tab: Recent failures', () => {
     instances = [{ id: 'lid-1', label: 'main', type: 'LIDARR' }];
     renderTab();
     expect(await screen.findByText('Lidarr failures show when Lidarr is chosen in the filter.')).toBeTruthy();
+  });
+
+  it('does not point to the Lidarr filter for someone who may not see music', async () => {
+    mocks.canViewMusic = false;
+    instances = [{ id: 'lid-1', label: 'main', type: 'LIDARR' }];
+    renderTab();
+    await screen.findByText('No failed downloads in the last 7 days');
+    expect(screen.queryByText('Lidarr failures show when Lidarr is chosen in the filter.')).toBeNull();
   });
 
   it('asks Sonarr and Radarr by default, and Lidarr or one instance only when chosen', async () => {

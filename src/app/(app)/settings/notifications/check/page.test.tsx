@@ -62,7 +62,7 @@ describe('Check push setup', () => {
     await waitFor(() => expect(screen.getByText(/2 things stop push on this device/)).toBeTruthy());
     expect(row('Not a secure address').textContent).toContain('Needs fixing');
     expect(row('Not opened as the installed app').querySelector('a')?.getAttribute('href')).toBe('/settings/appearance#install');
-    expect(screen.getByText('iOS 17.4')).toBeTruthy();
+    expect(screen.getByText('iOS supports push')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Send a test notification/ })).toBeNull();
   });
 

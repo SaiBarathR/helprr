@@ -4,6 +4,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { bumpQueueCacheVersion } from '@/lib/activity-queue';
 import { runWithOperationAudit } from '@/lib/file-audit';
+import { activitySourceForbidden } from '@/lib/activity-arr-target';
 
 async function deleteHandler(
   request: NextRequest,
@@ -28,6 +29,9 @@ async function deleteHandler(
         { status: 400 }
       );
     }
+
+    const forbidden = activitySourceForbidden(auth.user, source);
+    if (forbidden) return forbidden;
 
     const queueId = parseInt(id, 10);
     if (isNaN(queueId)) {

@@ -150,6 +150,9 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
   });
 
   const pending = start.isPending || confirm.isPending;
+  // The authenticator shows 6 digits: Turn on waits for all of them (with 5 the
+  // server could only say "That code didn't work").
+  const codeComplete = /^\d{6}$/.test(code.replace(/\s/g, ''));
 
   async function copy(text: string, what: 'codes' | 'key') {
     try {
@@ -194,7 +197,7 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
               reset();
               onOpenChange(false);
             } else if (setup) {
-              if (code.trim()) confirm.mutate();
+              if (codeComplete) confirm.mutate();
             } else if (password) {
               start.mutate();
             }
@@ -300,7 +303,7 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
             <Button
               type="submit"
               className="w-full"
-              disabled={pending || (!recoveryCodes && (setup ? !code.trim() : !password))}
+              disabled={pending || (!recoveryCodes && (setup ? !codeComplete : !password))}
             >
               {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {recoveryCodes ? 'Done' : setup ? 'Turn on' : 'Continue'}
