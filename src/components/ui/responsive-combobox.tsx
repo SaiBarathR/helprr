@@ -39,19 +39,23 @@ export function ResponsiveCombobox({ open, onOpenChange, trigger, title, searchP
   // Each new search starts at the top of the list. On the first key cmdk
   // scrolled to the row still highlighted, the current pick, already sorted
   // ~30 rows down, then moved the highlight to the new best match without
-  // scrolling back ("Lon" left Europe/London above the view). Runs after
-  // cmdk's own layout-effect scroll, so it has the last word.
+  // scrolling back ("Lon" left Europe/London above the view). cmdk only hears
+  // the search in the input's effect and scrolls in a later render, so the
+  // reset waits a frame to come after it.
   const [search, setSearch] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (listRef.current) listRef.current.scrollTop = 0;
+    const frame = requestAnimationFrame(() => {
+      if (listRef.current) listRef.current.scrollTop = 0;
+    });
+    return () => cancelAnimationFrame(frame);
   }, [search]);
-  // A closed picker opens again unfiltered, on the current pick (also when the
-  // caller closes it by its `open` prop, after a pick).
+  // Opened again: unfiltered, on the current pick. Cleared on open, not on
+  // close, so a closing sheet doesn't snap back to the full list as it leaves.
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (!open) setSearch('');
+    if (open) setSearch('');
   }
 
   if (isPhone) {
