@@ -192,6 +192,25 @@ describe('events that start off', () => {
     expect(sentTo()).toEqual([`${subscription.endpoint}-on`]);
   });
 
+  it('sends a test push during quiet hours, and holds other events then', async () => {
+    const hour = new Date().getUTCHours();
+    const sleepy = () => ({
+      ...device('sleepy', []),
+      user: {
+        id: 'user-sleepy', role: 'admin', template: 'admin', permissions: {},
+        settings: { quietHoursEnabled: true, quietHoursStart: hour, quietHoursEnd: (hour + 1) % 24, timeZone: 'UTC' },
+      },
+    });
+    mocks.findMany.mockResolvedValueOnce([sleepy()]);
+    await notifyEvent({ eventType: 'test', title: 'Test', body: 'Body', userIds: ['user-sleepy'] });
+    expect(sentTo()).toEqual([`${subscription.endpoint}-sleepy`]);
+
+    mocks.sendNotification.mockClear();
+    mocks.findMany.mockResolvedValueOnce([sleepy()]);
+    await notifyEvent({ eventType: 'grabbed', title: 'Grabbed', body: 'Body' });
+    expect(sentTo()).toEqual([]);
+  });
+
   it('still sends other events to a device with no saved choice', async () => {
     mocks.findMany.mockResolvedValueOnce([device('unset', [])]);
     await notifyEvent({ eventType: 'grabbed', title: 'Grabbed', body: 'Body' });

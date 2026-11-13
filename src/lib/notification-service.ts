@@ -196,7 +196,9 @@ const FILTERABLE_EVENTS = new Set(['grabbed', 'imported', 'downloadFailed', 'imp
 // Critical alerts always break through a user's quiet hours — a service going
 // down at 3am is exactly what they'd want to know about.
 // Security alerts too: a burst of failed sign-ins at night is worth waking for.
-const QUIET_HOURS_BYPASS_EVENTS = new Set(['healthWarning', 'serviceDown', 'serviceRestored', 'securityAlert']);
+// A test push is asked for on the spot; held by quiet hours it read as
+// "No devices received the test" on a setup that works.
+const QUIET_HOURS_BYPASS_EVENTS = new Set(['healthWarning', 'serviceDown', 'serviceRestored', 'securityAlert', 'test']);
 
 interface QuietHoursSettings {
   quietHoursEnabled: boolean;
