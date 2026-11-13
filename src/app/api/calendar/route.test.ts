@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getCachedJson: vi.fn(),
   setCachedJson: vi.fn(),
   fetchEvents: vi.fn(),
+  scheduled: [] as unknown[],
 }));
 
 vi.mock('@/lib/auth', () => ({
@@ -21,8 +22,8 @@ vi.mock('@/lib/calendar-events', async (importOriginal) => ({
   fetchServiceCalendarEvents: mocks.fetchEvents,
 }));
 vi.mock('@/lib/scheduled-alerts/calendar', () => ({
-  fetchScheduledCalendarEvents: async () => [],
-  mergeCalendarWithScheduled: (events: CalendarEvent[]) => events,
+  fetchScheduledCalendarEvents: async () => mocks.scheduled,
+  mergeCalendarWithScheduled: (events: CalendarEvent[], scheduled: CalendarEvent[]) => [...events, ...scheduled],
 }));
 
 import { GET } from './route';
@@ -39,6 +40,7 @@ const ids = async (res: Response) => ((await res.json()) as CalendarEvent[]).map
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.user.permissions = {};
+  mocks.scheduled = [];
   mocks.getCachedJson.mockResolvedValue(null);
   mocks.fetchEvents.mockResolvedValue({ events: EVENTS, cacheable: true });
 });
@@ -56,5 +58,12 @@ describe('GET /api/calendar and music access', () => {
     mocks.getCachedJson.mockResolvedValue(EVENTS);
     expect(await ids(await get())).toEqual(['ep', 'film']);
     expect(await ids(await get('?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&type=album'))).toEqual([]);
+  });
+
+  it('leaves out a music alert\'s own occurrences too, which come back as album events', async () => {
+    mocks.user.permissions = { 'music.view': false };
+    mocks.scheduled = [event('alert-album', 'album'), event('alert-film', 'movie')];
+    expect(await ids(await get('?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&includeScheduled=true')))
+      .toEqual(['ep', 'film', 'alert-film']);
   });
 });

@@ -140,7 +140,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         start: new Date(start!),
         end: new Date(end!),
       });
-      filtered = mergeCalendarWithScheduled(filtered, scheduled);
+      // A music alert's occurrences come back as album events: the same rule.
+      filtered = calendarEventsFor(authUser.user, mergeCalendarWithScheduled(filtered, scheduled));
       if (type && type !== 'all') {
         filtered = filtered.filter((e) => e.type === type);
       }
