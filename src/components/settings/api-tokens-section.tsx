@@ -178,7 +178,8 @@ export function ApiTokensSection() {
                   <KeyRound className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium truncate">{token.name}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5 truncate">{describe(token, now)}</div>
+                    {/* Wraps on a narrow phone: cut, "last used …" lost the part that matters. */}
+                    <div className="text-xs text-muted-foreground mt-0.5">{describe(token, now)}</div>
                     <div className="text-xs text-muted-foreground mt-0.5">
                       {token.scopes.map((scope) => SCOPE_LABEL.get(scope) ?? scope).join(', ')}
                     </div>

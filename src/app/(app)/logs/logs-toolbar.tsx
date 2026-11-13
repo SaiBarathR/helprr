@@ -104,10 +104,12 @@ export function LogsToolbar({
             <SelectTrigger className="h-10 basis-full sm:basis-auto sm:max-w-[240px]" aria-label="Filter by log file">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            {/* A file name is wider than a 320 px phone: the list stays on screen and a
+                name wraps rather than losing its time stamp to an ellipsis. */}
+            <SelectContent className="max-w-[calc(100vw-1rem)]">
               <SelectItem value="all">All files</SelectItem>
               {files.map((file) => (
-                <SelectItem key={file.name} value={file.name} className="font-mono text-xs">
+                <SelectItem key={file.name} value={file.name} className="font-mono text-xs [overflow-wrap:anywhere]">
                   {file.name}
                 </SelectItem>
               ))}

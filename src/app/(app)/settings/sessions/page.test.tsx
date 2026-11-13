@@ -242,6 +242,41 @@ describe('Settings → Sessions list', () => {
     expect([...container.querySelectorAll('button')].some((b) => b.textContent?.includes('Show more'))).toBe(false);
   });
 
+  it('shows a new sign-in and the new count when the list refreshes', async () => {
+    await renderPage();
+    expect(sectionTitles()).toEqual(['Your sessions · 2']);
+
+    mocks.groups = [{ ...OWN_GROUP, total: 3, sessions: [...OWN_GROUP.sessions, session('new', 'New iPad')] }];
+    // Only the list refetches, as its 30 s interval does.
+    await act(async () => { await client.refetchQueries({ queryKey: ['sessions'], exact: true }); });
+    await flush();
+
+    expect(sectionTitles()).toEqual(['Your sessions · 3']);
+    expect(rowNames()).toEqual(['This Mac · This device', 'Phone', 'New iPad']);
+  });
+
+  it('after Show more, a refresh refetches every loaded page together', async () => {
+    mocks.groups = [
+      OWN_GROUP,
+      { userId: 'amy', ownerName: 'Amy', isOwn: false, total: 3, hasMore: true, sessions: [session('amy-1', 'Amy 1'), session('amy-2', 'Amy 2')] },
+    ];
+    mocks.pages['/api/sessions?userId=amy&skip=2'] = { total: 3, hasMore: false, sessions: [session('amy-3', 'Amy 3')] };
+    await renderPage();
+    const more = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Show more'))!;
+    await act(async () => more.click());
+    await flush();
+
+    // Amy signs in again elsewhere: the list and both of her pages move by one.
+    mocks.groups = [OWN_GROUP, { userId: 'amy', ownerName: 'Amy', isOwn: false, total: 4, hasMore: true, sessions: [session('amy-0', 'Amy new'), session('amy-1', 'Amy 1')] }];
+    mocks.pages['/api/sessions?userId=amy&skip=0'] = { total: 4, hasMore: true, sessions: [session('amy-0', 'Amy new'), session('amy-1', 'Amy 1')] };
+    mocks.pages['/api/sessions?userId=amy&skip=2'] = { total: 4, hasMore: false, sessions: [session('amy-2', 'Amy 2'), session('amy-3', 'Amy 3')] };
+    await act(async () => { await client.refetchQueries({ queryKey: ['sessions'], exact: true }); });
+    await flush();
+
+    expect(sectionTitles()).toEqual(['Your sessions · 2', 'Amy · 4']);
+    expect(rowNames()).toEqual(['This Mac · This device', 'Phone', 'Amy new', 'Amy 1', 'Amy 2', 'Amy 3']);
+  });
+
   it('hides revoke-others when this is the only own session', async () => {
     mocks.groups = [{ ...OWN_GROUP, total: 1, sessions: [session('current', 'This Mac', true)] }];
     await renderPage();

@@ -551,7 +551,8 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
           }
         }}
         className={cn(
-          'overflow-hidden bg-black',
+          // hpr-on-dark: a light palette's accent comes back as picked on the black player.
+          'hpr-on-dark overflow-hidden bg-black',
           !isVideo && !sheet.present && 'pointer-events-none fixed h-px w-px opacity-0',
           // Sits above the now-playing bar rather than on top of it — at
           // md:bottom-4 it used to cover Pause/Next/Repeat/Queue/Stop.

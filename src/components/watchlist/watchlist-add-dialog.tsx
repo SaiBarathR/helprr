@@ -198,7 +198,9 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
 
           <div className="space-y-2">
             <Label htmlFor="wl-tag-input">Tags</Label>
-            <div className="flex flex-wrap gap-1.5 min-h-[28px]">
+            {/* Only with tags picked: an empty reserved row left a gap under the label. */}
+            {selected.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
               {selected.map((t) => (
                 <span
                   key={t}
@@ -221,6 +223,7 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
                 </span>
               ))}
             </div>
+            )}
             <Input
               id="wl-tag-input"
               value={tagInput}

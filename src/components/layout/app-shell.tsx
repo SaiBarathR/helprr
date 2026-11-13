@@ -65,7 +65,7 @@ export function AppShell({ children, demo = false }: { children: React.ReactNode
         // The skip link's target (src/components/layout/skip-link.tsx).
         id="main"
         // Clear the bottom tab bar and the home indicator (--footer-height).
-        className="app-main flex-1 [overflow-x:clip] pb-[calc(var(--footer-height)+1rem)] outline-none"
+        className="app-main flex-1 [overflow-x:clip] pb-[calc(var(--footer-height)+1rem+var(--browse-notice-clearance,0px))] outline-none"
       >
         <BrowseFreshnessNotice onRetry={() => void getQueryClient().invalidateQueries({ refetchType: 'active' })} />
         {demo && <DemoBanner />}

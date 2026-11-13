@@ -47,11 +47,13 @@ function mount(state: { links: unknown[]; max?: number; origin?: string | null }
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <CalendarFeedDialog open onOpenChange={() => {}} filters={PAGE_FILTERS} instances={INSTANCES} />
+      <CalendarFeedDialog open onOpenChange={onOpenChange} filters={PAGE_FILTERS} instances={INSTANCES} />
     </QueryClientProvider>,
   );
   return fetchMock;
 }
+
+const onOpenChange = vi.fn();
 
 describe('feedUrls', () => {
   it('carries only the token, with a webcal twin', () => {
@@ -101,9 +103,11 @@ describe('CalendarFeedDialog', () => {
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!;
     expect(JSON.parse(String(post[1]!.body))).toEqual({ name: 'Kids movies', filters: { type: 'movie', instanceId: 'rad', monitoredOnly: false } });
 
-    // Done goes back to the list; the token is gone from the page.
+    // Done closes the sheet, like every other phone sheet; the token is gone from the page.
+    onOpenChange.mockClear();
     await userEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(screen.queryByLabelText('Calendar link')).toBeNull();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('keeps showing a link it just made when the list fails to refresh', async () => {

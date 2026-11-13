@@ -106,9 +106,10 @@ function eventHref(event: CalendarEvent): string {
   return '/notifications/scheduled';
 }
 
-/** The event's own poster URL, as an alert stores it (not proxied). */
+/** The event's own poster URL, as an alert stores it (not proxied). An album
+ *  has no poster: Lidarr gives it a square cover. */
 function posterFromEvent(event: CalendarEvent): string | null {
-  const img = event.images?.find((i) => i.coverType === 'poster');
+  const img = event.images?.find((i) => i.coverType === 'poster') ?? event.images?.find((i) => i.coverType === 'cover');
   return img?.remoteUrl ?? img?.url ?? null;
 }
 

@@ -111,7 +111,7 @@ function ClassicPosterCard({
           </span>
         )}
         {typeof progress === 'number' && progress > 0 && progress < 100 && (
-          <div className="absolute inset-x-0 bottom-0 z-20 h-1.5 bg-black/45 backdrop-blur-sm">
+          <div className="hpr-on-dark absolute inset-x-0 bottom-0 z-20 h-1.5 bg-black/45 backdrop-blur-sm">
             <div className="h-full bg-[var(--hpr-amber)]" style={{ width: `${Math.min(progress, 100)}%` }} />
           </div>
         )}

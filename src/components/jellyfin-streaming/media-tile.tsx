@@ -186,7 +186,7 @@ export function MediaTile({
           <div
             className={cn(
               'absolute inset-x-0 bottom-0 z-30',
-              cinematic ? 'h-[3px] bg-white/25' : 'h-1.5 bg-black/45 backdrop-blur-sm',
+              cinematic ? 'h-[3px] bg-white/25' : 'hpr-on-dark h-1.5 bg-black/45 backdrop-blur-sm',
             )}
           >
             <div

@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { ChevronDown, ChevronLeft, Loader2, LogOut, Monitor, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
-import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ApiError } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
@@ -126,6 +126,18 @@ function SessionGroupSection({ group, loadedAt, busy, onRename, onRevoke }: Sess
     initialData: { pages: [group], pageParams: [0] },
     initialDataUpdatedAt: loadedAt,
   });
+  // The list refreshes every 30 s, but initialData seeded this query once, so
+  // new sign-ins and "Seen …" stayed as they were until a reload. On each
+  // refresh: one page loaded → take the list's fresh first page; more (Show
+  // more) → refetch them all together, so the pages and the count come from
+  // one moment and no session falls between a new page 1 and an old page 2.
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const key = queryKeys.userSessions(group.userId);
+    const loaded = queryClient.getQueryData<InfiniteData<SessionPage, number>>(key);
+    if (loaded && loaded.pages.length > 1) void queryClient.refetchQueries({ queryKey: key, exact: true });
+    else queryClient.setQueryData<InfiniteData<SessionPage, number>>(key, { pages: [group], pageParams: [0] }, { updatedAt: loadedAt });
+  }, [group, loadedAt, queryClient]);
   const pages = query.data?.pages ?? [group];
   // A sign-in between pages shifts the offsets by one; drop the repeat.
   const sessions = [...new Map(pages.flatMap((p) => p.sessions).map((s) => [s.id, s])).values()];

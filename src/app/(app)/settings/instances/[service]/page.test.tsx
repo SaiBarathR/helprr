@@ -91,8 +91,9 @@ describe('the Jellyfin connection', () => {
     mocks.me = { role: 'member' };
     await renderPage();
     // Up front, not only after they try to change something.
-    await screen.findByText('Only an admin can add Jellyfin or change its address or API key.');
+    await screen.findByText('Only an admin can add Jellyfin or change its address, API key or default user.');
     expect((screen.getByLabelText('URL') as HTMLInputElement).readOnly).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
     expect((document.getElementById('conn-apiKey') as HTMLInputElement).readOnly).toBe(true);
     expect(screen.queryByText('Admin API key validated — ready to save')).toBeNull();
     expect(screen.queryByLabelText('Your current password')).toBeNull();

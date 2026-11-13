@@ -92,7 +92,8 @@ export function PolicyEditor({ value, inherited, footer, onChange, variant = 'tw
       <div className="grouped-row gap-3">
         <Label className="shrink-0 text-sm font-normal">{label}</Label>
         <Select value={value[field] ?? INHERIT} onValueChange={(next) => setField(field, next === INHERIT ? undefined : next)}>
-          <SelectTrigger aria-label={label} className="h-auto w-auto gap-1 border-0 bg-transparent px-2 py-1 text-sm text-muted-foreground shadow-none focus:ring-0">
+          {/* min-w-0 and a block value: a long value ("Inherited (Mark as chapters)" at 320 px) ends in "…" inside the card. */}
+          <SelectTrigger aria-label={label} className="h-auto w-auto min-w-0 gap-1 border-0 bg-transparent px-2 py-1 text-sm text-muted-foreground shadow-none focus:ring-0 *:data-[slot=select-value]:block *:data-[slot=select-value]:truncate">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
