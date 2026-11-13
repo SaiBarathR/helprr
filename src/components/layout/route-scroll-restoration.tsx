@@ -8,6 +8,7 @@ import {
   readRouteScrollState, routeScrollKey, setFreshArrival, writeRouteScrollState,
   type NavigationStartDetail,
 } from '@/lib/route-scroll-state';
+import { isOverlayPopState } from '@/lib/overlay-history';
 
 type PendingNavigation = NavigationStartDetail & { destination?: string; source: string; id: number; fresh?: boolean };
 
@@ -83,7 +84,10 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
         id: ++navigationIdRef.current,
       };
     };
-    const onPopState = () => {
+    const onPopState = (event: PopStateEvent) => {
+      // A Back that only closed a sheet, or a sheet taking its entry off:
+      // the same view, nothing to save or restore.
+      if (isOverlayPopState(event)) return;
       const destination = routeScrollKey(window.location);
       const pending = pendingNavigationRef.current;
       // The router can commit the new route before its popstate arrives, which

@@ -3,8 +3,8 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { afterOverlayHistory, resetOverlayHistoryForTests, useBackClosableOpen } from '../overlay-history';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { afterOverlayHistory, isOverlayPopState, resetOverlayHistoryForTests, useBackClosableOpen } from '../overlay-history';
 
 // The router's own history state, which every entry must keep.
 const ROUTER_STATE = { __NA: true, __PRIVATE_NEXTJS_INTERNALS_TREE: { tree: 'page' } };
@@ -49,6 +49,8 @@ const marker = () => (window.history.state as Record<string, unknown> | null)?._
 const back = () => act(async () => {
   window.history.back();
   await new Promise<void>((resolve) => window.addEventListener('popstate', () => resolve(), { once: true }));
+  // Overlays close once every popstate listener has seen it.
+  await new Promise((resolve) => setTimeout(resolve, 5));
 });
 // Our own traversal settles a tick after its popstate.
 const settled = () => waitFor(() => expect(marker()).toBeUndefined());
@@ -65,6 +67,7 @@ describe('overlay history', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('pushes one entry at the same URL that keeps the router state', async () => {
@@ -190,5 +193,100 @@ describe('overlay history', () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
     expect(go).not.toHaveBeenCalled();
     expect(window.location.pathname).toBe('/settings');
+  });
+
+  // The player collapses on Back; Play in the Watch modal closes the modal
+  // (taking its entry off) and expands the player in the same click.
+  it('marks its own traversals and a Back that only closed a sheet, not a plain Back', async () => {
+    const seen: boolean[] = [];
+    const listener = (event: PopStateEvent) => seen.push(isOverlayPopState(event));
+    window.addEventListener('popstate', listener);
+    try {
+      render(<Page />);
+      await userEvent.click(screen.getByText('Open sheet'));
+      await userEvent.click(screen.getByText('Close sheet'));
+      await settled();
+      await userEvent.click(screen.getByText('Open sheet'));
+      await back();
+      window.history.pushState(ROUTER_STATE, '', '/settings');
+      await back();
+      expect(seen).toEqual([true, true, false]);
+    } finally {
+      window.removeEventListener('popstate', listener);
+    }
+  });
+
+  it('calls onOpenChange(false) once when the overlay\'s own close navigates', async () => {
+    const onOpenChange = vi.fn();
+    const navigate = vi.fn();
+    function Closer() {
+      const [open, setOpen] = useState(true);
+      return (
+        <Overlay
+          name="sheet"
+          open={open}
+          // Prowlarr's sheet: closing it rewrites the URL.
+          onOpenChange={(next) => { onOpenChange(next); setOpen(next); if (!next) afterOverlayHistory(navigate); }}
+        />
+      );
+    }
+    render(<Closer />);
+    await waitFor(() => expect(marker()).toEqual(expect.any(Number)));
+    await userEvent.click(screen.getByText('Close sheet'));
+    await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(onOpenChange).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(marker()).toBeUndefined();
+  });
+
+  it('keeps entry state the page wrote while the sheet was open', async () => {
+    render(<Page />);
+    await userEvent.click(screen.getByText('Open sheet'));
+    // Discover's Apply saves its browse mode on the entry, then closes the sheet.
+    window.history.replaceState({ ...window.history.state, 'helprr:discoverManualBrowse': true }, '');
+    await userEvent.click(screen.getByText('Close sheet'));
+    await settled();
+    expect(window.history.state).toMatchObject({ 'helprr:discoverManualBrowse': true });
+  });
+
+  it('steps back past a closed sheet\'s entry that Forward lands on', async () => {
+    render(<Page />);
+    await userEvent.click(screen.getByText('Open sheet'));
+    await back();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const go = vi.spyOn(window.history, 'go');
+    await act(async () => {
+      window.history.forward();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(go).toHaveBeenCalledWith(-1);
+    await waitFor(() => expect(marker()).toBeUndefined());
+    expect(window.history.state).toEqual(ROUTER_STATE);
+  });
+
+  it('keeps a URL rewritten under the sheet when the user presses Back', async () => {
+    // Activity mirrors its filters into the URL while its menu is open. The
+    // Navigation API knows the URL the sheet's entry ended with.
+    let rewritten = '';
+    const navigation = Object.defineProperties(new EventTarget(), {
+      currentEntry: {
+        get() {
+          const id = (window.history.state as Record<string, unknown> | null)?.__helprrOverlay;
+          return { key: id === undefined ? 'page' : 'sheet', index: id === undefined ? 0 : 1, url: window.location.href };
+        },
+      },
+      canGoForward: { value: false },
+      entries: { value: () => [{ key: 'sheet', index: 1, url: rewritten }] },
+    });
+    Object.defineProperty(window, 'navigation', { configurable: true, value: navigation });
+    onTestFinished(() => { delete (window as { navigation?: unknown }).navigation; });
+    render(<Page />);
+    await userEvent.click(screen.getByText('Open sheet'));
+    window.history.replaceState({ ...window.history.state }, '', '/calendar?source=sonarr');
+    rewritten = window.location.href;
+    await back();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(window.location.search).toBe('?source=sonarr');
   });
 });

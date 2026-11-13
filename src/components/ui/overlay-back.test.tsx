@@ -15,6 +15,8 @@ HTMLElement.prototype.releasePointerCapture ??= () => {};
 const back = () => act(async () => {
   window.history.back();
   await new Promise<void>((resolve) => window.addEventListener('popstate', () => resolve(), { once: true }));
+  // Overlays close once every popstate listener has seen it.
+  await new Promise((resolve) => setTimeout(resolve, 5));
 });
 
 describe('the shared overlay roots and the system Back', () => {
