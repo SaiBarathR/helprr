@@ -1,4 +1,4 @@
-import type { AlertScope, ReleaseKind, ScheduleMode, ScheduledAlertDraft } from '@/lib/scheduled-alerts/types';
+import type { AlertScope, ReleaseKind, ReleasedKind, ScheduleMode, ScheduledAlertDraft } from '@/lib/scheduled-alerts/types';
 
 export const SCHEDULE_MODES: ScheduleMode[] = ['absolute', 'release_relative'];
 export const ALERT_SCOPES: AlertScope[] = ['movie', 'series', 'season', 'episode', 'anime', 'album', 'artist'];
@@ -35,7 +35,30 @@ export function defaultScopeForDraft(draft: Pick<ScheduledAlertDraft, 'mediaType
   return 'series';
 }
 
-export const ALBUM_RELEASED_ERROR = 'This album is already out, so a release reminder would never go off. Pick a custom date instead.';
+const RELEASED_WHAT: Record<ReleasedKind, string> = {
+  album: 'This album is already out',
+  movie: 'This movie is already out',
+  episode: 'This episode has already aired',
+};
+
+const DUE_WHAT: Record<ReleasedKind, string> = {
+  album: 'This album comes out',
+  movie: 'This movie comes out',
+  episode: 'This episode airs',
+};
+
+/** The save's refusal of a release reminder that could never go off: already out, or due sooner than its notice. */
+export function releasedError(kind: ReleasedKind, tooSoon = false): string {
+  if (tooSoon) {
+    return `${DUE_WHAT[kind]} sooner than the reminder's notice, so it would never go off. Pick a shorter notice or a custom date.`;
+  }
+  return `${RELEASED_WHAT[kind]}, so a release reminder would never go off. Pick a custom date instead.`;
+}
+
+/** The dialog's note beside the greyed-out Release reminder. */
+export function releasedNote(kind: ReleasedKind): string {
+  return `${RELEASED_WHAT[kind]}, so only a custom date can remind you.`;
+}
 
 /**
  * A release reminder when a date is known. Music always: an artist's next album

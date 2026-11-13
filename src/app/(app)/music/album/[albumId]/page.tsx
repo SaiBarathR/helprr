@@ -37,6 +37,7 @@ import {
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
 import { formatDate } from '@/lib/date-format';
+import { isAlbumNotReleased } from '@/lib/release-state';
 import type { LidarrAlbum, LidarrTrack, LidarrTrackFile } from '@/types';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -285,9 +286,10 @@ export default function AlbumDetailPage() {
   const countries = [...new Set(album.releases.flatMap((r) => r.country ?? []))];
   const formats = [...new Set(album.releases.map((r) => r.format).filter(Boolean))];
   const complete = !!stats && stats.totalTrackCount > 0 && stats.trackFileCount >= stats.totalTrackCount;
+  const upcoming = isAlbumNotReleased(album);
 
   const infoRows: { label: string; value: string }[] = [
-    ...(album.releaseDate ? [{ label: 'Released', value: formatDate(new Date(album.releaseDate)) }] : []),
+    ...(album.releaseDate ? [{ label: upcoming ? 'Releases' : 'Released', value: formatDate(new Date(album.releaseDate)) }] : []),
     { label: 'Type', value: [album.albumType, ...(album.secondaryTypes ?? [])].filter(Boolean).join(', ') },
     ...(labels.length ? [{ label: 'Label', value: labels.join(', ') }] : []),
     ...(countries.length ? [{ label: 'Country', value: countries.join(', ') }] : []),
@@ -439,10 +441,10 @@ export default function AlbumDetailPage() {
           </div>
           <div className="flex-1 min-w-0 pt-1">
             <Badge
-              className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${complete ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}
+              className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${complete ? 'bg-green-500/20 text-green-400 border-green-500/30' : upcoming ? 'bg-muted text-muted-foreground border-border' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}
               variant="outline"
             >
-              {complete ? 'Complete' : 'Missing tracks'}
+              {complete ? 'Complete' : upcoming ? 'Not released yet' : 'Missing tracks'}
             </Badge>
             <h1 className="text-xl font-bold leading-tight line-clamp-2">{album.title}</h1>
             {artistName && (

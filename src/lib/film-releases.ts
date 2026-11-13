@@ -46,3 +46,8 @@ export function isFilmNotReleased(film: FilmReleaseFields, now = Date.now()): bo
   if (past.length > 0) return false;
   return future.length > 0 || film.status === 'announced' || film.status === 'tba';
 }
+
+/** The film's next release still to come (its label and date), or null. */
+export function nextFilmRelease(film: FilmReleaseFields, now = Date.now()): FilmRelease | null {
+  return filmReleases(film, now).future[0] ?? null;
+}

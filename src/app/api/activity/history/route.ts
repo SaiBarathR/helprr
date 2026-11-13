@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
 import type { SonarrClient } from '@/lib/sonarr-client';
 import { requireUserCapability } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import type { HistoryItem } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 import {
@@ -276,8 +277,10 @@ async function getHandler(request: NextRequest) {
       sourceFilter !== 'sonarr'
       && sourceFilter !== 'lidarr'
       && !((episodeId || seriesId) && !movieId);
+    // Lidarr's rows only for viewers who may see the music library.
     const includeLidarr =
-      sourceFilter !== 'sonarr'
+      can(auth.user, 'music.view')
+      && sourceFilter !== 'sonarr'
       && sourceFilter !== 'radarr'
       && !episodeId
       && !seriesId

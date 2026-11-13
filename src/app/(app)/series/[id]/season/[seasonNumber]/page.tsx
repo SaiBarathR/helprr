@@ -38,6 +38,7 @@ import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick
 import { useSeriesEpisodeWatch } from '@/components/jellyfin/use-series-episode-watch';
 import { EpisodeWatchIndicator } from '@/components/jellyfin/watch-status-indicator';
 import { episodeKey } from '@/types/watch-status';
+import { isEpisodeNotAired } from '@/lib/release-state';
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B';
@@ -523,6 +524,11 @@ export default function SeasonDetailPage() {
                       className="text-[10px] bg-green-600 hover:bg-green-600"
                     >
                       DOWNLOADED
+                    </Badge>
+                  ) : ep.monitored && isEpisodeNotAired(ep) ? (
+                    // Not aired yet is not missing; its air date follows.
+                    <Badge variant="secondary" className="text-[10px]">
+                      NOT AIRED YET
                     </Badge>
                   ) : ep.monitored ? (
                     <Badge variant="destructive" className="text-[10px]">

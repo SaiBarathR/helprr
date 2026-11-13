@@ -39,6 +39,7 @@ import { useWatchStatus } from '@/components/jellyfin/watch-status-provider';
 import { useSeriesEpisodeWatch } from '@/components/jellyfin/use-series-episode-watch';
 import { episodeKey } from '@/types/watch-status';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
+import { isEpisodeNotAired } from '@/lib/release-state';
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B';
@@ -498,6 +499,9 @@ export default function EpisodeDetailPage() {
       <div className="flex items-center gap-2">
         {episode.hasFile ? (
           <Badge className="bg-green-600 hover:bg-green-600 text-foreground">DOWNLOADED</Badge>
+        ) : episode.monitored && isEpisodeNotAired(episode) ? (
+          // Not aired yet is not missing; its air date is in the line above.
+          <Badge variant="secondary">NOT AIRED YET</Badge>
         ) : episode.monitored ? (
           <Badge variant="destructive">MISSING</Badge>
         ) : (

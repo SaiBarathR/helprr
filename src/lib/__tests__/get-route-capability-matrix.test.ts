@@ -68,10 +68,6 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   ],
   'cap:activity.manage': [
     'GET /api/activity/manualimport',
-    'GET /api/lidarr/command/[id]',
-    'GET /api/lidarr/downloadclient',
-    'GET /api/lidarr/release',
-    'GET /api/lidarr/rename',
     'GET /api/radarr/command/[id]',
     'GET /api/radarr/downloadclient',
     'GET /api/radarr/release',
@@ -287,6 +283,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   ],
   'cap:watchlist.view': [
     'GET /api/watchlist',
+    'GET /api/watchlist/match',
     'GET /api/watchlist/tags',
   ],
   'cap:youtube.view': [
@@ -422,6 +419,13 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'api-token': [
     'GET /api/v1/queue',
     'GET /api/v1/summary',
+  ],
+  // Lidarr's releases, renames, commands and download clients are music too.
+  'all:activity.manage|music.view': [
+    'GET /api/lidarr/command/[id]',
+    'GET /api/lidarr/downloadclient',
+    'GET /api/lidarr/release',
+    'GET /api/lidarr/rename',
   ],
   'all:torrents.view|activity.view': [
     'GET /api/manual-downloads',
@@ -562,7 +566,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(286);
+    expect(handlers.size).toBe(287);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

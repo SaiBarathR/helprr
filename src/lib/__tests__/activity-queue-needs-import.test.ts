@@ -28,7 +28,7 @@ describe('Activity queue reads', () => {
   it('finds downloads waiting on a manual import anywhere in the whole queue', async () => {
     mocks.radarr.mockResolvedValue([{ connection: { id: 'r1', label: 'Radarr' }, client }]);
 
-    const result = await getQueueNeedingImportCached();
+    const result = await getQueueNeedingImportCached({ includeLidarr: true });
 
     expect(result.totalRecords).toBe(1);
     expect(result.records).toEqual([expect.objectContaining({ id: 450, source: 'radarr', instanceId: 'r1' })]);
@@ -38,7 +38,7 @@ describe('Activity queue reads', () => {
   it('still serves one page of each instance for the Queue tab', async () => {
     mocks.radarr.mockResolvedValue([{ connection: { id: 'r1', label: 'Radarr' }, client }]);
 
-    const result = await getQueueCached(2, 50);
+    const result = await getQueueCached(2, 50, { includeLidarr: true });
 
     expect(result.records.map((r) => r.id)).toEqual(Array.from({ length: 50 }, (_, n) => 51 + n));
     expect(result.totalRecords).toBe(450);
@@ -51,8 +51,8 @@ describe('Activity queue reads', () => {
       { connection: { id: 'r-down', label: 'Down' }, client: down },
     ]);
 
-    await getQueueCached(1, 50);
-    const second = await getQueueCached(2, 50);
+    await getQueueCached(1, 50, { includeLidarr: true });
+    const second = await getQueueCached(2, 50, { includeLidarr: true });
 
     expect(down.getQueue).toHaveBeenCalledOnce();
     expect(second.records).toHaveLength(50);

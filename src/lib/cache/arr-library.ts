@@ -9,6 +9,10 @@ import type { RadarrMovie, SonarrSeries } from '@/types';
 export interface ArrLibrary {
   movies: Tagged<RadarrMovie>[];
   series: Tagged<SonarrSeries>[];
+  /** The Radarr instances that did not answer: a film absent from `movies` may still be on one of them. */
+  moviesFailedInstanceIds: string[];
+  /** The same for Sonarr and `series`. */
+  seriesFailedInstanceIds: string[];
 }
 
 let inflight: Promise<ArrLibrary> | null = null;
@@ -44,7 +48,12 @@ export function loadCachedArrLibrary(): Promise<ArrLibrary> {
         movieCount: movies.items.length,
         seriesCount: series.items.length,
       }, { scope: 'arr-library' });
-      return { movies: movies.items, series: series.items };
+      return {
+        movies: movies.items,
+        series: series.items,
+        moviesFailedInstanceIds: movies.failedInstanceIds,
+        seriesFailedInstanceIds: series.failedInstanceIds,
+      };
     })
     .finally(() => {
       if (inflight === promise) inflight = null;

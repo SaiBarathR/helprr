@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { readJsonBody } from '@/lib/bulk-editor';
@@ -34,9 +35,11 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   try {
     const { searchParams } = new URL(request.url);
+    // Lidarr's downloads only for viewers who may see the music library.
+    const view = { includeLidarr: can(auth.user, 'music.view') };
     // The Needs import tab: downloads waiting on a manual import, from the whole queue.
     if (searchParams.get('view') === 'needs-import') {
-      return NextResponse.json(await getQueueNeedingImportCached(), { headers: QUEUE_CACHE_HEADERS });
+      return NextResponse.json(await getQueueNeedingImportCached(view), { headers: QUEUE_CACHE_HEADERS });
     }
     const { page, pageSize } = parsePageParams(searchParams, { defaultSize: 50, maxSize: 200 });
 
@@ -62,7 +65,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ error: 'Invalid or unavailable media instance' }, { status: 400 });
       }
 
-      const result = await getQueueCached(1, 200);
+      const result = await getQueueCached(1, 200, view);
       const records = filterQueueItemsForMedia(result.records, source, mediaId, resolvedInstanceId);
       return NextResponse.json(
         { records, totalRecords: records.length },
@@ -70,7 +73,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const result = await getQueueCached(page, pageSize);
+    const result = await getQueueCached(page, pageSize, view);
     return NextResponse.json(result, { headers: QUEUE_CACHE_HEADERS });
   } catch (error) {
     console.error('Failed to fetch queue:', error);
@@ -153,7 +156,7 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
     };
     const uniqueIds = [...new Set(ids as number[])];
 
-    const resolved = await resolveActivityArrTarget(body.source, body.instanceId);
+    const resolved = await resolveActivityArrTarget(auth.user, body.source, body.instanceId);
     if (!resolved.ok) return resolved.response;
     const { source, service, appName, instanceId, client } = resolved.target;
 

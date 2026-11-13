@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
 import { Loader2, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -83,6 +83,7 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
   const [tagInput, setTagInput] = useState('');
   const [knownTags, setKnownTags] = useState<KnownTag[]>([]);
   const titleRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
   // Reset the form whenever the dialog opens (or its draft/tags change while
   // open). Guarded during render.
@@ -144,6 +145,8 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
       // New tags may have been created by ensureTagIds on the server; drop
       // the cache so the next dialog open sees them.
       invalidateWatchlistTagCache();
+      // A title's bookmark shows it saved.
+      void queryClient.invalidateQueries({ queryKey: ['watchlist'] });
       onOpenChange(false);
       onSaved?.();
     },

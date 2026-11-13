@@ -38,7 +38,7 @@ describe('getCachedTaggedLibrary', () => {
       cacheKeySeed: 'all',
       getInstances,
       fetchOne,
-    })).resolves.toEqual({ items: cached, cached: true, available: true, complete: true });
+    })).resolves.toEqual({ items: cached, cached: true, available: true, complete: true, failedInstanceIds: [] });
 
     expect(getInstances).not.toHaveBeenCalled();
     expect(fetchOne).not.toHaveBeenCalled();
@@ -64,6 +64,8 @@ describe('getCachedTaggedLibrary', () => {
       cached: false,
       available: true,
       complete: false,
+      // Named, so a caller can tell "not on that instance" from "that instance did not answer".
+      failedInstanceIds: ['r2'],
     });
 
     expect(mocks.setCachedJson).not.toHaveBeenCalled();

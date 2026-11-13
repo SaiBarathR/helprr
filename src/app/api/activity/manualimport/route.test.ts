@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireUserCapability: vi.fn(), getSonarrClient: vi.fn(), getRadarrClient: vi.fn(), getLidarrClient: vi.fn(),
   list: vi.fn(), submit: vi.fn(), audit: vi.fn(), getAlbum: vi.fn(), releaseTracks: vi.fn(),
 }));
-vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.requireUserCapability }));
+vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.requireUserCapability, requireUserAllCapabilities: mocks.requireUserCapability }));
 vi.mock('@/lib/service-helpers', () => ({
   getSonarrClient: mocks.getSonarrClient, getRadarrClient: mocks.getRadarrClient, getLidarrClient: mocks.getLidarrClient,
 }));
@@ -186,6 +186,19 @@ describe('Lidarr manual import', () => {
     expect((await post({ source: 'lidarr', files: [track('/downloads/album/01.flac')] })).status).toBe(403);
     expect(mocks.getLidarrClient).not.toHaveBeenCalled();
     expect(mocks.submit).not.toHaveBeenCalled();
+  });
+
+  it('lists and imports nothing for a manager who may not see the music library', async () => {
+    mocks.requireUserCapability.mockResolvedValue({
+      ok: true,
+      user: { ...user, role: 'member', template: 'member', permissions: { 'activity.manage': true, 'music.view': false } },
+    });
+    const list = await GET(new NextRequest(`http://localhost/api/activity/manualimport?downloadId=${DOWNLOAD}&source=lidarr&instanceId=lid-2`));
+    expect(list.status).toBe(403);
+    expect((await post({ source: 'lidarr', instanceId: 'lid-2', files: [track('/downloads/album/01.flac')] })).status).toBe(403);
+    expect(mocks.getLidarrClient).not.toHaveBeenCalled();
+    expect(mocks.submit).not.toHaveBeenCalled();
+    expect(mocks.audit).not.toHaveBeenCalled();
   });
 
   it('imports files checked against the album, release and tracks, and records who did it', async () => {

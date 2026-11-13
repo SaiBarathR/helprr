@@ -21,7 +21,7 @@ const items = [{ id: 1, path: '/downloads/pack/a.mkv', seriesId: 47, episodeIds:
 describe('POST /api/activity/manualimport/reprocess', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.requireUserCapability.mockResolvedValue({ ok: true });
+    mocks.requireUserCapability.mockResolvedValue({ ok: true, user: { role: 'admin', template: 'admin', permissions: {} } });
     mocks.getSonarrClient.mockResolvedValue({ reprocessManualImport: mocks.sonarrReprocess });
     mocks.getRadarrClient.mockResolvedValue({ reprocessManualImport: mocks.radarrReprocess });
     mocks.getLidarrClient.mockResolvedValue({ reprocessManualImport: mocks.lidarrReprocess });
@@ -64,6 +64,18 @@ describe('POST /api/activity/manualimport/reprocess', () => {
     expect(mocks.getLidarrClient).toHaveBeenCalledWith('lid-2');
     expect(mocks.lidarrReprocess).toHaveBeenCalledWith(albumItems);
     expect(mocks.getSonarrClient).not.toHaveBeenCalled();
+  });
+
+  it('refuses Lidarr files to a manager who may not see the music library', async () => {
+    mocks.requireUserCapability.mockResolvedValue({
+      ok: true,
+      user: { role: 'member', template: 'member', permissions: { 'activity.manage': true, 'music.view': false } },
+    });
+    const res = await post({ source: 'lidarr', instanceId: 'lid-2', items: [{ id: 1, path: '/downloads/album/01.flac' }] });
+    expect(res.status).toBe(403);
+    expect(mocks.getLidarrClient).not.toHaveBeenCalled();
+    // Their Sonarr and Radarr imports are unchanged.
+    expect((await post({ source: 'sonarr', instanceId: 'son-2', items })).status).toBe(200);
   });
 
   it.each([

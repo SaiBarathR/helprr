@@ -14,7 +14,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: { 'Cache-Control': 'no-store' } });
   }
   try {
-    return NextResponse.json(await buildStatusQueue(), { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json(await buildStatusQueue(auth.user), { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error(`[StatusApi] Failed to read the queue: ${error instanceof Error ? error.name : 'unknown error'}`);
     return NextResponse.json({ error: 'Failed to read the queue' }, { status: 502, headers: { 'Cache-Control': 'no-store' } });

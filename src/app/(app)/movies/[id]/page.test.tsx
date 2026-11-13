@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   // When set, PUT responses wait for it, so a write can be held in flight.
   gate: null as Promise<void> | null,
   tmdbConfigured: true,
+  movieExtra: {} as Record<string, unknown>,
 }));
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: '5' }),
@@ -58,6 +59,7 @@ beforeEach(() => {
   mocks.sent = [];
   mocks.gate = null;
   mocks.tmdbConfigured = true;
+  mocks.movieExtra = {};
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(String(input), 'http://helprr.test');
     const method = init?.method ?? 'GET';
@@ -67,7 +69,7 @@ beforeEach(() => {
       if (mocks.gate) await mocks.gate;
       return Response.json(body);
     }
-    if (url.pathname === '/api/radarr/5') return Response.json(movie);
+    if (url.pathname === '/api/radarr/5') return Response.json({ ...movie, ...mocks.movieExtra });
     return Response.json([]);
   }));
 });
@@ -201,5 +203,24 @@ describe('movie detail hero', () => {
     renderPage();
     await screen.findByRole('button', { name: 'Monitored' });
     expect(backdrop()).toBeNull();
+  });
+});
+
+describe('movie detail status badge', () => {
+  const day = (offsetDays: number) => new Date(Date.now() + offsetDays * 86_400_000).toISOString();
+
+  it('says a film not out yet is not released, with its next release date, rather than missing', async () => {
+    mocks.movieExtra = { status: 'inCinemas', inCinemas: day(30), digitalRelease: day(90) };
+    renderPage();
+    expect((await screen.findAllByText('Not released yet')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Missing')).toBeNull();
+    expect(screen.getAllByText(/^In cinemas /).length).toBeGreaterThan(0);
+  });
+
+  it('keeps Missing for a released film without a file', async () => {
+    mocks.movieExtra = { inCinemas: day(-200), digitalRelease: day(-100) };
+    renderPage();
+    expect((await screen.findAllByText('Missing')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Not released yet')).toBeNull();
   });
 });

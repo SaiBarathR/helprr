@@ -50,6 +50,7 @@ import {
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
 import { formatDate } from '@/lib/date-format';
+import { isFilmNotReleased, nextFilmRelease } from '@/lib/film-releases';
 import type { RadarrMovie, RadarrCredit, DiscoverMovieFullDetail } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { crewRolePriority } from '@/lib/crew-priority';
@@ -67,6 +68,7 @@ import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
+import { useWatchlistEntry, WatchlistSavedDialog } from '@/components/watchlist/watchlist-saved';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { useCan, useMe } from '@/components/permission-provider';
 import {
@@ -123,6 +125,13 @@ export default function MovieDetailPage() {
   const [showRenamePreview, setShowRenamePreview] = useState(false);
   const [showAddWatchlist, setShowAddWatchlist] = useState(false);
   const [showScheduleAlert, setShowScheduleAlert] = useState(false);
+  const [showSavedWatchlist, setShowSavedWatchlist] = useState(false);
+  // Saved from here or from Discover: the bookmark shows it, and a tap offers
+  // to take it off rather than save it again.
+  const watchlistEntry = useWatchlistEntry(
+    movie ? { mediaType: 'movie', tmdbId: movie.tmdbId, arr: [{ instanceId: instance, id: movie.id }] } : null,
+  );
+  const openWatchlist = () => (watchlistEntry ? setShowSavedWatchlist(true) : setShowAddWatchlist(true));
   const externalUrls = useExternalUrls();
   const radarrExternalUrl = useExternalUrlResolver()('RADARR', instance);
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
@@ -334,6 +343,9 @@ export default function MovieDetailPage() {
   const qualityProfile = qualityProfiles.find((qp) => qp.id === movie.qualityProfileId);
   const movieTags = tags.filter((t) => movie.tags.includes(t.id));
   const rootFolder = movie.path ? parentPath(movie.path) : '';
+  // A film not out yet is not missing anything (Activity → Missing reads it the same way).
+  const notReleased = !movie.hasFile && isFilmNotReleased(movie);
+  const nextRelease = notReleased ? nextFilmRelease(movie) : null;
   const movieFileSize = movie.movieFile?.size ?? movie.sizeOnDisk;
 
   // Extract media info from movie file if available
@@ -539,9 +551,9 @@ export default function MovieDetailPage() {
                 </ResponsiveMenuActionItem>
               )}
               <MarkWatchedMenuItem status={movieWatch} />
-              <ResponsiveMenuActionItem onSelect={() => setShowAddWatchlist(true)}>
-                <Bookmark className="h-4 w-4" />
-                Add to Watchlist…
+              <ResponsiveMenuActionItem onSelect={openWatchlist}>
+                <Bookmark className={watchlistEntry ? 'h-4 w-4 fill-current' : 'h-4 w-4'} />
+                {watchlistEntry ? 'On Watchlist…' : 'Add to Watchlist…'}
               </ResponsiveMenuActionItem>
               {canScheduleAlert && (
                 <ResponsiveMenuActionItem onSelect={() => setShowScheduleAlert(true)}>
@@ -626,11 +638,11 @@ export default function MovieDetailPage() {
                     <div className="absolute top-2 right-2 flex items-center gap-1.5">
                       <button
                         type="button"
-                        aria-label="Add to watchlist"
-                        onClick={() => setShowAddWatchlist(true)}
+                        aria-label={watchlistEntry ? 'On your watchlist' : 'Add to watchlist'}
+                        onClick={openWatchlist}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
                       >
-                        <Bookmark className="h-3.5 w-3.5" />
+                        <Bookmark className={watchlistEntry ? 'h-3.5 w-3.5 fill-current' : 'h-3.5 w-3.5'} />
                       </button>
                       {canScheduleAlert && (
                         <button
@@ -672,11 +684,13 @@ export default function MovieDetailPage() {
                           className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${
                             movie.hasFile
                               ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                              : 'bg-red-500/20 text-red-400 border-red-500/30'
+                              : notReleased
+                                ? 'bg-muted text-muted-foreground border-border'
+                                : 'bg-red-500/20 text-red-400 border-red-500/30'
                           }`}
                           variant="outline"
                         >
-                          {movie.hasFile ? 'Downloaded' : 'Missing'}
+                          {movie.hasFile ? 'Downloaded' : notReleased ? 'Not released yet' : 'Missing'}
                         </Badge>
                         <h1 className="text-xl font-bold leading-tight line-clamp-2">{movie.title}</h1>
                         <p className="text-sm text-muted-foreground mt-1">
@@ -688,6 +702,9 @@ export default function MovieDetailPage() {
                             .filter(Boolean)
                             .join(' \u00B7 ')}
                         </p>
+                        {nextRelease && (
+                          <p className="text-xs text-muted-foreground mt-1">{nextRelease.label} {formatDate(nextRelease.date)}</p>
+                        )}
                         <WatchStatusInline status={movieWatch} className="mt-1.5" />
                         {ratingItems.length > 0 && (
                           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
@@ -731,15 +748,15 @@ export default function MovieDetailPage() {
                       )}
                       <button
                         type="button"
-                        aria-label="Add to watchlist"
+                        aria-label={watchlistEntry ? 'On your watchlist' : 'Add to watchlist'}
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          setShowAddWatchlist(true);
+                          openWatchlist();
                         }}
                         className="absolute top-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
                       >
-                        <Bookmark className="h-3.5 w-3.5" />
+                        <Bookmark className={watchlistEntry ? 'h-3.5 w-3.5 fill-current' : 'h-3.5 w-3.5'} />
                       </button>
                     </div>
                     </QuickContextMenu>
@@ -749,11 +766,13 @@ export default function MovieDetailPage() {
                       className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${
                         movie.hasFile
                           ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                          : 'bg-red-500/20 text-red-400 border-red-500/30'
+                          : notReleased
+                            ? 'bg-muted text-muted-foreground border-border'
+                            : 'bg-red-500/20 text-red-400 border-red-500/30'
                       }`}
                       variant="outline"
                     >
-                      {movie.hasFile ? 'Downloaded' : 'Missing'}
+                      {movie.hasFile ? 'Downloaded' : notReleased ? 'Not released yet' : 'Missing'}
                     </Badge>
                     <h1 className="text-xl font-bold leading-tight line-clamp-2">{movie.title}</h1>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -765,6 +784,9 @@ export default function MovieDetailPage() {
                         .filter(Boolean)
                         .join(' \u00B7 ')}
                     </p>
+                    {nextRelease && (
+                      <p className="text-xs text-muted-foreground mt-1">{nextRelease.label} {formatDate(nextRelease.date)}</p>
+                    )}
                     <WatchStatusInline status={movieWatch} className="mt-1.5" />
                     {ratingItems.length > 0 && (
                       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
@@ -1011,6 +1033,7 @@ export default function MovieDetailPage() {
           overview: movie.overview ?? null,
         }}
       />
+      <WatchlistSavedDialog open={showSavedWatchlist} onOpenChange={setShowSavedWatchlist} entry={watchlistEntry} />
 
       {canScheduleAlert && (
         <ScheduledAlertDialog

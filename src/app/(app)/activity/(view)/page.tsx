@@ -31,6 +31,7 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { invalidateActivity } from '@/lib/query-invalidation';
 import { useUIStore } from '@/lib/store';
+import { useCan } from '@/components/permission-provider';
 import { type InstanceOption, withAppName } from '@/components/instance-filter';
 import { ActiveFilterBar, FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { getDefaultActivitySortDirection } from '@/lib/activity-queue-sort';
@@ -84,6 +85,9 @@ export default function ActivityPage() {
     return t && isTabKey(t) ? t : 'queue';
   });
   const queryClient = useQueryClient();
+  // Lidarr's downloads are music: the server leaves them out without music.view,
+  // so its source and instances aren't offered as filters either.
+  const canViewMusic = useCan('music.view');
   // arr instances for the per-instance filter (shown only when >1 instance).
   const { data: arrConnections = [] } = useQuery({
     // Distinct from queryKeys.instances() (['instances','all'] → /api/services); this
@@ -92,7 +96,7 @@ export default function ActivityPage() {
     queryKey: queryKeys.arrInstances(),
     queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
     select: (conns) => Array.isArray(conns)
-      ? conns.filter((c) => c.type === 'SONARR' || c.type === 'RADARR' || c.type === 'LIDARR')
+      ? conns.filter((c) => c.type === 'SONARR' || c.type === 'RADARR' || (c.type === 'LIDARR' && canViewMusic))
       : [],
     staleTime: 5 * 60_000,
   });
@@ -301,7 +305,7 @@ export default function ActivityPage() {
             >
               All
             </ResponsiveMenuCheckboxItem>
-            {FILTER_OPTIONS.filter((opt) => opt.key !== 'all').map((opt) => (
+            {FILTER_OPTIONS.filter((opt) => opt.key !== 'all' && (opt.key !== 'lidarr' || canViewMusic)).map((opt) => (
               <ResponsiveMenuCheckboxItem
                 key={opt.key}
                 checked={sources.includes(opt.key)}

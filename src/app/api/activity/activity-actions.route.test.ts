@@ -100,6 +100,20 @@ describe.each(actions)('%s', (_name, call) => {
     expect(mocks.recordOperationAudit).not.toHaveBeenCalled();
   });
 
+  it('refuses a Lidarr item to a manager who may not see the music library', async () => {
+    mocks.requireUserCapability.mockResolvedValue({
+      ok: true,
+      user: { ...user, role: 'member', template: 'member', permissions: { 'activity.manage': true, 'music.view': false } },
+      session: {},
+    });
+    expect((await call({ source: 'lidarr', instanceId: 'lid-1' })).status).toBe(403);
+    expect(mocks.getLidarrClient).not.toHaveBeenCalled();
+    expect(mocks.runWithOperationAudit).not.toHaveBeenCalled();
+    expect(mocks.recordOperationAudit).not.toHaveBeenCalled();
+    // Their Sonarr items are unchanged.
+    expect((await call({ source: 'sonarr', instanceId: 'son-2' })).status).toBe(200);
+  });
+
   it('acts on the named instance', async () => {
     expect((await call({ source: 'sonarr', instanceId: 'son-2' })).status).toBe(200);
     expect(mocks.getSonarrClient).toHaveBeenCalledWith('son-2');

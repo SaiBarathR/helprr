@@ -33,6 +33,7 @@ import type { QueueItem } from '@/types';
 
 const NOW = new Date('2026-11-07T10:00:00Z');
 const USER = { id: 'u1', role: 'member' } as User;
+const NO_MUSIC = { id: 'u2', role: 'member', template: 'member', permissions: { 'music.view': false } } as unknown as User;
 const ALL: Capability[] = [
   'activity.view', 'torrents.view', 'movies.view', 'series.view', 'music.view',
   'calendar.view', 'jellyfin.sessions', 'notifications.view',
@@ -156,6 +157,39 @@ describe('buildStatusSummary', () => {
   });
 });
 
+describe('Lidarr downloads in the status API', () => {
+  it('counts them only while the owner may see the music library, under its own cache key', async () => {
+    await buildStatusSummary(USER, new Set<Capability>(['activity.view']), NOW);
+    expect(mocks.getQueueCached).toHaveBeenLastCalledWith(1, 100, { includeLidarr: true });
+    expect(mocks.setCachedJson).toHaveBeenLastCalledWith('status-api', 'summary|activity.view', expect.any(Object), 10);
+
+    await buildStatusSummary(NO_MUSIC, new Set<Capability>(['activity.view']), NOW);
+    expect(mocks.getQueueCached).toHaveBeenLastCalledWith(1, 100, { includeLidarr: false });
+    expect(mocks.setCachedJson).toHaveBeenLastCalledWith('status-api', 'summary|activity.view|no-lidarr', expect.any(Object), 10);
+  });
+
+  it('keeps the cache key of an owner who may see music as it was', async () => {
+    await buildStatusSummary(USER, new Set<Capability>(['activity.view', 'calendar.view']), NOW);
+    expect(mocks.getCachedJson).toHaveBeenCalledWith('status-api', 'summary|activity.view,calendar.view');
+    expect(mocks.setCachedJson).toHaveBeenCalledWith('status-api', 'summary|activity.view,calendar.view', expect.any(Object), 10);
+  });
+
+  it('lists upcoming albums only while the owner may see the music library', async () => {
+    const titles = async (user: User) => (await buildStatusSummary(user, new Set<Capability>(['calendar.view']), NOW))
+      .upcoming?.map((e) => `${e.type}:${e.title}`);
+    expect(await titles(USER)).toEqual(['episode:A', 'movie:B', 'album:C']);
+    // Without music: the album is left out and the next item takes its place.
+    expect(await titles(NO_MUSIC)).toEqual(['episode:A', 'movie:B', 'movie:D']);
+  });
+
+  it('lists them only while the owner may see the music library', async () => {
+    await buildStatusQueue(USER, NOW);
+    expect(mocks.getQueueCached).toHaveBeenLastCalledWith(1, 100, { includeLidarr: true });
+    await buildStatusQueue(NO_MUSIC, NOW);
+    expect(mocks.getQueueCached).toHaveBeenLastCalledWith(1, 100, { includeLidarr: false });
+  });
+});
+
 describe('buildStatusQueue', () => {
   const sonarrItem = {
     id: 1, source: 'sonarr', instanceLabel: 'HD', title: 'Show.S01E02.1080p', status: 'downloading',
@@ -166,7 +200,7 @@ describe('buildStatusQueue', () => {
 
   it('is small, stable and read-only: no paths, hashes or ids', async () => {
     mocks.getQueueCached.mockResolvedValue({ records: [sonarrItem], totalRecords: 1 });
-    const queue = await buildStatusQueue(NOW);
+    const queue = await buildStatusQueue(USER, NOW);
     expect(queue).toEqual({
       version: 1,
       generatedAt: NOW.toISOString(),
@@ -187,7 +221,7 @@ describe('buildStatusQueue', () => {
 
   it('says when an instance did not answer', async () => {
     mocks.getQueueCached.mockResolvedValue({ records: [sonarrItem], totalRecords: 1, partial: true });
-    expect((await buildStatusQueue(NOW)).partial).toBe(true);
+    expect((await buildStatusQueue(USER, NOW)).partial).toBe(true);
   });
 
   it('lists the soonest to finish first across instances, those with no estimate last', async () => {
@@ -196,12 +230,12 @@ describe('buildStatusQueue', () => {
       records: [at('S-late', 'sonarr', '2026-11-07T12:00:00Z'), at('S-none', 'sonarr', ''), at('R-soon', 'radarr', '2026-11-07T10:05:00Z')],
       totalRecords: 3,
     });
-    expect((await buildStatusQueue(NOW)).items.map((i) => i.title)).toEqual(['R-soon', 'S-late', 'S-none']);
+    expect((await buildStatusQueue(USER, NOW)).items.map((i) => i.title)).toEqual(['R-soon', 'S-late', 'S-none']);
   });
 
   it('caps the items but reports the whole total', async () => {
     mocks.getQueueCached.mockResolvedValue({ records: Array.from({ length: 150 }, () => sonarrItem), totalRecords: 150 });
-    const queue = await buildStatusQueue(NOW);
+    const queue = await buildStatusQueue(USER, NOW);
     expect(queue.total).toBe(150);
     expect(queue.items).toHaveLength(100);
   });

@@ -4,12 +4,18 @@ import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { useBackClosableOpen } from "@/lib/overlay-history"
 import { buttonVariants } from "@/components/ui/button"
 
 function AlertDialog({
+  open: openProp,
+  defaultOpen,
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
-  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
+  // Back closes the dialog first (see overlay-history).
+  const [open, setOpen] = useBackClosableOpen(openProp, defaultOpen, onOpenChange)
+  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} open={open} onOpenChange={setOpen} />
 }
 
 function AlertDialogTrigger({

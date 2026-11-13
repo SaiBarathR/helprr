@@ -61,7 +61,10 @@ describe('TwoFactorSection', () => {
 
     expect(await screen.findByRole('img', { name: 'QR code for your authenticator app' })).toBeTruthy();
     expect((screen.getByLabelText('Or enter this key') as HTMLInputElement).value).toBe('JBSW Y3DP EHPK 3PXP JBSW Y3DP EHPK 3PXP');
-    await user.type(screen.getByLabelText('Code from the app'), '123456');
+    // Five digits are not a code yet: Turn on waits for the sixth.
+    await user.type(screen.getByLabelText('Code from the app'), '12345');
+    expect((screen.getByRole('button', { name: 'Turn on' }) as HTMLButtonElement).disabled).toBe(true);
+    await user.type(screen.getByLabelText('Code from the app'), '6');
     // Signing out the other devices is offered, and on unless unticked.
     expect(screen.getByRole('checkbox', { name: 'Sign out your other devices' }).getAttribute('aria-checked')).toBe('true');
     await user.click(screen.getByRole('button', { name: 'Turn on' }));

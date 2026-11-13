@@ -102,3 +102,26 @@ describe('episode page interactive search', () => {
     expect(mocks.push).toHaveBeenCalledWith('/series/7/season/4/episode/101/search?title=Ted+Lasso+-+S04E01+-+Home&instance=son-1');
   });
 });
+
+describe('episode page status badge', () => {
+  const render = () => act(async () => root.render(<QueryClientProvider client={queryClient}><EpisodeDetailPage /></QueryClientProvider>));
+
+  it('keeps MISSING for a monitored episode that has aired without a file', async () => {
+    await render();
+    await waitFor(() => expect(document.body.textContent).toContain('MISSING'));
+    expect(document.body.textContent).not.toContain('NOT AIRED YET');
+  });
+
+  it('says a monitored episode still to air has not aired, rather than missing', async () => {
+    const episode = EPISODES[0] as (typeof EPISODES)[number] & { airDateUtc?: string };
+    const { airDate } = episode;
+    episode.airDate = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+    try {
+      await render();
+      await waitFor(() => expect(document.body.textContent).toContain('NOT AIRED YET'));
+      expect(document.body.textContent).not.toContain('MISSING');
+    } finally {
+      episode.airDate = airDate;
+    }
+  });
+});

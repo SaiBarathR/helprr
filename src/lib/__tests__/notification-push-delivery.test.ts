@@ -39,6 +39,7 @@ vi.mock('@/lib/logger', () => ({
 
 import { Prisma } from '@prisma/client';
 import { notifyEvent, sendPushNotification } from '@/lib/notification-service';
+import { PollNotificationCollector } from '@/lib/notification-grouping';
 import { jobReports, type JobReport } from '@/lib/polling-job-report';
 
 const subscription = {
@@ -192,9 +193,95 @@ describe('events that start off', () => {
     expect(sentTo()).toEqual([`${subscription.endpoint}-on`]);
   });
 
+  it('sends a test push during quiet hours, and holds other events then', async () => {
+    const hour = new Date().getUTCHours();
+    const sleepy = () => ({
+      ...device('sleepy', []),
+      user: {
+        id: 'user-sleepy', role: 'admin', template: 'admin', permissions: {},
+        settings: { quietHoursEnabled: true, quietHoursStart: hour, quietHoursEnd: (hour + 1) % 24, timeZone: 'UTC' },
+      },
+    });
+    mocks.findMany.mockResolvedValueOnce([sleepy()]);
+    await notifyEvent({ eventType: 'test', title: 'Test', body: 'Body', userIds: ['user-sleepy'] });
+    expect(sentTo()).toEqual([`${subscription.endpoint}-sleepy`]);
+
+    mocks.sendNotification.mockClear();
+    mocks.findMany.mockResolvedValueOnce([sleepy()]);
+    await notifyEvent({ eventType: 'grabbed', title: 'Grabbed', body: 'Body' });
+    expect(sentTo()).toEqual([]);
+  });
+
   it('still sends other events to a device with no saved choice', async () => {
     mocks.findMany.mockResolvedValueOnce([device('unset', [])]);
     await notifyEvent({ eventType: 'grabbed', title: 'Grabbed', body: 'Body' });
     expect(sentTo()).toEqual([`${subscription.endpoint}-unset`]);
+  });
+});
+
+// An event about a Lidarr album tells what is in the music library: only people
+// who may see that library get it. Other sources are unchanged.
+describe('Lidarr-sourced pushes', () => {
+  const device = (name: string, user: Record<string, unknown>) => ({
+    ...subscription,
+    id: name,
+    endpoint: `${subscription.endpoint}-${name}`,
+    consecutiveFailures: 0,
+    lastFailedAt: null,
+    lastSucceededAt: null,
+    preferences: [],
+    user: { id: `user-${name}`, settings: null, ...user },
+  });
+  const devices = () => [
+    device('admin', { role: 'admin', template: 'admin', permissions: {} }),
+    device('member', { role: 'member', template: 'member', permissions: {} }),
+    device('no-music', { role: 'member', template: 'member', permissions: { 'music.view': false } }),
+  ];
+  const sentTo = () => mocks.sendNotification.mock.calls
+    .map(([target]) => (target as { endpoint: string }).endpoint.replace(`${subscription.endpoint}-`, ''));
+
+  it.each([
+    ['grabbed', 'Album Download Started'],
+    ['importFailed', 'Album Manual Import Required'],
+    ['imported', 'Album Imported'],
+    ['downloadFailed', 'Album Download Failed'],
+    ['upcomingPremiere', 'Upcoming Album'],
+  ])('sends %s (%s) only to those with music.view', async (eventType, title) => {
+    mocks.findMany.mockResolvedValueOnce(devices());
+    await notifyEvent({ eventType, title, body: 'Artist - Album', metadata: { source: 'lidarr', instanceId: 'lid-1', albumId: 4 } });
+    expect(sentTo()).toEqual(['admin', 'member']);
+  });
+
+  it('sends a digest that names Lidarr albums only to those with music.view, and the other one only where targeted', async () => {
+    mocks.findMany.mockResolvedValueOnce(devices());
+    await notifyEvent({ eventType: 'activityDigest', title: 'Yesterday on Helprr', body: 'Album', metadata: { source: 'digest', includesLidarr: true } });
+    expect(sentTo()).toEqual(['admin', 'member']);
+
+    mocks.sendNotification.mockClear();
+    // notifyEvent asks the database for the targeted users' devices only.
+    mocks.findMany.mockResolvedValueOnce(devices().filter((d) => d.id === 'no-music'));
+    await notifyEvent({ eventType: 'activityDigest', title: 'Yesterday on Helprr', body: 'Show', metadata: { source: 'digest' }, userIds: ['user-no-music'] });
+    expect(sentTo()).toEqual(['no-music']);
+  });
+
+  it('gates a grouped Lidarr burst the same way', async () => {
+    mocks.findMany.mockResolvedValueOnce(devices());
+    const collector = new PollNotificationCollector();
+    for (const id of [1, 2, 3]) {
+      collector.add(
+        { eventType: 'grabbed', title: 'Album Download Started', body: `Album ${id}`, metadata: { source: 'lidarr', instanceId: 'lid-1', id } },
+        { service: 'lidarr', reason: 'queue-new-item' },
+      );
+    }
+    const titles: string[] = [];
+    await collector.flush({ enabled: true, notify: async (event) => { titles.push(event.title); return notifyEvent(event); } });
+    expect(titles).toEqual(['3 Album Downloads Started']);
+    expect(sentTo()).toEqual(['admin', 'member']);
+  });
+
+  it('still sends a Sonarr event to a member without music.view', async () => {
+    mocks.findMany.mockResolvedValueOnce(devices());
+    await notifyEvent({ eventType: 'grabbed', title: 'Download Started', body: 'Show', metadata: { source: 'sonarr', instanceId: 'son-1' } });
+    expect(sentTo()).toEqual(['admin', 'member', 'no-music']);
   });
 });

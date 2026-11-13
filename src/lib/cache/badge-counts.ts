@@ -38,8 +38,11 @@ export async function writeBadgeSlice(
   }
 }
 
-/** Read + aggregate the service-derived badge counts. Returns zeros on any failure. */
-export async function readServiceBadgeCounts(): Promise<ServiceBadgeCounts> {
+/**
+ * Read + aggregate the service-derived badge counts. Returns zeros on any failure.
+ * includeLidarr: false leaves Lidarr's downloads out, for a viewer without music.view.
+ */
+export async function readServiceBadgeCounts({ includeLidarr }: { includeLidarr: boolean }): Promise<ServiceBadgeCounts> {
   const acc: ServiceBadgeCounts = {
     activity: { total: 0, attention: 0 },
     downloads: { total: 0, attention: 0 },
@@ -50,8 +53,9 @@ export async function readServiceBadgeCounts(): Promise<ServiceBadgeCounts> {
     const redis = await getRedisClient();
     const raw = await redis.hGetAll(BADGE_HASH_KEY);
     for (const [field, value] of Object.entries(raw)) {
-      const area = field.split(':')[0];
+      const [area, source] = field.split(':');
       if (!isServiceArea(area)) continue;
+      if (source === 'lidarr' && !includeLidarr) continue;
       try {
         const slice = JSON.parse(value) as Partial<BadgeSlice>;
         acc[area].total += Number(slice.total) || 0;
