@@ -51,24 +51,27 @@ export async function upsertOccurrencesForAlert(
 
   // A release already announced is not announced again when its time moved
   // by under 22 hours (film reminders moved from midnight UTC to 9:00 local,
-  // an air time shifted by hours). The same release time means the notice was
-  // edited, and a move of a day or more is a new date: both are announced.
-  // The same release from another source or instance (a Discover film added
-  // to Radarr after its push) is not announced again within two days.
+  // an air time shifted by hours); a move of a day or more is a new date. The
+  // same release from another source or instance (a Discover film added to
+  // Radarr after its push) is not announced again within two days. Either
+  // way, a different notice means it was edited, so it is announced.
   const sent = candidates.length > 0
     ? await db.scheduledAlertOccurrence.findMany({
         where: { alertId: alert.id, status: 'sent', releaseAt: { gte: new Date(now.getTime() - 2 * DAY_MS) } },
-        select: { targetKey: true, releaseKind: true, releaseAt: true, metadata: true },
+        select: { targetKey: true, releaseKind: true, releaseAt: true, notifyAt: true, metadata: true },
       })
     : [];
   const alreadySent = (c: OccurrenceCandidate) => {
     if (c.releaseAt === null) return false;
+    const notice = c.releaseAt.getTime() - c.notifyAt.getTime();
     const identity = releaseIdentity(c);
     return sent.some((o) => {
-      if (o.releaseAt === null || releaseIdentity(o) !== identity) return false;
+      if (!o.releaseAt || o.releaseAt.getTime() - o.notifyAt.getTime() !== notice) return false;
       const shift = Math.abs(o.releaseAt.getTime() - c.releaseAt!.getTime());
-      if (o.targetKey !== c.targetKey) return shift <= OTHER_SOURCE_SHIFT_MS;
-      return shift > 0 && shift < SAME_RELEASE_SHIFT_MS;
+      // The same key is the same release, whatever identity an older row gives
+      // it (Sonarr rows saved before episode numbers were kept).
+      if (o.targetKey === c.targetKey) return shift < SAME_RELEASE_SHIFT_MS;
+      return releaseIdentity(o) === identity && shift <= OTHER_SOURCE_SHIFT_MS;
     });
   };
 

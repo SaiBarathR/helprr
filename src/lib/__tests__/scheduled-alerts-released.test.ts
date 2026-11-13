@@ -219,6 +219,20 @@ describe('a film already out', () => {
     expect(mocks.alertUpdate).toHaveBeenCalledOnce();
   });
 
+  it('does not re-check a rename that sends the same releases in another order, or the default for none', async () => {
+    // Every release passed: a real re-check would refuse it.
+    radarr.getMovieById.mockResolvedValue(movie({ digitalRelease: radarrDate(-20), physicalRelease: radarrDate(-10) }));
+    for (const [stored, sent] of [[['physical', 'digital'], ['digital', 'physical']], [[], ['digital']]] as const) {
+      const existing = movieRow([...stored], { offsetMinutes: 60 });
+      mocks.alertFindFirst.mockResolvedValue(existing);
+      mocks.alertUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...existing, ...data }));
+      expect((await patch({ scheduleMode: 'release_relative', releaseTypes: [...sent], offsetMinutes: 60, title: 'Renamed' })).status).toBe(200);
+    }
+    // A real change of releases is still re-checked.
+    mocks.alertFindFirst.mockResolvedValue(movieRow(['physical'], { offsetMinutes: 60 }));
+    expect((await patch({ scheduleMode: 'release_relative', releaseTypes: ['digital'], offsetMinutes: 60 })).status).toBe(400);
+  });
+
   it('refuses an edit whose longer notice would fall before now', async () => {
     // Out in two days: a week's notice could never go off, a day's still can.
     mocks.alertFindFirst.mockResolvedValue(movieRow(['digital'], { offsetMinutes: 60 }));

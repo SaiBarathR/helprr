@@ -5,10 +5,10 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { parseReleaseTypes, isAlertScope, isScheduleMode, musicAlertForbidden, scopeFitsMediaType } from '@/lib/scheduled-alerts/helpers';
 import { resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
-import { releasedError } from '@/lib/scheduled-alerts/constants';
+import { defaultReleaseTypes, releasedError } from '@/lib/scheduled-alerts/constants';
 import { announceNewAlbums, upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
 import { serializeAlert } from '@/lib/scheduled-alerts/serialize';
-import type { ScheduledAlertMetadata } from '@/lib/scheduled-alerts/types';
+import type { AlertScope, ScheduledAlertMetadata } from '@/lib/scheduled-alerts/types';
 
 async function ownedAlert(userId: string, id: string) {
   return prisma.scheduledAlert.findFirst({ where: { id, userId } });
@@ -104,9 +104,17 @@ async function patchHandler(
     timeZone: typeof data.timeZone === 'string' ? data.timeZone : existing.timeZone,
     metadata: (data.metadata ?? existing.metadata) as Prisma.JsonValue,
   };
-  const edited = (['releaseTypes', 'offsetMinutes', 'scope', 'timeZone', 'metadata'] as const).some(
-    (field) => JSON.stringify(nextAlert[field]) !== JSON.stringify(existing[field]),
-  );
+  // Release types as the resolver reads them: in any order, none meaning the scope's default.
+  const releaseKinds = (alert: { releaseTypes: Prisma.JsonValue; scope: string; mediaType: string }) => {
+    const kinds = parseReleaseTypes(alert.releaseTypes);
+    return new Set(kinds.length ? kinds : defaultReleaseTypes(alert.scope as AlertScope, alert.mediaType));
+  };
+  const [nextKinds, kinds] = [releaseKinds(nextAlert), releaseKinds(existing)];
+  const edited =
+    nextKinds.size !== kinds.size || [...nextKinds].some((kind) => !kinds.has(kind)) ||
+    (['offsetMinutes', 'scope', 'timeZone', 'metadata'] as const).some(
+      (field) => JSON.stringify(nextAlert[field]) !== JSON.stringify(existing[field]),
+    );
   if (nextScheduleMode === 'release_relative' && (modeChanged || edited)) {
     const { released, tooSoon } = await resolveAlertOccurrencesResult(nextAlert, undefined, { checkAired: true });
     if (released) return NextResponse.json({ error: releasedError(released, tooSoon) }, { status: 400 });

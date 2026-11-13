@@ -350,7 +350,9 @@ describe('a release already announced', () => {
     targetKey: opts.key ?? 'radarr:rad-1:5:digital', releaseKind: 'digital' as const, releaseAt,
     notifyAt: new Date(releaseAt.getTime() - (opts.notice ?? HOUR)), title: 'Film', body: 'Digital release',
   }];
-  const sent = (targetKey: string, releaseAt: Date, releaseKind = 'digital', metadata: unknown = null) => ({ targetKey, releaseKind, releaseAt, metadata });
+  // Sent with an hour's notice unless said otherwise.
+  const sent = (targetKey: string, releaseAt: Date, releaseKind = 'digital', metadata: unknown = null, notice = HOUR) =>
+    ({ targetKey, releaseKind, releaseAt, notifyAt: new Date(releaseAt.getTime() - notice), metadata });
   const at = (iso: string) => new Date(iso);
   const upsertWith = async (sentRows: unknown[], candidates: ReturnType<typeof film>) => {
     vi.clearAllMocks();
@@ -377,7 +379,27 @@ describe('a release already announced', () => {
   it('is armed when the notice was edited after its push (same release time)', async () => {
     // Out in 3 days: the week-before reminder went out, the notice is now 1 hour.
     const releaseAt = new Date(Date.now() + 3 * DAY);
-    expect(await upsertWith([sent('radarr:rad-1:5:digital', releaseAt)], film(releaseAt, { notice: HOUR }))).toBe(1);
+    expect(await upsertWith([sent('radarr:rad-1:5:digital', releaseAt, 'digital', null, 7 * DAY)], film(releaseAt, { notice: HOUR }))).toBe(1);
+    // Moved under 22 hours as well: still a new notice.
+    expect(await upsertWith([sent('radarr:rad-1:5:digital', new Date(releaseAt.getTime() - 10 * HOUR), 'digital', null, 7 * DAY)], film(releaseAt))).toBe(1);
+  });
+
+  it('is armed when the notice was edited after a push from another source', async () => {
+    // Pushed a week before from TMDB, then added to Radarr and the notice shortened to an hour.
+    const releaseAt = new Date(Date.now() + 3 * DAY);
+    expect(await upsertWith([sent('tmdb:movie:603:digital', releaseAt, 'digital', null, 7 * DAY)], film(releaseAt))).toBe(1);
+    expect(await upsertWith([sent('tmdb:movie:603:digital', new Date(releaseAt.getTime() - DAY), 'digital', null, 7 * DAY)], film(releaseAt))).toBe(1);
+  });
+
+  it('matches a sent row on the same key even when it predates the episode numbers', async () => {
+    // Saved before Sonarr candidates carried episodeNumber: its identity is its key.
+    const airsAt = new Date(Date.now() + 2 * DAY);
+    const oldRow = sent('sonarr:son-1:77', new Date(airsAt.getTime() - 2 * HOUR), 'episode', { seriesId: 3, seasonNumber: 3, episodeId: 77, instanceId: 'son-1' });
+    const candidate = [{
+      targetKey: 'sonarr:son-1:77', releaseKind: 'episode' as const, releaseAt: airsAt, notifyAt: new Date(airsAt.getTime() - HOUR), title: 'Show', body: 'S03E05',
+      metadata: { seriesId: 3, seasonNumber: 3, episodeNumber: 5, episodeId: 77, instanceId: 'son-1' },
+    }];
+    expect(await upsertWith([oldRow], candidate as never)).toBe(0);
   });
 
   it('is armed when the release moved by a day (24 hours, or 23 across a DST change) or more', async () => {
