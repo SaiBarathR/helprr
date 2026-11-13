@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAxiosError } from 'axios';
 import { getSonarrClient, getRadarrClient, getLidarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
+import { activitySourceForbidden } from '@/lib/activity-arr-target';
 import { withApiLogging } from '@/lib/api-logger';
 import { recordOperationAudit } from '@/lib/file-audit';
 import { checkOwnership, coercePositiveInt, coercePositiveIntArray, hasValidQuality, sanitizeTitle } from '@/lib/manage-files-guard';
@@ -131,6 +132,8 @@ async function getHandler(request: NextRequest) {
         { status: 400 }
       );
     }
+    const forbidden = activitySourceForbidden(auth.user, source);
+    if (forbidden) return forbidden;
 
     if (source === 'lidarr') {
       const lidarr = await getLidarrClient(instanceId);
@@ -174,6 +177,8 @@ async function postHandler(request: NextRequest) {
         { status: 400 }
       );
     }
+    const forbidden = activitySourceForbidden(auth.user, source);
+    if (forbidden) return forbidden;
 
     if (!files || !Array.isArray(files)) {
       return NextResponse.json(

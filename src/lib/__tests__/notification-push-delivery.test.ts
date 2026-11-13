@@ -198,3 +198,43 @@ describe('events that start off', () => {
     expect(sentTo()).toEqual([`${subscription.endpoint}-unset`]);
   });
 });
+
+// An event about a Lidarr album tells what is in the music library: only people
+// who may see that library get it. Other sources are unchanged.
+describe('Lidarr-sourced pushes', () => {
+  const device = (name: string, user: Record<string, unknown>) => ({
+    ...subscription,
+    id: name,
+    endpoint: `${subscription.endpoint}-${name}`,
+    consecutiveFailures: 0,
+    lastFailedAt: null,
+    lastSucceededAt: null,
+    preferences: [],
+    user: { id: `user-${name}`, settings: null, ...user },
+  });
+  const devices = () => [
+    device('admin', { role: 'admin', template: 'admin', permissions: {} }),
+    device('member', { role: 'member', template: 'member', permissions: {} }),
+    device('no-music', { role: 'member', template: 'member', permissions: { 'music.view': false } }),
+  ];
+  const sentTo = () => mocks.sendNotification.mock.calls
+    .map(([target]) => (target as { endpoint: string }).endpoint.replace(`${subscription.endpoint}-`, ''));
+
+  it.each([
+    ['grabbed', 'Album Download Started'],
+    ['importFailed', 'Album Manual Import Required'],
+    ['imported', 'Album Imported'],
+    ['downloadFailed', 'Album Download Failed'],
+    ['upcomingPremiere', 'Upcoming Album'],
+  ])('sends %s (%s) only to those with music.view', async (eventType, title) => {
+    mocks.findMany.mockResolvedValueOnce(devices());
+    await notifyEvent({ eventType, title, body: 'Artist - Album', metadata: { source: 'lidarr', instanceId: 'lid-1', albumId: 4 } });
+    expect(sentTo()).toEqual(['admin', 'member']);
+  });
+
+  it('still sends a Sonarr event to a member without music.view', async () => {
+    mocks.findMany.mockResolvedValueOnce(devices());
+    await notifyEvent({ eventType: 'grabbed', title: 'Download Started', body: 'Show', metadata: { source: 'sonarr', instanceId: 'son-1' } });
+    expect(sentTo()).toEqual(['admin', 'member', 'no-music']);
+  });
+});

@@ -5,6 +5,7 @@ import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
 import { fetchServiceCalendarEvents } from '@/lib/calendar-events';
 import { ConfigurationError } from '@/lib/config-error';
 import { prisma } from '@/lib/db';
+import { can } from '@/lib/permissions';
 import { dedupeDiskSpace } from '@/lib/disk-space';
 import { historyScope } from '@/lib/notification-scope';
 import { torrentCounters } from '@/lib/qbittorrent-summary';
@@ -123,15 +124,16 @@ async function readStreams() {
   return { active: (await client.getActiveSessions()).length };
 }
 
-async function readQueueTotal() {
-  const result = await getQueueCached(1, QUEUE_ITEM_LIMIT);
+async function readQueueTotal(includeLidarr: boolean) {
+  const result = await getQueueCached(1, QUEUE_ITEM_LIMIT, { includeLidarr });
   // A count missing an instance would read as fewer downloads than there are.
   if (result.partial) throw new Error('A queue instance did not answer');
   return { total: result.totalRecords };
 }
 
-async function readSharedSections(scopes: ReadonlySet<Capability>, now: Date): Promise<SharedSections> {
-  const key = [...scopes].filter((scope) => scope !== 'notifications.view').sort().join(',');
+async function readSharedSections(scopes: ReadonlySet<Capability>, includeLidarr: boolean, now: Date): Promise<SharedSections> {
+  const key = [...scopes].filter((scope) => scope !== 'notifications.view').sort().join(',')
+    + (includeLidarr ? '' : '|no-lidarr');
   const cached = await getCachedJson<SharedSections>(CACHE_SCOPE, `summary|${key}`);
   if (cached) return cached;
 
@@ -139,7 +141,7 @@ async function readSharedSections(scopes: ReadonlySet<Capability>, now: Date): P
   const hasStorage = scopes.has('movies.view') || scopes.has('series.view') || scopes.has('music.view');
   const [downloads, queue, storage, upcoming, streams] = await Promise.all([
     scopes.has('torrents.view') ? section(readDownloads, state) : undefined,
-    scopes.has('activity.view') ? section(readQueueTotal, state) : undefined,
+    scopes.has('activity.view') ? section(() => readQueueTotal(includeLidarr), state) : undefined,
     hasStorage ? section(() => readStorage(scopes, state), state) : undefined,
     scopes.has('calendar.view') ? section(() => readUpcoming(now), state) : undefined,
     scopes.has('jellyfin.sessions') ? section(readStreams, state) : undefined,
@@ -159,7 +161,8 @@ async function readSharedSections(scopes: ReadonlySet<Capability>, now: Date): P
 /** The summary for these scopes (already narrowed to what the owner holds). */
 export async function buildStatusSummary(user: User, scopes: ReadonlySet<Capability>, now: Date = new Date()): Promise<StatusSummary> {
   const [shared, alerts] = await Promise.all([
-    readSharedSections(scopes, now),
+    // Lidarr's downloads are music: counted only while the owner may see the music library.
+    readSharedSections(scopes, can(user, 'music.view'), now),
     scopes.has('notifications.view')
       ? section(async () => ({
         // The same scoping as the nav badge, so the count matches what the owner sees.
@@ -210,10 +213,11 @@ function completionTime(item: StatusQueueItem): number {
 
 /**
  * The combined download queue: the first QUEUE_ITEM_LIMIT items, soonest to
- * finish first (those with no estimate last), across every instance.
+ * finish first (those with no estimate last), across every instance. Lidarr's
+ * downloads only while the owner may see the music library.
  */
-export async function buildStatusQueue(now: Date = new Date()): Promise<StatusQueue> {
-  const result = await getQueueCached(1, QUEUE_ITEM_LIMIT);
+export async function buildStatusQueue(user: User, now: Date = new Date()): Promise<StatusQueue> {
+  const result = await getQueueCached(1, QUEUE_ITEM_LIMIT, { includeLidarr: can(user, 'music.view') });
   const items = result.records.map(toStatusQueueItem).sort((a, b) => completionTime(a) - completionTime(b));
   return {
     version: STATUS_API_VERSION,

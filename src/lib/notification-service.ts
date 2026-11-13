@@ -283,18 +283,27 @@ function matchesFilters(
 
 type RecipientUser = Parameters<typeof can>[0] & { role: string };
 
+// An event about a Lidarr album (download started, import required, imported,
+// upcoming album) tells what is in the music library, so its recipients must
+// also be allowed to see that library, as on /music and in Activity.
+function sourceCapability(metadata: Record<string, unknown>): Capability | undefined {
+  return metadata.source === 'lidarr' ? 'music.view' : undefined;
+}
+
 // Whether this user may receive the event at all, before their own per-device
 // or per-channel choice: the capability mapped to the event (a Member never
-// receives cleanup or health alerts), admins only for admin-only events, and
-// unmapped event types (a test) for admins only unless the caller targeted
-// users explicitly. Shared by push and the outbound channels.
+// receives cleanup or health alerts) and the one its source needs, admins only
+// for admin-only events, and unmapped event types (a test) for admins only
+// unless the caller targeted users explicitly. Shared by push and the outbound channels.
 function recipientAllowed(
   user: RecipientUser | null | undefined,
   eventType: string,
   requiredCap: Capability | undefined,
   targeted: boolean,
+  sourceCap: Capability | undefined,
 ): boolean {
   if (!user) return false;
+  if (sourceCap && !can(user, sourceCap)) return false;
   if (requiredCap) {
     if (ADMIN_ONLY_EVENT_TYPES.has(eventType as never) && user.role !== 'admin') return false;
     return can(user, requiredCap);
@@ -317,7 +326,7 @@ async function queueChannelSends(event: {
   title: string;
   body: string;
   userIds?: string[];
-}, requiredCap: Capability | undefined, metadata: Record<string, unknown>, targetUrl: string | undefined, now: Date): Promise<number> {
+}, requiredCap: Capability | undefined, sourceCap: Capability | undefined, metadata: Record<string, unknown>, targetUrl: string | undefined, now: Date): Promise<number> {
   const channels = await prisma.notificationChannel.findMany({
     where: {
       enabled: true,
@@ -329,7 +338,7 @@ async function queueChannelSends(event: {
   });
   const bypassesQuietHours = QUIET_HOURS_BYPASS_EVENTS.has(event.eventType);
   const eligible = channels.filter((channel) =>
-    recipientAllowed(channel.user, event.eventType, requiredCap, Boolean(event.userIds))
+    recipientAllowed(channel.user, event.eventType, requiredCap, Boolean(event.userIds), sourceCap)
     && (bypassesQuietHours || !isWithinQuietHours(channel.user, now))
     && !shouldDeferChannel(channel, now.getTime()));
   if (eligible.length === 0) return 0;
@@ -579,6 +588,7 @@ export async function notifyEvent(event: {
   const requiredCap = isKnownEventType(event.eventType)
     ? EVENT_TYPE_TO_CAPABILITY[event.eventType]
     : undefined;
+  const sourceCap = sourceCapability(metadata);
 
   if (!metadataRedirect && targetUrl) {
     metadata.redirect = targetUrl;
@@ -624,7 +634,7 @@ export async function notifyEvent(event: {
   // Outbound channels (ntfy, webhook, …) after the dedupe row is claimed, like push.
   let channelsQueued = 0;
   try {
-    channelsQueued = await queueChannelSends(event, requiredCap, metadata, targetUrl, now);
+    channelsQueued = await queueChannelSends(event, requiredCap, sourceCap, metadata, targetUrl, now);
   } catch (err) {
     logger.warn('Notification channel lookup failed', {
       eventType: event.eventType,
@@ -635,7 +645,7 @@ export async function notifyEvent(event: {
   type SendOutcome = { kind: 'sent' } | { kind: 'failed' } | { kind: 'skipped' };
   const results = await mapSettled(subscriptions, PUSH_FANOUT_CONCURRENCY, async (sub): Promise<SendOutcome> => {
       if (shouldDeferPush(sub)) return { kind: 'skipped' };
-      if (!recipientAllowed(sub.user, event.eventType, requiredCap, Boolean(event.userIds))) return { kind: 'skipped' };
+      if (!recipientAllowed(sub.user, event.eventType, requiredCap, Boolean(event.userIds), sourceCap)) return { kind: 'skipped' };
       const pref = sub.preferences.find((p) => p.eventType === event.eventType);
       if (!(pref ? pref.enabled : eventEnabledByDefault(event.eventType))) return { kind: 'skipped' };
       if (!matchesFilters(pref, event.eventType, metadata)) return { kind: 'skipped' };

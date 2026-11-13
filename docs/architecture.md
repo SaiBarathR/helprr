@@ -202,6 +202,18 @@ create requests (with Seerr connected) and open the title pages: TMDB search is
 their only way to find a title to request. `canUseSearchProvider` holds that
 rule for both the palette and the provider route.
 
+Lidarr's data is music, so it also needs `music.view` wherever it surfaces
+outside /music: Activity's queue, Needs import, history, wanted and blocklist
+(`activity.view`) and their badge leave Lidarr out without it, as the
+dashboard's Recently added does; queue, history, blocklist and manual-import
+actions on a Lidarr item answer 403 without it (`activitySourceForbidden`);
+the status API counts and lists Lidarr downloads only while the token's owner
+holds it; and a push or channel event whose metadata `source` is `lidarr`
+(album download started, failed or imported, manual import required, upcoming
+album) reaches only recipients who hold it, on top of the event's `notify.*`
+capability. A queue without Lidarr is cached under its own key, since its
+totals differ from the full one.
+
 Stored service API keys and custom header values never leave the server; the
 settings API returns a mask. A mask sent back means "keep the stored value", and
 is honoured only with the URL that value was stored for. Testing or saving a

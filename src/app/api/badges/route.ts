@@ -21,7 +21,8 @@ async function getHandler(): Promise<NextResponse> {
   const { user } = auth;
 
   const [service, unread, unseenVideos, unseenYoutube] = await Promise.all([
-    readServiceBadgeCounts(),
+    // Lidarr's downloads count only for viewers who may see the music library.
+    readServiceBadgeCounts({ includeLidarr: can(user, 'music.view') }),
     can(user, 'notifications.view')
       ? prisma.notificationHistory.count({
           where: {

@@ -74,7 +74,9 @@ function RecentFailures({ filterBy, instanceFilter }: { filterBy: string[]; inst
     select: (conns) => Array.isArray(conns) && conns.some((c) => c.type === 'LIDARR'),
     staleTime: 5 * 60_000,
   });
-  const lidarrSkipped = hasLidarr && filterBy.length === 0 && instanceFilter === 'all';
+  // Only for those who can choose Lidarr in the filter: without music.view it isn't offered.
+  const canViewMusic = useCan('music.view');
+  const lidarrSkipped = canViewMusic && hasLidarr && filterBy.length === 0 && instanceFilter === 'all';
   const failures = useMemo(
     () => (failuresQuery.data?.records ?? []).filter(
       (r) => filterBy.length === 0 || (r.source !== undefined && filterBy.includes(r.source)),
