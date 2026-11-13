@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 import { parsePageParams } from '@/lib/pagination';
 
@@ -66,8 +67,8 @@ type WantedRecord = { id?: number; artistId?: number };
 
 // Server-side filter dimensions. `sources` (empty/undefined = all sources) and
 // `instanceId` (undefined = all instances) intersect: a bucket survives only if
-// it matches both.
-type WantedFilter = { sources?: WantedSource[]; instanceId?: string };
+// it matches both. `includeLidarr` is false for a viewer without music.view.
+type WantedFilter = { sources?: WantedSource[]; instanceId?: string; includeLidarr: boolean };
 
 type WantedBucket = {
   source: WantedSource;
@@ -82,13 +83,13 @@ type WantedBucket = {
 // concatenated list (generalizing the old per-type offset math to N instances).
 // The filter narrows which buckets exist (by source set and/or instance), so
 // totalRecords and the page slice fall out correctly with no other edits.
-async function buildWantedBuckets(type: WantedType, filter: WantedFilter = {}): Promise<WantedBucket[]> {
-  const { sources, instanceId } = filter;
+async function buildWantedBuckets(type: WantedType, filter: WantedFilter): Promise<WantedBucket[]> {
+  const { sources, instanceId, includeLidarr } = filter;
   const want = (s: WantedSource) => !sources || sources.length === 0 || sources.includes(s);
   const [sonarrClients, radarrClients, lidarrClients] = await Promise.all([
     want('sonarr') ? getSonarrClients().catch(() => []) : Promise.resolve([]),
     want('radarr') ? getRadarrClients().catch(() => []) : Promise.resolve([]),
-    want('lidarr') ? getLidarrClients().catch(() => []) : Promise.resolve([]),
+    includeLidarr && want('lidarr') ? getLidarrClients().catch(() => []) : Promise.resolve([]),
   ]);
 
   const makeFetch = (client: WantedCapableClient<WantedRecord>): WantedFetcher<WantedRecord> =>
@@ -130,7 +131,7 @@ async function buildWantedBuckets(type: WantedType, filter: WantedFilter = {}): 
   return instanceId ? buckets.filter((bucket) => bucket.instanceId === instanceId) : buckets;
 }
 
-async function fetchWantedPage(type: WantedType, page: number, pageSize: number, filter: WantedFilter = {}) {
+async function fetchWantedPage(type: WantedType, page: number, pageSize: number, filter: WantedFilter) {
   const startIndex = (page - 1) * pageSize;
   const endIndex = startIndex + pageSize;
 
@@ -180,7 +181,7 @@ async function fetchWantedPage(type: WantedType, page: number, pageSize: number,
   };
 }
 
-async function fetchWantedCounts(filter: WantedFilter = {}) {
+async function fetchWantedCounts(filter: WantedFilter) {
   const totalFor = async (type: WantedType) => {
     const buckets = await buildWantedBuckets(type, filter);
     const totals = await Promise.all(buckets.map((bucket) => getWantedTotal(bucket.fetchPage)));
@@ -242,7 +243,8 @@ async function getHandler(request: NextRequest) {
     const instanceIdParam = searchParams.get('instanceId')?.trim();
     const instanceId = instanceIdParam ? instanceIdParam : undefined;
 
-    const filter: WantedFilter = { sources, instanceId };
+    // Lidarr's albums only for viewers who may see the music library.
+    const filter: WantedFilter = { sources, instanceId, includeLidarr: can(auth.user, 'music.view') };
 
     if (typeParam !== null && type === null) {
       return NextResponse.json({ error: 'Unknown wanted type' }, { status: 400 });

@@ -27,7 +27,7 @@ async function postHandler(
     const body = asJsonObject(await readJsonBody(request));
     if (!body) return NextResponse.json({ error: 'Expected a JSON object' }, { status: 400 });
 
-    const resolved = await resolveActivityArrTarget(body.source, body.instanceId);
+    const resolved = await resolveActivityArrTarget(auth.user, body.source, body.instanceId);
     if (!resolved.ok) return resolved.response;
     const { source, service, appName, instanceId, client } = resolved.target;
 

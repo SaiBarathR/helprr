@@ -9,6 +9,8 @@ import {
 } from '@/lib/service-helpers';
 import { listConnections } from '@/lib/arr-instances';
 import { requireUserCapability } from '@/lib/auth';
+import { can } from '@/lib/permissions';
+import { activitySourceForbidden } from '@/lib/activity-arr-target';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { readJsonBody } from '@/lib/bulk-editor';
@@ -75,7 +77,8 @@ async function getHandler(request: NextRequest) {
     const [sonarr, radarr, lidarr] = await Promise.allSettled([
       getSonarrClients(),
       getRadarrClients(),
-      getLidarrClients(),
+      // Lidarr's entries only for viewers who may see the music library.
+      can(auth.user, 'music.view') ? getLidarrClients() : Promise.resolve([]),
     ]);
     const failedSources = new Set<ActivityHistorySource>();
     const descriptors: Array<{
@@ -188,6 +191,8 @@ async function deleteHandler(request: NextRequest) {
     if (!isSource(source)) {
       return NextResponse.json({ error: 'source must be "sonarr", "radarr" or "lidarr"' }, { status: 400 });
     }
+    const forbidden = activitySourceForbidden(auth.user, source);
+    if (forbidden) return forbidden;
     if (typeof instanceId !== 'string' || !instanceId || instanceId.length > 128) {
       return NextResponse.json({ error: 'instanceId is required' }, { status: 400 });
     }

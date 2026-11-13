@@ -37,6 +37,8 @@ const mocks = vi.hoisted(() => {
 vi.mock('@/lib/auth', () => ({
   requireAuth: mocks.requireAuth,
   requireUserCapability: mocks.requireUserCapability,
+  // The Lidarr command route asks for activity.manage and music.view together.
+  requireUserAllCapabilities: mocks.requireUserCapability,
   getCurrentUser: mocks.getCurrentUser,
 }));
 vi.mock('@/lib/arr-instances', () => ({ resolveConnection: mocks.resolveConnection }));

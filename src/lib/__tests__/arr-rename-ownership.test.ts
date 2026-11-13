@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   radarr: { getMovieFiles: vi.fn(), renameMovieFiles: vi.fn(), renameMovie: vi.fn() },
   lidarr: { getTrackFiles: vi.fn(), renameArtistFiles: vi.fn() },
 }));
-vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.auth }));
+vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.auth, requireUserAllCapabilities: mocks.auth }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (fn: unknown) => fn }));
 vi.mock('@/lib/service-helpers', () => ({
   getSonarrClient: async () => mocks.sonarr,

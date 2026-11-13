@@ -1,7 +1,8 @@
 // The daily or weekly digest of what happened, once per window.
 import { prisma } from '@/lib/db';
 import { startOfLocalDay, toZonedDate, dateInTimeZone } from '@/lib/timezone';
-import { buildActivityDigest, type ActivityDigestPeriod } from '@/lib/digests/build-activity-digest';
+import { buildActivityDigest, isLidarrRow, type ActivityDigestPeriod } from '@/lib/digests/build-activity-digest';
+import { can } from '@/lib/permissions';
 import { logger } from '@/lib/logger';
 import { noteJobSkipped } from '@/lib/polling-job-report';
 import { notifyAndLog, type CycleContext } from './shared';
@@ -99,6 +100,15 @@ export async function checkActivityDigest(context: CycleContext): Promise<void> 
     return;
   }
 
+  // Lidarr's rows name albums and artists, which only people who may see the
+  // music library are told about. When the window has any, the full digest is
+  // marked so notifyEvent sends it only to them (includesLidarr), and everyone
+  // else gets a second digest built without those rows.
+  const includesLidarr = rows.some(isLidarrRow);
+  if (includesLidarr) {
+    await sendDigestWithoutLidarr(period, windowStart, rows.filter((row) => !isLidarrRow(row)), `${dedupeKey}-without-music`);
+  }
+
   await notifyAndLog({
     eventType: 'activityDigest',
     title: digest.title,
@@ -110,12 +120,62 @@ export async function checkActivityDigest(context: CycleContext): Promise<void> 
       windowStart: windowStart.toISOString(),
       eventCount: digest.eventCount,
       sourceCounts: digest.sourceCounts,
+      ...(includesLidarr ? { includesLidarr: true } : {}),
       redirect: '/notifications',
     },
     url: '/notifications',
   }, {
     service: 'digest',
     reason: 'activity-digest',
+    period,
+    dedupeKey,
+  });
+}
+
+/**
+ * The digest for active users without music.view, targeted at them alone. Sent
+ * before the full digest, whose row is the window's dedupe guard above, so this
+ * one checks its own key: a retry after the full digest failed sends it once.
+ */
+async function sendDigestWithoutLidarr(
+  period: ActivityDigestPeriod,
+  windowStart: Date,
+  rows: Parameters<typeof buildActivityDigest>[0]['rows'],
+  dedupeKey: string,
+): Promise<void> {
+  const users = await prisma.user.findMany({
+    where: { status: 'active' },
+    select: { id: true, role: true, template: true, permissions: true },
+  });
+  const userIds = users.filter((user) => !can(user, 'music.view')).map((user) => user.id);
+  if (userIds.length === 0) return;
+  const digest = buildActivityDigest({ period, rows });
+  if (digest.eventCount === 0) return;
+  const existing = await prisma.notificationHistory.findFirst({
+    where: { eventType: 'activityDigest', dedupeKey },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  await notifyAndLog({
+    eventType: 'activityDigest',
+    title: digest.title,
+    body: digest.body,
+    dedupeKey,
+    userIds,
+    metadata: {
+      source: 'digest',
+      period,
+      windowStart: windowStart.toISOString(),
+      eventCount: digest.eventCount,
+      sourceCounts: digest.sourceCounts,
+      audience: 'without-music',
+      redirect: '/notifications',
+    },
+    url: '/notifications',
+  }, {
+    service: 'digest',
+    reason: 'activity-digest-without-music',
     period,
     dedupeKey,
   });

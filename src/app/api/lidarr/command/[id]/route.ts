@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
-import { requireUserCapability } from '@/lib/auth';
+import { requireUserAllCapabilities } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { invalidateOnCommandComplete } from '@/lib/cache/tagged-library';
 import { upstreamErrorResponse } from '@/lib/api-error';
@@ -9,7 +9,8 @@ async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireUserCapability('activity.manage');
+  // Lidarr's items are music: managing them also needs music.view, as in Activity.
+  const auth = await requireUserAllCapabilities(['activity.manage', 'music.view']);
   if (!auth.ok) return auth.response;
 
   try {

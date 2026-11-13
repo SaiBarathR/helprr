@@ -9,7 +9,10 @@ import { classifyQueueIssue } from '@/lib/queue-state';
 // The queue is identical for every authorized user (it's the global *arr queue,
 // not user-scoped), so a short server cache + in-flight dedupe collapses the
 // 5–10 concurrent multi-user fan-outs in any few-second window into one upstream
-// hit. /api/activity/queue gates per request before the cache is read.
+// hit. /api/activity/queue gates per request before the cache is read. The one
+// per-viewer difference is Lidarr: its downloads are music, shown only to viewers
+// with music.view, so a queue without them is a separate cache entry (its totals
+// differ, so it can't be filtered out of the full one).
 const QUEUE_CACHE_SCOPE = 'activity-queue';
 const QUEUE_CACHE_TTL_SECONDS = 5;
 
@@ -92,7 +95,7 @@ export async function fetchAllQueueRecords(
 
 type QueueRead = (client: QueueClient) => Promise<{ records: QueueItem[]; totalRecords: number }>;
 
-async function loadQueue(read: QueueRead): Promise<{ result: QueueResult; complete: boolean }> {
+async function loadQueue(read: QueueRead, includeLidarr: boolean): Promise<{ result: QueueResult; complete: boolean }> {
   // Tracks whether every configured instance answered. A partial result (an
   // instance was briefly unreachable, or listing connections failed) is still
   // returned live to this caller, but must NOT be cached — otherwise the missing
@@ -154,7 +157,7 @@ async function loadQueue(read: QueueRead): Promise<{ result: QueueResult; comple
   const [sonarrClients, radarrClients, lidarrClients] = await Promise.all([
     listClients(getSonarrClients),
     listClients(getRadarrClients),
-    listClients(getLidarrClients),
+    includeLidarr ? listClients(getLidarrClients) : Promise.resolve([]),
   ]);
 
   const [sonarr, radarr, lidarr] = await Promise.all([
@@ -172,9 +175,14 @@ async function loadQueue(read: QueueRead): Promise<{ result: QueueResult; comple
   };
 }
 
-async function getQueueCachedBy(view: string, read: QueueRead): Promise<QueueResult> {
+/** includeLidarr: false for a viewer without music.view (Lidarr's downloads are music). */
+export interface QueueViewOptions {
+  includeLidarr: boolean;
+}
+
+async function getQueueCachedBy(view: string, read: QueueRead, { includeLidarr }: QueueViewOptions): Promise<QueueResult> {
   const version = await getQueueCacheVersion();
-  const seed = `${version}:${view}`;
+  const seed = `${version}:${view}${includeLidarr ? '' : ':no-lidarr'}`;
   const cached = await getCachedJson<QueueResult>(QUEUE_CACHE_SCOPE, seed);
   if (cached) return cached;
 
@@ -183,7 +191,7 @@ async function getQueueCachedBy(view: string, read: QueueRead): Promise<QueueRes
   if (existing) return existing;
 
   const promise = (async () => {
-    const { result, complete } = await loadQueue(read);
+    const { result, complete } = await loadQueue(read, includeLidarr);
     // Only cache a complete snapshot; a partial poll is served live but left
     // uncached so a recovered instance reappears on the next request instead of
     // being masked by a stale partial aggregate for the whole TTL.
@@ -195,18 +203,18 @@ async function getQueueCachedBy(view: string, read: QueueRead): Promise<QueueRes
 }
 
 /** One page of every instance's queue (page N holds each instance's Nth page). */
-export function getQueueCached(page: number, pageSize: number): Promise<QueueResult> {
-  return getQueueCachedBy(`${page}:${pageSize}`, (client) => client.getQueue(page, pageSize, true));
+export function getQueueCached(page: number, pageSize: number, options: QueueViewOptions): Promise<QueueResult> {
+  return getQueueCachedBy(`${page}:${pageSize}`, (client) => client.getQueue(page, pageSize, true), options);
 }
 
 /**
  * Every queued download waiting on a manual import, from each instance's whole
  * queue: the Needs import tab must find one however far down the queue it sits.
  */
-export function getQueueNeedingImportCached(): Promise<QueueResult> {
+export function getQueueNeedingImportCached(options: QueueViewOptions): Promise<QueueResult> {
   return getQueueCachedBy('needs-import', async (client) => {
     const { records } = await fetchAllQueueRecords(client, true);
     const needing = records.filter((record) => classifyQueueIssue(record.trackedDownloadState, record.trackedDownloadStatus) === 'import');
     return { records: needing, totalRecords: needing.length };
-  });
+  }, options);
 }
