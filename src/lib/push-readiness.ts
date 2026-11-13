@@ -255,4 +255,3 @@ export function quietHoursFact(
   const activeNow = start < end ? hour >= start && hour < end : hour >= start || hour < end;
   return { start, end, activeNow };
 }
-
