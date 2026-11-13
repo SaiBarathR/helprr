@@ -267,7 +267,7 @@ describe('Settings → Sessions list', () => {
     await flush();
 
     // Amy signs in again elsewhere: the list and both of her pages move by one.
-    mocks.groups = [OWN_GROUP, { ...mocks.groups[1], total: 4, sessions: [session('amy-0', 'Amy new'), session('amy-1', 'Amy 1')] }];
+    mocks.groups = [OWN_GROUP, { userId: 'amy', ownerName: 'Amy', isOwn: false, total: 4, hasMore: true, sessions: [session('amy-0', 'Amy new'), session('amy-1', 'Amy 1')] }];
     mocks.pages['/api/sessions?userId=amy&skip=0'] = { total: 4, hasMore: true, sessions: [session('amy-0', 'Amy new'), session('amy-1', 'Amy 1')] };
     mocks.pages['/api/sessions?userId=amy&skip=2'] = { total: 4, hasMore: false, sessions: [session('amy-2', 'Amy 2'), session('amy-3', 'Amy 3')] };
     await act(async () => { await client.refetchQueries({ queryKey: ['sessions'], exact: true }); });
