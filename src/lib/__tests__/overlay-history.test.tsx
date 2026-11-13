@@ -65,6 +65,7 @@ function installNavigation() {
   let next = 1;
   const navigation = Object.defineProperties(new EventTarget(), {
     currentEntry: { get: () => ({ ...list[index], index }) },
+    canGoBack: { get: () => index > 0 },
     canGoForward: { get: () => index < list.length - 1 },
     entries: { value: () => list.map((entry, i) => ({ ...entry, index: i })) },
   });
@@ -124,7 +125,7 @@ describe('overlay history', () => {
     expect(window.history.length).toBe(baseLength + 1);
     expect(window.location.pathname).toBe('/calendar');
     expect(window.history.state).toMatchObject(ROUTER_STATE);
-    expect(marker()).toEqual(expect.any(Number));
+    expect(marker()).toEqual(expect.any(String));
   });
 
   it('closes the open sheet on Back and stays on the page', async () => {
@@ -215,7 +216,7 @@ describe('overlay history', () => {
     await userEvent.click(screen.getByText('Open sheet'));
     await back();
     expect(screen.getByRole('dialog', { name: 'sheet' })).toBeTruthy();
-    await waitFor(() => expect(marker()).toEqual(expect.any(Number)));
+    await waitFor(() => expect(marker()).toEqual(expect.any(String)));
     expect(window.history.length).toBe(baseLength + 1);
   });
 
@@ -279,7 +280,7 @@ describe('overlay history', () => {
       );
     }
     render(<Closer />);
-    await waitFor(() => expect(marker()).toEqual(expect.any(Number)));
+    await waitFor(() => expect(marker()).toEqual(expect.any(String)));
     await userEvent.click(screen.getByText('Close sheet'));
     await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
@@ -335,7 +336,7 @@ describe('overlay history', () => {
       await userEvent.click(screen.getByText('Open picker'));
       const sheetMarker = await waitFor(() => {
         const value = marker();
-        expect(value).toEqual(expect.any(Number));
+        expect(value).toEqual(expect.any(String));
         return value;
       });
       await back();
@@ -364,7 +365,7 @@ describe('overlay history', () => {
       }
       expect(window.location.search).toBe('?view=week');
       expect(screen.getByRole('dialog', { name: 'sheet' })).toBeTruthy();
-      expect(marker()).toEqual(expect.any(Number));
+      expect(marker()).toEqual(expect.any(String));
       // A picker opened again closes alone on Back.
       await userEvent.click(screen.getByText('Open picker'));
       await back();
@@ -431,6 +432,68 @@ describe('overlay history', () => {
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(window.location.search).toBe('?view=old');
       expect(seen).toEqual([false]);
+    } finally {
+      window.removeEventListener('popstate', listener);
+    }
+  });
+
+  describe.each([['with', true], ['without', false]])('after a reload, %s the Navigation API', (_label, withApi) => {
+    beforeEach(() => { if (withApi) installNavigation(); });
+
+    // The page reloaded with a sheet open: it sits on that sheet's entry,
+    // whose marker is the earlier page load's, and ids count from 1 again.
+    it('closes a sheet opened after it on the first Back, then steps past the old entry', async () => {
+      window.history.pushState({ ...ROUTER_STATE, __helprrOverlay: 'earlier-load:1' }, '');
+      render(<Page />);
+      await userEvent.click(screen.getByText('Open sheet'));
+      await back();
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 40)); });
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(marker()).toBeUndefined();
+      expect(window.location.pathname).toBe('/calendar');
+    });
+  });
+
+  it('lets the landing through when a closed entry can\'t be stepped past', async () => {
+    const navigation = installNavigation();
+    render(<Page />);
+    await userEvent.click(screen.getByText('Open sheet'));
+    await userEvent.click(screen.getByText('Close sheet'));
+    await settled();
+    // The first entry is an earlier page load's sheet: nothing below it.
+    window.history.replaceState({ ...ROUTER_STATE, __helprrOverlay: 'earlier-load:1' }, '');
+    const seen: string[] = [];
+    const listener = () => seen.push(navigation.key());
+    window.addEventListener('popstate', listener);
+    try {
+      // Forward onto the closed sheet's entry steps back onto the first one,
+      // which can't be left: that landing reaches the page.
+      await forward();
+      expect(navigation.key()).toBe('k0');
+      expect(seen).toEqual(['k0']);
+      // Settled: a sheet opens again as usual.
+      await userEvent.click(screen.getByText('Open sheet'));
+      await waitFor(() => expect(marker()).not.toBe('earlier-load:1'));
+      expect(navigation.key()).not.toBe('k0');
+    } finally {
+      window.removeEventListener('popstate', listener);
+    }
+  });
+
+  it('reports a Forward that bounced back off a closed entry as overlay-only, without the Navigation API', async () => {
+    const seen: boolean[] = [];
+    const listener = (event: PopStateEvent) => seen.push(isOverlayPopState(event));
+    render(<Page />);
+    await userEvent.click(screen.getByText('Open sheet'));
+    window.addEventListener('popstate', listener);
+    try {
+      await back();
+      expect(screen.queryByRole('dialog')).toBeNull();
+      await forward();
+      expect(marker()).toBeUndefined();
+      // The Back that closed the sheet, and the bounce: the landing on the
+      // closed entry itself never reached the page.
+      expect(seen).toEqual([true, true]);
     } finally {
       window.removeEventListener('popstate', listener);
     }

@@ -2,7 +2,7 @@
 
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1146,16 +1146,24 @@ export default function ProwlarrPage() {
     setSheetIndexerId(urlIndexerId);
   }
 
+  // The indexer whose opening replace may still be on its way: until the URL
+  // shows it, a close has to replace too, after it, or it would land late
+  // and reopen the sheet.
+  const openingIndexerId = useRef<number | null>(null);
+  useEffect(() => {
+    if (urlIndexerId !== null) openingIndexerId.current = null;
+  }, [urlIndexerId]);
+
   function openIndexerSheet(id: number) {
     setSheetIndexerId(id);
+    openingIndexerId.current = id;
     router.replace(`/prowlarr?indexer=${id}`, { scroll: false });
   }
 
-  // Always, even when the URL has no ?indexer= yet: the opening replace is
-  // async, and one still on its way would land after a quick close and
-  // reopen the sheet. This replace comes after it.
   function closeIndexerSheet() {
     setSheetIndexerId(null);
+    if (urlIndexerId === null && openingIndexerId.current === null) return;
+    openingIndexerId.current = null;
     router.replace('/prowlarr', { scroll: false });
   }
 

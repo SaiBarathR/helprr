@@ -28,6 +28,13 @@ import { useEffect, useEffectEvent, useState } from 'react';
 const MARKER = '__helprrOverlay';
 const ROUTER_KEYS = ['__NA', '__PRIVATE_NEXTJS_INTERNALS_TREE'];
 
+// Markers are unique to the page load: one left in history.state across a
+// reload or a restored tab is another load's, whose overlay is gone, and ids
+// count from 1 again in every load.
+const PAGE_LOAD = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+  ? crypto.randomUUID()
+  : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
 type Entry = {
   id: number;
   /** Closes the overlay when Back takes its entry; null once it has closed. */
@@ -43,6 +50,7 @@ type Entry = {
 type NavigationEntryLike = { key: string; index: number; url: string | null };
 type NavigationLike = EventTarget & {
   currentEntry: NavigationEntryLike | null;
+  canGoBack: boolean;
   canGoForward: boolean;
   entries(): NavigationEntryLike[];
 };
@@ -55,6 +63,8 @@ let traversing = false;
 /** Our step past a closed overlay's entry, and its direction: to everyone
  *  else it is the user's own Back or Forward. */
 let stepping: 1 | -1 | 0 = 0;
+/** That step is a Forward going back to the entry it came from. */
+let bouncing = false;
 let traverseTimer: ReturnType<typeof setTimeout> | undefined;
 /** The URL and page state to keep once our traversal lands (see goBack()). */
 let keep: { href: string; state: Record<string, unknown> } | null = null;
@@ -87,6 +97,15 @@ function stateMarker(): unknown {
   return currentState()[MARKER];
 }
 
+/** The id in this page load's marker on the current entry: undefined for no
+ *  marker, null for another page load's. */
+function markerId(): number | null | undefined {
+  const marker = stateMarker();
+  if (marker === undefined) return undefined;
+  const prefix = `${PAGE_LOAD}:`;
+  return typeof marker === 'string' && marker.startsWith(prefix) ? Number(marker.slice(prefix.length)) : null;
+}
+
 /** The page's own keys in an entry's state, without the router's or ours. */
 function pageState(state: Record<string, unknown>): Record<string, unknown> {
   const own = { ...state };
@@ -100,8 +119,8 @@ function onTopEntry(): boolean {
   if (!top) return false;
   const current = navigationApi()?.currentEntry?.key;
   if (top.key && current) return current === top.key;
-  const marker = stateMarker();
-  if (marker !== undefined) return marker === top.id;
+  const id = markerId();
+  if (id !== undefined) return id === top.id;
   // A replaceState that keeps no custom keys (the router refreshing the
   // entry, a page mirroring its filters into the URL) rewrites our entry in
   // place. A push over it would have added an entry, usually for another page.
@@ -110,8 +129,8 @@ function onTopEntry(): boolean {
 
 /** Whether the current entry belongs to an overlay that has closed. */
 function onClosedEntry(): boolean {
-  const marker = stateMarker();
-  if (marker !== undefined && !entries.some((entry) => entry.id === marker)) return true;
+  const id = markerId();
+  if (id === null || (id !== undefined && !entries.some((entry) => entry.id === id))) return true;
   const key = navigationApi()?.currentEntry?.key;
   return Boolean(key && closedKeys.has(key));
 }
@@ -120,6 +139,12 @@ function onClosedEntry(): boolean {
 function takeEntries(from: number): Entry[] {
   const taken = entries.splice(from);
   for (const entry of taken) if (entry.key) closedKeys.add(entry.key);
+  // Forget the ones history no longer has (pushed over, or past its cap).
+  const inHistory = navigationApi()?.entries();
+  if (inHistory) {
+    const keys = new Set(inHistory.map((entry) => entry.key));
+    for (const key of closedKeys) if (!keys.has(key)) closedKeys.delete(key);
+  }
   return taken;
 }
 
@@ -139,12 +164,13 @@ function landedBelow(at: number): boolean {
 }
 
 /** Whether a closed entry was reached going forward: the Navigation API
- *  says, else an entry pushed after every open overlay's is above them. */
+ *  says, else one of this page load's, pushed after every open overlay's
+ *  (or with none open), sits above them. */
 function cameForward(): boolean {
   if (navigationApi()) return lastTraverse > 0;
-  const marker = stateMarker();
+  const id = markerId();
   const top = entries[entries.length - 1];
-  return typeof marker === 'number' && Boolean(top) && marker > top.id;
+  return typeof id === 'number' && (!top || id > top.id);
 }
 
 /**
@@ -159,11 +185,11 @@ export function isOverlayPopState(event: Event): boolean {
       // A step past a closed entry is the user's own Back or Forward, unless
       // it brought them back to the entry they were on.
       const key = navigationApi()?.currentEntry?.key;
-      own = stepping === 0 || Boolean(key && key === lastFromKey);
+      own = stepping === 0 || bouncing || Boolean(key && key === lastFromKey);
     } else if (onClosedEntry()) {
       own = true;
     } else {
-      const at = entries.findIndex((entry) => entry.id === stateMarker());
+      const at = entries.findIndex((entry) => entry.id === markerId());
       own = at < entries.length - 1 && landedBelow(at);
     }
     ownPopStates.set(event, own);
@@ -179,6 +205,7 @@ function whenSettled(run: () => void) {
 function settle() {
   traversing = false;
   stepping = 0;
+  bouncing = false;
   keep = null;
   clearTimeout(traverseTimer);
   const close = closing;
@@ -226,28 +253,35 @@ function goBack(count: number, close: Entry[] = []) {
   window.history.go(-count);
 }
 
-/** Steps past the entry of an overlay that has closed (Forward after Back
- *  closed it, or a reload), on in the way it went, else back. */
-function stepPastClosed(direction: 1 | -1) {
+/**
+ * Steps past the entry of an overlay that has closed (Forward after Back
+ * closed it, or one from before a reload), on in the way it went, else back.
+ * The router and the page never see the landing, so a URL-driven sheet
+ * (Prowlarr's ?indexer=) doesn't reopen. Only when the step can move: at
+ * the edge of history no popstate would follow, so the landing goes through
+ * as it is. Returns whether it stepped.
+ */
+function leaveClosedEntry(event: Event, direction: 1 | -1): boolean {
+  const api = navigationApi();
+  const step = direction === 1 && api?.canGoForward ? 1 : -1;
+  if (api && step === -1 && !api.canGoBack) return false;
+  event.stopImmediatePropagation();
   traversing = true;
-  stepping = direction === 1 && navigationApi()?.canGoForward ? 1 : -1;
+  stepping = step;
+  // A Forward with nowhere further goes back to where it started: nothing
+  // happened, for the player and the scroll restorer too.
+  bouncing = direction === 1 && step === -1;
   clearTimeout(traverseTimer);
   traverseTimer = setTimeout(settle, 1000);
-  window.history.go(stepping);
-}
-
-/** Leaves a closed entry at once: the router and the page never see the
- *  landing, so a URL-driven sheet (Prowlarr's ?indexer=) doesn't reopen. */
-function leaveClosedEntry(event: Event, direction: 1 | -1) {
-  event.stopImmediatePropagation();
-  stepPastClosed(direction);
+  window.history.go(step);
+  return true;
 }
 
 function onPopState(event: PopStateEvent) {
   isOverlayPopState(event);
   if (traversing) {
     if (stepping) {
-      if (onClosedEntry()) return leaveClosedEntry(event, stepping);
+      if (onClosedEntry() && leaveClosedEntry(event, stepping)) return;
     } else if (keep) {
       keepOnEntry(keep.href, keep.state);
       keep = null;
@@ -258,8 +292,11 @@ function onPopState(event: PopStateEvent) {
   const closedEntry = onClosedEntry();
   // Forward onto the entry of an overlay Back closed (the picker, with the
   // Filters sheet under it still open): step on, closing nothing.
-  if (closedEntry && cameForward()) return leaveClosedEntry(event, 1);
-  const at = entries.findIndex((entry) => entry.id === stateMarker());
+  if (closedEntry && cameForward()) {
+    leaveClosedEntry(event, 1);
+    return;
+  }
+  const at = entries.findIndex((entry) => entry.id === markerId());
   if (at < entries.length - 1) {
     // Back from the user: close every overlay above the entry it landed on,
     // the top one for a single Back.
@@ -273,7 +310,7 @@ function onPopState(event: PopStateEvent) {
     }
     closing.push(...takeEntries(at + 1).reverse());
     traversing = true;
-    if (closedEntry) return leaveClosedEntry(event, -1);
+    if (closedEntry && leaveClosedEntry(event, -1)) return;
     settleSoon();
     return;
   }
@@ -331,7 +368,7 @@ function openEntry(onBack: () => void): Entry {
   listen();
   whenSettled(() => {
     if (!entry.onBack) return;
-    const state = { ...currentState(), [MARKER]: entry.id };
+    const state = { ...currentState(), [MARKER]: `${PAGE_LOAD}:${entry.id}` };
     const top = entries[entries.length - 1];
     if (top && !top.onBack && onTopEntry()) {
       window.history.replaceState(state, '');
@@ -419,6 +456,7 @@ export function resetOverlayHistoryForTests() {
   closing = [];
   traversing = false;
   stepping = 0;
+  bouncing = false;
   keep = null;
   flushQueued = false;
   lastTraverse = -1;
