@@ -195,13 +195,13 @@ describe('an album already out', () => {
   it('is flagged by the resolver, while an album ahead and an artist alert are not', async () => {
     client.getAlbumById.mockResolvedValueOnce(album(7, lidarrDate(-130)));
     expect(await resolveAlertOccurrencesResult(alertRow('album', '7'), createResolverContext()))
-      .toEqual({ candidates: [], resolved: true, albumReleased: true });
+      .toEqual({ candidates: [], resolved: true, released: 'album' });
 
     client.getAlbumById.mockResolvedValueOnce(album(7, lidarrDate(10)));
-    expect(await resolveAlertOccurrencesResult(alertRow('album', '7'), createResolverContext())).not.toHaveProperty('albumReleased');
+    expect(await resolveAlertOccurrencesResult(alertRow('album', '7'), createResolverContext())).not.toHaveProperty('released');
 
     client.getAlbums.mockResolvedValueOnce([album(1, lidarrDate(-30))]);
-    expect(await resolveAlertOccurrencesResult(alertRow('artist', '9'), createResolverContext())).not.toHaveProperty('albumReleased');
+    expect(await resolveAlertOccurrencesResult(alertRow('artist', '9'), createResolverContext())).not.toHaveProperty('released');
   });
 
   it('refuses a release reminder with a clear message and saves nothing', async () => {
@@ -241,11 +241,11 @@ describe('an album already out', () => {
       today(8);
       const before = await (await post(previewAlert, '/api/scheduled-alerts/preview', { draft: releaseDay })).json();
       expect(before.defaults.scheduleMode).toBe('release_relative');
-      expect(before).not.toHaveProperty('albumReleased');
+      expect(before).not.toHaveProperty('released');
 
       today(14);
       const after = await (await post(previewAlert, '/api/scheduled-alerts/preview', { draft: releaseDay })).json();
-      expect(after).toMatchObject({ albumReleased: true, defaults: { scheduleMode: 'absolute' } });
+      expect(after).toMatchObject({ released: 'album', defaults: { scheduleMode: 'absolute' } });
       mocks.inPost = true;
       const res = await post(createAlert, '/api/scheduled-alerts', { draft: releaseDay, scheduleMode: 'release_relative', releaseTypes: ['album'], offsetMinutes: 0 });
       expect(res.status).toBe(400);

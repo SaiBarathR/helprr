@@ -14,6 +14,7 @@ import type {
   OccurrenceCandidate,
   PreviewResult,
   ReleaseKind,
+  ReleasedKind,
   ResolveResult,
   ScheduledAlertDraft,
   ScheduledAlertMetadata,
@@ -184,33 +185,40 @@ export async function previewScheduledAlert(
         episodeId: opts.episodeId ?? draft.episodeId,
         albumId: draft.albumId,
       })) as PreviewResult['defaults']['scope'];
-  const releaseTypes = opts.releaseTypes?.length
+  let releaseTypes = opts.releaseTypes?.length
     ? opts.releaseTypes
     : defaultReleaseTypes(scope, draft.mediaType);
   const offsetMinutes = opts.offsetMinutes ?? 60;
   const requestedMode = opts.scheduleMode ?? defaultScheduleMode(draft);
+  const resolveFor = (kinds: ReleaseKind[]) => resolveReleaseCandidates(
+    {
+      ...draft,
+      seasonNumber: opts.seasonNumber ?? draft.seasonNumber,
+      episodeId: opts.episodeId ?? draft.episodeId,
+    },
+    {
+      scope,
+      releaseTypes: kinds,
+      offsetMinutes,
+      timeZone,
+    },
+  );
 
-  const resolved = requestedMode === 'release_relative'
-    ? await resolveReleaseCandidates(
-        {
-          ...draft,
-          seasonNumber: opts.seasonNumber ?? draft.seasonNumber,
-          episodeId: opts.episodeId ?? draft.episodeId,
-        },
-        {
-          scope,
-          releaseTypes,
-          offsetMinutes,
-          timeZone,
-        },
-      )
-    : null;
-  // The same verdict the save gives (Lidarr's album, 9:00 on its day in this
-  // time zone): an album already out opens on a custom date from tomorrow, as
-  // its release reminder could never go off.
-  const albumReleased = resolved?.albumReleased === true;
-  const scheduleMode = albumReleased && !opts.scheduleMode ? 'absolute' : requestedMode;
-  const absoluteDefault = defaultReminderLocal(albumReleased ? null : draft.releaseDate, timeZone);
+  let resolved = requestedMode === 'release_relative' ? await resolveFor(releaseTypes) : null;
+  // A film already out digitally may still have its disc ahead: offer that.
+  if (resolved?.released === 'movie' && !opts.releaseTypes?.length) {
+    const disc = await resolveFor(['physical']);
+    if (disc.resolved && !disc.released) {
+      resolved = disc;
+      releaseTypes = ['physical'];
+    }
+  }
+  // The same verdict the save gives: an album, film or episode already out
+  // opens on a custom date from tomorrow, as its release reminder could never
+  // go off.
+  const released = resolved?.released;
+  const scheduleMode = released && !opts.scheduleMode ? 'absolute' : requestedMode;
+  const absoluteDefault = defaultReminderLocal(released ? null : draft.releaseDate, timeZone);
 
   const candidates =
     scheduleMode === 'absolute'
@@ -235,7 +243,7 @@ export async function previewScheduledAlert(
       absoluteNotifyAt: scheduleMode === 'absolute' ? absoluteDefault : null,
     },
     candidates,
-    ...(albumReleased ? { albumReleased: true as const } : {}),
+    ...(released ? { released } : {}),
   };
 }
 
@@ -256,7 +264,7 @@ async function resolveReleaseCandidates(
   const endIso = ctx?.calendarEndIso ?? lookupWindow.end.toISOString();
   const out: OccurrenceCandidate[] = [];
   const upcomingAlbums: UpcomingAlbum[] = [];
-  let albumReleased = false;
+  let released: ReleasedKind | null = null;
 
   const outcomes: SourceOutcomes = {
     radarr: needsRadarr(draft) ? 'failure' : 'not_needed',
@@ -306,6 +314,16 @@ async function resolveReleaseCandidates(
           if (opts.releaseTypes.includes('digital')) releases.push(['digital', movie.digitalRelease]);
           if (opts.releaseTypes.includes('physical')) releases.push(['physical', movie.physicalRelease]);
           if (releases.length === 0 && movie.digitalRelease) releases.push(['digital', movie.digitalRelease]);
+          // Out once every release asked for has passed (the moment the loop
+          // below stops reminding), or has no date while the film is already
+          // out at home, so it is not coming. A date still unknown otherwise
+          // can be reminded of once Radarr learns it.
+          const passed = (dateStr: string | undefined) =>
+            !!dateStr && dateOnlyAtLocalNine(dateStr, opts.timeZone) <= notifyStart;
+          const outAtHome = passed(movie.digitalRelease) || passed(movie.physicalRelease);
+          if (releases.length > 0 && releases.every(([, dateStr]) => passed(dateStr) || (!dateStr && outAtHome))) {
+            released = 'movie';
+          }
           for (const [kind, dateStr] of releases) {
             if (!dateStr) continue;
             const releaseAt = dateOnlyAtLocalNine(dateStr, opts.timeZone);
@@ -379,6 +397,22 @@ async function resolveReleaseCandidates(
               ),
             );
           }
+          // The calendar starts now, so an episode not on it has aired or is
+          // further off: ask Sonarr which. One it no longer has is neither.
+          if (opts.scope === 'episode' && draft.episodeId != null && !cal.some((ep) => ep.id === draft.episodeId)) {
+            const episode = await client.getEpisodeById(draft.episodeId).catch((error) => {
+              if (!(axios.isAxiosError(error) && error.response?.status === 404)) noteJobFailure(error);
+              return null;
+            });
+            if (
+              episode &&
+              String(episode.seriesId) === draft.externalId &&
+              episode.airDateUtc &&
+              new Date(episode.airDateUtc) <= notifyStart
+            ) {
+              released = 'episode';
+            }
+          }
         } catch (error) {
           // Try the next instance; the polling job still failed.
           noteJobFailure(error);
@@ -419,7 +453,7 @@ async function resolveReleaseCandidates(
           // Lidarr's release date is a calendar day (midnight UTC): remind on that local day.
           const releaseAt = dateOnlyAtLocalNine(album.releaseDate.slice(0, 10), opts.timeZone);
           if (!Number.isFinite(releaseAt.getTime())) continue;
-          if (opts.scope === 'album' && releaseAt <= notifyStart) albumReleased = true;
+          if (opts.scope === 'album' && releaseAt <= notifyStart) released = 'album';
           const artistName = album.artist?.artistName ?? (opts.scope === 'album' ? draft.subtitle : draft.title);
           if (opts.scope === 'artist' && releaseAt > notifyStart) {
             upcomingAlbums.push({ key: `${connection.id}:${album.id}`, title: album.title, artistName: artistName || draft.title, releaseAt });
@@ -515,7 +549,8 @@ async function resolveReleaseCandidates(
     candidates: out,
     resolved: computeResolved(outcomes, draft, opts.releaseTypes, out),
     ...(opts.scope === 'artist' && needsLidarr(draft) ? { upcomingAlbums } : {}),
-    ...(albumReleased ? { albumReleased: true as const } : {}),
+    // Another instance's reminder still goes off.
+    ...(released && out.length === 0 ? { released } : {}),
   };
 }
 

@@ -27,6 +27,7 @@ export function SeriesHeaderActions({
   sonarrExternalUrl,
   jellyfinUrl,
   seriesWatch,
+  onWatchlist,
   open,
   onEdit,
   onManageEpisodes,
@@ -40,6 +41,8 @@ export function SeriesHeaderActions({
   sonarrExternalUrl: string | null | undefined;
   jellyfinUrl: string | undefined;
   seriesWatch: WatchStatus | undefined;
+  /** The series is on the person's watchlist. */
+  onWatchlist: boolean;
   open: (dialog: SeriesDialog) => void;
   onEdit: () => void;
   onManageEpisodes: () => void;
@@ -141,8 +144,8 @@ export function SeriesHeaderActions({
         <MarkWatchedMenuItem status={seriesWatch} />
         <ResponsiveMenuSeparator />
         <ResponsiveMenuActionItem onSelect={() => open('watchlist')}>
-          <Bookmark className="h-4 w-4" />
-          Add to Watchlist…
+          <Bookmark className={onWatchlist ? 'h-4 w-4 fill-current' : 'h-4 w-4'} />
+          {onWatchlist ? 'On Watchlist…' : 'Add to Watchlist…'}
         </ResponsiveMenuActionItem>
         {canScheduleAlert && (
           <ResponsiveMenuActionItem onSelect={() => open('scheduleAlert')}>

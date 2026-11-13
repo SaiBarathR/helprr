@@ -14,6 +14,7 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import type { DiscoverDetail } from '@/types';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
+import type { WatchlistMatchQuery } from '@/components/watchlist/watchlist-saved';
 import { RequestMediaButton } from '@/components/discover/request-media-button';
 import { OpenInInstances } from '@/components/discover/open-in-instances';
 import { useMe, hasCapability } from '@/components/permission-provider';
@@ -60,6 +61,7 @@ export interface DiscoverAddController {
   canRequest: boolean;
   canSchedule: boolean;
   requested: boolean;
+  watchlistMatch: WatchlistMatchQuery;
   watchlistDraft: {
     source: 'TMDB';
     externalId: string;
@@ -115,6 +117,13 @@ export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddCon
       ? [{ instanceId: detail.addTarget.instanceId ?? '', instanceLabel: '', id: detail.addTarget.id, titleSlug: detail.library?.titleSlug }]
       : [];
   const targetService = detail.addTarget.service === 'radarr' ? 'Radarr' : 'Sonarr';
+  // Saved from here (TMDB/TVDB) or from its library page (Radarr/Sonarr id).
+  const watchlistMatch: WatchlistMatchQuery = {
+    mediaType: watchlistDraft.mediaType,
+    tmdbId: detail.tmdbId,
+    tvdbId: detail.tvdbId,
+    arr: instances.map((i) => ({ instanceId: i.instanceId || null, id: i.id })),
+  };
   const type: 'movie' | 'series' = detail.addTarget.service === 'radarr' ? 'movie' : 'series';
 
   // A title can live in several instances with their own profiles, so one held
@@ -163,6 +172,7 @@ export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddCon
     canSchedule,
     requested,
     watchlistDraft,
+    watchlistMatch,
     instances,
     missingInstances,
     watchlistOpen,
@@ -183,6 +193,7 @@ export function DiscoverAddButton({ detail, controller }: DiscoverAddButtonProps
     canRequest,
     canSchedule,
     watchlistDraft,
+    watchlistMatch,
     instances,
     missingInstances,
     watchlistOpen,
@@ -210,6 +221,7 @@ export function DiscoverAddButton({ detail, controller }: DiscoverAddButtonProps
         <div className="flex items-center gap-1.5">
           <WatchlistButton
             draft={watchlistDraft}
+            match={watchlistMatch}
             variant="icon"
             className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/70"
             open={watchlistOpen}
@@ -285,6 +297,7 @@ export function DiscoverAddButton({ detail, controller }: DiscoverAddButtonProps
       <div className="flex items-center gap-1.5">
         <WatchlistButton
           draft={watchlistDraft}
+          match={watchlistMatch}
           variant="icon"
           className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/25 backdrop-blur-md text-foreground hover:bg-background/70"
           open={watchlistOpen}

@@ -67,6 +67,7 @@ import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
+import { useWatchlistEntry, WatchlistSavedDialog } from '@/components/watchlist/watchlist-saved';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { useCan, useMe } from '@/components/permission-provider';
 import {
@@ -123,6 +124,13 @@ export default function MovieDetailPage() {
   const [showRenamePreview, setShowRenamePreview] = useState(false);
   const [showAddWatchlist, setShowAddWatchlist] = useState(false);
   const [showScheduleAlert, setShowScheduleAlert] = useState(false);
+  const [showSavedWatchlist, setShowSavedWatchlist] = useState(false);
+  // Saved from here or from Discover: the bookmark shows it, and a tap offers
+  // to take it off rather than save it again.
+  const watchlistEntry = useWatchlistEntry(
+    movie ? { mediaType: 'movie', tmdbId: movie.tmdbId, arr: [{ instanceId: instance, id: movie.id }] } : null,
+  );
+  const openWatchlist = () => (watchlistEntry ? setShowSavedWatchlist(true) : setShowAddWatchlist(true));
   const externalUrls = useExternalUrls();
   const radarrExternalUrl = useExternalUrlResolver()('RADARR', instance);
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
@@ -539,9 +547,9 @@ export default function MovieDetailPage() {
                 </ResponsiveMenuActionItem>
               )}
               <MarkWatchedMenuItem status={movieWatch} />
-              <ResponsiveMenuActionItem onSelect={() => setShowAddWatchlist(true)}>
-                <Bookmark className="h-4 w-4" />
-                Add to Watchlist…
+              <ResponsiveMenuActionItem onSelect={openWatchlist}>
+                <Bookmark className={watchlistEntry ? 'h-4 w-4 fill-current' : 'h-4 w-4'} />
+                {watchlistEntry ? 'On Watchlist…' : 'Add to Watchlist…'}
               </ResponsiveMenuActionItem>
               {canScheduleAlert && (
                 <ResponsiveMenuActionItem onSelect={() => setShowScheduleAlert(true)}>
@@ -626,11 +634,11 @@ export default function MovieDetailPage() {
                     <div className="absolute top-2 right-2 flex items-center gap-1.5">
                       <button
                         type="button"
-                        aria-label="Add to watchlist"
-                        onClick={() => setShowAddWatchlist(true)}
+                        aria-label={watchlistEntry ? 'On your watchlist' : 'Add to watchlist'}
+                        onClick={openWatchlist}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
                       >
-                        <Bookmark className="h-3.5 w-3.5" />
+                        <Bookmark className={watchlistEntry ? 'h-3.5 w-3.5 fill-current' : 'h-3.5 w-3.5'} />
                       </button>
                       {canScheduleAlert && (
                         <button
@@ -731,15 +739,15 @@ export default function MovieDetailPage() {
                       )}
                       <button
                         type="button"
-                        aria-label="Add to watchlist"
+                        aria-label={watchlistEntry ? 'On your watchlist' : 'Add to watchlist'}
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          setShowAddWatchlist(true);
+                          openWatchlist();
                         }}
                         className="absolute top-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
                       >
-                        <Bookmark className="h-3.5 w-3.5" />
+                        <Bookmark className={watchlistEntry ? 'h-3.5 w-3.5 fill-current' : 'h-3.5 w-3.5'} />
                       </button>
                     </div>
                     </QuickContextMenu>
@@ -1011,6 +1019,7 @@ export default function MovieDetailPage() {
           overview: movie.overview ?? null,
         }}
       />
+      <WatchlistSavedDialog open={showSavedWatchlist} onOpenChange={setShowSavedWatchlist} entry={watchlistEntry} />
 
       {canScheduleAlert && (
         <ScheduledAlertDialog

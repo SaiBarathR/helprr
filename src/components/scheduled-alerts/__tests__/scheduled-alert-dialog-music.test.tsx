@@ -24,7 +24,7 @@ beforeEach(() => {
           ? { scheduleMode: 'absolute', scope: 'album', releaseTypes: ['album'], offsetMinutes: 60, absoluteNotifyAt: new Date(Date.now() + 86_400_000).toISOString() }
           : { scheduleMode: 'release_relative', scope: 'album', releaseTypes: ['album'], offsetMinutes: 60, absoluteNotifyAt: null },
         candidates: [],
-        ...(released ? { albumReleased: true } : {}),
+        ...(released ? { released: 'album' } : {}),
       });
     }
     saves.push({ url, method: init?.method ?? 'GET', body });

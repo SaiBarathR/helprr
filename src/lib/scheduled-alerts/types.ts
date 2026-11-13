@@ -8,6 +8,8 @@ export type AlertScope = 'movie' | 'series' | 'season' | 'episode' | 'anime' | '
 export type AlertStatus = 'active' | 'cancelled';
 export type OccurrenceStatus = 'pending' | 'sent' | 'failed' | 'cancelled';
 export type ReleaseKind = 'custom' | 'cinema' | 'digital' | 'physical' | 'episode' | 'season' | 'airing' | 'album';
+/** What a release reminder was asked for that is already out, so it could never go off. */
+export type ReleasedKind = 'album' | 'movie' | 'episode';
 
 export interface ScheduledAlertDraft {
   source: AlertSource;
@@ -70,8 +72,8 @@ export interface PreviewResult {
     absoluteNotifyAt: string | null;
   };
   candidates: OccurrenceCandidate[];
-  /** Album alerts only: the album is already out, so only a custom date can remind. */
-  albumReleased?: true;
+  /** The album, film or episode is already out, so only a custom date can remind. */
+  released?: ReleasedKind;
 }
 
 /** An album ahead that an artist alert found, however far off its release is. */
@@ -88,6 +90,6 @@ export interface ResolveResult {
   resolved: boolean;
   /** Artist alerts only: every album ahead Lidarr knows of, for the "new album" announcement. */
   upcomingAlbums?: UpcomingAlbum[];
-  /** Album alerts only: the album is already out, so a release reminder on it can never go off. */
-  albumReleased?: true;
+  /** Album, film or episode alerts: it is already out, so a release reminder on it can never go off. */
+  released?: ReleasedKind;
 }

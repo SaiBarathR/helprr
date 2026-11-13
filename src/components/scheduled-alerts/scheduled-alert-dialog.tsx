@@ -16,8 +16,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScheduledAlertSummary } from '@/components/scheduled-alerts/scheduled-alert-summary';
-import type { ScheduledAlertDraft, ReleaseKind } from '@/lib/scheduled-alerts/types';
-import { RELEASE_KIND_LABELS, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
+import type { ScheduledAlertDraft, ReleaseKind, ReleasedKind } from '@/lib/scheduled-alerts/types';
+import { RELEASE_KIND_LABELS, defaultScopeForDraft, releasedNote } from '@/lib/scheduled-alerts/constants';
 import { cn } from '@/lib/utils';
 import { useCan } from '@/components/permission-provider';
 
@@ -77,9 +77,9 @@ export function ScheduledAlertDialog({
   const [previewCount, setPreviewCount] = useState(0);
   const [titleValue, setTitleValue] = useState('');
 
-  // The server's word (from the preview) that the album is already out: a
-  // release reminder on it would never go off.
-  const [albumOut, setAlbumOut] = useState(false);
+  // The server's word (from the preview) that the album, film or episode is
+  // already out: a release reminder on it would never go off.
+  const [released, setReleased] = useState<ReleasedKind | null>(null);
   const releaseOptions =
     draft?.mediaType === 'movie'
       ? MOVIE_RELEASE_OPTIONS
@@ -113,7 +113,7 @@ export function ScheduledAlertDialog({
     if (open && draft) {
       setTitleValue(draft.title);
       setPreviewCount(0);
-      setAlbumOut(false);
+      setReleased(null);
       if (initialScheduleMode) {
         setScheduleMode(initialScheduleMode);
         setReleaseTypes(initialReleaseTypes ?? []);
@@ -134,14 +134,14 @@ export function ScheduledAlertDialog({
       signal: controller.signal,
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { defaults?: PreviewDefaults; candidates?: unknown[]; albumReleased?: boolean } | null) => {
+      .then((data: { defaults?: PreviewDefaults; candidates?: unknown[]; released?: ReleasedKind } | null) => {
         if (controller.signal.aborted || !data?.defaults) return;
         setScheduleMode(data.defaults.scheduleMode);
         setReleaseTypes(data.defaults.releaseTypes);
         setOffsetMinutes(data.defaults.offsetMinutes);
         setAbsoluteValue(toDatetimeLocalValue(data.defaults.absoluteNotifyAt));
         setPreviewCount(data.candidates?.length ?? 0);
-        setAlbumOut(data.albumReleased === true);
+        setReleased(data.released ?? null);
       })
       .catch(() => {});
 
@@ -249,7 +249,7 @@ export function ScheduledAlertDialog({
               <div role="group" aria-label="Alert type" className="grid grid-cols-2 gap-1 p-1 rounded-md bg-muted/40">
                 <button
                   type="button"
-                  disabled={saving || albumOut}
+                  disabled={saving || released != null}
                   aria-pressed={scheduleMode === 'release_relative'}
                   onClick={() => setScheduleMode('release_relative')}
                   className={cn(
@@ -276,9 +276,9 @@ export function ScheduledAlertDialog({
                   Custom date
                 </button>
               </div>
-              {albumOut && (
+              {released && (
                 <p className="text-[11px] text-muted-foreground">
-                  This album is already out, so only a custom date can remind you.
+                  {releasedNote(released)}
                 </p>
               )}
             </div>

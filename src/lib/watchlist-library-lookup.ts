@@ -128,6 +128,20 @@ function instanceForArrId(refs: ArrIdRef[] | undefined, title: string | undefine
   return (refs.find((r) => r.title.trim().toLowerCase() === wanted) ?? refs[0]).instanceId;
 }
 
+/** The instance a watchlist item saved from a library page (a Radarr/Sonarr id) belongs to. */
+export function arrItemInstanceId(
+  source: string,
+  externalId: string,
+  lookups: LibraryHrefLookups,
+  title?: string,
+): string | null {
+  const id = Number.parseInt(externalId, 10);
+  if (!Number.isFinite(id) || String(id) !== externalId) return null;
+  if (source === 'RADARR') return instanceForArrId(lookups.radarrById.get(id), title);
+  if (source === 'SONARR') return instanceForArrId(lookups.sonarrById.get(id), title);
+  return null;
+}
+
 export function resolveHrefFromLookups(
   source: string,
   externalId: string,

@@ -31,6 +31,7 @@ export function SeriesHero({
   statusColor,
   canScheduleAlert,
   contextGroups,
+  onWatchlist,
   open,
 }: {
   series: SonarrSeries;
@@ -44,6 +45,8 @@ export function SeriesHero({
   statusColor: string;
   canScheduleAlert: boolean;
   contextGroups: ContextActionGroup[];
+  /** The series is on the person's watchlist: its bookmark shows filled. */
+  onWatchlist: boolean;
   open: (dialog: SeriesDialog) => void;
 }) {
   const {
@@ -159,11 +162,11 @@ export function SeriesHero({
             <div className="absolute top-2 right-2 flex items-center gap-1.5">
               <button
                 type="button"
-                aria-label="Add to watchlist"
+                aria-label={onWatchlist ? 'On your watchlist' : 'Add to watchlist'}
                 onClick={() => open('watchlist')}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
               >
-                <Bookmark className="h-3.5 w-3.5" />
+                <Bookmark className={onWatchlist ? 'h-3.5 w-3.5 fill-current' : 'h-3.5 w-3.5'} />
               </button>
               {canScheduleAlert && (
                 <button
@@ -243,7 +246,7 @@ export function SeriesHero({
               )}
               <button
                 type="button"
-                aria-label="Add to watchlist"
+                aria-label={onWatchlist ? 'On your watchlist' : 'Add to watchlist'}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -251,7 +254,7 @@ export function SeriesHero({
                 }}
                 className="absolute top-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
               >
-                <Bookmark className="h-3.5 w-3.5" />
+                <Bookmark className={onWatchlist ? 'h-3.5 w-3.5 fill-current' : 'h-3.5 w-3.5'} />
               </button>
             </div>
             </QuickContextMenu>

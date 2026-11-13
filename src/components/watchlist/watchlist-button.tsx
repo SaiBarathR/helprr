@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Bookmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WatchlistAddDialog, type WatchlistDraft } from '@/components/watchlist/watchlist-add-dialog';
+import { useWatchlistEntry, WatchlistSavedDialog, type WatchlistMatchQuery } from '@/components/watchlist/watchlist-saved';
 import { useCan } from '@/components/permission-provider';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +18,8 @@ interface Props {
   hitArea?: 'full' | 'height';
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** The title's ids: once it is on the watchlist the icon shows it saved. */
+  match?: WatchlistMatchQuery;
 }
 
 export function WatchlistButton({
@@ -28,11 +31,14 @@ export function WatchlistButton({
   hitArea = 'full',
   open: controlledOpen,
   onOpenChange,
+  match,
 }: Props) {
   const canEdit = useCan('watchlist.edit');
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
+  const entry = useWatchlistEntry(match ?? null);
+  const [savedOpen, setSavedOpen] = useState(false);
 
   if (!canEdit) return null;
 
@@ -41,11 +47,12 @@ export function WatchlistButton({
       {variant === 'icon' ? (
         <button
           type="button"
-          aria-label="Add to watchlist"
+          aria-label={entry ? 'On your watchlist' : 'Add to watchlist'}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            setOpen(true);
+            if (entry) setSavedOpen(true);
+            else setOpen(true);
           }}
           className={cn(
             className ??
@@ -54,7 +61,7 @@ export function WatchlistButton({
             hitArea === 'height' ? 'touch-target-y' : 'touch-target',
           )}
         >
-          <Bookmark className="h-3.5 w-3.5" />
+          <Bookmark className={cn('h-3.5 w-3.5', entry && 'fill-current')} />
         </button>
       ) : (
         <Button
@@ -62,11 +69,12 @@ export function WatchlistButton({
           size="sm"
           onClick={(e) => {
             e.preventDefault();
-            setOpen(true);
+            if (entry) setSavedOpen(true);
+            else setOpen(true);
           }}
           className={className}
         >
-          <Bookmark className="mr-1.5 h-4 w-4" />
+          <Bookmark className={cn('mr-1.5 h-4 w-4', entry && 'fill-current')} />
           {label}
         </Button>
       )}
@@ -76,6 +84,7 @@ export function WatchlistButton({
         draft={draft}
         initialTags={initialTags}
       />
+      <WatchlistSavedDialog open={savedOpen} onOpenChange={setSavedOpen} entry={entry} />
     </>
   );
 }

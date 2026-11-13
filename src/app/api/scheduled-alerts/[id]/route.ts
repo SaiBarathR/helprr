@@ -5,7 +5,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { parseReleaseTypes, isAlertScope, isScheduleMode, musicAlertForbidden, scopeFitsMediaType } from '@/lib/scheduled-alerts/helpers';
 import { resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
-import { ALBUM_RELEASED_ERROR } from '@/lib/scheduled-alerts/constants';
+import { releasedError } from '@/lib/scheduled-alerts/constants';
 import { announceNewAlbums, upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
 import { serializeAlert } from '@/lib/scheduled-alerts/serialize';
 import type { ScheduledAlertMetadata } from '@/lib/scheduled-alerts/types';
@@ -91,10 +91,17 @@ async function patchHandler(
   }
 
   const modeChanged = existing.scheduleMode !== nextScheduleMode;
-  // An album alert turned into a release reminder after the album came out would never go off.
-  if (modeChanged && nextScheduleMode === 'release_relative' && existing.scope === 'album') {
-    const { albumReleased } = await resolveAlertOccurrencesResult({ ...existing, scheduleMode: 'release_relative' });
-    if (albumReleased) return NextResponse.json({ error: ALBUM_RELEASED_ERROR }, { status: 400 });
+  // A release reminder newly set on an album, film or episode already out (or
+  // moved to film releases that have all passed) would never go off.
+  const releaseTypesChanged =
+    data.releaseTypes !== undefined && JSON.stringify(data.releaseTypes) !== JSON.stringify(existing.releaseTypes);
+  if (nextScheduleMode === 'release_relative' && (modeChanged || releaseTypesChanged)) {
+    const { released } = await resolveAlertOccurrencesResult({
+      ...existing,
+      scheduleMode: 'release_relative',
+      releaseTypes: (data.releaseTypes ?? existing.releaseTypes) as Prisma.JsonValue,
+    });
+    if (released) return NextResponse.json({ error: releasedError(released) }, { status: 400 });
   }
 
   const alert = await prisma.$transaction(async (tx) => {
