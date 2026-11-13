@@ -81,7 +81,9 @@ function relativeTime(iso: string | null): string {
   const diff = Date.now() - t;
   if (diff < 0) return formatDateTime(iso);
   const sec = Math.floor(diff / 1000);
-  if (sec < 60) return `${sec}s ago`;
+  // The list refreshes every 30 s, so a count of seconds only stood still
+  // ("Seen 0s ago" on a new sign-in).
+  if (sec < 60) return 'just now';
   const min = Math.floor(sec / 60);
   if (min < 60) return `${min}m ago`;
   const hr = Math.floor(min / 60);

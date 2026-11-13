@@ -99,6 +99,8 @@ export function BottomNav() {
                 href={href}
                 prefetch={null}
                 aria-label={navBadgeName(shortLabel, slice, badgeArea)}
+                // The colour alone told only sighted people which tab is open.
+                aria-current={isActive ? 'page' : undefined}
                 className={cn(
                   SLOT,
                   isActive ? cn(ACTIVE_LABEL, GLASS_ACTIVE_LABEL) : 'text-muted-foreground',
@@ -163,6 +165,7 @@ export function BottomNav() {
                         href={href}
                         prefetch={null}
                         aria-label={navBadgeName(label, slice, badgeArea)}
+                        aria-current={isActive ? 'page' : undefined}
                         onClick={(event) => {
                           if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
                             return;

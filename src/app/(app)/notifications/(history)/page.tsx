@@ -1,5 +1,6 @@
 'use client';
 
+import { cn } from '@/lib/utils';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
@@ -625,7 +626,9 @@ export default function NotificationsPage() {
               // The row holds four actions, so phones get the short form.
               placeholder={narrow ? 'Search…' : 'Search notifications…'}
               aria-label="Search notifications"
-              className="pl-9 pr-9 h-10"
+              // Room for the clear button only once there is text: at 320 px,
+              // beside four 44 px actions, the empty field read "Searc".
+              className={cn('pl-9 h-10', searchInput.length > 0 ? 'pr-9' : 'pr-3')}
             />
             {searchInput.length > 0 && (
               <button
