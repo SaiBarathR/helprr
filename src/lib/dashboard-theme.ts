@@ -418,30 +418,57 @@ function resolveThemeTokens(prefs: DashboardThemePrefs) {
   const font = prefs.font in FONTS ? FONTS[prefs.font] : FONTS.system;
   const gradient = prefs.gradient in GRADIENTS ? GRADIENTS[prefs.gradient].value : GRADIENTS.none.value;
 
-  // The accents are made for dark pages: on a light palette they are too light
-  // (Cream: Amber 1.4:1, Forest 1.7:1, Cyan 2.3:1), so there any accent is
-  // darkened (same hue) until it reads as text, 4.5:1, on the page, sidebar
-  // and cards, also on the 20% wash of itself that active filter chips and
-  // selected rows put under it, like the category colours. That takes the
-  // active tab icon past 3:1, and a primary button's label (the page colour on
-  // the accent) to 4.5:1. A light palette is one with a light page (as
-  // data-scheme decides it), or text darker than its page.
-  const isLight = schemeFromBackground(palette.inkSoft) === 'light' || (
-    /^#[0-9a-f]{6}$/i.test(palette.fg) && /^#[0-9a-f]{6}$/i.test(palette.inkSoft)
-    && relativeLuminance(palette.fg) < relativeLuminance(palette.inkSoft)
-  );
-  const accent = isLight
-    ? darkenToContrast(chosenAccent, [palette.ink, palette.inkSoft, palette.surface, palette.surfaceHi], 4.5, CATEGORY_TINT)
+  // The accents are made for dark pages: on a light palette (a light page, as
+  // data-scheme and the category colours decide it) they are too light (Cream:
+  // Amber 1.4:1, Forest 1.7:1, Cyan 2.3:1), so there they are darkened like
+  // the category colours (darkenAccent). The dark surfaces such a palette still
+  // has (the player, scrims over artwork: .hpr-on-dark) take the accent as
+  // picked, accentOnDark.
+  const light = schemeFromBackground(palette.inkSoft) === 'light';
+  const accent = light
+    ? darkenAccent(chosenAccent, [palette.ink, palette.inkSoft, palette.surface, palette.surfaceHi], palette.fg)
     : chosenAccent;
 
-  return { accent, isCyan, palette, font, gradient };
+  return { accent, accentOnDark: chosenAccent, isCyan, palette, font, gradient };
+}
+
+/** How close the accent may come to the body text: nearer than this it reads
+ *  as text, and the accents (all darkened on a grey page) as one near-black. */
+const ACCENT_FLOOR = 1.5;
+
+/**
+ * The accent darkened (same hue) for a light page: text in it reads 4.5:1 on
+ * the page, sidebar and cards, also on the 20% wash of itself under active
+ * filter chips; that takes the active tab icon past 3:1 and a primary button's
+ * label (the page colour on the accent) to 4.5:1. A dim page can't give that
+ * without the accent nearing the body text, so as with the category colours it
+ * steps down to 4.5:1 without the wash, then 3:1, and stops ACCENT_FLOOR from
+ * the text colour rather than turning black.
+ */
+function darkenAccent(color: string, surfaces: string[], fg: string): string {
+  if (!HEX6.test(color)) return color;
+  let floor = color;
+  if (HEX6.test(fg)) {
+    for (let scale = 1; scale > 0; scale -= 0.01) {
+      const candidate = scaleColor(color, scale);
+      if (contrastRatio(candidate, fg) < ACCENT_FLOOR) break;
+      floor = candidate;
+    }
+  } else {
+    floor = scaleColor(color, CATEGORY_FLOOR);
+  }
+  for (const [min, tint] of [[4.5, CATEGORY_TINT], [4.5, 0], [3, 0]]) {
+    const darker = darkenToContrast(color, surfaces, min, tint);
+    if (relativeLuminance(darker) >= relativeLuminance(floor)) return darker;
+  }
+  return floor;
 }
 
 /** Build a React style object containing every --hpr-* variable. */
 export function buildDashboardThemeStyle(prefs: DashboardThemePrefs): React.CSSProperties {
-  const { accent, isCyan, palette, font, gradient } = resolveThemeTokens(prefs);
+  const { accent, accentOnDark, isCyan, palette, font, gradient } = resolveThemeTokens(prefs);
   // On a light palette the category colours are darkened (same hue) like the
-  // cyan accent, so text in them reaches 4.5:1 on the page, sidebar and cards,
+  // accent, so text in them reaches 4.5:1 on the page, sidebar and cards,
   // also on a badge's 20% wash of its own colour (the strongest the app puts
   // under same-colour text), and icons and chart marks pass 3:1. A dark palette
   // keeps the globals.css values (ThemeApplier sweeps these vars); so do the
@@ -474,6 +501,8 @@ export function buildDashboardThemeStyle(prefs: DashboardThemePrefs): React.CSSP
     ['--hpr-fgMute' as string]: palette.fgMute,
     ['--hpr-fgSubtle' as string]: palette.fgSubtle,
     ['--hpr-amber' as string]: accent,
+    // The accent as picked, for the dark surfaces (globals.css, .hpr-on-dark).
+    ['--hpr-accent-on-dark' as string]: accentOnDark,
     ['--hpr-tab-label' as string]: tabLabel,
     ['--hpr-font-body' as string]: font.body,
     ['--hpr-font-display' as string]: font.display,

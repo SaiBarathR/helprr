@@ -83,6 +83,8 @@ export const MediaCard = memo(function MediaCard({
   const show = (field: string) => !visibleFields || visibleFields.includes(field);
   // Sonarr/Radarr report 0 for an unknown year; showing "0" reads as broken.
   const showYear = show('year') && year > 0;
+  // The caption paints above the status dot, so its bottom line stops short of it.
+  const dotPad = show('monitored') && hasFile !== undefined ? 'pr-2.5' : undefined;
 
   // Broken poster URLs flip to the icon fallback instead of an empty box.
   // Keyed by URL (render-guarded reset) so a changed poster retries.
@@ -144,10 +146,10 @@ export const MediaCard = memo(function MediaCard({
       {(show('title') || showYear || instanceLabel) && (
       <div className="absolute bottom-0 left-0 right-0 p-2">
         {show('title') && (
-          <p className="text-xs font-semibold text-white truncate leading-tight">{title}</p>
+          <p className={cn('text-xs font-semibold text-white truncate leading-tight', !(showYear || instanceLabel) && dotPad)}>{title}</p>
         )}
         {(showYear || instanceLabel) && (
-          <p className="text-[10px] text-white/75 truncate">
+          <p className={cn('text-[10px] text-white/75 truncate', dotPad)}>
             {showYear && year}
             {instanceLabel && (
               <span className="hpr-scrim-accent font-medium">{showYear ? ' · ' : ''}{instanceLabel}</span>
