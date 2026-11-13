@@ -57,7 +57,7 @@ function Thumbnail({ video, sizes, width = 640, className }: { video: CreatorVid
       )}
       <span className={cn(IMAGE_CHIP, 'absolute bottom-1 right-1 tabular-nums')}>{formatDuration(video.durationSeconds)}</span>
       {video.activeJob && (
-        <span className="absolute inset-x-0 bottom-0 h-0.5 bg-white/25">
+        <span className="hpr-on-dark absolute inset-x-0 bottom-0 h-0.5 bg-white/25">
           <span className="block h-full bg-primary" style={{ width: `${Math.round((video.activeJob.progress ?? 0) * 100)}%` }} />
         </span>
       )}

@@ -513,7 +513,7 @@
    accent can be a deep blue there (Liquid Glass: 1.6-3.4:1 on the scrim), so
    it is mostly white and keeps only a tint of the accent. */
 .hpr-scrim-accent {
-  color: color-mix(in oklab, var(--hpr-amber) 30%, white);
+  color: color-mix(in oklab, var(--hpr-accent-on-dark) 30%, white);
 }
 
 /* Light theme contrast. Tinted pills and banners (a translucent 400/500 tint
@@ -827,6 +827,10 @@ html {
   --hpr-fgMute: #b9a98c;
   --hpr-fgSubtle: #7a6c54;
   --hpr-amber: #f5b948;
+  /* The accent as picked, for the dark surfaces a light palette still has
+     (.hpr-on-dark); a light custom palette darkens --hpr-amber for its own
+     surfaces (dashboard-theme.ts). Glass and the dark palettes leave it equal. */
+  --hpr-accent-on-dark: var(--hpr-amber);
   /* Playback progress: its own token so the cinematic skin can paint the
      scrubber the site's red without dragging every other accent with it. */
   --hpr-seek: var(--hpr-amber);
@@ -2067,6 +2071,22 @@ html[data-scheme='light'] .hpr-on-dark {
   --hpr-violet: #877bc8 !important;
   --hpr-cyan: #00a4dc !important;
   --hpr-pink: #d97da1 !important;
+}
+
+/* The accent on those dark surfaces: a light palette darkens it for its light
+   ones (Cream Amber #69501f is 2.8:1 on black and next to invisible on the
+   player's white/25 track), so the player, the resume bars on artwork and
+   anything else on a black scrim take it as picked. --primary and --hpr-seek
+   resolve on :root, so they are set again here, and --hpr-ink (a button label
+   on the accent) is the black these surfaces are. The Cinematic skin keeps its
+   own white accent and red scrubber, and Liquid Glass its tint. */
+html[data-scheme='light']:not([data-glass]):not([data-watch-skin='cinematic']:has(.hpr-watch)) .hpr-on-dark {
+  --hpr-amber: var(--hpr-accent-on-dark);
+  --hpr-seek: var(--hpr-accent-on-dark);
+  --primary: var(--hpr-accent-on-dark);
+  --ring: var(--hpr-accent-on-dark);
+  --hpr-ink: #000000;
+  --primary-foreground: #000000;
 }
 
 /* Liquid Glass light: the same dark surfaces take Glass's dark iOS colours

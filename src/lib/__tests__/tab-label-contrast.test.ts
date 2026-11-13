@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { ACCENT_COLORS, buildDashboardThemeStyle, DEFAULT_DASHBOARD_THEME, PALETTES, THEME_VAR_KEYS } from '@/lib/dashboard-theme';
+import { blendOver } from '@/lib/color-utils';
+import { ACCENT_COLORS, buildDashboardThemeStyle, buildGlassThemeStyle, CATEGORY_TINT, DEFAULT_DASHBOARD_THEME, PALETTES, THEME_VAR_KEYS } from '@/lib/dashboard-theme';
 
 // The active tab's label on the non-Glass themes: tinted with the accent,
 // except cyan, where only the icon takes it and the label keeps the text
-// colour (as under Liquid Glass).
+// colour (as under Liquid Glass). On a light palette the accent is darkened.
 
 function luminance(hex: string): number {
   const x = parseInt(hex.slice(1), 16);
@@ -55,40 +56,90 @@ describe('the active tab label', () => {
   });
 });
 
-describe('the cyan accent on a light palette', () => {
-  // Cream was 2.3:1 (bar) / 2.6:1 (sidebar). Darkened, it reads as text,
-  // 4.5:1, on the bar, the sidebar and the cards, so the icon passes 3:1.
-  it('is darkened on Cream to #006e93: 4.59 on the bar, 5.15 on the sidebar, 5.52 on cards', () => {
-    const { tokens } = PALETTES.cream;
-    const cyan = style('cyan', 'cream')['--hpr-amber'];
-    expect(cyan).toBe('#006e93');
-    for (const bg of [tokens.inkSoft, tokens.ink, tokens.surface, tokens.surfaceHi]) {
-      expect(contrast(cyan, bg)).toBeGreaterThanOrEqual(4.5);
+describe('the accent on a light palette', () => {
+  // The accents are made for dark pages. On Cream they were 1.4:1 (Amber) to
+  // 3.0:1 (Violet) on the bar; Cyan alone was darkened, to 4.6:1. Every accent
+  // is now darkened (same hue) until it reads as text, 4.5:1, on the bar, the
+  // sidebar and the cards, also on a 20% wash of itself (an active filter chip).
+  const SURFACES = ['--hpr-ink', '--hpr-inkSoft', '--hpr-surface', '--hpr-surfaceHi'];
+  const hue = (hex: string) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    return Math.atan2(Math.sqrt(3) * (g - b), 2 * r - g - b);
+  };
+
+  // #d0d8e0 is dim enough that the wash rung would take the accents within
+  // 1.5:1 of the text colour (the floor), so there they read 4.5:1 without it.
+  it.each([['cream', true], ['#f0f0f0', true], ['#fff4e0', true], ['#d0d8e0', false]])('reads as text with every accent on the light %s palette', (palette, onWash) => {
+    for (const accent of [...Object.keys(ACCENT_COLORS), '#3366ff', '#ffd400']) {
+      const vars = style(accent, palette);
+      const color = vars['--hpr-amber'];
+      for (const key of SURFACES) {
+        expect(contrast(color, vars[key])).toBeGreaterThanOrEqual(4.5);
+        if (onWash) expect(contrast(color, blendOver(vars[key], color, CATEGORY_TINT))).toBeGreaterThanOrEqual(4.5);
+      }
+      // The dark surfaces (player, scrims) get the accent as picked.
+      expect(vars['--hpr-accent-on-dark']).toBe(accent in ACCENT_COLORS ? ACCENT_COLORS[accent].color : accent);
+      // A primary button's label (the page colour on the accent) reads too.
+      expect(contrast(vars['--hpr-ink'], color)).toBeGreaterThanOrEqual(4.5);
+      // Darkened, not recoloured: the hue stays within a couple of degrees.
+      const source = accent in ACCENT_COLORS ? ACCENT_COLORS[accent].color : accent;
+      expect(Math.abs(hue(color) - hue(source))).toBeLessThan(0.05);
+      // The label: the text colour with cyan, the darkened accent otherwise.
+      expect(vars['--hpr-tab-label']).toBe(accent === 'cyan' ? vars['--hpr-fg'] : color);
     }
-    expect(contrast(cyan, tokens.inkSoft).toFixed(2)).toBe('4.59');
-    expect(contrast(cyan, tokens.ink).toFixed(2)).toBe('5.15');
-    // A primary button's label (the page colour on cyan) reads too.
-    expect(contrast(tokens.ink, cyan)).toBeGreaterThanOrEqual(4.5);
-    // The label still keeps the text colour.
-    expect(style('cyan', 'cream')['--hpr-tab-label']).toBe(tokens.fg);
   });
 
-  it.each(['#f0f0f0', '#d0d8e0', '#fff4e0'])('is darkened on a custom light palette built from %s', (base) => {
-    const vars = style('cyan', base);
-    for (const key of ['--hpr-ink', '--hpr-inkSoft', '--hpr-surface', '--hpr-surfaceHi']) {
-      expect(contrast(vars['--hpr-amber'], vars[key])).toBeGreaterThanOrEqual(4.5);
-    }
-    expect(vars['--hpr-tab-label']).toBe(vars['--hpr-fg']);
+  it('darkens the Cream accents to these values', () => {
+    expect(Object.fromEntries(Object.keys(ACCENT_COLORS).map((a) => [a, style(a, 'cream')['--hpr-amber']]))).toEqual({
+      amber: '#69501f',
+      crimson: '#843d47',
+      cyan: '#005977',
+      violet: '#58449e',
+      forest: '#295c44',
+    });
   });
 
   it('stays darkened on Cream with a custom text colour', () => {
     const vars = buildDashboardThemeStyle({ ...DEFAULT_DASHBOARD_THEME, accent: 'cyan', palette: 'cream', fg: '#fafafa' }) as Record<string, string>;
-    expect(vars['--hpr-amber']).toBe('#006e93');
+    expect(vars['--hpr-amber']).toBe('#005977');
   });
 
-  it('leaves a custom dark palette, and the other accents on Cream, alone', () => {
-    expect(style('cyan', '#101418')['--hpr-amber']).toBe(ACCENT_COLORS.cyan.color);
-    expect(style('amber', 'cream')['--hpr-amber']).toBe(ACCENT_COLORS.amber.color);
-    expect(style('#3366ff', 'cream')['--hpr-amber']).toBe('#3366ff');
+  it('leaves an accent that already reads on a light palette alone', () => {
+    expect(style('#1a3d8f', 'cream')['--hpr-amber']).toBe('#1a3d8f');
+  });
+
+  // #808080: a mid-tone page with dark text, which data-scheme (and so the
+  // category colours and the dark-surface reset) calls dark.
+  it.each(['warm', 'slate', 'pure', '#101418', '#808080'])('leaves every accent alone on the dark %s palette', (palette) => {
+    for (const [accent, { color }] of Object.entries(ACCENT_COLORS)) {
+      expect(style(accent, palette)['--hpr-amber']).toBe(color);
+      expect(style(accent, palette)['--hpr-accent-on-dark']).toBe(color);
+    }
+    expect(style('#3366ff', palette)['--hpr-amber']).toBe('#3366ff');
+  });
+
+  // A grey page is too dim for 4.5:1 without the accents nearing the body text
+  // (#b0b0b0 took all five to near-black, 1.16:1 from the text; #9a9a9a to
+  // #000000). They stop 1.5:1 from the text colour instead, still five hues.
+  it.each([['#9a9a9a', 2.7], ['#b0b0b0', 3], ['#c0c0c0', 3]])('stops the accents short of the body text on the grey %s palette', (palette, onSurfaces) => {
+    const colors = Object.keys(ACCENT_COLORS).map((accent) => {
+      const vars = style(accent, palette);
+      const color = vars['--hpr-amber'];
+      expect(color).not.toBe('#000000');
+      expect(contrast(color, vars['--hpr-fg'])).toBeGreaterThanOrEqual(1.5);
+      for (const key of SURFACES) expect(contrast(color, vars[key])).toBeGreaterThanOrEqual(onSurfaces);
+      expect(Math.abs(hue(color) - hue(ACCENT_COLORS[accent].color))).toBeLessThan(0.05);
+      return color;
+    });
+    expect(new Set(colors).size).toBe(colors.length);
+  });
+
+  it('keeps an accent the user picked darker than the floor as it is', () => {
+    expect(style('#2a2a40', '#b0b0b0')['--hpr-amber']).toBe('#2a2a40');
+  });
+
+  it('is swept with the other theme vars and left out of Liquid Glass', () => {
+    expect(THEME_VAR_KEYS).toContain('--hpr-accent-on-dark');
+    expect(buildGlassThemeStyle('light', 60)).not.toHaveProperty('--hpr-accent-on-dark');
   });
 });

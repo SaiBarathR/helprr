@@ -698,7 +698,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                         <FadeInImage src={still} alt="" fill sizes="128px" unoptimized className="object-cover" />
                       )}
                       {typeof progress === 'number' && progress > 0 && progress < 100 && (
-                        <span className="absolute inset-x-0 bottom-0 h-1 bg-black/50">
+                        <span className="hpr-on-dark absolute inset-x-0 bottom-0 h-1 bg-black/50">
                           <span
                             className={cn('block h-full', cinematic ? 'bg-[#e50914]' : 'bg-[var(--hpr-amber)]')}
                             style={{ width: `${progress}%` }}

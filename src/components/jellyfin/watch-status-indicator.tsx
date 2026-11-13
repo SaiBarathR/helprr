@@ -26,7 +26,7 @@ export function PosterWatchOverlay({ status }: { status: WatchStatus | undefined
 
   return (
     <>
-      <div className="absolute top-1.5 left-1.5 z-[1] flex items-center gap-0.5 rounded bg-black/55 px-1 py-0.5 backdrop-blur-sm">
+      <div className="hpr-on-dark absolute top-1.5 left-1.5 z-[1] flex items-center gap-0.5 rounded bg-black/55 px-1 py-0.5 backdrop-blur-sm">
         {fullyWatched ? (
           <Check className="h-2.5 w-2.5 text-[var(--hpr-amber)]" strokeWidth={3} />
         ) : status.kind === 'series' ? (
@@ -38,7 +38,7 @@ export function PosterWatchOverlay({ status }: { status: WatchStatus | undefined
         )}
       </div>
       {!fullyWatched && moviePercent > 0 && (
-        <div className="absolute bottom-0 left-0 right-0 z-[1] h-[3px] bg-black/45">
+        <div className="hpr-on-dark absolute bottom-0 left-0 right-0 z-[1] h-[3px] bg-black/45">
           <div className="h-full bg-[var(--hpr-amber)]" style={{ width: `${moviePercent}%` }} />
         </div>
       )}

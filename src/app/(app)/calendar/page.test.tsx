@@ -9,6 +9,7 @@ const route = vi.hoisted(() => ({ pathname: '/calendar', loading: false }));
 // The shared filter menus are a sheet on phones and a dropdown from md up.
 const viewport = vi.hoisted(() => ({ phone: false }));
 const calendar = vi.hoisted(() => ({
+  events: null as null | Array<Record<string, unknown>>,
   loading: false,
   refetch: (() => Promise.resolve()) as () => Promise<void>,
   pullToRefresh: null as null | { onRefresh: () => unknown },
@@ -24,7 +25,7 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('@/hooks/use-calendar', () => ({
   useCalendar: () => ({
-    events: [{
+    events: calendar.events ?? [{
       id: 'movie-1', type: 'movie', title: 'Selected day movie', movieId: 1,
       date: '2026-10-15T12:00:00', monitored: true, hasFile: false,
     }],
@@ -92,6 +93,7 @@ beforeEach(() => {
   route.pathname = '/calendar';
   route.loading = false;
   calendar.loading = false;
+  calendar.events = null;
   window.history.replaceState({}, '', '/calendar');
   scrollY = 0;
   scrollIntoView.mockClear();
@@ -373,4 +375,23 @@ it('keeps a saved instance pick until the configured list has loaded', () => {
   arr.instances = [{ id: 'r1', label: 'radarr', type: 'RADARR' }];
   page.rerender(<CalendarPage />);
   expect(useUIStore.getState().calendarInstanceFilter).toBe('all');
+});
+
+// An album has a square cover and no poster; the day panel showed a grey box.
+it('shows an album cover in the day panel, through the image proxy', () => {
+  calendar.events = [{
+    id: 'lidarr-1-7', type: 'album', title: 'LiSA', subtitle: 'Album', artistId: 3, albumId: 7,
+    date: '2026-10-15T00:00:00Z', monitored: true, hasFile: false,
+    images: [{ coverType: 'cover', url: '/MediaCover/Albums/7/cover.jpg', remoteUrl: 'https://imagecache.example/release/7/466' }],
+  }];
+  useUIStore.setState({ calendarShowImages: true });
+  render(<CalendarPage />);
+  fireEvent.click(screen.getByRole('button', { name: /October 15, 1 release/ }));
+  const panel = screen.getByRole('heading', { level: 2 }).closest('section')!;
+  // The poster (160 px wide), not the row's backdrop, which already fell back to the cover.
+  const srcs = Array.from(panel.querySelectorAll('img'), (img) => new URL(img.getAttribute('src')!));
+  const src = srcs.find((url) => url.searchParams.get('w') === '160')!;
+  expect(src.pathname).toBe('/api/image');
+  expect(src.searchParams.get('src')).toBe('https://imagecache.example/release/7/466');
+  expect(src.searchParams.get('service')).toBe('lidarr');
 });
