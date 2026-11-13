@@ -5,12 +5,18 @@ import { XIcon } from "lucide-react"
 import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { useBackClosableOpen } from "@/lib/overlay-history"
 import { Button } from "@/components/ui/button"
 
 function Dialog({
+  open: openProp,
+  defaultOpen,
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+  // Back closes the dialog first (see overlay-history).
+  const [open, setOpen] = useBackClosableOpen(openProp, defaultOpen, onOpenChange)
+  return <DialogPrimitive.Root data-slot="dialog" {...props} open={open} onOpenChange={setOpen} />
 }
 
 function DialogTrigger({

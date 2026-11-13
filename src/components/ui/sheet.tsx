@@ -5,9 +5,17 @@ import { XIcon } from "lucide-react"
 import { Dialog as SheetPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { useBackClosableOpen } from "@/lib/overlay-history"
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+function Sheet({
+  open: openProp,
+  defaultOpen,
+  onOpenChange,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Root>) {
+  // Back closes the sheet first (see overlay-history).
+  const [open, setOpen] = useBackClosableOpen(openProp, defaultOpen, onOpenChange)
+  return <SheetPrimitive.Root data-slot="sheet" {...props} open={open} onOpenChange={setOpen} />
 }
 
 function SheetTrigger({

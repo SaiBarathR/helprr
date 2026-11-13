@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { usePathname, useRouter as useNextRouter } from 'next/navigation';
 import { NAVIGATION_CANCEL_EVENT, NAVIGATION_START_EVENT, routeScrollKey, type NavigationStartDetail } from '@/lib/route-scroll-state';
+import { afterOverlayHistory } from '@/lib/overlay-history';
 
 type Router = ReturnType<typeof useNextRouter>;
 type Destination = { pathname: string; href: string };
@@ -58,7 +59,9 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
     };
   }, [pathname]);
 
-  const navigate = useCallback((method: 'push' | 'replace', href: string, options?: Parameters<Router['push']>[1]) => {
+  // A pick in an open sheet (More -> Calendar) navigates once the sheet's
+  // Back entry is off history, so the new page doesn't sit on a dead entry.
+  const navigate = useCallback((method: 'push' | 'replace', href: string, options?: Parameters<Router['push']>[1]) => afterOverlayHistory(() => {
     if (transitionTimer.current) clearTimeout(transitionTimer.current);
     if (method === 'push') {
       try { window.sessionStorage.setItem(IN_APP_HISTORY_KEY, '1'); } catch { /* storage unavailable */ }
@@ -78,9 +81,10 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
       ? { pathname: url.pathname, href: url.pathname + url.search }
       : null);
     startTransition(() => nextRouter[method](href, options));
-  }, [nextRouter]);
+  }), [nextRouter]);
 
-  const traverseHistory = useCallback((method: 'back' | 'forward') => {
+  // Back from inside an open sheet leaves the page, not only the sheet.
+  const traverseHistory = useCallback((method: 'back' | 'forward') => afterOverlayHistory(() => {
     if (transitionTimer.current) clearTimeout(transitionTimer.current);
     transitionNavigation.current = null;
     const detail: NavigationStartDetail = { kind: 'traverse' };
@@ -95,7 +99,7 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
       window.dispatchEvent(new Event(NAVIGATION_CANCEL_EVENT));
     }, 1000);
     nextRouter[method]();
-  }, [nextRouter, pathname]);
+  }), [nextRouter, pathname]);
 
   const router = useMemo<Router>(() => ({
     ...nextRouter,
