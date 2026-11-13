@@ -5,7 +5,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WidgetVisibilityProvider } from './widget-visibility-context';
-import { useWidgetData } from './use-widget-data';
+import { useWidgetData, widgetErrorText } from './use-widget-data';
 
 let root: Root;
 
@@ -161,5 +161,18 @@ describe('useWidgetData visibility', () => {
     expect(fetchFn).toHaveBeenCalledOnce();
     expect(document.body.textContent).toBe('sharedshared');
     queryClient.clear();
+  });
+});
+
+describe('widgetErrorText', () => {
+  it('says the server cannot be reached for a network failure, not the browser words', () => {
+    const swError = new TypeError('FetchEvent.respondWith received an error: no-response: no-response :: [{"url":"https://x/api/seerr/requests"}]');
+    expect(widgetErrorText(swError)).toBe('Can’t reach Helprr right now.');
+    expect(widgetErrorText(new TypeError('Failed to fetch'))).toBe('Can’t reach Helprr right now.');
+  });
+
+  it("keeps a server's own message", () => {
+    expect(widgetErrorText(new Error('Seerr is not configured'))).toBe('Seerr is not configured');
+    expect(widgetErrorText('odd')).toBe('Failed to fetch');
   });
 });

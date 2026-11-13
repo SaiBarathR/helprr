@@ -82,13 +82,20 @@ export function useWidgetData<T>({
   return {
     data: query.data ?? null,
     loading: query.isLoading,
-    error: query.isError
-      ? query.error instanceof Error
-        ? query.error.message
-        : 'Failed to fetch'
-      : null,
+    error: query.isError ? widgetErrorText(query.error) : null,
     refresh: async () => {
       await query.refetch();
     },
   };
+}
+
+/**
+ * What a widget says when its fetch fails. A network failure (fetch throws a
+ * TypeError) carries the browser's own words, on iOS offline the service
+ * worker's "FetchEvent.respondWith received an error: no-response …" with the
+ * request URL, shown in red on the Dashboard. A server's answer keeps its message.
+ */
+export function widgetErrorText(error: unknown): string {
+  if (error instanceof TypeError) return 'Can’t reach Helprr right now.';
+  return error instanceof Error ? error.message : 'Failed to fetch';
 }
