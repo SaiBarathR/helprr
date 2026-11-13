@@ -67,6 +67,8 @@ export default function PreferencesPage() {
 
   const [regions, setRegions] = useState<RegionOption[] | null>(null);
   useEffect(() => {
+    // Only an admin sees (and may save) the region.
+    if (!isAdmin) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -82,7 +84,7 @@ export default function PreferencesPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAdmin]);
 
   const regionOptions = useMemo<RegionOption[]>(() => {
     const base = regions ?? REGION_FALLBACK;
@@ -127,7 +129,7 @@ export default function PreferencesPage() {
       </div>
 
       {/* The server's zone, polling, refresh and region are global settings
-          that only an admin may save (PATCH /api/settings); to a member they
+          that only an admin may save (PUT /api/settings); to a member they
           answered every pick with "Forbidden". "Your time zone" under Date &
           Time is personal. */}
       {isAdmin && (
@@ -240,18 +242,21 @@ export default function PreferencesPage() {
         </GroupedSection>
       )}
 
-      <GroupedSection title="Widgets" footer="Synced across devices">
-        <Link
-          href="/settings/dashboard-refresh"
-          className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
-        >
-          <span className="text-sm">Dashboard widget refresh</span>
-          <span className="flex items-center gap-1 text-sm text-muted-foreground">
-            Configure
-            <ChevronRight className="h-3.5 w-3.5" />
-          </span>
-        </Link>
-      </GroupedSection>
+      {/* Its page needs settings.dashboardRefresh, which members lack by default. */}
+      {hasCapability(me, 'settings.dashboardRefresh') && (
+        <GroupedSection title="Widgets" footer="Synced across devices">
+          <Link
+            href="/settings/dashboard-refresh"
+            className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
+          >
+            <span className="text-sm">Dashboard widget refresh</span>
+            <span className="flex items-center gap-1 text-sm text-muted-foreground">
+              Configure
+              <ChevronRight className="h-3.5 w-3.5" />
+            </span>
+          </Link>
+        </GroupedSection>
+      )}
 
       {hasCapability(me, 'jellyfin.view') && (
         <>

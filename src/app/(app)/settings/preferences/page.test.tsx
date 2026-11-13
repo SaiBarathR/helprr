@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({ me: { role: 'member', capabilities: {} } as { 
 vi.mock('@/components/ui/app-link', () => ({ default: ({ children }: { children: React.ReactNode }) => <a>{children}</a> }));
 vi.mock('@/components/permission-provider', () => ({
   useMe: () => mocks.me,
-  hasCapability: () => false,
+  hasCapability: (me: typeof mocks.me, cap: string) => me.capabilities[cap] === true,
 }));
 vi.mock('@/lib/hooks/use-app-settings', () => ({
   useAppSettings: () => ({ settings: { pollingIntervalSecs: 30, watchProviderRegion: 'IN', timeZone: 'Asia/Kolkata' }, loading: false, update: vi.fn() }),
@@ -29,15 +29,16 @@ describe('Preferences page', () => {
     mocks.me = { role: 'member', capabilities: {} };
     render(<PreferencesPage />);
     expect(screen.getByText('Date & Time')).toBeTruthy();
-    for (const label of ['Server time zone', 'Polling', 'Activity refresh', 'Torrents refresh', 'Region']) {
+    for (const label of ['Server time zone', 'Polling', 'Activity refresh', 'Torrents refresh', 'Region', 'Dashboard widget refresh']) {
       expect(screen.queryByText(label)).toBeNull();
     }
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('shows an admin the global settings', () => {
-    mocks.me = { role: 'admin', capabilities: {} };
+    mocks.me = { role: 'admin', capabilities: { 'settings.dashboardRefresh': true } };
     render(<PreferencesPage />);
-    for (const label of ['Server time zone', 'Polling', 'Activity refresh', 'Torrents refresh', 'Region']) {
+    for (const label of ['Server time zone', 'Polling', 'Activity refresh', 'Torrents refresh', 'Region', 'Dashboard widget refresh']) {
       expect(screen.getByText(label)).toBeTruthy();
     }
   });
