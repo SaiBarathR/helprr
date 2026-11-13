@@ -39,6 +39,7 @@ vi.mock('@/lib/logger', () => ({
 
 import { Prisma } from '@prisma/client';
 import { notifyEvent, sendPushNotification } from '@/lib/notification-service';
+import { PollNotificationCollector } from '@/lib/notification-grouping';
 import { jobReports, type JobReport } from '@/lib/polling-job-report';
 
 const subscription = {
@@ -229,6 +230,33 @@ describe('Lidarr-sourced pushes', () => {
   ])('sends %s (%s) only to those with music.view', async (eventType, title) => {
     mocks.findMany.mockResolvedValueOnce(devices());
     await notifyEvent({ eventType, title, body: 'Artist - Album', metadata: { source: 'lidarr', instanceId: 'lid-1', albumId: 4 } });
+    expect(sentTo()).toEqual(['admin', 'member']);
+  });
+
+  it('sends a digest that names Lidarr albums only to those with music.view, and the other one only where targeted', async () => {
+    mocks.findMany.mockResolvedValueOnce(devices());
+    await notifyEvent({ eventType: 'activityDigest', title: 'Yesterday on Helprr', body: 'Album', metadata: { source: 'digest', includesLidarr: true } });
+    expect(sentTo()).toEqual(['admin', 'member']);
+
+    mocks.sendNotification.mockClear();
+    // notifyEvent asks the database for the targeted users' devices only.
+    mocks.findMany.mockResolvedValueOnce(devices().filter((d) => d.id === 'no-music'));
+    await notifyEvent({ eventType: 'activityDigest', title: 'Yesterday on Helprr', body: 'Show', metadata: { source: 'digest' }, userIds: ['user-no-music'] });
+    expect(sentTo()).toEqual(['no-music']);
+  });
+
+  it('gates a grouped Lidarr burst the same way', async () => {
+    mocks.findMany.mockResolvedValueOnce(devices());
+    const collector = new PollNotificationCollector();
+    for (const id of [1, 2, 3]) {
+      collector.add(
+        { eventType: 'grabbed', title: 'Album Download Started', body: `Album ${id}`, metadata: { source: 'lidarr', instanceId: 'lid-1', id } },
+        { service: 'lidarr', reason: 'queue-new-item' },
+      );
+    }
+    const titles: string[] = [];
+    await collector.flush({ enabled: true, notify: async (event) => { titles.push(event.title); return notifyEvent(event); } });
+    expect(titles).toEqual(['3 Album Downloads Started']);
     expect(sentTo()).toEqual(['admin', 'member']);
   });
 

@@ -32,7 +32,7 @@ Authorization: Bearer hlp_…
 | Download queue | `queue`, and `/api/v1/queue` | How many items are in the Sonarr, Radarr and Lidarr queue, and the items (Lidarr's only if you can see Music) |
 | Downloading count and speeds | `downloads` | Torrents downloading in qBittorrent, and the download and upload speed |
 | Free space on Radarr / Sonarr / Lidarr disks | `storage` | Free and total space on the disks of the apps you ticked |
-| Next releases | `upcoming` | The next three episodes, movies or albums |
+| Next releases | `upcoming` | The next three episodes, movies or albums (albums only if you can see Music) |
 | Active Jellyfin streams | `streams` | How many people are watching right now |
 | Unread alerts | `alerts` | Your unread notifications |
 

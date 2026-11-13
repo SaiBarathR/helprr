@@ -168,6 +168,20 @@ describe('Lidarr downloads in the status API', () => {
     expect(mocks.setCachedJson).toHaveBeenLastCalledWith('status-api', 'summary|activity.view|no-lidarr', expect.any(Object), 10);
   });
 
+  it('keeps the cache key of an owner who may see music as it was', async () => {
+    await buildStatusSummary(USER, new Set<Capability>(['activity.view', 'calendar.view']), NOW);
+    expect(mocks.getCachedJson).toHaveBeenCalledWith('status-api', 'summary|activity.view,calendar.view');
+    expect(mocks.setCachedJson).toHaveBeenCalledWith('status-api', 'summary|activity.view,calendar.view', expect.any(Object), 10);
+  });
+
+  it('lists upcoming albums only while the owner may see the music library', async () => {
+    const titles = async (user: User) => (await buildStatusSummary(user, new Set<Capability>(['calendar.view']), NOW))
+      .upcoming?.map((e) => `${e.type}:${e.title}`);
+    expect(await titles(USER)).toEqual(['episode:A', 'movie:B', 'album:C']);
+    // Without music: the album is left out and the next item takes its place.
+    expect(await titles(NO_MUSIC)).toEqual(['episode:A', 'movie:B', 'movie:D']);
+  });
+
   it('lists them only while the owner may see the music library', async () => {
     await buildStatusQueue(USER, NOW);
     expect(mocks.getQueueCached).toHaveBeenLastCalledWith(1, 100, { includeLidarr: true });

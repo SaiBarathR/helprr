@@ -20,6 +20,7 @@ interface BuildOptions {
 const SOURCE_LABELS: Record<string, string> = {
   sonarr: 'Sonarr',
   radarr: 'Radarr',
+  lidarr: 'Lidarr',
   qbittorrent: 'qBittorrent',
   jellyfin: 'Jellyfin',
   seerr: 'Seerr',
@@ -53,6 +54,14 @@ function getSource(row: { metadata: unknown }): string | null {
   if (!row.metadata || typeof row.metadata !== 'object') return null;
   const value = (row.metadata as Record<string, unknown>).source;
   return typeof value === 'string' ? value : null;
+}
+
+/**
+ * A Lidarr row names albums and artists: only people who may see the music
+ * library get a digest that includes it.
+ */
+export function isLidarrRow(row: { metadata: unknown }): boolean {
+  return getSource(row) === 'lidarr';
 }
 
 // A grouped notification row stands in for groupCount underlying events, so it

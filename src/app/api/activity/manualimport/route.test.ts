@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireUserCapability: vi.fn(), getSonarrClient: vi.fn(), getRadarrClient: vi.fn(), getLidarrClient: vi.fn(),
   list: vi.fn(), submit: vi.fn(), audit: vi.fn(), getAlbum: vi.fn(), releaseTracks: vi.fn(),
 }));
-vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.requireUserCapability }));
+vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.requireUserCapability, requireUserAllCapabilities: mocks.requireUserCapability }));
 vi.mock('@/lib/service-helpers', () => ({
   getSonarrClient: mocks.getSonarrClient, getRadarrClient: mocks.getRadarrClient, getLidarrClient: mocks.getLidarrClient,
 }));

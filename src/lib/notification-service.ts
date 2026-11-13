@@ -284,10 +284,11 @@ function matchesFilters(
 type RecipientUser = Parameters<typeof can>[0] & { role: string };
 
 // An event about a Lidarr album (download started, import required, imported,
-// upcoming album) tells what is in the music library, so its recipients must
-// also be allowed to see that library, as on /music and in Activity.
+// upcoming album), or an activity digest that names some (includesLidarr),
+// tells what is in the music library, so its recipients must also be allowed
+// to see that library, as on /music and in Activity.
 function sourceCapability(metadata: Record<string, unknown>): Capability | undefined {
-  return metadata.source === 'lidarr' ? 'music.view' : undefined;
+  return metadata.source === 'lidarr' || metadata.includesLidarr === true ? 'music.view' : undefined;
 }
 
 // Whether this user may receive the event at all, before their own per-device

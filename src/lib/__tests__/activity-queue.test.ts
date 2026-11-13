@@ -59,6 +59,18 @@ describe('activity queue', () => {
     });
   });
 
+  it('keeps the cache key of a viewer who may see Lidarr as it was', async () => {
+    mocks.getSonarrClients.mockResolvedValue([]);
+    mocks.getRadarrClients.mockResolvedValue([]);
+    mocks.getLidarrClients.mockResolvedValue([instance('lid-1', []).entry]);
+
+    await getQueueCached(1, 50, { includeLidarr: true });
+    await getQueueNeedingImportCached({ includeLidarr: true });
+
+    const { setCachedJson } = await import('@/lib/cache/json-cache');
+    expect(vi.mocked(setCachedJson).mock.calls.map(([, seed]) => seed)).toEqual(['0:1:50', '0:needs-import']);
+  });
+
   it('leaves Lidarr out, rows and total, for a viewer without music.view, under its own cache key', async () => {
     const sonarr = instance('son-1', [{ id: 1, downloadId: 'S', seriesId: 2, trackedDownloadState: 'downloading' }]);
     const lidarr = instance('lid-1', [{ id: 7, downloadId: 'L', artistId: 3, albumId: 4, trackedDownloadState: 'importBlocked' }]);

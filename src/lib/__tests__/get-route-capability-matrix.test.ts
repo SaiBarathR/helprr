@@ -68,10 +68,6 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   ],
   'cap:activity.manage': [
     'GET /api/activity/manualimport',
-    'GET /api/lidarr/command/[id]',
-    'GET /api/lidarr/downloadclient',
-    'GET /api/lidarr/release',
-    'GET /api/lidarr/rename',
     'GET /api/radarr/command/[id]',
     'GET /api/radarr/downloadclient',
     'GET /api/radarr/release',
@@ -422,6 +418,13 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'api-token': [
     'GET /api/v1/queue',
     'GET /api/v1/summary',
+  ],
+  // Lidarr's releases, renames, commands and download clients are music too.
+  'all:activity.manage|music.view': [
+    'GET /api/lidarr/command/[id]',
+    'GET /api/lidarr/downloadclient',
+    'GET /api/lidarr/release',
+    'GET /api/lidarr/rename',
   ],
   'all:torrents.view|activity.view': [
     'GET /api/manual-downloads',

@@ -109,11 +109,13 @@ async function readStorage(scopes: ReadonlySet<Capability>, state: { failed: boo
   };
 }
 
-async function readUpcoming(now: Date) {
+async function readUpcoming(now: Date, includeLidarr: boolean) {
   const end = new Date(now.getTime() + UPCOMING_DAYS * 24 * 60 * 60 * 1000);
   const result = await fetchServiceCalendarEvents(now.toISOString(), end.toISOString());
   if (!result.cacheable) throw new Error('No calendar instance answered');
   return result.events
+    // Albums are Lidarr's: listed only while the owner may see the music library.
+    .filter((event) => includeLidarr || event.type !== 'album')
     .filter((event) => new Date(event.date).getTime() >= now.getTime())
     .slice(0, UPCOMING_LIMIT)
     .map((event) => ({ type: event.type, title: event.title, subtitle: event.subtitle, date: event.date }));
@@ -143,7 +145,7 @@ async function readSharedSections(scopes: ReadonlySet<Capability>, includeLidarr
     scopes.has('torrents.view') ? section(readDownloads, state) : undefined,
     scopes.has('activity.view') ? section(() => readQueueTotal(includeLidarr), state) : undefined,
     hasStorage ? section(() => readStorage(scopes, state), state) : undefined,
-    scopes.has('calendar.view') ? section(() => readUpcoming(now), state) : undefined,
+    scopes.has('calendar.view') ? section(() => readUpcoming(now, includeLidarr), state) : undefined,
     scopes.has('jellyfin.sessions') ? section(readStreams, state) : undefined,
   ]);
   const sections: SharedSections = {

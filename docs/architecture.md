@@ -206,13 +206,18 @@ Lidarr's data is music, so it also needs `music.view` wherever it surfaces
 outside /music: Activity's queue, Needs import, history, wanted and blocklist
 (`activity.view`) and their badge leave Lidarr out without it, as the
 dashboard's Recently added does; queue, history, blocklist and manual-import
-actions on a Lidarr item answer 403 without it (`activitySourceForbidden`);
-the status API counts and lists Lidarr downloads only while the token's owner
-holds it; and a push or channel event whose metadata `source` is `lidarr`
-(album download started, failed or imported, manual import required, upcoming
-album) reaches only recipients who hold it, on top of the event's `notify.*`
-capability. A queue without Lidarr is cached under its own key, since its
-totals differ from the full one.
+actions on a Lidarr item answer 403 without it (`activitySourceForbidden`), and
+the `/api/lidarr` release, rename, command and download-client routes those
+screens use need it beside `activity.manage`; the status API counts and lists
+Lidarr downloads and upcoming albums only while the token's owner holds it; and
+a push or channel event whose metadata `source` is `lidarr` (album download
+started, failed or imported, manual import required, upcoming album), or that
+is marked `includesLidarr`, reaches only recipients who hold it, on top of the
+event's `notify.*` capability. The activity digest is one such: when its window
+has Lidarr rows, the full digest is marked and active users without
+`music.view` get a second digest built without them (dedupe key
+`…-without-music`, targeted at those users). A queue without Lidarr is cached
+under its own key, since its totals differ from the full one.
 
 Stored service API keys and custom header values never leave the server; the
 settings API returns a mask. A mask sent back means "keep the stored value", and
