@@ -81,8 +81,10 @@ export function ScheduledAlertDialog({
   // already out: a release reminder on it would never go off.
   const [released, setReleased] = useState<ReleasedKind | null>(null);
   // The release types the preview's count is for: a hint about it only holds
-  // while they are still the ones picked.
+  // while they are still the ones picked. A release due sooner than the notice
+  // has no candidate either, which the save explains.
   const [previewTypes, setPreviewTypes] = useState<ReleaseKind[] | null>(null);
+  const [tooSoon, setTooSoon] = useState(false);
   const releaseOptions =
     draft?.mediaType === 'movie'
       ? MOVIE_RELEASE_OPTIONS
@@ -118,6 +120,7 @@ export function ScheduledAlertDialog({
       setPreviewCount(0);
       setReleased(null);
       setPreviewTypes(null);
+      setTooSoon(false);
       if (initialScheduleMode) {
         setScheduleMode(initialScheduleMode);
         setReleaseTypes(initialReleaseTypes ?? []);
@@ -138,7 +141,7 @@ export function ScheduledAlertDialog({
       signal: controller.signal,
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { defaults?: PreviewDefaults; candidates?: unknown[]; released?: ReleasedKind } | null) => {
+      .then((data: { defaults?: PreviewDefaults; candidates?: unknown[]; released?: ReleasedKind; tooSoon?: true } | null) => {
         if (controller.signal.aborted || !data?.defaults) return;
         setScheduleMode(data.defaults.scheduleMode);
         setReleaseTypes(data.defaults.releaseTypes);
@@ -147,6 +150,7 @@ export function ScheduledAlertDialog({
         setPreviewCount(data.candidates?.length ?? 0);
         setReleased(data.released ?? null);
         setPreviewTypes(data.defaults.releaseTypes);
+        setTooSoon(data.tooSoon === true);
       })
       .catch(() => {});
 
@@ -222,7 +226,7 @@ export function ScheduledAlertDialog({
   const saving = saveMutation.isPending;
   // Saved now, it would wait for a date: say so rather than look scheduled.
   const noDateYet =
-    previewTypes != null && previewCount === 0 && !released && draft?.mediaType !== 'music'
+    previewTypes != null && previewCount === 0 && !released && !tooSoon && draft?.mediaType !== 'music'
     && previewTypes.length === releaseTypes.length && previewTypes.every((k) => releaseTypes.includes(k));
 
   return (
@@ -317,8 +321,9 @@ export function ScheduledAlertDialog({
                 )}
                 {noDateYet && (
                   <p className="text-[11px] text-muted-foreground">
-                    No {releaseTypes.map((k) => RELEASE_KIND_LABELS[k]).join(' or ')} date known for the next {DEFAULT_HORIZON_DAYS} days.
-                    The alert stays on and reminds you once there is one.
+                    No {releaseTypes.map((k) => RELEASE_KIND_LABELS[k]).join(' or ')} date in the next {DEFAULT_HORIZON_DAYS} days yet.
+                    The alert stays on and reminds you when one comes up.
+                    {draft.mediaType === 'movie' && ' Other releases are under More options.'}
                   </p>
                 )}
                 {draft.mediaType === 'music' && draft.albumId == null && (

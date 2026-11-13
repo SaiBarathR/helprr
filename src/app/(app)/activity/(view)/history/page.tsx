@@ -111,7 +111,7 @@ export default function HistoryPage() {
   // filtered) history so the options never collapse to the current selection.
   // The server leaves Lidarr out without music.view, so its instances aren't offered.
   const canViewMusic = useCan('music.view');
-  const { data: instanceOptions = [] } = useQuery({
+  const { data: instanceOptions = [], isSuccess: instancesLoaded } = useQuery({
     // Distinct from queryKeys.instances() (['instances','all'] → /api/services); this
     // is the /api/instances connection list for the filter. Shares with the activity
     // page's same-key query, and can't prefix-collide with the services key.
@@ -129,11 +129,11 @@ export default function HistoryPage() {
   // Drop a stale instance selection if that instance no longer exists. Correcting
   // invalid local state against freshly-loaded options is a legitimate effect.
   useEffect(() => {
-    if (instanceFilter !== 'all' && !instanceOptions.some((i) => i.id === instanceFilter)) {
-
+    // Only against the loaded list: the empty default would drop a saved pick on a cold load.
+    if (instancesLoaded && instanceFilter !== 'all' && !instanceOptions.some((i) => i.id === instanceFilter)) {
       setInstanceFilter('all');
     }
-  }, [instanceOptions, instanceFilter, setInstanceFilter]);
+  }, [instancesLoaded, instanceOptions, instanceFilter, setInstanceFilter]);
 
   const activeFilterLabel = EVENT_FILTERS.find((f) => f.key === eventFilter)?.label || 'All Events';
   const activeFilters: ActiveFilter[] = [

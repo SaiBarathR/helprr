@@ -74,6 +74,8 @@ export interface PreviewResult {
   candidates: OccurrenceCandidate[];
   /** The album, film or episode is already out, so only a custom date can remind. */
   released?: ReleasedKind;
+  /** Not out yet, but due sooner than the notice: a shorter one would work. */
+  tooSoon?: true;
 }
 
 /** An album ahead that an artist alert found, however far off its release is. */

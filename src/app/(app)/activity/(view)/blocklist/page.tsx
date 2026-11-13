@@ -141,7 +141,7 @@ export default function BlocklistPage() {
   // Same instance list (and query key) as the History page's filter; Lidarr only
   // with music.view, as the server leaves it out otherwise.
   const canViewMusic = useCan('music.view');
-  const { data: instanceOptions = [] } = useQuery({
+  const { data: instanceOptions = [], isSuccess: instancesLoaded } = useQuery({
     queryKey: queryKeys.arrInstances(),
     queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
     select: (conns): InstanceOption[] =>
@@ -154,10 +154,11 @@ export default function BlocklistPage() {
   });
 
   useEffect(() => {
-    if (instanceFilter !== 'all' && !instanceOptions.some((i) => i.id === instanceFilter)) {
+    // Only against the loaded list: the empty default would drop a saved pick on a cold load.
+    if (instancesLoaded && instanceFilter !== 'all' && !instanceOptions.some((i) => i.id === instanceFilter)) {
       setInstanceFilter('all');
     }
-  }, [instanceOptions, instanceFilter, setInstanceFilter]);
+  }, [instancesLoaded, instanceOptions, instanceFilter, setInstanceFilter]);
 
   const activeFilters: ActiveFilter[] = instanceFilter !== 'all'
     ? [{

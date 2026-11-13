@@ -279,21 +279,6 @@ export async function previewScheduledAlert(
       releaseTypes = ['physical'];
     }
   }
-  // A film months ahead often has no digital date yet: its default would save
-  // a reminder with nothing to go off on, so offer the next release that has one.
-  if (
-    draft.mediaType === 'movie' && !opts.releaseTypes?.length
-    && resolved?.resolved && !resolved.released && resolved.candidates.length === 0
-  ) {
-    for (const kind of ['cinema', 'physical'] as const) {
-      const next = await resolveFor([kind]);
-      if (next.candidates.length > 0 && !next.released) {
-        resolved = next;
-        releaseTypes = [kind];
-        break;
-      }
-    }
-  }
   // The same verdict the save gives: an album, film or episode already out
   // opens on a custom date from tomorrow, as its release reminder could never
   // go off.
@@ -325,6 +310,8 @@ export async function previewScheduledAlert(
     },
     candidates,
     ...(released ? { released } : {}),
+    // Due sooner than its notice: no candidate, though not for want of a date.
+    ...(resolved?.tooSoon ? { tooSoon: true as const } : {}),
   };
 }
 
@@ -699,9 +686,11 @@ async function resolveReleaseCandidates(
     }
   }
 
-  // The draft's own date (a preview only: a saved alert keeps none). A title
-  // saved by its TMDB/TVDB id was resolved above, as its save will be.
-  if (out.length === 0 && draft.releaseDate && !idSource) {
+  // The draft's own date (a preview only: a saved alert keeps none), only when
+  // no source answered. Once one has (or the title was resolved by its TMDB/TVDB
+  // id above), no candidate means no date for the releases asked about, and the
+  // save would find none either.
+  if (out.length === 0 && draft.releaseDate && !idSource && !Object.values(outcomes).includes('success')) {
     const releaseAt = dateOnlyAtLocalNine(draft.releaseDate, opts.timeZone);
     const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
     if (withinNotifyHorizon(notifyAt)) {

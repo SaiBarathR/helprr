@@ -11,16 +11,19 @@ vi.mock('@/components/permission-provider', () => ({ useCan: () => true }));
 import { ScheduledAlertDialog } from '../scheduled-alert-dialog';
 import type { ScheduledAlertDraft } from '@/lib/scheduled-alerts/types';
 
-const NO_DATE = 'No Digital release date known for the next 90 days. The alert stays on and reminds you once there is one.';
+const NO_DATE = 'No Digital release date in the next 90 days yet. The alert stays on and reminds you when one comes up. Other releases are under More options.';
+const preview = { tooSoon: false };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  preview.tooSoon = false;
   // The server knows no digital date for this film yet.
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (url === '/api/scheduled-alerts/preview') {
       return Response.json({
         defaults: { scheduleMode: 'release_relative', scope: 'movie', releaseTypes: ['digital'], offsetMinutes: 60, absoluteNotifyAt: null },
         candidates: [],
+        ...(preview.tooSoon ? { tooSoon: true } : {}),
       });
     }
     return Response.json({ alert: {} });
@@ -48,15 +51,23 @@ describe('the scheduled alert dialog for a film', () => {
 
     await user.click(screen.getByRole('button', { name: 'More options' }));
     await user.click(screen.getByRole('button', { name: 'Cinema release' }));
-    expect(screen.queryByText(/date known for the next/)).toBeNull();
+    expect(screen.queryByText(/date in the next/)).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Cinema release' }));
-    expect(screen.getByText(/date known for the next/)).toBeTruthy();
+    expect(screen.getByText(/date in the next/)).toBeTruthy();
+  });
+
+  it('gives no hint when the release is only due sooner than the notice', async () => {
+    preview.tooSoon = true;
+    renderDialog();
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByText(/date in the next/)).toBeNull();
   });
 
   it('gives no hint on an edit, which runs no preview', async () => {
     renderDialog({ alertId: 'a1', initialScheduleMode: 'release_relative', initialReleaseTypes: ['digital'], initialOffsetMinutes: 60 });
-    expect(screen.queryByText(/date known for the next/)).toBeNull();
+    expect(screen.queryByText(/date in the next/)).toBeNull();
   });
 
   it('says "Alert updated" when an edit is saved and "Alert scheduled" for a new one', async () => {
@@ -67,7 +78,7 @@ describe('the scheduled alert dialog for a film', () => {
     unmount();
 
     renderDialog();
-    await screen.findByText(/date known for the next/);
+    await screen.findByText(/date in the next/);
     await user.click(screen.getByRole('button', { name: 'Save alert' }));
     await vi.waitFor(() => expect(toast.success).toHaveBeenCalledWith('Alert scheduled'));
   });

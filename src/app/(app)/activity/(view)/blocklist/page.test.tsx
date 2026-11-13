@@ -123,4 +123,27 @@ describe('Blocklist page', () => {
       unmount();
     }
   });
+
+  it('keeps a saved instance pick through a cold load, until the instance list says it is gone', async () => {
+    const instances = [{ id: 'son-1', label: 'main', type: 'SONARR' }, { id: 'rad-1', label: 'main', type: 'RADARR' }];
+    let delay = 0;
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      if (String(url) !== '/api/instances') return Response.json({ records: ENTRIES, hasMore: false });
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return Response.json(instances);
+    });
+
+    const first = renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Instance: All instances' }));
+    await userEvent.click(await screen.findByText('main (Radarr)'));
+    expect(await screen.findByRole('button', { name: 'Instance: main (Radarr)' })).toBeTruthy();
+    first.unmount();
+
+    // A fresh query cache, as after a reload: the list arrives after the first render.
+    delay = 30;
+    renderPage();
+    expect(await screen.findByRole('button', { name: 'Instance: main (Radarr)' })).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByRole('button', { name: 'Instance: main (Radarr)' })).toBeTruthy();
+  });
 });
