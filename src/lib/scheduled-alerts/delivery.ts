@@ -12,6 +12,26 @@ import { can, type PermissionUser } from '@/lib/permissions';
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Moving film reminders from midnight UTC to 9:00 local shifts them by at most
+// 21 hours (UTC−12); a release really moved a day is 23 hours or more (DST).
+const SAME_RELEASE_SHIFT_MS = 22 * 60 * 60 * 1000;
+// TMDB and Radarr (or two instances) often date the same release a day apart.
+const OTHER_SOURCE_SHIFT_MS = 2 * DAY_MS;
+
+/**
+ * Which release an occurrence announces, whatever source or instance it came
+ * from: a film's cinema/digital/physical release (one film per alert), an
+ * episode by its code, else its target key. A Discover film that moves from
+ * TMDB to Radarr, or a series from TMDB to Sonarr, keeps the same identity.
+ */
+function releaseIdentity(o: { targetKey: string; releaseKind: string; metadata?: unknown }): string {
+  if (o.releaseKind === 'cinema' || o.releaseKind === 'digital' || o.releaseKind === 'physical') return `film:${o.releaseKind}`;
+  const m = (o.metadata ?? {}) as { seasonNumber?: unknown; episodeNumber?: unknown };
+  if (o.releaseKind === 'episode' && Number.isInteger(m.seasonNumber) && Number.isInteger(m.episodeNumber)) {
+    return `episode:${m.seasonNumber}:${m.episodeNumber}`;
+  }
+  return o.targetKey;
+}
 
 export async function upsertOccurrencesForAlert(
   alert: ScheduledAlert,
@@ -29,18 +49,28 @@ export async function upsertOccurrencesForAlert(
       .map((c) => `${c.targetKey}|${c.notifyAt.toISOString()}`),
   );
 
-  // A release already announced is not announced again when its time moves by
-  // under a day: film reminders moved from midnight UTC to 9:00 local, and an
-  // episode's air time can shift by hours.
+  // A release already announced is not announced again when its time moved
+  // by under 22 hours (film reminders moved from midnight UTC to 9:00 local,
+  // an air time shifted by hours). The same release time means the notice was
+  // edited, and a move of a day or more is a new date: both are announced.
+  // The same release from another source or instance (a Discover film added
+  // to Radarr after its push) is not announced again within two days.
   const sent = candidates.length > 0
     ? await db.scheduledAlertOccurrence.findMany({
         where: { alertId: alert.id, status: 'sent', releaseAt: { gte: new Date(now.getTime() - 2 * DAY_MS) } },
-        select: { targetKey: true, releaseAt: true },
+        select: { targetKey: true, releaseKind: true, releaseAt: true, metadata: true },
       })
     : [];
-  const alreadySent = (c: OccurrenceCandidate) =>
-    c.releaseAt !== null &&
-    sent.some((o) => o.targetKey === c.targetKey && o.releaseAt !== null && Math.abs(o.releaseAt.getTime() - c.releaseAt!.getTime()) <= DAY_MS);
+  const alreadySent = (c: OccurrenceCandidate) => {
+    if (c.releaseAt === null) return false;
+    const identity = releaseIdentity(c);
+    return sent.some((o) => {
+      if (o.releaseAt === null || releaseIdentity(o) !== identity) return false;
+      const shift = Math.abs(o.releaseAt.getTime() - c.releaseAt!.getTime());
+      if (o.targetKey !== c.targetKey) return shift <= OTHER_SOURCE_SHIFT_MS;
+      return shift > 0 && shift < SAME_RELEASE_SHIFT_MS;
+    });
+  };
 
   for (const c of candidates) {
     if (c.notifyAt < now || c.notifyAt > horizon) continue;

@@ -91,20 +91,24 @@ async function patchHandler(
   }
 
   const modeChanged = existing.scheduleMode !== nextScheduleMode;
-  // A release reminder newly set on an album, film or episode already out,
-  // moved to film releases that have all passed, or given a notice longer
-  // than the time left, would never go off.
-  const releaseTypesChanged =
-    data.releaseTypes !== undefined && JSON.stringify(data.releaseTypes) !== JSON.stringify(existing.releaseTypes);
-  const nextOffset = typeof data.offsetMinutes === 'number' ? data.offsetMinutes : existing.offsetMinutes;
-  const offsetChanged = nextOffset !== existing.offsetMinutes;
-  if (nextScheduleMode === 'release_relative' && (modeChanged || releaseTypesChanged || offsetChanged)) {
-    const { released, tooSoon } = await resolveAlertOccurrencesResult({
-      ...existing,
-      scheduleMode: 'release_relative',
-      releaseTypes: (data.releaseTypes ?? existing.releaseTypes) as Prisma.JsonValue,
-      offsetMinutes: nextOffset,
-    }, undefined, { checkAired: true });
+  // A release reminder could never go off once it is newly set on an album,
+  // film or episode already out, or edited so it would be: moved to releases
+  // that have all passed, to another scope, season, episode or time zone, or
+  // given a notice longer than the time left. Re-checked on the alert as edited.
+  const nextAlert = {
+    ...existing,
+    scheduleMode: 'release_relative',
+    releaseTypes: (data.releaseTypes ?? existing.releaseTypes) as Prisma.JsonValue,
+    offsetMinutes: typeof data.offsetMinutes === 'number' ? data.offsetMinutes : existing.offsetMinutes,
+    scope: typeof data.scope === 'string' ? data.scope : existing.scope,
+    timeZone: typeof data.timeZone === 'string' ? data.timeZone : existing.timeZone,
+    metadata: (data.metadata ?? existing.metadata) as Prisma.JsonValue,
+  };
+  const edited = (['releaseTypes', 'offsetMinutes', 'scope', 'timeZone', 'metadata'] as const).some(
+    (field) => JSON.stringify(nextAlert[field]) !== JSON.stringify(existing[field]),
+  );
+  if (nextScheduleMode === 'release_relative' && (modeChanged || edited)) {
+    const { released, tooSoon } = await resolveAlertOccurrencesResult(nextAlert, undefined, { checkAired: true });
     if (released) return NextResponse.json({ error: releasedError(released, tooSoon) }, { status: 400 });
   }
 

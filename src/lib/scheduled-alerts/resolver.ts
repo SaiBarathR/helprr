@@ -353,11 +353,7 @@ async function resolveReleaseCandidates(
     try {
       const isMovie = draft.mediaType === 'movie';
       const [library, instances] = await Promise.all([libraryFor(ctx), isMovie ? getRadarrClients() : getSonarrClients()]);
-      // An instance that did not answer may hold the title: reading TMDB
-      // instead would trade a correct reminder for another and back.
-      if (instances.length > 0 && !(isMovie ? library.moviesComplete : library.seriesComplete)) {
-        throw new Error(`A ${isMovie ? 'Radarr' : 'Sonarr'} instance did not answer`);
-      }
+      const failed = new Set(isMovie ? library.moviesFailedInstanceIds : library.seriesFailedInstanceIds);
       const id = Number(draft.externalId);
       let matches: Array<{ id: number; instanceId: string }>;
       if (isMovie) {
@@ -373,12 +369,17 @@ async function resolveReleaseCandidates(
           if (tvdbId) matches = library.series.filter((s) => s.tvdbId === tvdbId);
         }
       }
-      // Instances come default first.
-      const match = instances
-        .map(({ connection }) => connection.id)
-        .filter((instanceId) => !draft.instanceId || instanceId === draft.instanceId)
-        .map((instanceId) => matches.find((m) => m.instanceId === instanceId))
-        .find((m) => m !== undefined);
+      // Instances come default first; the first that has the title is used.
+      // An instance that did not answer may hold it: one ranked ahead of that
+      // match (or any, when nothing matched) leaves the alert as it was rather
+      // than switch to a lower instance or to TMDB and back.
+      let match: { id: number; instanceId: string } | undefined;
+      for (const { connection } of instances) {
+        if (draft.instanceId && connection.id !== draft.instanceId) continue;
+        if (failed.has(connection.id)) throw new Error(`A ${isMovie ? 'Radarr' : 'Sonarr'} instance that may hold the title did not answer`);
+        match = matches.find((m) => m.instanceId === connection.id);
+        if (match) break;
+      }
       const target = match ? { instanceId: match.instanceId, id: String(match.id) } : null;
       if (isMovie) radarrTarget = target;
       else sonarrTarget = target;
@@ -511,6 +512,7 @@ async function resolveReleaseCandidates(
                 {
                   seriesId: ep.seriesId,
                   seasonNumber: ep.seasonNumber,
+                  episodeNumber: ep.episodeNumber,
                   episodeId: ep.id,
                   instanceId: connection.id,
                 },

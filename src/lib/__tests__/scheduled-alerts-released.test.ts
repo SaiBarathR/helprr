@@ -322,6 +322,37 @@ describe('an episode already aired', () => {
     expect((await post(createAlert, '/api/scheduled-alerts', { draft, scheduleMode: 'release_relative', offsetMinutes: 0 })).status).toBe(400);
   });
 
+  it('is too soon when Sonarr says it airs before the notice, though the calendar leaves it out (unmonitored)', async () => {
+    // Sonarr's calendar lists monitored episodes only, so this one is looked up.
+    sonarr.getEpisodeById.mockResolvedValue(episode(new Date(Date.now() + 2 * 3_600_000).toISOString()));
+    expect(await resolve(episodeRow({ offsetMinutes: 1440 }))).toEqual({ candidates: [], resolved: true, released: 'episode', tooSoon: true });
+    expect(sonarr.getEpisodeById).toHaveBeenCalledWith(11);
+  });
+
+  it('refuses an edit to an episode-scope alert on an episode already aired', async () => {
+    // A series alert edited to remind of one episode, which aired yesterday.
+    mocks.alertFindFirst.mockResolvedValue(episodeRow({ scope: 'series', metadata: {} }));
+    sonarr.getEpisodeById.mockResolvedValue(episode(new Date(Date.now() - DAY).toISOString()));
+    const res = await patch({ scope: 'episode', seasonNumber: 1, episodeId: 11 });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/^This episode has already aired/);
+    expect(mocks.alertUpdate).not.toHaveBeenCalled();
+  });
+
+  it('refuses an edit of the time zone that moves a film\'s 9:00 reminder into the past', async () => {
+    // Out today: 9:00 in Tokyo (00:00 UTC) has passed at 06:00 UTC, 9:00 in New York (14:00 UTC) has not.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-11-13T06:00:00Z'));
+      radarr.getMovieById.mockResolvedValue(movie({ digitalRelease: '2026-11-13T00:00:00Z' }));
+      mocks.alertFindFirst.mockResolvedValue(movieRow(['digital'], { timeZone: 'America/New_York', offsetMinutes: 0 }));
+      expect((await patch({ timeZone: 'Asia/Tokyo' })).status).toBe(400);
+      expect(mocks.alertUpdate).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('refuses an edit that turns its custom reminder into a release reminder', async () => {
     mocks.alertFindFirst.mockResolvedValue(episodeRow({ scheduleMode: 'absolute' }));
     sonarr.getEpisodeById.mockResolvedValue(episode(new Date(Date.now() - DAY).toISOString()));

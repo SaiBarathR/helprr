@@ -254,6 +254,21 @@ describe('an album already out', () => {
     }
   });
 
+  it('is judged on when its reminder would go off: an album out in two days with a week\'s notice is too soon', async () => {
+    client.getAlbumById.mockResolvedValue(album(7, lidarrDate(2)));
+    const weekBefore = { ...alertRow('album', '7'), offsetMinutes: 10_080 } as ScheduledAlert;
+    expect(await resolveAlertOccurrencesResult(weekBefore, createResolverContext()))
+      .toEqual({ candidates: [], resolved: true, released: 'album', tooSoon: true });
+
+    mocks.inPost = true;
+    const res = await post(createAlert, '/api/scheduled-alerts', { draft: albumDraft, scheduleMode: 'release_relative', releaseTypes: ['album'], offsetMinutes: 10_080 });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('This album comes out sooner than the reminder\'s notice, so it would never go off. Pick a shorter notice or a custom date.');
+    expect(mocks.create).not.toHaveBeenCalled();
+    // A day's notice still works.
+    expect((await resolveAlertOccurrencesResult({ ...weekBefore, offsetMinutes: 1440 } as ScheduledAlert, createResolverContext())).candidates).toHaveLength(1);
+  });
+
   it('refuses an edit that turns its custom reminder into a release reminder', async () => {
     const existing = { ...alertRow('album', '7'), id: 'a1', userId: 'u1', scheduleMode: 'absolute', status: 'active', cancelledAt: null, createdAt: new Date(), updatedAt: new Date() };
     mocks.alertFindFirst.mockResolvedValue(existing);

@@ -351,10 +351,11 @@ export default function ArtistDetailPage() {
     ...(artist.added ? [{ label: 'Added', value: formatDate(new Date(artist.added)) }] : []),
   ];
 
-  // Counted from the albums already out once they load (Lidarr's own totals
-  // include albums still to come); until then, from the artist's totals.
-  const trackState = albumsQuery.isSuccess
-    ? artistTrackState(albums)
+  // Counted from the albums already out once they have loaded, kept through a
+  // failed background refetch (Lidarr's own totals include albums still to
+  // come); until then, from the artist's totals.
+  const trackState = albumsQuery.data
+    ? artistTrackState(albumsQuery.data)
     : !!stats && stats.totalTrackCount > 0 && stats.trackFileCount >= stats.totalTrackCount ? 'complete' : 'missing';
   const badge = {
     complete: { label: 'Complete', className: 'bg-green-500/20 text-green-400 border-green-500/30' },

@@ -67,7 +67,8 @@ const row = (source: 'TMDB' | 'TVDB', mediaType: 'movie' | 'series', externalId:
   metadata: { migratedFromWatchlist: true }, cancelledAt: null, createdAt: new Date(), updatedAt: new Date(),
 }) as unknown as ScheduledAlert;
 // Every instance answered.
-const lib = (movies: unknown[], series: unknown[]) => ({ movies, series, moviesComplete: true, seriesComplete: true });
+const lib = (movies: unknown[], series: unknown[], failed: { movies?: string[]; series?: string[] } = {}) =>
+  ({ movies, series, moviesFailedInstanceIds: failed.movies ?? [], seriesFailedInstanceIds: failed.series ?? [] });
 const resolve = (alert: ScheduledAlert) => resolveAlertOccurrencesResult(alert, createResolverContext());
 const calendarEp = (id: number, seriesId: number, offsetDays: number) => ({
   id, seriesId, seasonNumber: 2, episodeNumber: id, title: `Ep ${id}`, airDateUtc: new Date(Date.now() + offsetDays * DAY).toISOString(), series: { title: `Series ${seriesId}` },
@@ -256,19 +257,45 @@ describe('a title saved by its TMDB/TVDB id, held by more than one instance', ()
 });
 
 describe('an instance that did not answer', () => {
-  it('keeps what the alert had rather than reading TMDB, while the library still loads', async () => {
-    // The Radarr holding the film timed out: the library loads without it.
-    mocks.library.mockResolvedValue({ movies: [], series: [], moviesComplete: false, seriesComplete: true });
+  const radarr4k = { getMovieById: vi.fn(), getCalendar: vi.fn(async () => []) };
+  beforeEach(() => {
+    mocks.getRadarrClients.mockResolvedValue([{ connection: { id: 'rad-1' }, client: radarr }, { connection: { id: 'rad-4k' }, client: radarr4k }]);
+  });
+
+  it('does not matter when it ranks after the instance holding the title (a 4K box powered down)', async () => {
+    mocks.library.mockResolvedValue(lib([{ id: 5, tmdbId: 603, instanceId: 'rad-1' }], [], { movies: ['rad-4k'] }));
+    radarr.getMovieById.mockResolvedValue({ id: 5, title: 'Film', digitalRelease: `${day(10)}T00:00:00Z` });
+
+    const result = await resolve(row('TMDB', 'movie', '603', ['digital']));
+
+    expect(result.resolved).toBe(true);
+    expect(result.candidates.map((c) => c.targetKey)).toEqual(['radarr:rad-1:5:digital']);
+  });
+
+  it('still lets the save judge a film already out on the instance that answered', async () => {
+    mocks.library.mockResolvedValue(lib([{ id: 5, tmdbId: 603, instanceId: 'rad-1' }], [], { movies: ['rad-4k'] }));
+    radarr.getMovieById.mockResolvedValue({ id: 5, title: 'Film', digitalRelease: `${day(-30)}T00:00:00Z` });
+    expect(await resolve(row('TMDB', 'movie', '603', ['digital']))).toEqual({ candidates: [], resolved: true, released: 'movie' });
+  });
+
+  it('keeps what the alert had when it ranks ahead of the first match, or nothing matched', async () => {
+    // The default is down: it may hold the film, so the 4K copy is not used instead.
+    mocks.library.mockResolvedValue(lib([{ id: 9, tmdbId: 603, instanceId: 'rad-4k' }], [], { movies: ['rad-1'] }));
+    expect(await resolve(row('TMDB', 'movie', '603', ['digital']))).toEqual({ candidates: [], resolved: false });
+    expect(radarr4k.getMovieById).not.toHaveBeenCalled();
+
+    // In no library that answered: the one that did not may hold it, so TMDB is not read.
+    mocks.library.mockResolvedValue(lib([], [], { movies: ['rad-4k'] }));
     expect(await resolve(row('TMDB', 'movie', '603', ['digital']))).toEqual({ candidates: [], resolved: false });
     expect(tmdb.movieReleaseDates).not.toHaveBeenCalled();
 
-    mocks.library.mockResolvedValue({ movies: [], series: [], moviesComplete: true, seriesComplete: false });
+    mocks.library.mockResolvedValue(lib([], [], { series: ['son-1'] }));
     expect(await resolve(row('TVDB', 'series', '81189', ['episode']))).toEqual({ candidates: [], resolved: false });
     expect(tmdb.findByExternalId).not.toHaveBeenCalled();
   });
 
   it('so its pending reminder is kept, not cancelled', async () => {
-    mocks.library.mockResolvedValue({ movies: [], series: [], moviesComplete: false, seriesComplete: true });
+    mocks.library.mockResolvedValue(lib([], [], { movies: ['rad-1'] }));
     const alert = row('TMDB', 'movie', '603', ['digital']);
     const { candidates, resolved } = await resolve(alert);
     mocks.occFindMany.mockResolvedValue([{ id: 'p1', targetKey: 'radarr:rad-1:5:digital', notifyAt: new Date(Date.now() + 9 * DAY) }]);
@@ -280,7 +307,6 @@ describe('an instance that did not answer', () => {
 
   it('still reads TMDB when no Radarr is set up at all', async () => {
     mocks.getRadarrClients.mockResolvedValue([]);
-    mocks.library.mockResolvedValue({ movies: [], series: [], moviesComplete: false, seriesComplete: false });
     tmdb.movieReleaseDates.mockResolvedValue({ id: 603, results: [releaseDates('US', [[4, day(20)]])] });
     expect((await resolve(row('TMDB', 'movie', '603', ['digital']))).candidates.map((c) => c.targetKey)).toEqual(['tmdb:movie:603:digital']);
   });
@@ -319,34 +345,63 @@ describe('a film due sooner than its notice', () => {
 
 describe('a release already announced', () => {
   const alert = row('TMDB', 'movie', '603', ['digital']);
-  const film = (releaseAt: Date) => [{
-    targetKey: 'radarr:rad-1:5:digital', releaseKind: 'digital' as const, releaseAt, notifyAt: new Date(releaseAt.getTime() - 3_600_000), title: 'Film', body: 'Digital release',
+  const HOUR = 3_600_000;
+  const film = (releaseAt: Date, opts: { key?: string; notice?: number } = {}) => [{
+    targetKey: opts.key ?? 'radarr:rad-1:5:digital', releaseKind: 'digital' as const, releaseAt,
+    notifyAt: new Date(releaseAt.getTime() - (opts.notice ?? HOUR)), title: 'Film', body: 'Digital release',
   }];
+  const sent = (targetKey: string, releaseAt: Date, releaseKind = 'digital', metadata: unknown = null) => ({ targetKey, releaseKind, releaseAt, metadata });
   const at = (iso: string) => new Date(iso);
+  const upsertWith = async (sentRows: unknown[], candidates: ReturnType<typeof film>) => {
+    vi.clearAllMocks();
+    mocks.occFindMany.mockResolvedValue([]);
+    mocks.occFindMany.mockResolvedValueOnce(sentRows);
+    await upsertOccurrencesForAlert(alert, candidates, { resolved: true });
+    return mocks.occUpsert.mock.calls.length;
+  };
 
-  it('is not armed again when its time moved by under a day (midnight UTC → 9:00 local on deploy day)', async () => {
+  it('is not armed again when its time moved by under 22 hours (midnight UTC → 9:00 local on deploy day)', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
       vi.setSystemTime(at('2026-12-06T23:30:00Z'));
-      // Sent at midnight UTC Dec 7 by the old rule; the new rule says 9:00 New York, Dec 7.
-      mocks.occFindMany.mockResolvedValueOnce([{ targetKey: 'radarr:rad-1:5:digital', releaseAt: at('2026-12-07T00:00:00Z') }]);
-      await upsertOccurrencesForAlert(alert, film(at('2026-12-07T14:00:00Z')), { resolved: true });
-      expect(mocks.occUpsert).not.toHaveBeenCalled();
+      // Sent at midnight UTC Dec 7 by the old rule; the new rule says 9:00 New York (14:00 UTC), Dec 7.
+      expect(await upsertWith([sent('radarr:rad-1:5:digital', at('2026-12-07T00:00:00Z'))], film(at('2026-12-07T14:00:00Z')))).toBe(0);
       expect(mocks.occFindMany.mock.calls[0][0].where).toMatchObject({ alertId: 'a1', status: 'sent' });
+      // UTC−12: 9:00 there is 21:00 UTC, the largest such move.
+      expect(await upsertWith([sent('radarr:rad-1:5:digital', at('2026-12-07T00:00:00Z'))], film(at('2026-12-07T21:00:00Z')))).toBe(0);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('is armed when the release moved by more than a day, or another release is due', async () => {
-    mocks.occFindMany.mockResolvedValueOnce([{ targetKey: 'radarr:rad-1:5:digital', releaseAt: new Date(Date.now() - 1 * DAY) }]);
-    await upsertOccurrencesForAlert(alert, film(new Date(Date.now() + 2 * DAY)), { resolved: true });
-    expect(mocks.occUpsert).toHaveBeenCalledOnce();
+  it('is armed when the notice was edited after its push (same release time)', async () => {
+    // Out in 3 days: the week-before reminder went out, the notice is now 1 hour.
+    const releaseAt = new Date(Date.now() + 3 * DAY);
+    expect(await upsertWith([sent('radarr:rad-1:5:digital', releaseAt)], film(releaseAt, { notice: HOUR }))).toBe(1);
+  });
 
-    vi.clearAllMocks();
-    mocks.occFindMany.mockResolvedValue([]);
-    mocks.occFindMany.mockResolvedValueOnce([{ targetKey: 'radarr:rad-1:5:physical', releaseAt: new Date(Date.now() + 2 * DAY) }]);
-    await upsertOccurrencesForAlert(alert, film(new Date(Date.now() + 2 * DAY)), { resolved: true });
-    expect(mocks.occUpsert).toHaveBeenCalledOnce();
+  it('is armed when the release moved by a day (24 hours, or 23 across a DST change) or more', async () => {
+    const releaseAt = new Date(Date.now() + 2 * DAY);
+    expect(await upsertWith([sent('radarr:rad-1:5:digital', new Date(releaseAt.getTime() - DAY))], film(releaseAt))).toBe(1);
+    expect(await upsertWith([sent('radarr:rad-1:5:digital', new Date(releaseAt.getTime() - 23 * HOUR))], film(releaseAt))).toBe(1);
+  });
+
+  it('is not armed again from another source within two days (a Discover film added to Radarr after its push)', async () => {
+    const releaseAt = new Date(Date.now() + 2 * DAY);
+    // TMDB said a day earlier; Radarr dates the same digital release a day later.
+    expect(await upsertWith([sent('tmdb:movie:603:digital', new Date(releaseAt.getTime() - DAY))], film(releaseAt))).toBe(0);
+    // Another release of the film is its own.
+    expect(await upsertWith([sent('tmdb:movie:603:physical', new Date(releaseAt.getTime() - DAY), 'physical')], film(releaseAt))).toBe(1);
+  });
+
+  it('matches an episode by its code across sources, and other episodes not at all', async () => {
+    const airsAt = new Date(Date.now() + 2 * DAY);
+    const episode = (key: string, code: [number, number]) => [{
+      targetKey: key, releaseKind: 'episode' as const, releaseAt: airsAt, notifyAt: new Date(airsAt.getTime() - HOUR), title: 'Show', body: 'S03E05',
+      metadata: { seasonNumber: code[0], episodeNumber: code[1] },
+    }];
+    const tmdbSent = sent('tmdb:tv:84773:S03E05', new Date(airsAt.getTime() - 10 * HOUR), 'episode', { tmdbId: 84773, seasonNumber: 3, episodeNumber: 5 });
+    expect(await upsertWith([tmdbSent], episode('sonarr:son-1:77', [3, 5]) as never)).toBe(0);
+    expect(await upsertWith([tmdbSent], episode('sonarr:son-1:78', [3, 6]) as never)).toBe(1);
   });
 });
