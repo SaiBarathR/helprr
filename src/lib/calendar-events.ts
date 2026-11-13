@@ -1,4 +1,5 @@
 import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
+import { can, type PermissionUser } from '@/lib/permissions';
 import type { CalendarEvent, MovieReleaseType } from '@/types';
 
 export interface ServiceCalendarResult {
@@ -126,4 +127,13 @@ export async function fetchServiceCalendarEvents(start: string, end: string): Pr
 
   const totalInstances = sonarrClients.length + radarrClients.length + lidarrClients.length;
   return { events, cacheable: anyOk || totalInstances === 0 };
+}
+
+/**
+ * Album releases are music: left out for a user without music.view, as the
+ * Music pages and Activity are. Applied after the shared cache, which holds
+ * every event for every viewer.
+ */
+export function calendarEventsFor(user: PermissionUser, events: CalendarEvent[]): CalendarEvent[] {
+  return can(user, 'music.view') ? events : events.filter((event) => event.type !== 'album');
 }

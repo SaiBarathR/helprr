@@ -167,6 +167,22 @@ describe('a film already out', () => {
     expect(body.candidates).toMatchObject([{ releaseKind: 'physical' }]);
   });
 
+  it('keeps digital in the preview with no candidate when Radarr has no digital date, not the page\'s own date', async () => {
+    // The movie page sends its cinema date as the draft's: the save would find
+    // no digital date, so the preview must not count one.
+    radarr.getMovieById.mockResolvedValue(movie({ inCinemas: radarrDate(20) }));
+    const body = await (await post(previewAlert, '/api/scheduled-alerts/preview', { draft: { ...movieDraft, releaseDate: radarrDate(20) } })).json();
+    expect(body).not.toHaveProperty('released');
+    expect(body).not.toHaveProperty('tooSoon');
+    expect(body.defaults).toMatchObject({ scheduleMode: 'release_relative', releaseTypes: ['digital'] });
+    expect(body.candidates).toEqual([]);
+
+    // Radarr unreachable: the page's date is all there is to show.
+    mocks.getRadarrClients.mockResolvedValue([]);
+    const offline = await (await post(previewAlert, '/api/scheduled-alerts/preview', { draft: { ...movieDraft, releaseDate: radarrDate(20) } })).json();
+    expect(offline.candidates).toHaveLength(1);
+  });
+
   it('is out from 9:00 on its release day in the person\'s time zone, for the preview and the save alike', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     radarr.getMovieById.mockResolvedValue(movie({ digitalRelease: '2026-11-13T00:00:00Z' }));
@@ -264,6 +280,8 @@ describe('a release due sooner than its notice', () => {
     const body = await (await post(previewAlert, '/api/scheduled-alerts/preview', { draft: movieDraft, offsetMinutes: 10_080, scheduleMode: 'release_relative' })).json();
     expect(body).not.toHaveProperty('released');
     expect(body.defaults.scheduleMode).toBe('release_relative');
+    // No candidate, though a date is known: the dialog says nothing of "no date".
+    expect(body).toMatchObject({ candidates: [], tooSoon: true });
   });
 });
 

@@ -3,7 +3,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { prisma } from '@/lib/db';
 import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
-import { fetchServiceCalendarEvents } from '@/lib/calendar-events';
+import { calendarEventsFor, fetchServiceCalendarEvents } from '@/lib/calendar-events';
 import { applyFeedFilters, parseFeedFilters } from '@/lib/calendar-feed/filters';
 import { buildCalendarFeed } from '@/lib/calendar-feed/ics';
 import {
@@ -103,7 +103,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     }
 
     // The link's own filters, then any a pre-named-links URL carries.
-    const shown = applyFeedFilters(applyFeedFilters(events, link.filters), filters);
+    const shown = applyFeedFilters(applyFeedFilters(calendarEventsFor(link.user, events), link.filters), filters);
     return new NextResponse(buildCalendarFeed(shown, { timeZone, name: link.name }), {
       headers: {
         'Content-Type': 'text/calendar; charset=utf-8',

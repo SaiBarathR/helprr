@@ -22,6 +22,7 @@ import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, D
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { jsonFetcher } from '@/lib/query-fetch';
 import type { FeedEventType, FeedFilters } from '@/lib/calendar-feed/filters';
+import { useCan } from '@/components/permission-provider';
 
 interface FeedLink {
   id: string;
@@ -76,6 +77,10 @@ export function CalendarFeedDialog({
   instances: Array<{ id: string; label: string }>;
 }) {
   const queryClient = useQueryClient();
+  // Albums are music: the feed leaves them out without music.view.
+  const canViewMusic = useCan('music.view');
+  const allTypes = canViewMusic ? 'Episodes, movies and music' : 'Episodes and movies';
+  const typeChoices = (Object.keys(TYPE_LABEL) as FeedEventType[]).filter((type) => type !== 'album' || canViewMusic);
   // Tailwind's md starts at 768px: phones get the app's bottom sheet.
   const isPhone = useIsMobile(767);
   const status = useQuery({
@@ -98,7 +103,7 @@ export function CalendarFeedDialog({
   const urls = made ? feedUrls(status.data?.origin || window.location.origin, made.token) : null;
 
   const describe = (shown: FeedFilters | null) => (!shown ? 'Shows nothing: its filters could not be read' : [
-    shown.type ? TYPE_LABEL[shown.type] : 'Episodes, movies and music',
+    shown.type ? TYPE_LABEL[shown.type] : allTypes,
     shown.instanceId ? (instances.find((i) => i.id === shown.instanceId)?.label ?? 'One instance') : null,
     shown.monitoredOnly ? 'Monitored only' : null,
   ].filter(Boolean).join(' · '));
@@ -281,8 +286,8 @@ export function CalendarFeedDialog({
             >
               <SelectTrigger aria-label="Shows" className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value={ALL}>Episodes, movies and music</SelectItem>
-                {(Object.keys(TYPE_LABEL) as FeedEventType[]).map((type) => (
+                <SelectItem value={ALL}>{allTypes}</SelectItem>
+                {typeChoices.map((type) => (
                   <SelectItem key={type} value={type}>{TYPE_LABEL[type]}</SelectItem>
                 ))}
               </SelectContent>

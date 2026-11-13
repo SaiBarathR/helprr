@@ -17,9 +17,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScheduledAlertSummary } from '@/components/scheduled-alerts/scheduled-alert-summary';
 import type { ScheduledAlertDraft, ReleaseKind, ReleasedKind } from '@/lib/scheduled-alerts/types';
-import { RELEASE_KIND_LABELS, defaultScopeForDraft, releasedNote } from '@/lib/scheduled-alerts/constants';
+import { DEFAULT_HORIZON_DAYS, RELEASE_KIND_LABELS, defaultScopeForDraft, releasedNote } from '@/lib/scheduled-alerts/constants';
 import { cn } from '@/lib/utils';
 import { useCan } from '@/components/permission-provider';
+import { skipAutoFocusOnTouch } from '@/lib/touch-autofocus';
 
 export type { ScheduledAlertDraft };
 
@@ -80,6 +81,11 @@ export function ScheduledAlertDialog({
   // The server's word (from the preview) that the album, film or episode is
   // already out: a release reminder on it would never go off.
   const [released, setReleased] = useState<ReleasedKind | null>(null);
+  // The release types the preview's count is for: a hint about it only holds
+  // while they are still the ones picked. A release due sooner than the notice
+  // has no candidate either, which the save explains.
+  const [previewTypes, setPreviewTypes] = useState<ReleaseKind[] | null>(null);
+  const [tooSoon, setTooSoon] = useState(false);
   const releaseOptions =
     draft?.mediaType === 'movie'
       ? MOVIE_RELEASE_OPTIONS
@@ -114,6 +120,8 @@ export function ScheduledAlertDialog({
       setTitleValue(draft.title);
       setPreviewCount(0);
       setReleased(null);
+      setPreviewTypes(null);
+      setTooSoon(false);
       if (initialScheduleMode) {
         setScheduleMode(initialScheduleMode);
         setReleaseTypes(initialReleaseTypes ?? []);
@@ -134,7 +142,7 @@ export function ScheduledAlertDialog({
       signal: controller.signal,
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { defaults?: PreviewDefaults; candidates?: unknown[]; released?: ReleasedKind } | null) => {
+      .then((data: { defaults?: PreviewDefaults; candidates?: unknown[]; released?: ReleasedKind; tooSoon?: true } | null) => {
         if (controller.signal.aborted || !data?.defaults) return;
         setScheduleMode(data.defaults.scheduleMode);
         setReleaseTypes(data.defaults.releaseTypes);
@@ -142,6 +150,8 @@ export function ScheduledAlertDialog({
         setAbsoluteValue(toDatetimeLocalValue(data.defaults.absoluteNotifyAt));
         setPreviewCount(data.candidates?.length ?? 0);
         setReleased(data.released ?? null);
+        setPreviewTypes(data.defaults.releaseTypes);
+        setTooSoon(data.tooSoon === true);
       })
       .catch(() => {});
 
@@ -162,7 +172,7 @@ export function ScheduledAlertDialog({
       return res.json();
     },
     onSuccess: () => {
-      toast.success('Alert scheduled');
+      toast.success(alertId ? 'Alert updated' : 'Alert scheduled');
       onOpenChange(false);
       onSaved?.();
     },
@@ -215,10 +225,17 @@ export function ScheduledAlertDialog({
   }
 
   const saving = saveMutation.isPending;
+  // Saved now, a film's reminder would wait for a date: say so rather than
+  // look scheduled. Films only: Radarr's and TMDB's film dates are complete,
+  // while Sonarr's calendar leaves out unmonitored episodes that have a date.
+  const noDateYet =
+    previewTypes != null && previewCount === 0 && !released && !tooSoon && draft?.mediaType === 'movie'
+    && previewTypes.length === releaseTypes.length && previewTypes.every((k) => releaseTypes.includes(k));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      {/* On a phone the focused title would open the keyboard over the date and Save. */}
+      <DialogContent className="max-h-[90vh] overflow-y-auto" onOpenAutoFocus={skipAutoFocusOnTouch}>
         <DialogHeader>
           <DialogTitle>Schedule alert</DialogTitle>
         </DialogHeader>
@@ -289,6 +306,9 @@ export function ScheduledAlertDialog({
                 <Input
                   id="sa-datetime"
                   type="datetime-local"
+                  // iOS gives a native date field its own width, past the
+                  // dialog's padding; without its native look it fills the row.
+                  className="appearance-none [&::-webkit-date-and-time-value]:text-left"
                   value={absoluteValue}
                   onChange={(e) => setAbsoluteValue(e.target.value)}
                   disabled={saving}
@@ -304,6 +324,12 @@ export function ScheduledAlertDialog({
                 {previewCount > 0 && (
                   <p className="text-[11px] text-muted-foreground">
                     {previewCount} upcoming release{previewCount === 1 ? '' : 's'} found
+                  </p>
+                )}
+                {noDateYet && (
+                  <p className="text-[11px] text-muted-foreground">
+                    No {releaseTypes.map((k) => RELEASE_KIND_LABELS[k]).join(' or ')} date in the next {DEFAULT_HORIZON_DAYS} days yet.
+                    The alert stays on and reminds you when one comes up. Other releases are under More options.
                   </p>
                 )}
                 {draft.mediaType === 'music' && draft.albumId == null && (

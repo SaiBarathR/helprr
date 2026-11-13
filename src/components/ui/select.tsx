@@ -6,6 +6,7 @@ import { Select as SelectPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { useSafeAreaPadding } from "@/lib/hooks/use-safe-area-padding"
+import { useCloseOnBack } from "@/lib/overlay-history"
 
 // Opens the list from the trigger once a phone keyboard has closed.
 const OpenSelect = React.createContext<(() => void) | null>(null)
@@ -27,6 +28,8 @@ function Select({
     [openProp, onOpenChange]
   )
   const openList = React.useCallback(() => setOpen(true), [setOpen])
+  // Back closes the open list first (see overlay-history).
+  useCloseOnBack(open, () => setOpen(false))
   return (
     <OpenSelect.Provider value={openList}>
       <SelectPrimitive.Root data-slot="select" open={open} onOpenChange={setOpen} {...props} />

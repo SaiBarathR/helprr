@@ -17,6 +17,7 @@ import {
 import { Filter, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { InstanceFilter, type InstanceOption, withAppName } from '@/components/instance-filter';
+import { useCan } from '@/components/permission-provider';
 import { ActiveFilterBar, FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { HistoryEventDrawer, HistoryEventRow, type HistoryRecord } from '../_components/history-event';
 
@@ -108,25 +109,31 @@ export default function HistoryPage() {
 
   // Load arr instances for the per-instance filter, independent of the (possibly
   // filtered) history so the options never collapse to the current selection.
-  const { data: instanceOptions = [] } = useQuery({
+  // The server leaves Lidarr out without music.view, so its instances aren't offered.
+  const canViewMusic = useCan('music.view');
+  const { data: instanceOptions = [], isSuccess: instancesLoaded } = useQuery({
     // Distinct from queryKeys.instances() (['instances','all'] → /api/services); this
     // is the /api/instances connection list for the filter. Shares with the activity
     // page's same-key query, and can't prefix-collide with the services key.
     queryKey: queryKeys.arrInstances(),
     queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
     select: (conns): InstanceOption[] =>
-      Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: withAppName(c.label, c.type) })) : [],
+      Array.isArray(conns)
+        ? conns
+          .filter((c) => c.type !== 'LIDARR' || canViewMusic)
+          .map((c) => ({ id: c.id, label: withAppName(c.label, c.type) }))
+        : [],
     staleTime: 5 * 60_000,
   });
 
   // Drop a stale instance selection if that instance no longer exists. Correcting
   // invalid local state against freshly-loaded options is a legitimate effect.
   useEffect(() => {
-    if (instanceFilter !== 'all' && !instanceOptions.some((i) => i.id === instanceFilter)) {
-
+    // Only against the loaded list: the empty default would drop a saved pick on a cold load.
+    if (instancesLoaded && instanceFilter !== 'all' && !instanceOptions.some((i) => i.id === instanceFilter)) {
       setInstanceFilter('all');
     }
-  }, [instanceOptions, instanceFilter, setInstanceFilter]);
+  }, [instancesLoaded, instanceOptions, instanceFilter, setInstanceFilter]);
 
   const activeFilterLabel = EVENT_FILTERS.find((f) => f.key === eventFilter)?.label || 'All Events';
   const activeFilters: ActiveFilter[] = [

@@ -310,6 +310,8 @@ export async function previewScheduledAlert(
     },
     candidates,
     ...(released ? { released } : {}),
+    // Due sooner than its notice: no candidate, though not for want of a date.
+    ...(resolved?.tooSoon ? { tooSoon: true as const } : {}),
   };
 }
 
@@ -684,9 +686,11 @@ async function resolveReleaseCandidates(
     }
   }
 
-  // The draft's own date (a preview only: a saved alert keeps none). A title
-  // saved by its TMDB/TVDB id was resolved above, as its save will be.
-  if (out.length === 0 && draft.releaseDate && !idSource) {
+  // The draft's own date (a preview only: a saved alert keeps none), only when
+  // no source answered. Once one has (or the title was resolved by its TMDB/TVDB
+  // id above), no candidate means no date for the releases asked about, and the
+  // save would find none either.
+  if (out.length === 0 && draft.releaseDate && !idSource && !Object.values(outcomes).includes('success')) {
     const releaseAt = dateOnlyAtLocalNine(draft.releaseDate, opts.timeZone);
     const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
     if (withinNotifyHorizon(notifyAt)) {

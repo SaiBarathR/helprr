@@ -4,7 +4,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { startOfLocalDay, toZonedDate, getLocalDateKey } from '@/lib/timezone';
 import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
-import { fetchServiceCalendarEvents } from '@/lib/calendar-events';
+import { calendarEventsFor, fetchServiceCalendarEvents } from '@/lib/calendar-events';
 import {
   fetchScheduledCalendarEvents,
   mergeCalendarWithScheduled,
@@ -60,8 +60,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       ? await getCachedJson<CalendarEvent[]>('calendar', cacheKeySeed)
       : null;
     if (cachedEvents) {
+      const visible = calendarEventsFor(auth.user, cachedEvents);
       const filtered =
-        type && type !== 'all' ? cachedEvents.filter((e) => e.type === type) : cachedEvents;
+        type && type !== 'all' ? visible.filter((e) => e.type === type) : visible;
       return NextResponse.json(filtered, { headers: CALENDAR_CACHE_HEADERS });
     }
 
@@ -127,10 +128,11 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     }
 
     // Filter by type if specified
+    const visible = calendarEventsFor(auth.user, events);
     let filtered =
       type && type !== 'all'
-        ? events.filter((e) => e.type === type)
-        : events;
+        ? visible.filter((e) => e.type === type)
+        : visible;
 
     if (includeScheduled && authUser?.ok) {
       const scheduled = await fetchScheduledCalendarEvents({
@@ -138,7 +140,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         start: new Date(start!),
         end: new Date(end!),
       });
-      filtered = mergeCalendarWithScheduled(filtered, scheduled);
+      // A music alert's occurrences come back as album events: the same rule.
+      filtered = calendarEventsFor(authUser.user, mergeCalendarWithScheduled(filtered, scheduled));
       if (type && type !== 'all') {
         filtered = filtered.filter((e) => e.type === type);
       }
