@@ -596,7 +596,8 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
 
       <GroupedSection
         title="Connection"
-        footer="Synced across devices · Validate with Test before saving"
+        // A member's Jellyfin page has no Save, so no "before saving".
+        footer={jellyfinLocked ? 'Synced across devices' : 'Synced across devices · Validate with Test before saving'}
       >
         {isMultiInstance && (
           <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">

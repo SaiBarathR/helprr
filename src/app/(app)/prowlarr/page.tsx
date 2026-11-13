@@ -23,6 +23,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Drawer,
   DrawerContent,
@@ -1369,33 +1370,22 @@ export default function ProwlarrPage() {
         onClose={closeIndexerSheet}
       />
 
-      <Dialog open={!!confirmDelete} onOpenChange={(v) => !v && setConfirmDelete(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Delete Indexer</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &ldquo;{confirmDelete?.name}&rdquo;? This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex gap-2 mt-2">
-            <Button
-              variant="destructive"
-              className="flex-1"
-              onClick={async () => {
-                if (!confirmDelete) return;
-                const deleted = await handleDelete(confirmDelete.id);
-                if (deleted && sheetIndexerId === confirmDelete.id) closeIndexerSheet();
-              }}
-              disabled={!!deletingId}
-            >
-              {deletingId ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
-            </Button>
-            <Button variant="outline" className="flex-1" onClick={() => setConfirmDelete(null)}>
-              Cancel
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* The shared confirm: it opens on Cancel. This one opened on the red
+          Delete (first in the row), so Enter right after the menu deleted. */}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onOpenChange={(v) => !v && setConfirmDelete(null)}
+        title="Delete indexer?"
+        description={`Are you sure you want to delete “${confirmDelete?.name ?? ''}”? This cannot be undone.`}
+        confirmLabel="Delete"
+        destructive
+        busy={!!deletingId}
+        onConfirm={async () => {
+          if (!confirmDelete) return;
+          const deleted = await handleDelete(confirmDelete.id);
+          if (deleted && sheetIndexerId === confirmDelete.id) closeIndexerSheet();
+        }}
+      />
 
       <PageTitle>Prowlarr</PageTitle>
       {/* Tabs */}

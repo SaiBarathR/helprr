@@ -75,6 +75,24 @@ describe('ResponsiveCombobox', () => {
     expect(selected.map((o) => o.textContent)).toEqual(['America/New_York']);
   });
 
+  it('starts each search at the top of the list, after cmdk scrolls to the old highlight', async () => {
+    viewport.phone = true;
+    render(<ZonePicker initial="America/New_York" />);
+    await userEvent.click(screen.getByRole('button', { name: 'America/New_York' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Your time zone' });
+    const list = sheet.querySelector<HTMLElement>('[data-slot="command-list"]')!;
+    // cmdk scrolls its highlighted row into view; here that moves the list.
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => { list.scrollTop = 480; });
+    try {
+      // "o" still matches the current pick (America/New_York), as "Lon" matched Asia/Kolkata.
+      await userEvent.type(within(sheet).getByPlaceholderText('Search time zones'), 'o');
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      expect(list.scrollTop).toBe(0);
+    } finally {
+      scrollIntoView.mockRestore();
+    }
+  });
+
   it('is a popover from md up', async () => {
     viewport.phone = false;
     render(<ZonePicker />);

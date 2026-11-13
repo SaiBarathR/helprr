@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandInput, CommandList } from '@/components/ui/command';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,28 @@ export function ResponsiveCombobox({ open, onOpenChange, trigger, title, searchP
   // Tailwind's md starts at 768px, so "below md" is up to 767px.
   const isPhone = useIsMobile(767);
 
+  // Each new search starts at the top of the list. On the first key cmdk
+  // scrolled to the row still highlighted, the current pick, already sorted
+  // ~30 rows down, then moved the highlight to the new best match without
+  // scrolling back ("Lon" left Europe/London above the view). cmdk only hears
+  // the search in the input's effect and scrolls in a later render, so the
+  // reset waits a frame to come after it.
+  const [search, setSearch] = useState('');
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      if (listRef.current) listRef.current.scrollTop = 0;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [search]);
+  // Opened again: unfiltered, on the current pick. Cleared on open, not on
+  // close, so a closing sheet doesn't snap back to the full list as it leaves.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setSearch('');
+  }
+
   if (isPhone) {
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>
@@ -47,12 +69,12 @@ export function ResponsiveCombobox({ open, onOpenChange, trigger, title, searchP
           {/* Rows as tall as the other phone sheets' (44px). */}
           <Command defaultValue={selectedValue} className="min-h-0 flex-1 bg-transparent **:data-[slot=command-item]:min-h-11 **:data-[slot=command-item]:px-3">
             <div className="shrink-0 px-2">
-              <CommandInput placeholder={searchPlaceholder} />
+              <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={setSearch} />
             </div>
             {/* overflow-anchor: Chrome keeps the row that was in view where it was as
                 search re-sorts the list, which scrolled the best match out of sight
                 ("Lon" hid Europe/London). */}
-            <CommandList className="max-h-none min-h-0 flex-1 overscroll-contain px-2 pb-2 [overflow-anchor:none]">{children}</CommandList>
+            <CommandList ref={listRef} className="max-h-none min-h-0 flex-1 overscroll-contain px-2 pb-2 [overflow-anchor:none]">{children}</CommandList>
           </Command>
           <div className="shrink-0 border-t border-border px-2 py-2">
             <DrawerClose asChild>
@@ -69,8 +91,8 @@ export function ResponsiveCombobox({ open, onOpenChange, trigger, title, searchP
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent className="p-0 w-[280px]" align={align}>
         <Command defaultValue={selectedValue}>
-          <CommandInput placeholder={searchPlaceholder} />
-          <CommandList className="[overflow-anchor:none]">{children}</CommandList>
+          <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={setSearch} />
+          <CommandList ref={listRef} className="[overflow-anchor:none]">{children}</CommandList>
         </Command>
       </PopoverContent>
     </Popover>
