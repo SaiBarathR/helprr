@@ -41,8 +41,17 @@ const RELEASED_WHAT: Record<ReleasedKind, string> = {
   episode: 'This episode has already aired',
 };
 
-/** The save's refusal of a release reminder on something already out. */
-export function releasedError(kind: ReleasedKind): string {
+const DUE_WHAT: Record<ReleasedKind, string> = {
+  album: 'This album comes out',
+  movie: 'This movie comes out',
+  episode: 'This episode airs',
+};
+
+/** The save's refusal of a release reminder that could never go off: already out, or due sooner than its notice. */
+export function releasedError(kind: ReleasedKind, tooSoon = false): string {
+  if (tooSoon) {
+    return `${DUE_WHAT[kind]} sooner than the reminder's notice, so it would never go off. Pick a shorter notice or a custom date.`;
+  }
   return `${RELEASED_WHAT[kind]}, so a release reminder would never go off. Pick a custom date instead.`;
 }
 

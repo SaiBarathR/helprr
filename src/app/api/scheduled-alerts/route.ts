@@ -175,10 +175,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const resolveResult =
     scheduleMode === 'absolute'
       ? { candidates: [], resolved: true }
-      : await resolveAlertOccurrencesResult(previewAlert);
+      : await resolveAlertOccurrencesResult(previewAlert, undefined, { checkAired: true });
   // Saved, it would be listed as active but never go off.
   if (resolveResult.released) {
-    return NextResponse.json({ error: releasedError(resolveResult.released) }, { status: 400 });
+    return NextResponse.json({ error: releasedError(resolveResult.released, resolveResult.tooSoon) }, { status: 400 });
   }
 
   const alert = await prisma.$transaction(async (tx) => {

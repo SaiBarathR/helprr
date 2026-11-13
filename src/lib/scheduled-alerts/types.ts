@@ -90,6 +90,8 @@ export interface ResolveResult {
   resolved: boolean;
   /** Artist alerts only: every album ahead Lidarr knows of, for the "new album" announcement. */
   upcomingAlbums?: UpcomingAlbum[];
-  /** Album, film or episode alerts: it is already out, so a release reminder on it can never go off. */
+  /** Album, film or episode alerts: its reminder's time (release − notice) has passed, so it can never go off. */
   released?: ReleasedKind;
+  /** With `released`: not out yet, only due sooner than the notice (a shorter one would work). */
+  tooSoon?: true;
 }

@@ -11,6 +11,8 @@ import { can, type PermissionUser } from '@/lib/permissions';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export async function upsertOccurrencesForAlert(
   alert: ScheduledAlert,
   candidates: OccurrenceCandidate[],
@@ -27,8 +29,22 @@ export async function upsertOccurrencesForAlert(
       .map((c) => `${c.targetKey}|${c.notifyAt.toISOString()}`),
   );
 
+  // A release already announced is not announced again when its time moves by
+  // under a day: film reminders moved from midnight UTC to 9:00 local, and an
+  // episode's air time can shift by hours.
+  const sent = candidates.length > 0
+    ? await db.scheduledAlertOccurrence.findMany({
+        where: { alertId: alert.id, status: 'sent', releaseAt: { gte: new Date(now.getTime() - 2 * DAY_MS) } },
+        select: { targetKey: true, releaseAt: true },
+      })
+    : [];
+  const alreadySent = (c: OccurrenceCandidate) =>
+    c.releaseAt !== null &&
+    sent.some((o) => o.targetKey === c.targetKey && o.releaseAt !== null && Math.abs(o.releaseAt.getTime() - c.releaseAt!.getTime()) <= DAY_MS);
+
   for (const c of candidates) {
     if (c.notifyAt < now || c.notifyAt > horizon) continue;
+    if (alreadySent(c)) continue;
     await db.scheduledAlertOccurrence.upsert({
       where: {
         alertId_targetKey_notifyAt: {

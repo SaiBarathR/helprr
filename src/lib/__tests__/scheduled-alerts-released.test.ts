@@ -92,6 +92,9 @@ const patch = (body: unknown) => editAlert(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A queued once-value left by one test must not answer for the next.
+  sonarr.getEpisodeById.mockReset();
+  radarr.getMovieById.mockReset();
   mocks.inPost = false;
   radarr.getCalendar.mockResolvedValue([]);
   sonarr.getCalendar.mockResolvedValue([]);
@@ -206,19 +209,60 @@ describe('a film already out', () => {
     expect(mocks.alertUpdate).not.toHaveBeenCalled();
   });
 
-  it('lets an edit keep a release reminder whose releases are unchanged', async () => {
-    const existing = movieRow(['digital']);
+  it('lets an edit that keeps the releases and the notice through, such as a new title', async () => {
+    const existing = movieRow(['digital'], { offsetMinutes: 60 });
     mocks.alertFindFirst.mockResolvedValue(existing);
     mocks.alertUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...existing, ...data }));
     radarr.getMovieById.mockResolvedValue(movie({ digitalRelease: radarrDate(-20) }));
 
-    expect((await patch({ scheduleMode: 'release_relative', releaseTypes: ['digital'], offsetMinutes: 30 })).status).toBe(200);
+    expect((await patch({ scheduleMode: 'release_relative', releaseTypes: ['digital'], offsetMinutes: 60, title: 'Renamed' })).status).toBe(200);
     expect(mocks.alertUpdate).toHaveBeenCalledOnce();
+  });
+
+  it('refuses an edit whose longer notice would fall before now', async () => {
+    // Out in two days: a week's notice could never go off, a day's still can.
+    mocks.alertFindFirst.mockResolvedValue(movieRow(['digital'], { offsetMinutes: 60 }));
+    radarr.getMovieById.mockResolvedValue(movie({ digitalRelease: radarrDate(2) }));
+
+    const res = await patch({ scheduleMode: 'release_relative', releaseTypes: ['digital'], offsetMinutes: 10_080 });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/^This movie comes out sooner than the reminder's notice/);
+    expect(mocks.alertUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe('a release due sooner than its notice', () => {
+  it('is judged on the time the reminder would go off, for films, episodes and albums alike', async () => {
+    radarr.getMovieById.mockResolvedValue(movie({ digitalRelease: radarrDate(2) }));
+    expect(await resolveAlertOccurrencesResult(movieRow(['digital'], { offsetMinutes: 10_080 }), createResolverContext()))
+      .toEqual({ candidates: [], resolved: true, released: 'movie', tooSoon: true });
+    expect(await resolveAlertOccurrencesResult(movieRow(['digital'], { offsetMinutes: 60 }), createResolverContext()))
+      .not.toHaveProperty('released');
+
+    // An episode airing in two hours with a day's notice is on the calendar, so Sonarr is not asked.
+    sonarr.getCalendar.mockResolvedValue([episode(new Date(Date.now() + 2 * 3_600_000).toISOString())]);
+    expect(await resolveAlertOccurrencesResult(episodeRow({ offsetMinutes: 1440 }), createResolverContext()))
+      .toEqual({ candidates: [], resolved: true, released: 'episode', tooSoon: true });
+  });
+
+  it('keeps the preview on a release reminder, as a shorter notice would work', async () => {
+    radarr.getMovieById.mockResolvedValue(movie({ digitalRelease: radarrDate(2) }));
+    const body = await (await post(previewAlert, '/api/scheduled-alerts/preview', { draft: movieDraft, offsetMinutes: 10_080, scheduleMode: 'release_relative' })).json();
+    expect(body).not.toHaveProperty('released');
+    expect(body.defaults.scheduleMode).toBe('release_relative');
   });
 });
 
 describe('an episode already aired', () => {
-  const resolve = (row = episodeRow()) => resolveAlertOccurrencesResult(row, createResolverContext());
+  // As a save or an edit asks; a background refresh does not (see below).
+  const resolve = (row = episodeRow()) => resolveAlertOccurrencesResult(row, createResolverContext(), { checkAired: true });
+
+  it('is not looked up on a background refresh, which never uses the verdict', async () => {
+    sonarr.getEpisodeById.mockResolvedValue(episode(new Date(Date.now() - DAY).toISOString()));
+    expect(await resolveAlertOccurrencesResult(episodeRow(), createResolverContext())).toEqual({ candidates: [], resolved: true });
+    expect(sonarr.getEpisodeById).not.toHaveBeenCalled();
+  });
+
 
   it('is flagged from its air time, asking Sonarr only when the calendar does not have it', async () => {
     sonarr.getEpisodeById.mockResolvedValue(episode(new Date(Date.now() - DAY).toISOString()));

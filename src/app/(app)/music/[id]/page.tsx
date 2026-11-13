@@ -47,6 +47,7 @@ import {
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
 import { formatDate } from '@/lib/date-format';
+import { artistTrackState } from '@/lib/release-state';
 import type { LidarrArtist, LidarrAlbum } from '@/types';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -350,7 +351,16 @@ export default function ArtistDetailPage() {
     ...(artist.added ? [{ label: 'Added', value: formatDate(new Date(artist.added)) }] : []),
   ];
 
-  const complete = !!stats && stats.totalTrackCount > 0 && stats.trackFileCount >= stats.totalTrackCount;
+  // Counted from the albums already out once they load (Lidarr's own totals
+  // include albums still to come); until then, from the artist's totals.
+  const trackState = albumsQuery.isSuccess
+    ? artistTrackState(albums)
+    : !!stats && stats.totalTrackCount > 0 && stats.trackFileCount >= stats.totalTrackCount ? 'complete' : 'missing';
+  const badge = {
+    complete: { label: 'Complete', className: 'bg-green-500/20 text-green-400 border-green-500/30' },
+    notReleased: { label: 'Not released yet', className: 'bg-muted text-muted-foreground border-border' },
+    missing: { label: 'Missing tracks', className: 'bg-red-500/20 text-red-400 border-red-500/30' },
+  }[trackState];
 
   const artistContextGroups: ContextActionGroup[] = [
     {
@@ -505,10 +515,10 @@ export default function ArtistDetailPage() {
               </div>
               <div className="flex-1 min-w-0 pt-[60px]">
                 <Badge
-                  className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${complete ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}
+                  className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${badge.className}`}
                   variant="outline"
                 >
-                  {complete ? 'Complete' : 'Missing tracks'}
+                  {badge.label}
                 </Badge>
                 <h1 className="text-xl font-bold leading-tight line-clamp-2">{artist.artistName}</h1>
                 <p className="text-sm text-muted-foreground mt-1">
@@ -541,10 +551,10 @@ export default function ArtistDetailPage() {
             </div>
             <div className="flex-1 min-w-0 pt-1">
               <Badge
-                className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${complete ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}
+                className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${badge.className}`}
                 variant="outline"
               >
-                {complete ? 'Complete' : 'Missing tracks'}
+                {badge.label}
               </Badge>
               <h1 className="text-xl font-bold leading-tight line-clamp-2">{artist.artistName}</h1>
               <p className="text-sm text-muted-foreground mt-1">

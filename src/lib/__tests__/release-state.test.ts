@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAlbumNotReleased, isEpisodeNotAired } from '@/lib/release-state';
+import { artistTrackState, isAlbumNotReleased, isEpisodeNotAired } from '@/lib/release-state';
 
 describe('isAlbumNotReleased', () => {
   const now = Date.parse('2026-11-13T12:00:00Z');
@@ -31,5 +31,25 @@ describe('isEpisodeNotAired', () => {
     // Only a day known.
     expect(isEpisodeNotAired({ airDate: '2026-08-05' }, now)).toBe(false);
     expect(isEpisodeNotAired({ airDate: '2026-12-01' }, now)).toBe(true);
+  });
+});
+
+describe('artistTrackState', () => {
+  const now = Date.parse('2026-11-13T12:00:00Z');
+  const album = (releaseDate: string, trackFileCount: number, totalTrackCount = 10) => ({ releaseDate, statistics: { trackFileCount, totalTrackCount } });
+
+  it('counts only albums already out', () => {
+    // Every released album complete; the one ahead has nothing yet.
+    expect(artistTrackState([album('2020-01-01', 10), album('2026-12-01', 0)], now)).toBe('complete');
+    expect(artistTrackState([album('2020-01-01', 4), album('2026-12-01', 0)], now)).toBe('missing');
+  });
+
+  it('says an artist with nothing out yet is not released, not missing', () => {
+    expect(artistTrackState([album('2026-12-01', 0), album('2027-03-01', 0)], now)).toBe('notReleased');
+  });
+
+  it('is missing when nothing is known', () => {
+    expect(artistTrackState([], now)).toBe('missing');
+    expect(artistTrackState([album('2020-01-01', 0, 0)], now)).toBe('missing');
   });
 });

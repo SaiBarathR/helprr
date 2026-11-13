@@ -91,17 +91,21 @@ async function patchHandler(
   }
 
   const modeChanged = existing.scheduleMode !== nextScheduleMode;
-  // A release reminder newly set on an album, film or episode already out (or
-  // moved to film releases that have all passed) would never go off.
+  // A release reminder newly set on an album, film or episode already out,
+  // moved to film releases that have all passed, or given a notice longer
+  // than the time left, would never go off.
   const releaseTypesChanged =
     data.releaseTypes !== undefined && JSON.stringify(data.releaseTypes) !== JSON.stringify(existing.releaseTypes);
-  if (nextScheduleMode === 'release_relative' && (modeChanged || releaseTypesChanged)) {
-    const { released } = await resolveAlertOccurrencesResult({
+  const nextOffset = typeof data.offsetMinutes === 'number' ? data.offsetMinutes : existing.offsetMinutes;
+  const offsetChanged = nextOffset !== existing.offsetMinutes;
+  if (nextScheduleMode === 'release_relative' && (modeChanged || releaseTypesChanged || offsetChanged)) {
+    const { released, tooSoon } = await resolveAlertOccurrencesResult({
       ...existing,
       scheduleMode: 'release_relative',
       releaseTypes: (data.releaseTypes ?? existing.releaseTypes) as Prisma.JsonValue,
-    });
-    if (released) return NextResponse.json({ error: releasedError(released) }, { status: 400 });
+      offsetMinutes: nextOffset,
+    }, undefined, { checkAired: true });
+    if (released) return NextResponse.json({ error: releasedError(released, tooSoon) }, { status: 400 });
   }
 
   const alert = await prisma.$transaction(async (tx) => {

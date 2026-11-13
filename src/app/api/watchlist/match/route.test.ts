@@ -55,6 +55,18 @@ describe('GET /api/watchlist/match', () => {
     expect(await get('mediaType=movie&tmdbId=999&arr=rad-b:5')).toEqual({ item: null });
   });
 
+  it('counts as saved on every instance where that id is the same title', async () => {
+    mocks.getLibraryLookups.mockResolvedValue({ ...lookups, radarrById: new Map([[5, [{ instanceId: 'rad-a', title: 'Film' }, { instanceId: 'rad-4k', title: 'Film' }]]]) });
+    mocks.findMany.mockResolvedValue([{ id: 'w2', title: 'Film', source: 'RADARR', externalId: '5' }]);
+    expect(await get('mediaType=movie&arr=rad-4k:5')).toEqual({ item: { id: 'w2', title: 'Film' } });
+  });
+
+  it('shows nothing saved when the item\'s instance is unclear (edited title, id on two instances)', async () => {
+    mocks.findMany.mockResolvedValue([{ id: 'w3', title: 'My edited name', source: 'RADARR', externalId: '5' }]);
+    expect(await get('mediaType=movie&arr=rad-a:5')).toEqual({ item: null });
+    expect(await get('mediaType=movie&arr=rad-b:5')).toEqual({ item: null });
+  });
+
   it('asks by TVDB id for a series, and needs some id', async () => {
     mocks.findMany.mockResolvedValue([]);
     await get('mediaType=series&tvdbId=81189');

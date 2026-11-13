@@ -128,18 +128,26 @@ function instanceForArrId(refs: ArrIdRef[] | undefined, title: string | undefine
   return (refs.find((r) => r.title.trim().toLowerCase() === wanted) ?? refs[0]).instanceId;
 }
 
-/** The instance a watchlist item saved from a library page (a Radarr/Sonarr id) belongs to. */
-export function arrItemInstanceId(
+/**
+ * The instances a watchlist item saved from a library page (a Radarr/Sonarr id)
+ * belongs to: the only instance with that id, else those where that id is the
+ * same title (the same film or show). None when that is unclear (an edited
+ * title and the id on two instances), so the title is not shown as saved on
+ * the wrong one. Stricter than the watchlist link, which falls back to the
+ * default instance.
+ */
+export function arrItemInstanceIds(
   source: string,
   externalId: string,
   lookups: LibraryHrefLookups,
   title?: string,
-): string | null {
+): string[] {
   const id = Number.parseInt(externalId, 10);
-  if (!Number.isFinite(id) || String(id) !== externalId) return null;
-  if (source === 'RADARR') return instanceForArrId(lookups.radarrById.get(id), title);
-  if (source === 'SONARR') return instanceForArrId(lookups.sonarrById.get(id), title);
-  return null;
+  if (!Number.isFinite(id) || String(id) !== externalId) return [];
+  const refs = (source === 'RADARR' ? lookups.radarrById.get(id) : source === 'SONARR' ? lookups.sonarrById.get(id) : undefined) ?? [];
+  if (refs.length <= 1) return refs.map((r) => r.instanceId);
+  const wanted = title?.trim().toLowerCase();
+  return wanted ? refs.filter((r) => r.title.trim().toLowerCase() === wanted).map((r) => r.instanceId) : [];
 }
 
 export function resolveHrefFromLookups(

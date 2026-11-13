@@ -4,7 +4,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { resolveConnection } from '@/lib/arr-instances';
 import { isValidExternalId } from '@/lib/watchlist-helpers';
-import { arrItemInstanceId, getLibraryLookups } from '@/lib/watchlist-library-lookup';
+import { arrItemInstanceIds, getLibraryLookups } from '@/lib/watchlist-library-lookup';
 
 const MAX_ARR_REFS = 20;
 
@@ -52,13 +52,15 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   const arrItems = items.filter((i) => i.source === arrSource);
   if (!match && arrItems.length > 0) {
     // A Radarr/Sonarr id is a different title on each instance: match it only
-    // on the instance it resolves to, as its watchlist link does.
+    // on the instance(s) where it is that title.
     try {
       const wanted = new Set(
         await Promise.all(arrRefs.map(async (r) => `${(await resolveConnection(arrSource, r.instanceId || null)).id}:${r.id}`)),
       );
       const lookups = await getLibraryLookups({ tmdbMovie: mediaType === 'movie', tvdbSeries: mediaType === 'series', tmdbSeries: false });
-      match = arrItems.find((i) => wanted.has(`${arrItemInstanceId(i.source, i.externalId, lookups, i.title)}:${i.externalId}`));
+      match = arrItems.find((i) =>
+        arrItemInstanceIds(i.source, i.externalId, lookups, i.title).some((instanceId) => wanted.has(`${instanceId}:${i.externalId}`)),
+      );
     } catch {
       // An instance that can't be read: the title shows as not saved, and
       // saving it again only updates the existing item.

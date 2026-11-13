@@ -430,7 +430,11 @@
     "eventType": "healthWarning",
     "title": "Main · Lidarr Health Warning",
     "body": "Main indexer is down",
-    "url": "/settings"
+    "url": "/settings",
+    "metadata": {
+     "source": "lidarr",
+     "instanceId": "i1"
+    }
    }
   },
   {
