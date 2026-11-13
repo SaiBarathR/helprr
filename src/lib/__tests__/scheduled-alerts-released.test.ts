@@ -164,21 +164,33 @@ describe('a film already out', () => {
     expect(body.candidates).toMatchObject([{ releaseKind: 'physical' }]);
   });
 
-  it('is out from the start of its release day, as Radarr dates it, for the preview and the save alike', async () => {
+  it('is out from 9:00 on its release day in the person\'s time zone, for the preview and the save alike', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     radarr.getMovieById.mockResolvedValue(movie({ digitalRelease: '2026-11-13T00:00:00Z' }));
     const draft = { ...movieDraft, releaseDate: '2026-11-13T00:00:00Z' };
+    const timeZone = 'Asia/Kolkata'; // 9:00 there is 03:30 UTC
 
-    vi.setSystemTime(new Date('2026-11-12T23:00:00Z'));
-    const before = await (await post(previewAlert, '/api/scheduled-alerts/preview', { draft })).json();
+    vi.setSystemTime(new Date('2026-11-13T03:00:00Z'));
+    const before = await (await post(previewAlert, '/api/scheduled-alerts/preview', { draft, timeZone, offsetMinutes: 0 })).json();
     expect(before).not.toHaveProperty('released');
     expect(before.defaults.scheduleMode).toBe('release_relative');
+    expect(before.candidates).toMatchObject([{ releaseKind: 'digital', notifyAt: '2026-11-13T03:30:00.000Z' }]);
 
-    vi.setSystemTime(new Date('2026-11-13T01:00:00Z'));
-    const after = await (await post(previewAlert, '/api/scheduled-alerts/preview', { draft })).json();
+    vi.setSystemTime(new Date('2026-11-13T04:00:00Z'));
+    const after = await (await post(previewAlert, '/api/scheduled-alerts/preview', { draft, timeZone })).json();
     expect(after).toMatchObject({ released: 'movie', defaults: { scheduleMode: 'absolute' } });
     mocks.inPost = true;
-    expect((await post(createAlert, '/api/scheduled-alerts', { draft, scheduleMode: 'release_relative', releaseTypes: ['digital'], offsetMinutes: 0 })).status).toBe(400);
+    expect((await post(createAlert, '/api/scheduled-alerts', { draft, timeZone, scheduleMode: 'release_relative', releaseTypes: ['digital'], offsetMinutes: 0 })).status).toBe(400);
+  });
+
+  it('reminds of a film at 9:00 on each release day in the alert\'s time zone, not at midnight UTC', async () => {
+    radarr.getMovieById.mockResolvedValue(movie({ digitalRelease: radarrDate(10), physicalRelease: radarrDate(40) }));
+    const { candidates } = await resolveAlertOccurrencesResult(movieRow(['digital', 'physical'], { timeZone: 'America/New_York' }), createResolverContext());
+    expect(candidates.map((c) => c.releaseKind)).toEqual(['digital', 'physical']);
+    for (const c of candidates) {
+      expect(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' }).format(c.releaseAt!)).toBe('09:00');
+    }
+    expect(candidates[0].releaseAt?.toISOString().slice(0, 10)).toBe(radarrDate(10).slice(0, 10));
   });
 
   it('refuses an edit to releases that have all passed, or into a release reminder', async () => {

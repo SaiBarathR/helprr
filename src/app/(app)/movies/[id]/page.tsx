@@ -50,6 +50,7 @@ import {
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
 import { formatDate } from '@/lib/date-format';
+import { isFilmNotReleased, nextFilmRelease } from '@/lib/film-releases';
 import type { RadarrMovie, RadarrCredit, DiscoverMovieFullDetail } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { crewRolePriority } from '@/lib/crew-priority';
@@ -342,6 +343,9 @@ export default function MovieDetailPage() {
   const qualityProfile = qualityProfiles.find((qp) => qp.id === movie.qualityProfileId);
   const movieTags = tags.filter((t) => movie.tags.includes(t.id));
   const rootFolder = movie.path ? parentPath(movie.path) : '';
+  // A film not out yet is not missing anything (Activity → Missing reads it the same way).
+  const notReleased = !movie.hasFile && isFilmNotReleased(movie);
+  const nextRelease = notReleased ? nextFilmRelease(movie) : null;
   const movieFileSize = movie.movieFile?.size ?? movie.sizeOnDisk;
 
   // Extract media info from movie file if available
@@ -680,11 +684,13 @@ export default function MovieDetailPage() {
                           className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${
                             movie.hasFile
                               ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                              : 'bg-red-500/20 text-red-400 border-red-500/30'
+                              : notReleased
+                                ? 'bg-muted text-muted-foreground border-border'
+                                : 'bg-red-500/20 text-red-400 border-red-500/30'
                           }`}
                           variant="outline"
                         >
-                          {movie.hasFile ? 'Downloaded' : 'Missing'}
+                          {movie.hasFile ? 'Downloaded' : notReleased ? 'Not released yet' : 'Missing'}
                         </Badge>
                         <h1 className="text-xl font-bold leading-tight line-clamp-2">{movie.title}</h1>
                         <p className="text-sm text-muted-foreground mt-1">
@@ -696,6 +702,9 @@ export default function MovieDetailPage() {
                             .filter(Boolean)
                             .join(' \u00B7 ')}
                         </p>
+                        {nextRelease && (
+                          <p className="text-xs text-muted-foreground mt-1">{nextRelease.label} {formatDate(nextRelease.date)}</p>
+                        )}
                         <WatchStatusInline status={movieWatch} className="mt-1.5" />
                         {ratingItems.length > 0 && (
                           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
@@ -757,11 +766,13 @@ export default function MovieDetailPage() {
                       className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${
                         movie.hasFile
                           ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                          : 'bg-red-500/20 text-red-400 border-red-500/30'
+                          : notReleased
+                            ? 'bg-muted text-muted-foreground border-border'
+                            : 'bg-red-500/20 text-red-400 border-red-500/30'
                       }`}
                       variant="outline"
                     >
-                      {movie.hasFile ? 'Downloaded' : 'Missing'}
+                      {movie.hasFile ? 'Downloaded' : notReleased ? 'Not released yet' : 'Missing'}
                     </Badge>
                     <h1 className="text-xl font-bold leading-tight line-clamp-2">{movie.title}</h1>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -773,6 +784,9 @@ export default function MovieDetailPage() {
                         .filter(Boolean)
                         .join(' \u00B7 ')}
                     </p>
+                    {nextRelease && (
+                      <p className="text-xs text-muted-foreground mt-1">{nextRelease.label} {formatDate(nextRelease.date)}</p>
+                    )}
                     <WatchStatusInline status={movieWatch} className="mt-1.5" />
                     {ratingItems.length > 0 && (
                       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">

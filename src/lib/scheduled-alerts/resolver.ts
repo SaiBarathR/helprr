@@ -4,10 +4,14 @@ import type { RadarrCalendarEntry } from '@/types';
 import type { SonarrClient } from '@/lib/sonarr-client';
 import type { SonarrCalendarEntry } from '@/types';
 import axios from 'axios';
-import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
+import { getSonarrClients, getRadarrClients, getLidarrClients, getTMDBClient } from '@/lib/service-helpers';
+import { loadCachedArrLibrary } from '@/lib/cache/arr-library';
+import { getOrCreateAppSettings } from '@/lib/app-settings';
+import { ConfigurationError } from '@/lib/config-error';
+import type { TmdbReleaseDatesResponse } from '@/lib/tmdb-client';
 import type { LidarrAlbum } from '@/types/lidarr';
 import { getAnimeNextAiringEpisode } from '@/lib/anilist-client';
-import { DEFAULT_HORIZON_DAYS } from '@/lib/scheduled-alerts/constants';
+import { DEFAULT_HORIZON_DAYS, RELEASE_KIND_LABELS } from '@/lib/scheduled-alerts/constants';
 import { applyOffset, defaultReminderLocal, isAlertScope, scopeFitsMediaType } from '@/lib/scheduled-alerts/helpers';
 import { noteJobFailure } from '@/lib/polling-job-report';
 import type {
@@ -109,21 +113,69 @@ function needsAnilist(draft: ScheduledAlertDraft, releaseTypes: ReleaseKind[]): 
   return (draft.mediaType === 'anime' || draft.source === 'ANILIST') && releaseTypes.includes('airing');
 }
 
-type SourceOutcomes = { radarr: SourceOutcome; sonarr: SourceOutcome; lidarr: SourceOutcome; anilist: SourceOutcome };
+/**
+ * A film or series saved by its TMDB/TVDB id (from Discover or the
+ * watchlist): it is found in the library by that id kind, else read from TMDB.
+ */
+function externalIdSource(draft: ScheduledAlertDraft): 'TMDB' | 'TVDB' | null {
+  if (!/^[1-9]\d*$/.test(draft.externalId)) return null;
+  if (draft.source === 'TMDB' && (draft.mediaType === 'movie' || draft.mediaType === 'series')) return 'TMDB';
+  if (draft.source === 'TVDB' && draft.mediaType === 'series') return 'TVDB';
+  return null;
+}
 
-function computeResolved(
-  outcomes: SourceOutcomes,
-  draft: ScheduledAlertDraft,
-  releaseTypes: ReleaseKind[],
-  candidates: OccurrenceCandidate[],
-): boolean {
-  const remoteFailed =
-    (needsRadarr(draft) && outcomes.radarr === 'failure') ||
-    (needsSonarr(draft) && outcomes.sonarr === 'failure') ||
-    (needsLidarr(draft) && outcomes.lidarr === 'failure') ||
-    (needsAnilist(draft, releaseTypes) && outcomes.anilist === 'failure');
-  if (!remoteFailed) return true;
-  return candidates.length > 0;
+/** Each source starts as 'failure' when it is needed and 'not_needed' otherwise. */
+type SourceOutcomes = Record<'radarr' | 'sonarr' | 'lidarr' | 'anilist' | 'library' | 'tmdb', SourceOutcome>;
+
+function computeResolved(outcomes: SourceOutcomes, candidates: OccurrenceCandidate[]): boolean {
+  return !Object.values(outcomes).includes('failure') || candidates.length > 0;
+}
+
+interface FilmDates {
+  inCinemas?: string;
+  digitalRelease?: string;
+  physicalRelease?: string;
+}
+
+/**
+ * A film's releases to remind of, and whether every one is already out: it
+ * has passed, or has no date while the film is already out at home (so it is
+ * not coming). A date still unknown otherwise can be reminded of once known.
+ * Radarr and TMDB date a release by its day, so the reminder is for 9:00 that
+ * day in the alert's time zone, as for albums.
+ */
+function filmReleasesToRemind(film: FilmDates, releaseTypes: ReleaseKind[], timeZone: string, now: Date) {
+  const at = (date: string | undefined) => {
+    const releaseAt = date ? dateOnlyAtLocalNine(date.slice(0, 10), timeZone) : null;
+    return releaseAt && Number.isFinite(releaseAt.getTime()) ? releaseAt : null;
+  };
+  const releases: Array<[ReleaseKind, Date | null]> = [];
+  if (releaseTypes.includes('cinema')) releases.push(['cinema', at(film.inCinemas)]);
+  if (releaseTypes.includes('digital')) releases.push(['digital', at(film.digitalRelease)]);
+  if (releaseTypes.includes('physical')) releases.push(['physical', at(film.physicalRelease)]);
+  if (releases.length === 0 && film.digitalRelease) releases.push(['digital', at(film.digitalRelease)]);
+  const passed = (releaseAt: Date | null) => releaseAt !== null && releaseAt <= now;
+  const outAtHome = passed(at(film.digitalRelease)) || passed(at(film.physicalRelease));
+  const out = releases.length > 0 && releases.every(([, releaseAt]) => passed(releaseAt) || (releaseAt === null && outAtHome));
+  return { releases, out };
+}
+
+const TMDB_RELEASE_TYPES = { inCinemas: 3, digitalRelease: 4, physicalRelease: 5 } as const;
+
+/** A film's cinema, digital and physical dates on TMDB: in Helprr's region, else the US, else the earliest anywhere. */
+function tmdbFilmDates(res: TmdbReleaseDatesResponse, region: string): FilmDates {
+  const earliest = (entries: TmdbReleaseDatesResponse['results'], type: number) =>
+    entries.flatMap((r) => r.release_dates).filter((d) => d.type === type && d.release_date).map((d) => d.release_date).sort()[0];
+  const inCountry = (code: string) => (res.results ?? []).filter((r) => r.iso_3166_1 === code);
+  const dates: FilmDates = {};
+  for (const [field, type] of Object.entries(TMDB_RELEASE_TYPES) as Array<[keyof FilmDates, number]>) {
+    dates[field] = earliest(inCountry(region), type) ?? earliest(inCountry('US'), type) ?? earliest(res.results ?? [], type);
+  }
+  return dates;
+}
+
+function episodeCode(seasonNumber: number, episodeNumber: number): string {
+  return `S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}`;
 }
 
 async function getRadarrCalendarCached(
@@ -266,24 +318,65 @@ async function resolveReleaseCandidates(
   const upcomingAlbums: UpcomingAlbum[] = [];
   let released: ReleasedKind | null = null;
 
+  // Saved by its TMDB/TVDB id: its Radarr/Sonarr id on each instance that
+  // has it, matched by that id kind (never a TMDB id read as a Sonarr id).
+  const idSource = externalIdSource(draft);
+  const radarrIds = new Map<string, string>();
+  const sonarrIds = new Map<string, string>();
+  let libraryFailed = false;
+  if (idSource) {
+    try {
+      const library = await loadCachedArrLibrary();
+      const id = Number(draft.externalId);
+      const wanted = (instanceId: string) => !draft.instanceId || instanceId === draft.instanceId;
+      if (draft.mediaType === 'movie') {
+        for (const m of library.movies) {
+          if (m.tmdbId === id && wanted(m.instanceId) && !radarrIds.has(m.instanceId)) radarrIds.set(m.instanceId, String(m.id));
+        }
+      } else {
+        let matches = library.series.filter((s) => (idSource === 'TVDB' ? s.tvdbId : s.tmdbId) === id);
+        // Sonarr v3 keeps no TMDB id: match by the TVDB id TMDB gives.
+        if (idSource === 'TMDB' && matches.length === 0) {
+          const tvdbId = await getTMDBClient()
+            .then((tmdb) => tmdb.tvExternalIds(id))
+            .then((ids) => ids.tvdb_id ?? null)
+            .catch(() => null);
+          if (tvdbId) matches = library.series.filter((s) => s.tvdbId === tvdbId);
+        }
+        for (const s of matches) {
+          if (wanted(s.instanceId) && !sonarrIds.has(s.instanceId)) sonarrIds.set(s.instanceId, String(s.id));
+        }
+      }
+    } catch (error) {
+      noteJobFailure(error);
+      libraryFailed = true;
+    }
+  }
+  const useRadarr = needsRadarr(draft) || radarrIds.size > 0;
+  const useSonarr = sonarrIds.size > 0 || (needsSonarr(draft) && !idSource);
+  // Not in the library: TMDB's own dates.
+  const useTmdb = idSource !== null && !libraryFailed && (draft.mediaType === 'movie' ? radarrIds : sonarrIds).size === 0;
+
   const outcomes: SourceOutcomes = {
-    radarr: needsRadarr(draft) ? 'failure' : 'not_needed',
-    sonarr: needsSonarr(draft) ? 'failure' : 'not_needed',
+    radarr: useRadarr ? 'failure' : 'not_needed',
+    sonarr: useSonarr ? 'failure' : 'not_needed',
     lidarr: needsLidarr(draft) ? 'failure' : 'not_needed',
     anilist: needsAnilist(draft, opts.releaseTypes) ? 'failure' : 'not_needed',
+    library: libraryFailed ? 'failure' : 'not_needed',
+    tmdb: useTmdb ? 'failure' : 'not_needed',
   };
 
   function withinNotifyHorizon(notifyAt: Date): boolean {
     return notifyAt >= notifyStart && notifyAt <= notifyEnd;
   }
 
-  if (needsRadarr(draft)) {
+  if (useRadarr) {
     const clients = await getRadarrClients().catch((error) => {
       noteJobFailure(error);
       return [];
     });
-    const applicable = clients.filter(
-      ({ connection }) => !draft.instanceId || connection.id === draft.instanceId,
+    const applicable = clients.filter(({ connection }) =>
+      radarrIds.size > 0 ? radarrIds.has(connection.id) : !draft.instanceId || connection.id === draft.instanceId,
     );
     if (applicable.length === 0) {
       outcomes.radarr = 'failure';
@@ -291,7 +384,8 @@ async function resolveReleaseCandidates(
       let succeeded = false;
       for (const { connection, client } of applicable) {
         try {
-          const movieId = Number.parseInt(draft.externalId, 10);
+          const targetId = radarrIds.get(connection.id) ?? draft.externalId;
+          const movieId = Number.parseInt(targetId, 10);
           let movie = null;
           if (Number.isFinite(movieId)) {
             // A film Radarr no longer has falls back to the calendar; other errors are failures.
@@ -302,31 +396,17 @@ async function resolveReleaseCandidates(
           }
           if (!movie) {
             const cal = await getRadarrCalendarCached(ctx, connection.id, client, startIso, endIso);
-            movie = cal.find((m: { id: number }) => String(m.id) === draft.externalId) ?? null;
+            movie = cal.find((m: { id: number }) => String(m.id) === targetId) ?? null;
           }
           if (!movie) {
             succeeded = true;
             continue;
           }
           succeeded = true;
-          const releases: Array<[ReleaseKind, string | undefined]> = [];
-          if (opts.releaseTypes.includes('cinema')) releases.push(['cinema', movie.inCinemas]);
-          if (opts.releaseTypes.includes('digital')) releases.push(['digital', movie.digitalRelease]);
-          if (opts.releaseTypes.includes('physical')) releases.push(['physical', movie.physicalRelease]);
-          if (releases.length === 0 && movie.digitalRelease) releases.push(['digital', movie.digitalRelease]);
-          // Out once every release asked for has passed (the moment the loop
-          // below stops reminding), or has no date while the film is already
-          // out at home, so it is not coming. A date still unknown otherwise
-          // can be reminded of once Radarr learns it.
-          const passed = (dateStr: string | undefined) =>
-            !!dateStr && dateOnlyAtLocalNine(dateStr, opts.timeZone) <= notifyStart;
-          const outAtHome = passed(movie.digitalRelease) || passed(movie.physicalRelease);
-          if (releases.length > 0 && releases.every(([, dateStr]) => passed(dateStr) || (!dateStr && outAtHome))) {
-            released = 'movie';
-          }
-          for (const [kind, dateStr] of releases) {
-            if (!dateStr) continue;
-            const releaseAt = dateOnlyAtLocalNine(dateStr, opts.timeZone);
+          const { releases, out: filmOut } = filmReleasesToRemind(movie, opts.releaseTypes, opts.timeZone, notifyStart);
+          if (filmOut) released = 'movie';
+          for (const [kind, releaseAt] of releases) {
+            if (!releaseAt) continue;
             const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
             if (!withinNotifyHorizon(notifyAt)) continue;
             out.push(
@@ -350,13 +430,13 @@ async function resolveReleaseCandidates(
     }
   }
 
-  if (needsSonarr(draft)) {
+  if (useSonarr) {
     const clients = await getSonarrClients().catch((error) => {
       noteJobFailure(error);
       return [];
     });
-    const applicable = clients.filter(
-      ({ connection }) => !draft.instanceId || connection.id === draft.instanceId,
+    const applicable = clients.filter(({ connection }) =>
+      sonarrIds.size > 0 ? sonarrIds.has(connection.id) : !draft.instanceId || connection.id === draft.instanceId,
     );
     if (applicable.length === 0) {
       outcomes.sonarr = 'failure';
@@ -364,10 +444,11 @@ async function resolveReleaseCandidates(
       let succeeded = false;
       for (const { connection, client } of applicable) {
         try {
+          const targetId = sonarrIds.get(connection.id) ?? draft.externalId;
           const cal = await getSonarrCalendarCached(ctx, connection.id, client, startIso, endIso);
           succeeded = true;
           for (const ep of cal) {
-            if (String(ep.seriesId) !== draft.externalId) continue;
+            if (String(ep.seriesId) !== targetId) continue;
             if (opts.scope === 'season' && draft.seasonNumber != null && ep.seasonNumber !== draft.seasonNumber) {
               continue;
             }
@@ -379,7 +460,7 @@ async function resolveReleaseCandidates(
             if (!Number.isFinite(releaseAt.getTime())) continue;
             const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
             if (!withinNotifyHorizon(notifyAt)) continue;
-            const subtitle = `S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')} - ${ep.title}`;
+            const subtitle = `${episodeCode(ep.seasonNumber, ep.episodeNumber)} - ${ep.title}`;
             out.push(
               candidate(
                 `sonarr:${connection.id}:${ep.id}`,
@@ -406,7 +487,7 @@ async function resolveReleaseCandidates(
             });
             if (
               episode &&
-              String(episode.seriesId) === draft.externalId &&
+              String(episode.seriesId) === targetId &&
               episode.airDateUtc &&
               new Date(episode.airDateUtc) <= notifyStart
             ) {
@@ -419,6 +500,44 @@ async function resolveReleaseCandidates(
         }
       }
       if (succeeded) outcomes.sonarr = 'success';
+    }
+  }
+
+  if (useTmdb) {
+    try {
+      const tmdb = await getTMDBClient();
+      const id = Number(draft.externalId);
+      if (draft.mediaType === 'movie') {
+        const { watchProviderRegion } = await getOrCreateAppSettings();
+        const film = tmdbFilmDates(await tmdb.movieReleaseDates(id), watchProviderRegion || 'US');
+        const { releases, out: filmOut } = filmReleasesToRemind(film, opts.releaseTypes, opts.timeZone, notifyStart);
+        if (filmOut) released = 'movie';
+        for (const [kind, releaseAt] of releases) {
+          if (!releaseAt) continue;
+          const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
+          if (!withinNotifyHorizon(notifyAt)) continue;
+          out.push(candidate(`tmdb:movie:${id}:${kind}`, kind, releaseAt, notifyAt, draft.title, RELEASE_KIND_LABELS[kind], { tmdbId: id, releaseType: kind }));
+        }
+      } else if (opts.releaseTypes.includes('episode')) {
+        const tmdbId = idSource === 'TVDB' ? (await tmdb.findByExternalId(draft.externalId, 'tvdb_id')).tv_results[0]?.id : id;
+        // TMDB knows only the next episode, by its day: remind at 9:00 that day.
+        const next = tmdbId ? (await tmdb.tvDetails(tmdbId)).next_episode_to_air : null;
+        const inScope = next && !(opts.scope === 'season' && draft.seasonNumber != null && next.season_number !== draft.seasonNumber);
+        if (next?.air_date && inScope) {
+          const releaseAt = dateOnlyAtLocalNine(next.air_date, opts.timeZone);
+          const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
+          if (Number.isFinite(releaseAt.getTime()) && withinNotifyHorizon(notifyAt)) {
+            const code = episodeCode(next.season_number, next.episode_number);
+            out.push(candidate(`tmdb:tv:${tmdbId}:${code}`, 'episode', releaseAt, notifyAt, draft.title, next.name ? `${code} - ${next.name}` : code, {
+              tmdbId, seasonNumber: next.season_number, episodeNumber: next.episode_number,
+            }));
+          }
+        }
+      }
+      outcomes.tmdb = 'success';
+    } catch (error) {
+      // Without TMDB set up the alert simply waits; anything else is a failure.
+      if (!(error instanceof ConfigurationError)) noteJobFailure(error);
     }
   }
 
@@ -527,7 +646,9 @@ async function resolveReleaseCandidates(
     }
   }
 
-  if (out.length === 0 && draft.releaseDate) {
+  // The draft's own date (a preview only: a saved alert keeps none). A title
+  // saved by its TMDB/TVDB id was resolved above, as its save will be.
+  if (out.length === 0 && draft.releaseDate && !idSource) {
     const releaseAt = dateOnlyAtLocalNine(draft.releaseDate, opts.timeZone);
     const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
     if (withinNotifyHorizon(notifyAt)) {
@@ -547,7 +668,7 @@ async function resolveReleaseCandidates(
   out.sort((a, b) => a.notifyAt.getTime() - b.notifyAt.getTime());
   return {
     candidates: out,
-    resolved: computeResolved(outcomes, draft, opts.releaseTypes, out),
+    resolved: computeResolved(outcomes, out),
     ...(opts.scope === 'artist' && needsLidarr(draft) ? { upcomingAlbums } : {}),
     // Another instance's reminder still goes off.
     ...(released && out.length === 0 ? { released } : {}),

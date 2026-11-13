@@ -37,7 +37,7 @@ import {
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
 import { formatDate } from '@/lib/date-format';
-import { isAlbumNotReleased } from '@/lib/album-release';
+import { isAlbumNotReleased } from '@/lib/release-state';
 import type { LidarrAlbum, LidarrTrack, LidarrTrackFile } from '@/types';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
