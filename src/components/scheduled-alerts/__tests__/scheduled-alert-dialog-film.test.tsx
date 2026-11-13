@@ -80,12 +80,14 @@ describe('the scheduled alert dialog for a film', () => {
   it('says "Alert updated" when an edit is saved and "Alert scheduled" for a new one', async () => {
     const user = userEvent.setup();
     const { unmount } = renderDialog({ alertId: 'a1', initialScheduleMode: 'release_relative', initialReleaseTypes: ['digital'], initialOffsetMinutes: 60 });
+    expect(screen.getByRole('heading', { name: 'Edit alert' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
     await vi.waitFor(() => expect(toast.success).toHaveBeenCalledWith('Alert updated'));
     unmount();
 
     renderDialog();
     await screen.findByText(/date in the next/);
+    expect(screen.getByRole('heading', { name: 'Schedule alert' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Save alert' }));
     await vi.waitFor(() => expect(toast.success).toHaveBeenCalledWith('Alert scheduled'));
   });
