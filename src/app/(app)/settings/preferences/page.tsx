@@ -61,11 +61,14 @@ const REFRESH_OPTIONS = [
 export default function PreferencesPage() {
   const { settings, loading, update } = useAppSettings();
   const me = useMe();
+  const isAdmin = me?.role === 'admin';
   const [draft, setDraft] = useState<string | null>(null);
   const displayedTz = draft ?? settings?.timeZone ?? '';
 
   const [regions, setRegions] = useState<RegionOption[] | null>(null);
   useEffect(() => {
+    // Only an admin sees (and may save) the region.
+    if (!isAdmin) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -81,7 +84,7 @@ export default function PreferencesPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAdmin]);
 
   const regionOptions = useMemo<RegionOption[]>(() => {
     const base = regions ?? REGION_FALLBACK;
@@ -125,9 +128,12 @@ export default function PreferencesPage() {
         </p>
       </div>
 
-      <GroupedSection title="General" footer="Synced across devices">
-        {/* The server's zone is global (admins only); "Your time zone" under Date & Time is personal. */}
-        {me?.role === 'admin' && (
+      {/* The server's zone, polling, refresh and region are global settings
+          that only an admin may save (PUT /api/settings); to a member they
+          answered every pick with "Forbidden". "Your time zone" under Date &
+          Time is personal. */}
+      {isAdmin && (
+        <GroupedSection title="General" footer="Synced across devices">
           <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
             <Label htmlFor="server-time-zone" className="text-xs text-muted-foreground">Server time zone</Label>
             <Input
@@ -143,109 +149,114 @@ export default function PreferencesPage() {
               Env default: {settings?.envTimeZone ?? 'UTC'}
             </div>
           </div>
-        )}
 
-        <div className="grouped-row">
-          <span className="text-sm">Polling</span>
-          <Select
-            value={String(settings?.pollingIntervalSecs ?? 30)}
-            onValueChange={(v) => void update({ pollingIntervalSecs: parseInt(v, 10) })}
-            disabled={loading}
-          >
-            <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {POLLING_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+          <div className="grouped-row">
+            <span className="text-sm">Polling</span>
+            <Select
+              value={String(settings?.pollingIntervalSecs ?? 30)}
+              onValueChange={(v) => void update({ pollingIntervalSecs: parseInt(v, 10) })}
+              disabled={loading}
+            >
+              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {POLLING_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <div className="grouped-row">
-          <span className="text-sm">Activity refresh</span>
-          <Select
-            value={String(settings?.activityRefreshIntervalSecs ?? 5)}
-            onValueChange={(v) => void update({ activityRefreshIntervalSecs: parseInt(v, 10) })}
-            disabled={loading}
-          >
-            <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {REFRESH_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+          <div className="grouped-row">
+            <span className="text-sm">Activity refresh</span>
+            <Select
+              value={String(settings?.activityRefreshIntervalSecs ?? 5)}
+              onValueChange={(v) => void update({ activityRefreshIntervalSecs: parseInt(v, 10) })}
+              disabled={loading}
+            >
+              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {REFRESH_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <div className="grouped-row">
-          <span className="text-sm">Torrents refresh</span>
-          <Select
-            value={String(settings?.torrentsRefreshIntervalSecs ?? 5)}
-            onValueChange={(v) => void update({ torrentsRefreshIntervalSecs: parseInt(v, 10) })}
-            disabled={loading}
-          >
-            <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {REFRESH_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </GroupedSection>
+          <div className="grouped-row">
+            <span className="text-sm">Torrents refresh</span>
+            <Select
+              value={String(settings?.torrentsRefreshIntervalSecs ?? 5)}
+              onValueChange={(v) => void update({ torrentsRefreshIntervalSecs: parseInt(v, 10) })}
+              disabled={loading}
+            >
+              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {REFRESH_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </GroupedSection>
+      )}
 
       <DateTimeFormatSection>
         <PersonalTimeZoneRow />
       </DateTimeFormatSection>
 
-      <GroupedSection
-        title="Where to Watch"
-        footer="Used by Discover, Movies, and Series detail pages to show streaming availability"
-      >
-        <div className="grouped-row">
-          <span className="text-sm">Region</span>
-          <Select
-            value={settings?.watchProviderRegion ?? 'US'}
-            onValueChange={(v) =>
-              void update(
-                { watchProviderRegion: v },
-                { successMessage: () => `Region set to ${v}` },
-              )
-            }
-            disabled={loading}
-          >
-            <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="max-h-[min(20rem,var(--radix-select-content-available-height))]">
-              {regionOptions.map((r) => (
-                <SelectItem key={r.code} value={r.code}>
-                  {r.name} · {r.code}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </GroupedSection>
-
-      <GroupedSection title="Widgets" footer="Synced across devices">
-        <Link
-          href="/settings/dashboard-refresh"
-          className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
+      {isAdmin && (
+        <GroupedSection
+          title="Where to Watch"
+          footer="Used by Discover, Movies, and Series detail pages to show streaming availability"
         >
-          <span className="text-sm">Dashboard widget refresh</span>
-          <span className="flex items-center gap-1 text-sm text-muted-foreground">
-            Configure
-            <ChevronRight className="h-3.5 w-3.5" />
-          </span>
-        </Link>
-      </GroupedSection>
+          <div className="grouped-row">
+            <span className="text-sm">Region</span>
+            <Select
+              value={settings?.watchProviderRegion ?? 'US'}
+              onValueChange={(v) =>
+                void update(
+                  { watchProviderRegion: v },
+                  { successMessage: () => `Region set to ${v}` },
+                )
+              }
+              disabled={loading}
+            >
+              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-h-[min(20rem,var(--radix-select-content-available-height))]">
+                {regionOptions.map((r) => (
+                  <SelectItem key={r.code} value={r.code}>
+                    {r.name} · {r.code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </GroupedSection>
+      )}
+
+      {/* Its page needs settings.dashboardRefresh, which members lack by default. */}
+      {hasCapability(me, 'settings.dashboardRefresh') && (
+        <GroupedSection title="Widgets" footer="Synced across devices">
+          <Link
+            href="/settings/dashboard-refresh"
+            className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
+          >
+            <span className="text-sm">Dashboard widget refresh</span>
+            <span className="flex items-center gap-1 text-sm text-muted-foreground">
+              Configure
+              <ChevronRight className="h-3.5 w-3.5" />
+            </span>
+          </Link>
+        </GroupedSection>
+      )}
 
       {hasCapability(me, 'jellyfin.view') && (
         <>

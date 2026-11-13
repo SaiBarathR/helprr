@@ -237,7 +237,7 @@ export function ScheduledAlertDialog({
       {/* On a phone the focused title would open the keyboard over the date and Save. */}
       <DialogContent className="max-h-[90vh] overflow-y-auto" onOpenAutoFocus={skipAutoFocusOnTouch}>
         <DialogHeader>
-          <DialogTitle>Schedule alert</DialogTitle>
+          <DialogTitle>{alertId ? 'Edit alert' : 'Schedule alert'}</DialogTitle>
         </DialogHeader>
         {draft && (
           <div className="flex flex-col gap-4">

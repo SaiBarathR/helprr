@@ -107,6 +107,8 @@ export default function ScheduledAlertsPage() {
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addDraft, setAddDraft] = useState<ScheduledAlertDraft | null>(null);
+  // A new custom alert opens on tomorrow at 9:00 rather than an empty field.
+  const [addAt, setAddAt] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<SerializedAlert | null>(null);
   const [cancelTarget, setCancelTarget] = useState<SerializedAlert | null>(null);
   const [cancelOccurrence, setCancelOccurrence] = useState<{ alertId: string; occurrenceId: string; title: string } | null>(null);
@@ -244,7 +246,8 @@ export default function ScheduledAlertsPage() {
               type="button"
               onClick={refresh}
               disabled={refreshing}
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary disabled:opacity-60 disabled:cursor-default"
+              // Below 360px the title needs the room; pull to refresh does the same.
+              className="max-[359px]:hidden min-w-[44px] min-h-[44px] flex items-center justify-center text-primary disabled:opacity-60 disabled:cursor-default"
               aria-label="Refresh alerts"
             >
               <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
@@ -272,6 +275,10 @@ export default function ScheduledAlertsPage() {
                     title: 'Custom reminder',
                     href: null,
                   });
+                  const tomorrow = new Date();
+                  tomorrow.setDate(tomorrow.getDate() + 1);
+                  tomorrow.setHours(9, 0, 0, 0);
+                  setAddAt(tomorrow.toISOString());
                   setAddOpen(true);
                 }}
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
@@ -618,6 +625,7 @@ export default function ScheduledAlertsPage() {
         draft={addDraft}
         onSaved={invalidate}
         initialScheduleMode="absolute"
+        initialAbsoluteNotifyAt={addAt}
         allowTitleEdit
       />
 

@@ -161,8 +161,9 @@ export default function SettingsIndexPage() {
     {
       group: 'you',
       show: true,
-      keywords: ['general', 'timezone', 'time zone', 'date format', 'time format', '12-hour', '24-hour', 'polling', 'refresh', 'where to watch', 'region', 'widgets', 'player', 'subtitles', 'skip'],
-      row: { href: '/settings/preferences', icon: Sliders, iconBg: 'bg-sky-500/10', iconColor: 'text-sky-400', label: 'Preferences', subtitle: 'Timezone, date & time format, polling' },
+      // Polling, refresh and region are admin-only rows on that page.
+      keywords: ['general', 'timezone', 'time zone', 'date format', 'time format', '12-hour', '24-hour', ...(me?.role === 'admin' ? ['polling', 'refresh', 'where to watch', 'region'] : []), 'widgets', 'player', 'subtitles', 'skip'],
+      row: { href: '/settings/preferences', icon: Sliders, iconBg: 'bg-sky-500/10', iconColor: 'text-sky-400', label: 'Preferences', subtitle: me?.role === 'admin' ? 'Timezone, date & time format, polling' : 'Date & time format, your time zone' },
     },
     {
       group: 'you',
