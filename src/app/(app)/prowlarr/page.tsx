@@ -1151,9 +1151,12 @@ export default function ProwlarrPage() {
     router.replace(`/prowlarr?indexer=${id}`, { scroll: false });
   }
 
+  // Always, even when the URL has no ?indexer= yet: the opening replace is
+  // async, and one still on its way would land after a quick close and
+  // reopen the sheet. This replace comes after it.
   function closeIndexerSheet() {
     setSheetIndexerId(null);
-    if (urlIndexerId !== null) router.replace('/prowlarr', { scroll: false });
+    router.replace('/prowlarr', { scroll: false });
   }
 
   const sheetIndexersQuery = useQuery({

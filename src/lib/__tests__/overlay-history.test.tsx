@@ -55,6 +55,54 @@ const back = () => act(async () => {
 // Our own traversal settles a tick after its popstate.
 const settled = () => waitFor(() => expect(marker()).toBeUndefined());
 
+
+// A stand-in for the Navigation API: entries with stable keys (a
+// replaceState keeps the key), the index, and a navigate event before each
+// traversal. jsdom has none.
+function installNavigation() {
+  const list = [{ key: 'k0', url: window.location.href }];
+  let index = 0;
+  let next = 1;
+  const navigation = Object.defineProperties(new EventTarget(), {
+    currentEntry: { get: () => ({ ...list[index], index }) },
+    canGoForward: { get: () => index < list.length - 1 },
+    entries: { value: () => list.map((entry, i) => ({ ...entry, index: i })) },
+  });
+  const { pushState, replaceState, go } = window.history;
+  window.history.pushState = function (...args: Parameters<History['pushState']>) {
+    pushState.apply(this, args);
+    list.splice(index + 1, Infinity, { key: `k${next++}`, url: window.location.href });
+    index += 1;
+  };
+  window.history.replaceState = function (...args: Parameters<History['replaceState']>) {
+    replaceState.apply(this, args);
+    list[index] = { ...list[index], url: window.location.href };
+  };
+  window.history.go = function (delta = 0) {
+    const target = index + delta;
+    if (!delta || target < 0 || target >= list.length) return;
+    navigation.dispatchEvent(Object.assign(new Event('navigate'), { navigationType: 'traverse', destination: { index: target } }));
+    index = target;
+    go.call(this, delta);
+  };
+  window.history.back = () => window.history.go(-1);
+  window.history.forward = () => window.history.go(1);
+  Object.defineProperty(window, 'navigation', { configurable: true, value: navigation });
+  onTestFinished(() => {
+    Object.assign(window.history, { pushState, replaceState, go });
+    delete (window.history as Partial<History>).back;
+    delete (window.history as Partial<History>).forward;
+    delete (window as { navigation?: unknown }).navigation;
+  });
+  return { key: () => list[index].key };
+}
+
+const forward = () => act(async () => {
+  window.history.forward();
+  // The landing, our step past it, and the settle after that.
+  await new Promise((resolve) => setTimeout(resolve, 60));
+});
+
 describe('overlay history', () => {
   let baseLength: number;
 
@@ -268,25 +316,123 @@ describe('overlay history', () => {
   it('keeps a URL rewritten under the sheet when the user presses Back', async () => {
     // Activity mirrors its filters into the URL while its menu is open. The
     // Navigation API knows the URL the sheet's entry ended with.
-    let rewritten = '';
-    const navigation = Object.defineProperties(new EventTarget(), {
-      currentEntry: {
-        get() {
-          const id = (window.history.state as Record<string, unknown> | null)?.__helprrOverlay;
-          return { key: id === undefined ? 'page' : 'sheet', index: id === undefined ? 0 : 1, url: window.location.href };
-        },
-      },
-      canGoForward: { value: false },
-      entries: { value: () => [{ key: 'sheet', index: 1, url: rewritten }] },
-    });
-    Object.defineProperty(window, 'navigation', { configurable: true, value: navigation });
-    onTestFinished(() => { delete (window as { navigation?: unknown }).navigation; });
+    installNavigation();
     render(<Page />);
     await userEvent.click(screen.getByText('Open sheet'));
     window.history.replaceState({ ...window.history.state }, '', '/calendar?source=sonarr');
-    rewritten = window.location.href;
     await back();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(window.location.search).toBe('?source=sonarr');
+  });
+
+  describe.each([['with', true], ['without', false]])('%s the Navigation API', (_label, withApi) => {
+    beforeEach(() => { if (withApi) installNavigation(); });
+
+    // Back closed the picker; Forward lands on its closed entry.
+    it('does nothing on Forward after Back closed a picker, leaving the sheet open', async () => {
+      render(<Page />);
+      await userEvent.click(screen.getByText('Open sheet'));
+      await userEvent.click(screen.getByText('Open picker'));
+      const sheetMarker = await waitFor(() => {
+        const value = marker();
+        expect(value).toEqual(expect.any(Number));
+        return value;
+      });
+      await back();
+      expect(screen.queryByRole('dialog', { name: 'picker' })).toBeNull();
+      await forward();
+      expect(screen.getByRole('dialog', { name: 'sheet' })).toBeTruthy();
+      expect(screen.queryByRole('dialog', { name: 'picker' })).toBeNull();
+      expect(marker()).not.toBe(sheetMarker);
+      // The sheet's own entry is current: one Back closes the sheet only.
+      await back();
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('keeps a lower sheet\'s marker when it puts a rewritten URL back on its entry', async () => {
+      render(<Page />);
+      await userEvent.click(screen.getByText('Open sheet'));
+      await userEvent.click(screen.getByText('Open picker'));
+      await waitFor(() => expect(window.history.length).toBeGreaterThan(0));
+      // The page rewrites its URL the router's way, which keeps no custom keys.
+      window.history.replaceState({ __NA: true }, '', '/calendar?view=week');
+      if (withApi) await back();
+      else {
+        await userEvent.click(screen.getByText('Close picker'));
+        await waitFor(() => expect(window.location.search).toBe('?view=week'));
+        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+      }
+      expect(window.location.search).toBe('?view=week');
+      expect(screen.getByRole('dialog', { name: 'sheet' })).toBeTruthy();
+      expect(marker()).toEqual(expect.any(Number));
+      // A picker opened again closes alone on Back.
+      await userEvent.click(screen.getByText('Open picker'));
+      await back();
+      expect(screen.queryByRole('dialog', { name: 'picker' })).toBeNull();
+      expect(screen.getByRole('dialog', { name: 'sheet' })).toBeTruthy();
+    });
+  });
+
+  it('treats an entry the router rewrote without our marker as closed, and the page never sees the landing', async () => {
+    const navigation = installNavigation();
+    render(<Page />);
+    await userEvent.click(screen.getByText('Open sheet'));
+    const baseKey = 'k0';
+    // Prowlarr: the router's replace for ?indexer= lands after the sheet's push.
+    window.history.replaceState({ __NA: true }, '', '/calendar?indexer=7');
+    await back();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const seen: string[] = [];
+    const listener = () => seen.push(navigation.key());
+    window.addEventListener('popstate', listener);
+    try {
+      await forward();
+      expect(navigation.key()).toBe(baseKey);
+      // Only our step back reached the page, not the landing on the closed entry.
+      expect(seen).toEqual([baseKey]);
+    } finally {
+      window.removeEventListener('popstate', listener);
+    }
+  });
+
+  it('steps on with Forward past a closed entry when there is more ahead', async () => {
+    installNavigation();
+    render(<Page />);
+    await userEvent.click(screen.getByText('Open sheet'));
+    await userEvent.click(screen.getByText('Close sheet'));
+    await settled();
+    // A closed overlay's entry with a page after it.
+    window.history.pushState({ ...ROUTER_STATE, __helprrOverlay: 999 }, '');
+    window.history.pushState(ROUTER_STATE, '', '/next');
+    await act(async () => {
+      window.history.go(-2);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(window.location.pathname).toBe('/calendar');
+    await forward();
+    expect(window.location.pathname).toBe('/next');
+  });
+
+  it('leaves an older visit\'s URL alone when Back jumps further than the entry below', async () => {
+    installNavigation();
+    window.history.pushState(ROUTER_STATE, '', '/calendar?view=old');
+    window.history.pushState(ROUTER_STATE, '', '/calendar');
+    const seen: boolean[] = [];
+    const listener = (event: PopStateEvent) => seen.push(isOverlayPopState(event));
+    window.addEventListener('popstate', listener);
+    try {
+      render(<Page />);
+      await userEvent.click(screen.getByText('Open sheet'));
+      window.history.replaceState({ ...window.history.state }, '', '/calendar?view=new');
+      await act(async () => {
+        window.history.go(-2);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(window.location.search).toBe('?view=old');
+      expect(seen).toEqual([false]);
+    } finally {
+      window.removeEventListener('popstate', listener);
+    }
   });
 });

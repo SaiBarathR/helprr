@@ -64,8 +64,15 @@ let closing: Entry[] = [];
 let waiting: Array<() => void> = [];
 let flushQueued = false;
 let listening = false;
-/** Which way the latest Back or Forward went, where the Navigation API says. */
+let navigateListener: { api: NavigationLike; listener: (event: Event) => void } | null = null;
+/** Which way the user's latest Back or Forward went, and the entry it left,
+ *  where the Navigation API says. */
 let lastTraverse = -1;
+let lastFromKey: string | null = null;
+/** Navigation API keys of entries whose overlay has closed. The router's own
+ *  replaceState can drop our marker from an entry (Prowlarr's ?indexer=
+ *  landing after the sheet's push), so the marker alone can't tell. */
+const closedKeys = new Set<string>();
 const ownPopStates = new WeakMap<Event, boolean>();
 
 function navigationApi(): NavigationLike | undefined {
@@ -101,6 +108,45 @@ function onTopEntry(): boolean {
   return window.history.length === top.length && window.location.pathname === top.pathname;
 }
 
+/** Whether the current entry belongs to an overlay that has closed. */
+function onClosedEntry(): boolean {
+  const marker = stateMarker();
+  if (marker !== undefined && !entries.some((entry) => entry.id === marker)) return true;
+  const key = navigationApi()?.currentEntry?.key;
+  return Boolean(key && closedKeys.has(key));
+}
+
+/** Takes entries off our list, remembering them as closed. */
+function takeEntries(from: number): Entry[] {
+  const taken = entries.splice(from);
+  for (const entry of taken) if (entry.key) closedKeys.add(entry.key);
+  return taken;
+}
+
+/**
+ * Whether a Back that landed below our top entry landed directly below the
+ * lowest overlay it closes, rather than going further back (several entries
+ * at once, to an older visit of the page). Without the Navigation API, a
+ * landing on the same path counts.
+ */
+function landedBelow(at: number): boolean {
+  const lowest = entries[at + 1];
+  const api = navigationApi();
+  const landed = api?.currentEntry?.index;
+  const below = lowest?.key ? api?.entries().find((entry) => entry.key === lowest.key)?.index : undefined;
+  if (landed !== undefined && below !== undefined) return landed === below - 1;
+  return Boolean(lowest) && window.location.pathname === lowest.pathname;
+}
+
+/** Whether a closed entry was reached going forward: the Navigation API
+ *  says, else an entry pushed after every open overlay's is above them. */
+function cameForward(): boolean {
+  if (navigationApi()) return lastTraverse > 0;
+  const marker = stateMarker();
+  const top = entries[entries.length - 1];
+  return typeof marker === 'number' && Boolean(top) && marker > top.id;
+}
+
 /**
  * Whether a popstate only closed overlays or took their entries off, rather
  * than going to another view. Worked out from the state before this module
@@ -109,10 +155,17 @@ function onTopEntry(): boolean {
 export function isOverlayPopState(event: Event): boolean {
   let own = ownPopStates.get(event);
   if (own === undefined) {
-    const top = entries[entries.length - 1];
-    own = traversing
-      ? stepping === 0
-      : Boolean(top) && stateMarker() !== top.id && window.location.pathname === top.pathname;
+    if (traversing) {
+      // A step past a closed entry is the user's own Back or Forward, unless
+      // it brought them back to the entry they were on.
+      const key = navigationApi()?.currentEntry?.key;
+      own = stepping === 0 || Boolean(key && key === lastFromKey);
+    } else if (onClosedEntry()) {
+      own = true;
+    } else {
+      const at = entries.findIndex((entry) => entry.id === stateMarker());
+      own = at < entries.length - 1 && landedBelow(at);
+    }
     ownPopStates.set(event, own);
   }
   return own;
@@ -153,8 +206,10 @@ function keepOnEntry(href: string, state: Record<string, unknown>) {
   const landed = pageState(currentState());
   if (href === window.location.href && JSON.stringify(landed) === JSON.stringify(state)) return;
   // Through the router's patched replaceState (no __NA), so it takes the URL
-  // too and copies its own keys over from the entry.
-  window.history.replaceState({ ...state }, '', href);
+  // too and copies its own keys over from the entry. Our marker stays: the
+  // entry may be a lower overlay's, still open.
+  const marker = stateMarker();
+  window.history.replaceState(marker === undefined ? { ...state } : { ...state, [MARKER]: marker }, '', href);
 }
 
 /** Goes back `count` of our entries, closing `close` when it lands. */
@@ -181,40 +236,48 @@ function stepPastClosed(direction: 1 | -1) {
   window.history.go(stepping);
 }
 
-function onClosedEntry(): boolean {
-  const marker = stateMarker();
-  return marker !== undefined && !entries.some((entry) => entry.id === marker);
+/** Leaves a closed entry at once: the router and the page never see the
+ *  landing, so a URL-driven sheet (Prowlarr's ?indexer=) doesn't reopen. */
+function leaveClosedEntry(event: Event, direction: 1 | -1) {
+  event.stopImmediatePropagation();
+  stepPastClosed(direction);
 }
 
 function onPopState(event: PopStateEvent) {
   isOverlayPopState(event);
   if (traversing) {
     if (stepping) {
-      if (onClosedEntry()) return stepPastClosed(stepping);
+      if (onClosedEntry()) return leaveClosedEntry(event, stepping);
     } else if (keep) {
       keepOnEntry(keep.href, keep.state);
+      keep = null;
     }
     settleSoon();
     return;
   }
-  const marker = stateMarker();
-  const at = entries.findIndex((entry) => entry.id === marker);
+  const closedEntry = onClosedEntry();
+  // Forward onto the entry of an overlay Back closed (the picker, with the
+  // Filters sheet under it still open): step on, closing nothing.
+  if (closedEntry && cameForward()) return leaveClosedEntry(event, 1);
+  const at = entries.findIndex((entry) => entry.id === stateMarker());
   if (at < entries.length - 1) {
     // Back from the user: close every overlay above the entry it landed on,
     // the top one for a single Back.
     const top = entries[entries.length - 1];
     // The URL the page had under the overlay, which it may have rewritten.
+    // Only for a Back to the entry right below it: one further back is an
+    // older visit, with its own URL.
     const left = top.key ? navigationApi()?.entries().find((entry) => entry.key === top.key)?.url : null;
-    if (left && new URL(left).pathname === window.location.pathname) {
+    if (!closedEntry && left && new URL(left).pathname === window.location.pathname && landedBelow(at)) {
       keepOnEntry(left, pageState(currentState()));
     }
-    closing.push(...entries.splice(at + 1).reverse());
+    closing.push(...takeEntries(at + 1).reverse());
     traversing = true;
-    if (marker !== undefined && at === -1) return stepPastClosed(-1);
+    if (closedEntry) return leaveClosedEntry(event, -1);
     settleSoon();
     return;
   }
-  if (onClosedEntry()) stepPastClosed(lastTraverse > 0 ? 1 : -1);
+  if (closedEntry) leaveClosedEntry(event, -1);
 }
 
 /** Takes the entries of overlays that have closed off the top of history. */
@@ -230,7 +293,7 @@ function queueFlush() {
       while (closed < entries.length && !entries[entries.length - 1 - closed].onBack) closed++;
       if (!closed) return;
       const current = onTopEntry();
-      entries.splice(entries.length - closed);
+      takeEntries(entries.length - closed);
       // Something else pushed over them: leave history alone rather than
       // send the user back from where they went.
       if (current) goBack(closed);
@@ -241,17 +304,27 @@ function queueFlush() {
 function listen() {
   if (listening) return;
   listening = true;
-  // Capture: at the window, before the router's and the page's listeners,
-  // so the URL is back in place before they read it.
-  window.addEventListener('popstate', onPopState, true);
+  // Listeners run in the order they were added, capture or not, and this
+  // one has to see a Back before the router's (added in its first effect) and
+  // the page's: to leave a closed entry before they render it, and to put a
+  // kept URL back before they read it. So it is added when this module
+  // loads, which the root layout makes happen during the first render (see
+  // OverlayHistoryListener).
+  window.addEventListener('popstate', onPopState);
   const api = navigationApi();
-  api?.addEventListener('navigate', (event) => {
+  if (!api) return;
+  const listener = (event: Event) => {
     const { navigationType, destination } = event as Event & { navigationType?: string; destination?: { index: number } };
-    if (navigationType === 'traverse' && destination && api.currentEntry) {
-      lastTraverse = destination.index - api.currentEntry.index;
-    }
-  });
+    // The user's own Back or Forward, not one of ours.
+    if (traversing || navigationType !== 'traverse' || !destination || !api.currentEntry) return;
+    lastTraverse = destination.index - api.currentEntry.index;
+    lastFromKey = api.currentEntry.key;
+  };
+  api.addEventListener('navigate', listener);
+  navigateListener = { api, listener };
 }
+
+if (typeof window !== 'undefined') listen();
 
 function openEntry(onBack: () => void): Entry {
   const entry: Entry = { id: nextId++, onBack, key: null, length: 0, pathname: '' };
@@ -267,6 +340,7 @@ function openEntry(onBack: () => void): Entry {
       window.history.pushState(state, '');
     }
     entry.key = navigationApi()?.currentEntry?.key ?? null;
+    if (entry.key) closedKeys.delete(entry.key);
     entry.length = window.history.length;
     entry.pathname = window.location.pathname;
     entries.push(entry);
@@ -289,7 +363,7 @@ export function afterOverlayHistory(navigate: () => void) {
   if (!traversing && entries.length === 0) return navigate();
   whenSettled(() => {
     if (!onTopEntry()) return navigate();
-    const taken = entries.splice(0).reverse();
+    const taken = takeEntries(0).reverse();
     goBack(taken.length, taken);
     waiting.unshift(navigate);
   });
@@ -334,6 +408,12 @@ export function useBackClosableOpen(
 }
 
 export function resetOverlayHistoryForTests() {
+  if (listening) window.removeEventListener('popstate', onPopState);
+  navigateListener?.api.removeEventListener('navigate', navigateListener.listener);
+  navigateListener = null;
+  listening = false;
+  closedKeys.clear();
+  lastFromKey = null;
   entries.length = 0;
   waiting = [];
   closing = [];
