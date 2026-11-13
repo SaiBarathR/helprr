@@ -75,6 +75,17 @@ describe('ResponsiveCombobox', () => {
     expect(selected.map((o) => o.textContent)).toEqual(['America/New_York']);
   });
 
+  it('starts each search at the top of the list, not on the old highlight', async () => {
+    viewport.phone = true;
+    render(<ZonePicker initial="America/New_York" />);
+    await userEvent.click(screen.getByRole('button', { name: 'America/New_York' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Your time zone' });
+    const list = sheet.querySelector<HTMLElement>('[data-slot="command-list"]')!;
+    list.scrollTop = 480;
+    await userEvent.type(within(sheet).getByPlaceholderText('Search time zones'), 'L');
+    expect(list.scrollTop).toBe(0);
+  });
+
   it('is a popover from md up', async () => {
     viewport.phone = false;
     render(<ZonePicker />);
