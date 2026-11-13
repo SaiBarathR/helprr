@@ -29,7 +29,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
         left: "calc(env(safe-area-inset-left, 0px) + 24px)",
         right: "calc(env(safe-area-inset-right, 0px) + 24px)",
       }}
-      mobileOffset={{ top: "calc(env(safe-area-inset-top, 0px) + 8px)" }}
+      // Below the page's sticky toolbar (pinned at --header-height: the status
+      // bar, plus the top nav when it is up), not over its Back and ⋯ buttons.
+      mobileOffset={{ top: "calc(var(--header-height, env(safe-area-inset-top, 0px)) + 3.75rem)" }}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,

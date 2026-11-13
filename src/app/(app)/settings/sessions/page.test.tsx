@@ -242,6 +242,18 @@ describe('Settings → Sessions list', () => {
     expect([...container.querySelectorAll('button')].some((b) => b.textContent?.includes('Show more'))).toBe(false);
   });
 
+  it('shows a new sign-in and the new count when the list refreshes', async () => {
+    await renderPage();
+    expect(sectionTitles()).toEqual(['Your sessions · 2']);
+
+    mocks.groups = [{ ...OWN_GROUP, total: 3, sessions: [...OWN_GROUP.sessions, session('new', 'New iPad')] }];
+    await act(async () => { await client.refetchQueries({ queryKey: ['sessions'] }); });
+    await flush();
+
+    expect(sectionTitles()).toEqual(['Your sessions · 3']);
+    expect(rowNames()).toEqual(['This Mac · This device', 'Phone', 'New iPad']);
+  });
+
   it('hides revoke-others when this is the only own session', async () => {
     mocks.groups = [{ ...OWN_GROUP, total: 1, sessions: [session('current', 'This Mac', true)] }];
     await renderPage();

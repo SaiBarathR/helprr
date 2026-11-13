@@ -476,7 +476,7 @@ export function LibraryCleanupTab({ onDirtyChange }: { onDirtyChange?: (dirty: b
       <Dialog open={deletePreview !== null} onOpenChange={(open) => { if (!open && !deleting) setDeletePreview(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete {deletePreview?.readyCount ?? 0} title{deletePreview?.readyCount === 1 ? '' : 's'} with their files?</DialogTitle>
+            <DialogTitle>Delete {deletePreview?.readyCount ?? 0} {deletePreview?.readyCount === 1 ? 'title with its' : 'titles with their'} files?</DialogTitle>
             <DialogDescription>
               Every title was checked again just now. Protected ones are left alone. This preview expires in five minutes.
             </DialogDescription>

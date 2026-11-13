@@ -18,6 +18,7 @@ describe('poster overlays', () => {
   // Only in-app links: one that opens a new tab keeps Copy link and Share.
   it('turn off the iOS link callout on in-app links around an image', () => {
     expect(decls('a:not([target="_blank"]):has(img)')['-webkit-touch-callout']).toBe('none');
+    expect(decls('a:not([target="_blank"]):has(img)')['user-select']).toBe('none');
     expect(decls('a:has(img)')['-webkit-touch-callout']).toBeUndefined();
   });
 

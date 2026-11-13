@@ -244,6 +244,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         }
       }
 
+      // Which Jellyfin user the connection reads as is everyone's view, so it is
+      // an admin's choice too, like the address, the key and the external URL.
+      if (auth.user.role !== 'admin' && existing && selectedUserId !== existing.username) {
+        return NextResponse.json(
+          { error: "Only an admin can change Jellyfin's default user." },
+          { status: 403 }
+        );
+      }
+
       username = selectedUserId;
     }
 

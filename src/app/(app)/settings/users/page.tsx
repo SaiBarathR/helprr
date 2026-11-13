@@ -911,7 +911,8 @@ function EditUserDialog({
         <UserApiTokensSection user={user} />
 
         <div className="mt-4 border-t border-border pt-4 space-y-3">
-          <div className="flex items-center justify-between">
+          {/* Wraps the select under the label on a 320px phone instead of past the dialog's edge. */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <Label>Permissions</Label>
             <Select
               value={pendingAdminTemplate ? 'admin' : template}

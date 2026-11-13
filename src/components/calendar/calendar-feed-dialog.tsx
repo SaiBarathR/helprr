@@ -199,7 +199,20 @@ export function CalendarFeedDialog({
         copied link instead.
       </p>
       <div className="flex justify-end">
-        <Button type="button" variant="outline" onClick={() => setMade(null)}>Done</Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            // Done closes the sheet, as on every other phone sheet; reopening it
+            // shows the links again (refetched: the calendar app may have fetched
+            // the new one meanwhile, so it reads "last used").
+            setMade(null);
+            void queryClient.invalidateQueries({ queryKey: LINKS_KEY });
+            onOpenChange(false);
+          }}
+        >
+          Done
+        </Button>
       </div>
     </div>
   ) : status.isPending ? (
