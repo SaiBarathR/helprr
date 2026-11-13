@@ -167,6 +167,28 @@ describe('a film already out', () => {
     expect(body.candidates).toMatchObject([{ releaseKind: 'physical' }]);
   });
 
+  it('offers the next dated release in the preview when the digital date is not known yet', async () => {
+    const preview = async (extra: Record<string, unknown> = {}) =>
+      (await post(previewAlert, '/api/scheduled-alerts/preview', { draft: movieDraft, scheduleMode: 'release_relative', ...extra })).json();
+
+    radarr.getMovieById.mockResolvedValue(movie({ inCinemas: radarrDate(20) }));
+    let body = await preview();
+    expect(body.defaults).toMatchObject({ scheduleMode: 'release_relative', releaseTypes: ['cinema'] });
+    expect(body.candidates).toMatchObject([{ releaseKind: 'cinema' }]);
+
+    // Asked for digital: kept, even with nothing dated.
+    body = await preview({ releaseTypes: ['digital'] });
+    expect(body.defaults.releaseTypes).toEqual(['digital']);
+    expect(body.candidates).toEqual([]);
+
+    // In cinemas already, nothing else dated: digital stays, to catch its date later.
+    radarr.getMovieById.mockResolvedValue(movie({ inCinemas: radarrDate(-5) }));
+    body = await preview();
+    expect(body).not.toHaveProperty('released');
+    expect(body.defaults).toMatchObject({ scheduleMode: 'release_relative', releaseTypes: ['digital'] });
+    expect(body.candidates).toEqual([]);
+  });
+
   it('is out from 9:00 on its release day in the person\'s time zone, for the preview and the save alike', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     radarr.getMovieById.mockResolvedValue(movie({ digitalRelease: '2026-11-13T00:00:00Z' }));

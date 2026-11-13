@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ canManage: true, search: new URLSearchParams() }));
+const mocks = vi.hoisted(() => ({ canManage: true, canMusic: true, search: new URLSearchParams() }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => mocks.search, usePathname: () => '/activity/blocklist' }));
 vi.mock('@/components/layout/navigation-provider', () => ({
   useAppRouter: () => ({ push: vi.fn(), back: vi.fn() }),
@@ -12,7 +12,7 @@ vi.mock('@/components/layout/navigation-provider', () => ({
 }));
 vi.mock('@/components/permission-provider', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/components/permission-provider')>()),
-  useCan: (cap: string) => (cap === 'activity.manage' ? mocks.canManage : true),
+  useCan: (cap: string) => (cap === 'activity.manage' ? mocks.canManage : cap === 'music.view' ? mocks.canMusic : true),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -28,6 +28,7 @@ let deletes: Array<Record<string, unknown>>;
 
 beforeEach(() => {
   mocks.canManage = true;
+  mocks.canMusic = true;
   deletes = [];
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === 'DELETE' && url === '/api/activity/blocklist') {
@@ -102,5 +103,24 @@ describe('Blocklist page', () => {
     expect(await screen.findByText('Download failed')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Remove from blocklist' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Select entries' })).toBeNull();
+  });
+
+  it('offers Lidarr instances only with music.view, which the server checks too', async () => {
+    const instances = [
+      { id: 'son-1', label: 'main', type: 'SONARR' },
+      { id: 'rad-1', label: 'main', type: 'RADARR' },
+      { id: 'lid-1', label: 'main', type: 'LIDARR' },
+    ];
+    vi.mocked(fetch).mockImplementation(async (url) =>
+      String(url) === '/api/instances' ? Response.json(instances) : Response.json({ records: ENTRIES, hasMore: false }));
+
+    for (const canMusic of [true, false]) {
+      mocks.canMusic = canMusic;
+      const { unmount } = renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Instance: All instances' }));
+      expect(await screen.findByText('main (Radarr)')).toBeTruthy();
+      expect(screen.queryByText('main (Lidarr)') != null).toBe(canMusic);
+      unmount();
+    }
   });
 });

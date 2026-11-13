@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScheduledAlertSummary } from '@/components/scheduled-alerts/scheduled-alert-summary';
 import type { ScheduledAlertDraft, ReleaseKind, ReleasedKind } from '@/lib/scheduled-alerts/types';
-import { RELEASE_KIND_LABELS, defaultScopeForDraft, releasedNote } from '@/lib/scheduled-alerts/constants';
+import { DEFAULT_HORIZON_DAYS, RELEASE_KIND_LABELS, defaultScopeForDraft, releasedNote } from '@/lib/scheduled-alerts/constants';
 import { cn } from '@/lib/utils';
 import { useCan } from '@/components/permission-provider';
 
@@ -80,6 +80,9 @@ export function ScheduledAlertDialog({
   // The server's word (from the preview) that the album, film or episode is
   // already out: a release reminder on it would never go off.
   const [released, setReleased] = useState<ReleasedKind | null>(null);
+  // The release types the preview's count is for: a hint about it only holds
+  // while they are still the ones picked.
+  const [previewTypes, setPreviewTypes] = useState<ReleaseKind[] | null>(null);
   const releaseOptions =
     draft?.mediaType === 'movie'
       ? MOVIE_RELEASE_OPTIONS
@@ -114,6 +117,7 @@ export function ScheduledAlertDialog({
       setTitleValue(draft.title);
       setPreviewCount(0);
       setReleased(null);
+      setPreviewTypes(null);
       if (initialScheduleMode) {
         setScheduleMode(initialScheduleMode);
         setReleaseTypes(initialReleaseTypes ?? []);
@@ -142,6 +146,7 @@ export function ScheduledAlertDialog({
         setAbsoluteValue(toDatetimeLocalValue(data.defaults.absoluteNotifyAt));
         setPreviewCount(data.candidates?.length ?? 0);
         setReleased(data.released ?? null);
+        setPreviewTypes(data.defaults.releaseTypes);
       })
       .catch(() => {});
 
@@ -162,7 +167,7 @@ export function ScheduledAlertDialog({
       return res.json();
     },
     onSuccess: () => {
-      toast.success('Alert scheduled');
+      toast.success(alertId ? 'Alert updated' : 'Alert scheduled');
       onOpenChange(false);
       onSaved?.();
     },
@@ -215,6 +220,10 @@ export function ScheduledAlertDialog({
   }
 
   const saving = saveMutation.isPending;
+  // Saved now, it would wait for a date: say so rather than look scheduled.
+  const noDateYet =
+    previewTypes != null && previewCount === 0 && !released && draft?.mediaType !== 'music'
+    && previewTypes.length === releaseTypes.length && previewTypes.every((k) => releaseTypes.includes(k));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -304,6 +313,12 @@ export function ScheduledAlertDialog({
                 {previewCount > 0 && (
                   <p className="text-[11px] text-muted-foreground">
                     {previewCount} upcoming release{previewCount === 1 ? '' : 's'} found
+                  </p>
+                )}
+                {noDateYet && (
+                  <p className="text-[11px] text-muted-foreground">
+                    No {releaseTypes.map((k) => RELEASE_KIND_LABELS[k]).join(' or ')} date known for the next {DEFAULT_HORIZON_DAYS} days.
+                    The alert stays on and reminds you once there is one.
                   </p>
                 )}
                 {draft.mediaType === 'music' && draft.albumId == null && (

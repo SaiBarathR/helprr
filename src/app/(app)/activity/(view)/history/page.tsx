@@ -17,6 +17,7 @@ import {
 import { Filter, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { InstanceFilter, type InstanceOption, withAppName } from '@/components/instance-filter';
+import { useCan } from '@/components/permission-provider';
 import { ActiveFilterBar, FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { HistoryEventDrawer, HistoryEventRow, type HistoryRecord } from '../_components/history-event';
 
@@ -108,6 +109,8 @@ export default function HistoryPage() {
 
   // Load arr instances for the per-instance filter, independent of the (possibly
   // filtered) history so the options never collapse to the current selection.
+  // The server leaves Lidarr out without music.view, so its instances aren't offered.
+  const canViewMusic = useCan('music.view');
   const { data: instanceOptions = [] } = useQuery({
     // Distinct from queryKeys.instances() (['instances','all'] → /api/services); this
     // is the /api/instances connection list for the filter. Shares with the activity
@@ -115,7 +118,11 @@ export default function HistoryPage() {
     queryKey: queryKeys.arrInstances(),
     queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
     select: (conns): InstanceOption[] =>
-      Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: withAppName(c.label, c.type) })) : [],
+      Array.isArray(conns)
+        ? conns
+          .filter((c) => c.type !== 'LIDARR' || canViewMusic)
+          .map((c) => ({ id: c.id, label: withAppName(c.label, c.type) }))
+        : [],
     staleTime: 5 * 60_000,
   });
 

@@ -138,12 +138,18 @@ export default function BlocklistPage() {
   const partial = data?.pages.some((page) => page.partial) ?? false;
   const selectedEntries = entries.filter((entry) => selectedKeys.has(recordKey(entry)));
 
-  // Same instance list (and query key) as the History page's filter.
+  // Same instance list (and query key) as the History page's filter; Lidarr only
+  // with music.view, as the server leaves it out otherwise.
+  const canViewMusic = useCan('music.view');
   const { data: instanceOptions = [] } = useQuery({
     queryKey: queryKeys.arrInstances(),
     queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
     select: (conns): InstanceOption[] =>
-      Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: withAppName(c.label, c.type) })) : [],
+      Array.isArray(conns)
+        ? conns
+          .filter((c) => c.type !== 'LIDARR' || canViewMusic)
+          .map((c) => ({ id: c.id, label: withAppName(c.label, c.type) }))
+        : [],
     staleTime: 5 * 60_000,
   });
 

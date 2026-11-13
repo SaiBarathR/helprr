@@ -279,6 +279,21 @@ export async function previewScheduledAlert(
       releaseTypes = ['physical'];
     }
   }
+  // A film months ahead often has no digital date yet: its default would save
+  // a reminder with nothing to go off on, so offer the next release that has one.
+  if (
+    draft.mediaType === 'movie' && !opts.releaseTypes?.length
+    && resolved?.resolved && !resolved.released && resolved.candidates.length === 0
+  ) {
+    for (const kind of ['cinema', 'physical'] as const) {
+      const next = await resolveFor([kind]);
+      if (next.candidates.length > 0 && !next.released) {
+        resolved = next;
+        releaseTypes = [kind];
+        break;
+      }
+    }
+  }
   // The same verdict the save gives: an album, film or episode already out
   // opens on a custom date from tomorrow, as its release reminder could never
   // go off.
