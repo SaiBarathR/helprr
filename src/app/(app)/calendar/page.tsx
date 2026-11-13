@@ -80,6 +80,7 @@ import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from 
 import { PageTitle } from '@/components/layout/page-title';
 import { formatDate, formatTime } from '@/lib/date-format';
 import { CalendarFeedDialog } from '@/components/calendar/calendar-feed-dialog';
+import { useCan } from '@/components/permission-provider';
 
 /** The app behind each event type, to tell same-named instances apart. */
 const EVENT_APP = { episode: 'sonarr', movie: 'radarr', album: 'lidarr' } as const;
@@ -259,12 +260,14 @@ function CompactFilters({
   setShowImages: (v: boolean) => void;
   onSubscribe: () => void;
 }) {
-  const typeOptions = [
+  // Albums are music: the server leaves them out without music.view.
+  const canViewMusic = useCan('music.view');
+  const typeOptions = ([
     { value: 'all', label: 'All types', icon: null },
     { value: 'episode', label: 'Episodes', icon: Tv },
     { value: 'movie', label: 'Movies', icon: Film },
     { value: 'album', label: 'Music', icon: Disc3 },
-  ] as const;
+  ] as const).filter((option) => option.value !== 'album' || canViewMusic);
   const currentType = typeOptions.find((o) => o.value === typeFilter) ?? typeOptions[0];
   const CurrentTypeIcon = currentType.icon;
   // The ⋯ menu hides these toggles' state below xl, so it carries a dot when they hide events.
@@ -354,18 +357,20 @@ function CompactFilters({
         >
           <Film className="h-3.5 w-3.5" />
         </button>
-        <button
-          onClick={() => setTypeFilter('album')}
-          className={`relative touch-target p-1.5 rounded-md transition-colors ${typeFilter === 'album'
-            ? 'bg-emerald-500/15 text-emerald-400'
-            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-            }`}
-          title="Music"
-          aria-label="Show music only"
-          aria-pressed={typeFilter === 'album'}
-        >
-          <Disc3 className="h-3.5 w-3.5" />
-        </button>
+        {canViewMusic && (
+          <button
+            onClick={() => setTypeFilter('album')}
+            className={`relative touch-target p-1.5 rounded-md transition-colors ${typeFilter === 'album'
+              ? 'bg-emerald-500/15 text-emerald-400'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              }`}
+            title="Music"
+            aria-label="Show music only"
+            aria-pressed={typeFilter === 'album'}
+          >
+            <Disc3 className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       <div className="w-px h-4 bg-border/50 mx-0.5 max-xl:hidden" />
@@ -1346,7 +1351,10 @@ function ViewTabs({
 export default function CalendarPage() {
   const calendarView = useUIStore((s) => s.calendarView);
   const setCalendarView = useUIStore((s) => s.setCalendarView);
-  const typeFilter = useUIStore((s) => s.calendarTypeFilter);
+  const canViewMusic = useCan('music.view');
+  // A Music pick saved before music access was taken away would show nothing.
+  const savedTypeFilter = useUIStore((s) => s.calendarTypeFilter);
+  const typeFilter = savedTypeFilter === 'album' && !canViewMusic ? 'all' : savedTypeFilter;
   const setTypeFilter = useUIStore((s) => s.setCalendarTypeFilter);
   const monitoredOnly = useUIStore((s) => s.calendarMonitoredOnly);
   const setMonitoredOnly = useUIStore((s) => s.setCalendarMonitoredOnly);
@@ -1475,9 +1483,9 @@ export default function CalendarPage() {
   });
   const instances = useMemo<InstanceOption[]>(
     () => (Array.isArray(arrConnections) ? arrConnections : [])
-      .filter((c) => c.type === 'SONARR' || c.type === 'RADARR' || c.type === 'LIDARR')
+      .filter((c) => c.type === 'SONARR' || c.type === 'RADARR' || (c.type === 'LIDARR' && canViewMusic))
       .map((c) => ({ id: c.id, label: withAppName(c.label, c.type) })),
-    [arrConnections],
+    [arrConnections, canViewMusic],
   );
 
   // Drop a stale instance selection once the list has loaded without it.

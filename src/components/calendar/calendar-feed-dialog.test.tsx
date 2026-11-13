@@ -7,9 +7,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CalendarFeedDialog, feedUrls } from './calendar-feed-dialog';
 
-const mocks = vi.hoisted(() => ({ phone: false }));
+const mocks = vi.hoisted(() => ({ phone: false, music: true }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/hooks/use-is-mobile', () => ({ useIsMobile: () => mocks.phone }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => cap !== 'music.view' || mocks.music }));
 // Each Select as a native <select>, so a test can pick an option.
 vi.mock('@/components/ui/select', () => ({
   Select: ({ value, onValueChange, children }: { value: string; onValueChange: (v: string) => void; children: ReactNode }) => (
@@ -31,6 +32,7 @@ const LINK = {
 
 afterEach(() => {
   mocks.phone = false;
+  mocks.music = true;
   vi.unstubAllGlobals();
 });
 
@@ -146,6 +148,13 @@ describe('CalendarFeedDialog', () => {
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false);
     await userEvent.click(screen.getByRole('button', { name: 'Turn off' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/calendar/feed-token/link-2', { method: 'DELETE' }));
+  });
+
+  it('offers no Music choice without music access, which the feed leaves out', async () => {
+    mocks.music = false;
+    mount({ links: [] });
+    const [shows] = (await screen.findAllByRole('combobox')) as HTMLSelectElement[];
+    expect([...shows.options].map((o) => o.textContent)).toEqual(['Episodes and movies', 'Episodes', 'Movies']);
   });
 
   it('offers no new link once the most are made', async () => {

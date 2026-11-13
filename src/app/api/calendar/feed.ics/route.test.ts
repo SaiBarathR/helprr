@@ -23,7 +23,10 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 vi.mock('@/lib/redis', () => ({ getRedisClient: mocks.getRedisClient }));
-vi.mock('@/lib/calendar-events', () => ({ fetchServiceCalendarEvents: mocks.fetchEvents }));
+vi.mock('@/lib/calendar-events', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/calendar-events')>()),
+  fetchServiceCalendarEvents: mocks.fetchEvents,
+}));
 vi.mock('@/lib/cache/json-cache', () => ({ getCachedJson: mocks.getCachedJson, setCachedJson: mocks.setCachedJson }));
 vi.mock('@/lib/app-settings', () => ({ getOrCreateAppSettings: async () => ({ timeZone: mocks.timeZone }) }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (fn: unknown) => fn }));
@@ -237,6 +240,15 @@ describe('GET /api/calendar/feed.ics', () => {
       expect(mocks.fetchEvents).not.toHaveBeenCalled();
     },
   );
+
+  it('leaves album releases out for an owner without music access', async () => {
+    mocks.findUnique.mockResolvedValue(feedRow({ permissions: { 'music.view': false } }));
+    const text = await (await get(`?token=${TOKEN}`)).text();
+    expect(uids(text)).toHaveLength(3);
+    expect(text).not.toContain('lidarr-music-4');
+    // The shared cache still holds every event, for owners who may see music.
+    expect(mocks.setCachedJson).toHaveBeenCalledWith('calendar', expect.any(String), EVENTS, expect.any(Number));
+  });
 
   it("applies the link's own filters, and a URL's filters narrow them further", async () => {
     mocks.findUnique.mockResolvedValue({ ...feedRow(), name: 'HD', instanceId: 'hd' });
