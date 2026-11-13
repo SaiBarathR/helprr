@@ -120,6 +120,18 @@ describe('a member with settings.instances', () => {
     expectNothingSaved();
   });
 
+  it('cannot change Jellyfin custom headers', async () => {
+    vi.stubEnv('HELPRR_CUSTOM_HEADERS', 'true');
+    try {
+      const res = await save({ url: OLD_URL, apiKey: maskApiKey(STORED_KEY), username: 'jf-admin', customHeaders: { 'X-Proxy-Auth': 'mine' } });
+      expect(res.status).toBe(403);
+      expect((await res.json()).error).toMatch(/Only an admin/);
+      expectNothingSaved();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('can still re-save it with the same address, key (the masked key) and Jellyfin user', async () => {
     const res = await save({ url: `${OLD_URL}/`, apiKey: maskApiKey(STORED_KEY), username: 'jf-admin' });
     expect(res.status).toBe(200);

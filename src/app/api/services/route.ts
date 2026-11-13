@@ -58,6 +58,13 @@ function getUpstream4xxMessage(error: unknown): string {
   return 'Failed to save service connection';
 }
 
+
+/** Two header maps with the same names (any case) and values. */
+function sameHeaders(a: Record<string, string>, b: Record<string, string>): boolean {
+  const norm = (h: Record<string, string>) =>
+    JSON.stringify(Object.entries(h).map(([k, v]) => [k.toLowerCase(), v]).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)));
+  return norm(a) === norm(b);
+}
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('settings.instances');
   if (!auth.ok) return auth.response;
@@ -187,6 +194,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     if (jellyfinGated && auth.user.role !== 'admin') {
       return NextResponse.json(
         { error: 'Only an admin can add Jellyfin or change its address or API key.' },
+        { status: 403 }
+      );
+    }
+
+    // Jellyfin's headers reach the server "Sign in with Jellyfin" trusts too:
+    // an admin's, like its address and key. A member's re-save may carry the
+    // stored ones (masks resolve to them), which is not a change.
+    if (type === 'JELLYFIN' && auth.user.role !== 'admin' && customHeaders !== undefined
+      && !sameHeaders(customHeaders, parseCustomHeaders(existing?.customHeaders ?? {}))) {
+      return NextResponse.json(
+        { error: "Only an admin can change Jellyfin's custom headers." },
         { status: 403 }
       );
     }

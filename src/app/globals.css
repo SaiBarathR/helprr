@@ -409,8 +409,14 @@
   --mini-player-clearance: 9.25rem;
 }
 
+/* The offline "saved data" pill sits above the bars; while it shows, the page
+   keeps its last rows clear of it too. */
+:root:has([data-browse-notice]) {
+  --browse-notice-clearance: 3.25rem;
+}
+
 :root:has([data-now-playing-bar]) .app-main {
-  padding-bottom: calc(var(--footer-height) + var(--player-bar-height) + 1rem);
+  padding-bottom: calc(var(--footer-height) + var(--player-bar-height) + 1rem + var(--browse-notice-clearance, 0px));
 }
 
 /* While a FloatingActionBar is up, toasts stack above it instead of covering

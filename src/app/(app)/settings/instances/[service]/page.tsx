@@ -191,8 +191,12 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   const clearFieldError = (key: FieldKey) =>
     setFieldErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
 
+  const meForHeaders = useMe();
+  // Jellyfin's headers reach the server everyone signs in through, so like its
+  // address and key they are an admin's (a member's Jellyfin page has no Save).
   const canEditHeaders =
-    useMe()?.customHeadersEnabled === true && config.supportsCustomHeaders === true;
+    meForHeaders?.customHeadersEnabled === true && config.supportsCustomHeaders === true
+    && !(isJellyfin && meForHeaders?.role !== 'admin');
 
   const servicesQuery = useQuery({
     queryKey: ['services'],
