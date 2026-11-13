@@ -13,7 +13,7 @@ import {
   resolveHref,
 } from '@/lib/scheduled-alerts/helpers';
 import { resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
-import { ALBUM_RELEASED_ERROR } from '@/lib/scheduled-alerts/constants';
+import { releasedError } from '@/lib/scheduled-alerts/constants';
 import { announceNewAlbums, upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
 import { serializeAlert } from '@/lib/scheduled-alerts/serialize';
 import type { ScheduledAlertMetadata } from '@/lib/scheduled-alerts/types';
@@ -175,10 +175,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const resolveResult =
     scheduleMode === 'absolute'
       ? { candidates: [], resolved: true }
-      : await resolveAlertOccurrencesResult(previewAlert);
+      : await resolveAlertOccurrencesResult(previewAlert, undefined, { checkAired: true });
   // Saved, it would be listed as active but never go off.
-  if (resolveResult.albumReleased) {
-    return NextResponse.json({ error: ALBUM_RELEASED_ERROR }, { status: 400 });
+  if (resolveResult.released) {
+    return NextResponse.json({ error: releasedError(resolveResult.released, resolveResult.tooSoon) }, { status: 400 });
   }
 
   const alert = await prisma.$transaction(async (tx) => {

@@ -25,6 +25,7 @@ import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { formatBytes } from '@/lib/format';
 import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
+import { useWatchlistEntry, WatchlistSavedDialog } from '@/components/watchlist/watchlist-saved';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { AnimeTrailerRail } from '@/components/anime/anime-trailer-rail';
 import { MediaDownloadProgress } from '@/components/media/media-download-progress';
@@ -87,6 +88,14 @@ export default function SeriesDetailPage() {
   const sonarrExternalUrl = useExternalUrlResolver()('SONARR', instance);
   const [showAddWatchlist, setShowAddWatchlist] = useState(false);
   const [showScheduleAlert, setShowScheduleAlert] = useState(false);
+  const [showSavedWatchlist, setShowSavedWatchlist] = useState(false);
+  // Saved from here or from Discover: the bookmark shows it, and a tap offers
+  // to take it off rather than save it again.
+  const watchlistEntry = useWatchlistEntry(
+    series
+      ? { mediaType: 'series', tmdbId: series.tmdbId, tvdbId: series.tvdbId, arr: [{ instanceId: instance, id: series.id }] }
+      : null,
+  );
   const [expandedSeasons, setExpandedSeasons] = useRouteViewState<Set<number>>('expandedSeasons', new Set());
 
   const canManageActivity = useCan('activity.manage');
@@ -183,7 +192,7 @@ export default function SeriesDetailPage() {
 
   const open = (dialog: SeriesDialog) => {
     if (dialog === 'remap') anime.setShowAniListRemap(true);
-    else if (dialog === 'watchlist') setShowAddWatchlist(true);
+    else if (dialog === 'watchlist') (watchlistEntry ? setShowSavedWatchlist : setShowAddWatchlist)(true);
     else if (dialog === 'scheduleAlert') setShowScheduleAlert(true);
     else if (dialog === 'renamePreview') setShowRenamePreview(true);
     else if (dialog === 'delete') setShowDelete(true);
@@ -307,6 +316,7 @@ export default function SeriesDetailPage() {
             sonarrExternalUrl={sonarrExternalUrl}
             jellyfinUrl={externalUrls.JELLYFIN}
             seriesWatch={seriesWatch}
+            onWatchlist={watchlistEntry !== null}
             open={open}
             onEdit={() => router.push(`/series/${id}/edit${instance ? `?instance=${instance}` : ''}`)}
             onManageEpisodes={() =>
@@ -337,6 +347,7 @@ export default function SeriesDetailPage() {
               statusColor={statusColor}
               canScheduleAlert={canScheduleAlert}
               contextGroups={seriesContextGroups}
+              onWatchlist={watchlistEntry !== null}
               open={open}
             />
 
@@ -551,6 +562,7 @@ export default function SeriesDetailPage() {
           overview: series.overview ?? null,
         }}
       />
+      <WatchlistSavedDialog open={showSavedWatchlist} onOpenChange={setShowSavedWatchlist} entry={watchlistEntry} />
 
       {canScheduleAlert && (
         <ScheduledAlertDialog

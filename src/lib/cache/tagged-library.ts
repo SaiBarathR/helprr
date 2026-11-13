@@ -32,6 +32,8 @@ export interface TaggedLibraryResult<T> {
    */
   available: boolean;
   complete: boolean;
+  /** The instances that did not answer this live read (none on a cache hit, which only holds complete reads). */
+  failedInstanceIds: string[];
 }
 
 const DEFAULT_TTL_SECONDS = 120;
@@ -108,7 +110,7 @@ function serializedJsonResponse(
 }
 
 export function emptyTaggedLibrary<T>(): TaggedLibraryResult<T> {
-  return { items: [], cached: false, available: false, complete: false };
+  return { items: [], cached: false, available: false, complete: false, failedInstanceIds: [] };
 }
 
 export async function getCachedTaggedLibrary<C, T extends object>(opts: {
@@ -120,7 +122,7 @@ export async function getCachedTaggedLibrary<C, T extends object>(opts: {
 }): Promise<TaggedLibraryResult<T>> {
   const readSeed = await revisionSeed(opts.scope, opts.cacheKeySeed);
   const cached = await measureServer('cache', () => getCachedJson<Tagged<T>[]>(opts.scope, readSeed));
-  if (cached) return { items: cached, cached: true, available: true, complete: true };
+  if (cached) return { items: cached, cached: true, available: true, complete: true, failedInstanceIds: [] };
 
   const startedVersion = currentInvalidationVersion(opts.scope, opts.cacheKeySeed);
   const inflightKey = JSON.stringify([opts.scope, readSeed]);
@@ -148,6 +150,7 @@ async function loadTaggedLibraryLive<C, T extends object>(
   const instances = await opts.getInstances();
   let anyOk = false;
   let anyFailed = false;
+  const failedInstanceIds: string[] = [];
   const lists = await Promise.all(
     instances.map(async ({ connection, client }) => {
       try {
@@ -161,6 +164,7 @@ async function loadTaggedLibraryLive<C, T extends object>(
       } catch {
         // One unreachable/misconfigured instance must not blank the whole library.
         anyFailed = true;
+        failedInstanceIds.push(connection.id);
         return [] as Tagged<T>[];
       }
     })
@@ -177,7 +181,7 @@ async function loadTaggedLibraryLive<C, T extends object>(
   ) {
     await setCachedJson(opts.scope, readSeed, items, opts.ttlSeconds ?? DEFAULT_TTL_SECONDS);
   }
-  return { items, cached: false, available: anyOk, complete: instances.length > 0 && !anyFailed };
+  return { items, cached: false, available: anyOk, complete: instances.length > 0 && !anyFailed, failedInstanceIds };
 }
 
 export async function getCachedTaggedLibraryJsonResponse(
