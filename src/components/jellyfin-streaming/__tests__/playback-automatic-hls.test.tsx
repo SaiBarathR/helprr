@@ -91,11 +91,21 @@ it('lets a quality picked during the test win, without setting the stopped strea
   const [outgoing] = hls.instances;
   const ceilings = serveProbe(150);
 
+  // The manual pick's restart is held at releasing the outgoing encoder, so
+  // the stream on screen (and hls.js on it) is still the stopped one when
+  // the Automatic test resolves: the moment a superseded pick used to set it
+  // loading again.
   let automatic!: Promise<void>;
+  let manual!: Promise<void>;
   await h.act(() => { automatic = h.playback().setMaxBitrate(0); });
-  await h.act(async () => { await h.playback().setMaxBitrate(8_000_000); await automatic; });
-
+  h.holdStopRequests();
+  await h.act(() => { manual = h.playback().setMaxBitrate(8_000_000); });
+  await h.act(async () => { await automatic; });
+  expect(outgoing.destroyed).toBe(false);
   expect(outgoing.stopLoad).toHaveBeenCalledTimes(1);
+  expect(outgoing.startLoad).not.toHaveBeenCalled();
+
+  await h.act(async () => { h.releaseEncodingStop(); h.releaseStopReport(); await manual; });
   expect(hls.instances.every((instance) => instance.startLoad.mock.calls.length === 0)).toBe(true);
   expect(outgoing.destroyed).toBe(true);
   expect(ceilings()).toEqual([8_000_000]);

@@ -24,12 +24,15 @@ Each recipe uses Helprr's default port, 3050; use yours if you changed it. After
 - **`APP_ORIGIN`** set to the HTTPS address, such as `https://helprr.example.com`, when
   you create the first admin through the proxy, or connect an AniList account. It is a
   scheme, host and optional port, with no path.
-- **`TRUST_FORWARDED_PROTO=true`** only behind a proxy that replaces the
-  `X-Forwarded-For` and `X-Forwarded-Proto` headers a visitor sends. Helprr then marks
-  its sign-in cookie secure and limits sign-in attempts by each visitor's real address.
-  Behind a proxy that passes a visitor's headers on, a visitor could choose the address
-  Helprr sees, so leave it off there: Helprr still works, and still limits sign-in
-  attempts per username. Each recipe below says which kind it is.
+- **`TRUST_FORWARDED_PROTO=true`** only behind a proxy that sets `X-Forwarded-Proto`
+  itself and puts the visitor's real address last in `X-Forwarded-For`, either by
+  replacing the header (Tailscale Serve, Caddy) or by adding it after whatever the visitor
+  sent (Cloudflare Tunnel). Helprr reads the address from the end, so an address a visitor
+  sends is never used. It then marks its sign-in cookie secure and limits sign-in attempts
+  by each visitor's real address. Behind a proxy that passes a visitor's headers on
+  unchanged, a visitor could choose the address Helprr sees, so leave it off there: Helprr
+  still works, and still limits sign-in attempts per username. Each recipe below says
+  which kind it is.
 
   It is also how Helprr sees a viewer's address for Jellyfin's Internet streaming
   limits: see [below](#jellyfins-internet-streaming-limits).
@@ -120,13 +123,15 @@ reaches Jellyfin from Helprr's machine, which is on your network, so Jellyfin ne
 applies the limit itself; Helprr applies it, by the viewer's address:
 
 - Helprr can only see that address behind a trusted proxy with
-  `TRUST_FORWARDED_PROTO=true` (Tailscale Serve, Caddy). Otherwise (no proxy, or one that
-  passes a visitor's headers on, such as Cloudflare Tunnel), **every viewer counts as
+  `TRUST_FORWARDED_PROTO=true` (Tailscale Serve, Caddy, Cloudflare Tunnel). Otherwise (no
+  proxy, or one that passes a visitor's headers on unchanged), **every viewer counts as
   remote whenever such a limit is set**, including viewers at home. With no limit set,
-  nothing changes.
+  nothing changes. With it on, a viewer at home who opens Helprr's port directly, not
+  through the proxy, sends no forwarded address and counts as remote too.
 - Local means on Jellyfin's LAN networks (Dashboard → Networking → LAN networks; your
-  private ranges when that list is empty). A Tailscale address (`100.64.0.0/10`) counts
-  as remote unless you add that range there.
+  private ranges when that list is empty, plus IPv6's link-local and unique-local ranges
+  only if IPv6 is enabled there). A Tailscale address (`100.64.0.0/10`, or
+  `fd7a:115c:a1e0::/48` over IPv6) counts as remote unless you add that range there.
 - Make Helprr's port answer the proxy only (see above): anyone who reaches the port
   directly can send a made-up address.
 
@@ -154,9 +159,13 @@ You need a domain whose DNS is on Cloudflare.
      - service: http_status:404
    ```
 
-3. In `.env`, set `APP_ORIGIN=https://helprr.example.com`, and leave
-   `TRUST_FORWARDED_PROTO` off: Cloudflare keeps the `X-Forwarded-For` a visitor sends.
-   Restart Helprr.
+3. In `.env`, set `APP_ORIGIN=https://helprr.example.com` and
+   `TRUST_FORWARDED_PROTO=true`. Cloudflare keeps an `X-Forwarded-For` a visitor sends but
+   adds the visitor's real address after it, and Helprr reads it from the end, so leave
+   `TRUSTED_PROXY_HOPS` at its default of 1. Make Helprr's port answer `cloudflared` only:
+   `HELPRR_PORT=127.0.0.1:3050` with `cloudflared` on the host, or Helprr's Docker network
+   with `cloudflared` in a container (see [above](#what-helprr-needs-from-it)). Otherwise
+   anyone who reaches the port directly can send a made-up address. Restart Helprr.
 
 To keep strangers away from the sign-in page, put
 [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) in
@@ -164,8 +173,11 @@ front of the address, so Cloudflare asks for its own sign-in first. Watching vid
 Helprr streams it through Cloudflare; check that your Cloudflare plan's terms allow that.
 
 *Tested 2026-11-05 with cloudflared 2026.10.7 and a config-file tunnel: Helprr serves
-through it daily, and a sent `X-Forwarded-For` arrives first in the header. The dashboard
-steps follow Cloudflare's documentation of that date and were not part of the test.*
+through it daily, and a sent `X-Forwarded-For` arrives first in the header, followed by
+the visitor's real address. A development install runs behind it with
+`TRUST_FORWARDED_PROTO=true` and the default hop count, and its sessions record visitors'
+real public addresses (checked 2026-11-15). The dashboard steps follow Cloudflare's
+documentation of that date and were not part of the test.*
 
 ## Caddy
 

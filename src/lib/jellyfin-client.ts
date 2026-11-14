@@ -250,7 +250,7 @@ export class JellyfinClient {
   }
 
   /** The network configuration (admin key): which subnets Jellyfin counts as its LAN. */
-  async getNetworkConfiguration(): Promise<{ LocalNetworkSubnets?: string[] }> {
+  async getNetworkConfiguration(): Promise<{ LocalNetworkSubnets?: string[]; EnableIPv4?: boolean; EnableIPv6?: boolean }> {
     return this.get('/System/Configuration/network');
   }
 

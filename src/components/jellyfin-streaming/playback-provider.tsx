@@ -1030,7 +1030,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   // the home-screen app in the background) counts as one too. Chrome also
   // fires `change` whenever its speed and latency estimates move, so only a
   // new connection type or estimate class counts: each drop starts the next
-  // restart of the title at 6 Mbps.
+  // restart of the title at 6 Mbps. The price: desktop Chrome reports no
+  // `type` and its class sits at 4g, so a move from Wi-Fi to a phone hotspot
+  // goes unnoticed there, and so does Wi-Fi to another Wi-Fi on Android. The
+  // fast-link TTL (10 min above 20 Mbps) still bounds how long it is trusted.
   useEffect(() => {
     const changed = () => bandwidthRef.current.networkChanged();
     const connection = (navigator as Navigator & { connection?: EventTarget & { type?: string; effectiveType?: string } }).connection;
