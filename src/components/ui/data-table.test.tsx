@@ -137,4 +137,23 @@ describe('DataTable column resize', () => {
     expect(cols()[1].style.width).toBe('80px');
     expect(JSON.parse(localStorage.getItem('helprr-table:resize-test') ?? '{}').widths).toEqual({ title: 560 });
   });
+
+  it('decides a drag\'s way once: a wobble saves nothing, and a widening drag that comes back past its start never saves the wide width', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { width: this.tagName === 'TH' ? 500 : tableWidth } as DOMRect;
+    });
+    render(<DataTable tableId="resize-test" columns={columns} rows={['Alien']} rowKey={String} />);
+    const grip = screen.getAllByRole('separator')[0];
+    // A 2px touch wobble: inside the dead zone, nothing changes or is saved as a wide minimum.
+    drag(grip, 100, 102);
+    expect(cols()[0].style.minWidth).toBe('200px');
+    // Widening, then back past the start: it goes back to the stored width, not 500 - 20.
+    act(() => {
+      grip.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 100 }));
+      grip.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 110 }));
+      grip.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 80 }));
+      grip.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 80 }));
+    });
+    expect(cols()[0].style.minWidth).toBe('200px');
+  });
 });

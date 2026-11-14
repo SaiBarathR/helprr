@@ -15,7 +15,7 @@ export type CommitReason = 'timer' | 'flush' | 'unmount' | 'pagehide';
  * persistence).
  */
 export function createDebouncedCommit<T>(
-  commit: (value: T, reason: CommitReason) => void,
+  commit: (value: T, reason: CommitReason) => void | false,
   delayMs: number,
 ) {
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -33,7 +33,12 @@ export function createDebouncedCommit<T>(
     const { value } = pending;
     pending = null;
     clear();
-    commit(value, reason);
+    // `false`: not now (an invalid draft as the page hides but may live on):
+    // keep it pending, and run it again once the timer can fire.
+    if (commit(value, reason) === false) {
+      pending = { value };
+      timer = setTimeout(() => run('timer'), delayMs);
+    }
   };
 
   return {
@@ -70,7 +75,7 @@ export function createDebouncedCommit<T>(
  * without retriggering timers.
  */
 export function useDebouncedCommit<T>(
-  commit: (value: T, reason: CommitReason) => void,
+  commit: (value: T, reason: CommitReason) => void | false,
   delayMs: number,
 ) {
   const commitRef = useRef(commit);
@@ -82,9 +87,7 @@ export function useDebouncedCommit<T>(
   // effects only (never during render, per react-hooks/refs).
   const coreRef = useRef<ReturnType<typeof createDebouncedCommit<T>> | null>(null);
   const getCore = useCallback(() => {
-    coreRef.current ??= createDebouncedCommit<T>((value, reason) => {
-      commitRef.current(value, reason);
-    }, delayMs);
+    coreRef.current ??= createDebouncedCommit<T>((value, reason) => commitRef.current(value, reason), delayMs);
     return coreRef.current;
   }, [delayMs]);
 
