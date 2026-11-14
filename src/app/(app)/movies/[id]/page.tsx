@@ -56,7 +56,7 @@ import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { crewRolePriority } from '@/lib/crew-priority';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { invalidateLibraryMembership, invalidateMovies, patchLibraryMonitored } from '@/lib/query-invalidation';
+import { invalidateAfterLibraryRemove, invalidateMovies, patchLibraryMonitored } from '@/lib/query-invalidation';
 import { useQualityProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
 import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
@@ -310,7 +310,7 @@ export default function MovieDetailPage() {
       const res = await arrMutationFetch(instance, `/api/radarr/${movie.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       invalidateMovies(queryClient);
-      invalidateLibraryMembership(queryClient);
+      invalidateAfterLibraryRemove(queryClient, 'radarr', [{ id: movie.id, instanceId: instance }]);
       queryClient.removeQueries({ queryKey: queryKeys.detail('radarr', movie.id, instance) });
       toast.success('Movie deleted');
       router.push('/movies');

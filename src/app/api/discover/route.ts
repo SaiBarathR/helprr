@@ -85,6 +85,42 @@ let sectionsCache:
     }
   | null = null;
 
+// A catalog with failed sections is kept only briefly, so a source that keeps
+// failing (a 10 s timeout, say) costs one upstream attempt per window instead of
+// one per page load or dashboard widget. The page's Retry skips it (?retry=1).
+const PARTIAL_SECTIONS_CACHE_TTL_MS = 45 * 1000;
+let partialSectionsCache:
+  | {
+      data: DiscoverSections;
+      failedSections: string[];
+      expiresAt: number;
+    }
+  | null = null;
+
+// One catalog build at a time: loads that arrive while one runs (the page and its
+// dashboard widgets) share it instead of each asking TMDB again.
+let catalogBuild: ReturnType<typeof buildCatalogSections> | null = null;
+
+// Failed sections take their items from the last full catalog when it has them:
+// slightly older rails beat empty ones. Only sections it can't fill stay failed.
+function fillFailedSections(
+  sections: DiscoverSections,
+  failedSections: string[],
+  previous: DiscoverSections | undefined,
+): { sections: DiscoverSections; failedSections: string[] } {
+  if (!previous || failedSections.length === 0) return { sections, failedSections };
+  const failed = new Set(failedSections);
+  const filled = new Set<string>();
+  const next = sections.map((section) => {
+    if (!failed.has(section.key)) return section;
+    const old = previous.find((s) => s.key === section.key);
+    if (!old || old.items.length === 0) return section;
+    filled.add(section.key);
+    return old;
+  });
+  return { sections: next, failedSections: failedSections.filter((key) => !filled.has(key)) };
+}
+
 function parseNumber(value: string | null): number | undefined {
   if (!value) return undefined;
   const n = Number(value);
@@ -631,28 +667,43 @@ async function getHandler(request: NextRequest) {
       if (sectionsCache && now < sectionsCache.expiresAt) {
         return respond(sectionsCache.data);
       }
+      if (searchParams.get('retry') !== '1' && partialSectionsCache && now < partialSectionsCache.expiresAt) {
+        return respond(partialSectionsCache.data, partialSectionsCache.failedSections);
+      }
 
-      const { sections, failedSections } = await buildCatalogSections();
+      if (!catalogBuild) {
+        const build = buildCatalogSections();
+        catalogBuild = build;
+        void build.catch(() => {}).finally(() => { if (catalogBuild === build) catalogBuild = null; });
+      }
+      const { sections, failedSections } = await catalogBuild;
+      const builtAt = Date.now();
       const freshHasMedia = hasMediaItems(sections);
-
-      // A catalog with failed sections is not kept, so the next visit or a Retry
-      // asks TMDB again for just those (the rest comes from the TMDB response cache).
-      if (freshHasMedia && failedSections.length === 0) {
-        sectionsCache = {
-          data: sections,
-          expiresAt: now + SECTIONS_CACHE_TTL_MS,
-        };
-      }
-
-      if (failedSections.length > 0) {
-        console.warn(
-          `[Discover] TMDB partial failures (${failedSections.length}): ${failedSections.join(', ')}`
-        );
-      }
 
       // With nothing fresh to show, the last full catalog is served instead, and nothing is missing from it.
       if (!freshHasMedia && sectionsCache?.data) return respond(sectionsCache.data);
-      return respond(sections, failedSections);
+
+      if (failedSections.length === 0) {
+        if (freshHasMedia) {
+          sectionsCache = {
+            data: sections,
+            expiresAt: builtAt + SECTIONS_CACHE_TTL_MS,
+          };
+          partialSectionsCache = null;
+        }
+        return respond(sections);
+      }
+
+      console.warn(
+        `[Discover] TMDB partial failures (${failedSections.length}): ${failedSections.join(', ')}`
+      );
+      const partial = fillFailedSections(sections, failedSections, sectionsCache?.data);
+      partialSectionsCache = {
+        data: partial.sections,
+        failedSections: partial.failedSections,
+        expiresAt: builtAt + PARTIAL_SECTIONS_CACHE_TTL_MS,
+      };
+      return respond(partial.sections, partial.failedSections);
     }
 
     // TMDB serves pages 1 to 500 only.

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import type { DiscoverFiltersResponse, DiscoverItem, DiscoverResponse, DiscoverSection } from '@/types';
@@ -13,10 +13,19 @@ export function useDiscoverHome(discoverContentType: 'all' | 'movie' | 'show', c
   // so it refetches on mount unless fetched under 5s ago, e.g. by the app's
   // layout hydrator on the same load (layout saves invalidate it). discoverFetch surfaces
   // TMDB 429s as RateLimitError (drives the banner below) instead of an error screen.
+  // Set by Retry for its one sections fetch: the server then skips the short
+  // cache it keeps for a catalog with failed sections.
+  const retrySectionsRef = useRef(false);
   const sectionsQuery = useQuery({
     queryKey: queryKeys.discover('sections', { perSectionLimit: carouselItemLimit }),
-    queryFn: ({ signal }) =>
-      discoverFetch<DiscoverResponse>(`/api/discover?mode=sections&perSectionLimit=${carouselItemLimit}`, signal),
+    queryFn: ({ signal }) => {
+      const retry = retrySectionsRef.current;
+      retrySectionsRef.current = false;
+      return discoverFetch<DiscoverResponse>(
+        `/api/discover?mode=sections&perSectionLimit=${carouselItemLimit}${retry ? '&retry=1' : ''}`,
+        signal,
+      );
+    },
     staleTime: 60_000,
     retry: false,
   });
@@ -147,15 +156,20 @@ export function useDiscoverHome(discoverContentType: 'all' | 'movie' | 'show', c
   if (failed(layoutConfigQuery)) unavailable.push('your saved layout');
   if (failed(filtersMetaQuery)) unavailable.push('the filter choices');
 
-  // Retry asks again only for what failed.
+  // Retry asks again only for what failed, and spins only while those run, not
+  // during an unrelated background refetch.
+  const sectionsFailed = failed(sectionsQuery) || failedSectionKeys.size > 0;
+  const failedQueries = [
+    ...(sectionsFailed ? [sectionsQuery] : []),
+    ...customResults.filter(failed),
+    ...(failed(layoutConfigQuery) ? [layoutConfigQuery] : []),
+    ...(failed(filtersMetaQuery) ? [filtersMetaQuery] : []),
+  ];
   const retryUnavailable = () => {
-    if (failed(sectionsQuery) || failedSectionKeys.size > 0) void sectionsQuery.refetch();
-    customResults.forEach((r) => { if (failed(r)) void r.refetch(); });
-    if (failed(layoutConfigQuery)) void layoutConfigQuery.refetch();
-    if (failed(filtersMetaQuery)) void filtersMetaQuery.refetch();
+    if (sectionsFailed) retrySectionsRef.current = true;
+    failedQueries.forEach((q) => { void q.refetch(); });
   };
-  const retryingUnavailable = [sectionsQuery, layoutConfigQuery, filtersMetaQuery, ...customResults]
-    .some((q) => q.isFetching);
+  const retryingUnavailable = failedQueries.some((q) => q.isFetching);
 
   return {
     sectionsQuery,

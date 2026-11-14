@@ -1,6 +1,6 @@
 import { QueryClient, type InfiniteData } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
-import { invalidateAfterLibraryAdd, invalidateLibraryMembership } from '@/lib/query-invalidation';
+import { invalidateAfterLibraryAdd, invalidateAfterLibraryRemove, invalidateLibraryMembership } from '@/lib/query-invalidation';
 import { queryKeys } from '@/lib/query-keys';
 import type { DiscoverDetail, DiscoverItem, DiscoverResponse } from '@/types';
 
@@ -120,5 +120,59 @@ describe('invalidateLibraryMembership', () => {
     expect(qc.getQueryState(sectionsKey)?.isInvalidated).toBe(true);
     expect(qc.getQueryState(['anime', 'home', 20])?.isInvalidated).toBe(true);
     expect(qc.getQueryState(queryKeys.discover('filters'))?.isInvalidated).toBe(false);
+  });
+});
+
+describe('invalidateAfterLibraryRemove', () => {
+  const heldIn = (copies: Array<{ instanceId: string; id: number }>) => ({
+    exists: true as const, type: 'movie' as const, id: copies[0].id, instanceId: copies[0].instanceId,
+    instances: copies.map((c) => ({ ...c, instanceLabel: c.instanceId })),
+  });
+
+  it('takes a deleted copy out at once: the title leaves the library, or its next copy becomes the link', () => {
+    const qc = new QueryClient();
+    qc.setQueryData<DiscoverResponse>(sectionsKey, {
+      mode: 'sections',
+      sections: [{ key: 'trending', title: 'Trending', type: 'media', items: [
+        item(10, 'movie', { library: heldIn([{ instanceId: 'radarr-a', id: 7 }]) }),
+        item(11, 'movie', { library: heldIn([{ instanceId: 'radarr-a', id: 7 }, { instanceId: 'radarr-b', id: 3 }]) }),
+        // Same id in another instance, and a show with that id: neither is the deleted copy.
+        item(12, 'movie', { library: heldIn([{ instanceId: 'radarr-b', id: 7 }]) }),
+        item(13, 'tv', { library: { ...heldIn([{ instanceId: 'radarr-a', id: 7 }]), type: 'series' } }),
+      ] }],
+    });
+    qc.setQueryData(queryKeys.discoverDetail('movie', 11), detail(11, 'radarr', {
+      addTarget: { service: 'radarr', exists: true, id: 7, instanceId: 'radarr-a' },
+      library: heldIn([{ instanceId: 'radarr-a', id: 7 }, { instanceId: 'radarr-b', id: 3 }]),
+    }));
+    qc.setQueryData(queryKeys.discoverDetail('movie', 10), detail(10, 'radarr', {
+      addTarget: { service: 'radarr', exists: true, id: 7, instanceId: 'radarr-a', uncheckedInstanceIds: ['radarr-c'] },
+      library: heldIn([{ instanceId: 'radarr-a', id: 7 }]),
+    }));
+
+    invalidateAfterLibraryRemove(qc, 'radarr', [{ id: 7, instanceId: 'radarr-a' }]);
+
+    const items = qc.getQueryData<DiscoverResponse>(sectionsKey)!.sections![0].items as DiscoverItem[];
+    expect(items[0].library).toEqual({ exists: false });
+    expect(items[1].library).toMatchObject({ exists: true, id: 3, instanceId: 'radarr-b', instances: [{ instanceId: 'radarr-b', id: 3 }] });
+    expect(items[2].library?.exists).toBe(true);
+    expect(items[3].library?.exists).toBe(true);
+    expect(qc.getQueryData<DiscoverDetail>(queryKeys.discoverDetail('movie', 11))!.addTarget)
+      .toEqual({ service: 'radarr', exists: true, id: 3, instanceId: 'radarr-b' });
+    expect(qc.getQueryData<DiscoverDetail>(queryKeys.discoverDetail('movie', 10))!.addTarget)
+      .toEqual({ service: 'radarr', exists: false, uncheckedInstanceIds: ['radarr-c'] });
+    expect(qc.getQueryState(sectionsKey)?.isInvalidated).toBe(true);
+  });
+
+  it('leaves a copy without a known instance to the refetch', () => {
+    const qc = new QueryClient();
+    qc.setQueryData(['anime', 'detail', 1], { id: 1, format: 'TV', library: { exists: true, type: 'series', id: 7, instanceId: 'sonarr-a' } });
+    qc.setQueryData(['anime', 'detail', 2], { id: 2, format: 'TV', library: { exists: true, type: 'series', id: 8, instanceId: 'sonarr-a' } });
+
+    invalidateAfterLibraryRemove(qc, 'sonarr', [{ id: 7 }, { id: 8, instanceId: 'sonarr-a' }]);
+
+    expect(qc.getQueryData<{ library: { exists: boolean } }>(['anime', 'detail', 1])!.library.exists).toBe(true);
+    expect(qc.getQueryData<{ library: { exists: boolean } }>(['anime', 'detail', 2])!.library).toEqual({ exists: false });
+    expect(qc.getQueryState(['anime', 'detail', 1])?.isInvalidated).toBe(true);
   });
 });

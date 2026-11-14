@@ -215,6 +215,34 @@ describe('Discover home (characterization)', () => {
     expect(within(screen.getAllByRole('group', { name: 'Bravo Show actions' })[0]).queryByRole('link', { name: /Add to/ })).toBeNull();
   });
 
+  it('names a section the server could not load, and Retry asks past its short cache', async () => {
+    let calls = 0;
+    mocks.sections = () => (calls++ === 0
+      ? { sections: SECTIONS.map((s) => (s.key === 'trending' ? { ...s, items: [] } : s)), failedSections: ['trending'] }
+      : { sections: SECTIONS });
+    const user = renderHome();
+    expect(await screen.findByText('Missing: Trending.')).toBeTruthy();
+    const sectionUrls = () => mocks.urls.filter((url) => url.searchParams.get('mode') === 'sections');
+    expect(sectionUrls().map((url) => url.searchParams.get('retry'))).toEqual([null]);
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(screen.queryByText('Missing: Trending.')).toBeNull());
+    expect(sectionUrls().map((url) => url.searchParams.get('retry'))).toEqual([null, '1']);
+  });
+
+  it('keeps Retry ready while an unrelated carousel is still loading', async () => {
+    mocks.sections = () => ({ sections: SECTIONS, failedSections: ['trending'] });
+    const realFetch = globalThis.fetch;
+    // The custom carousel never answers, so its query stays fetching.
+    vi.stubGlobal('fetch', vi.fn((input: string) => (new URL(String(input), 'http://helprr.test').searchParams.get('limit')
+      ? new Promise<Response>(() => {})
+      : realFetch(input))));
+    renderHome();
+    await screen.findByText('Missing: Trending.');
+    expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('offers no library link to a user who cannot open the Movies library', async () => {
     mocks.caps = new Set(['movies.add']);
     renderHome();
