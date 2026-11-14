@@ -6,11 +6,17 @@ import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { useSafeAreaPadding } from "@/lib/hooks/use-safe-area-padding"
+import { useBackClosableOpen } from "@/lib/overlay-history"
 
 function DropdownMenu({
+  open: openProp,
+  defaultOpen,
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
-  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />
+  // Back closes the menu first (see overlay-history).
+  const [open, setOpen] = useBackClosableOpen(openProp, defaultOpen, onOpenChange)
+  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} open={open} onOpenChange={setOpen} />
 }
 
 function DropdownMenuPortal({

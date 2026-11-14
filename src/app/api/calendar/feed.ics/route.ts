@@ -75,9 +75,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   if (!filters) return textResponse('Invalid filter', 400);
 
   try {
-    // Release days (all-day movie and album dates) fall on the link owner's own
-    // time zone when they have one, else the server's. Whole local days, so the
-    // window (and its cache key) moves once a day.
+    // The window is whole days in the link owner's own time zone when they have
+    // one, else the server's, so it (and its cache key) moves once a day.
     const [appSettings, ownerSettings] = await Promise.all([
       getOrCreateAppSettings(),
       prisma.userSettings.findUnique({ where: { userId: link.user.id }, select: { timeZone: true } }),
@@ -91,10 +90,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const start = startDate.toISOString();
     const end = endDate.toISOString();
 
-    const cacheKeySeed = `feed|${start}|${end}`;
+    const cacheKeySeed = `feed|${start}|${end}|${timeZone}`;
     let events = await getCachedJson<CalendarEvent[]>('calendar', cacheKeySeed);
     if (!events) {
-      const result = await fetchServiceCalendarEvents(start, end);
+      const result = await fetchServiceCalendarEvents(start, end, timeZone);
       // Every instance failed: say so, so the calendar app keeps the copy it has
       // instead of replacing it with an empty one.
       if (!result.cacheable) return textResponse('Calendar feed unavailable', 503);
@@ -104,7 +103,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
     // The link's own filters, then any a pre-named-links URL carries.
     const shown = applyFeedFilters(applyFeedFilters(calendarEventsFor(link.user, events), link.filters), filters);
-    return new NextResponse(buildCalendarFeed(shown, { timeZone, name: link.name }), {
+    return new NextResponse(buildCalendarFeed(shown, { name: link.name }), {
       headers: {
         'Content-Type': 'text/calendar; charset=utf-8',
         'Content-Disposition': 'inline; filename="helprr.ics"',

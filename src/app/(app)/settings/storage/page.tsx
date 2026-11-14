@@ -14,6 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { DiskLowSpaceAlerts } from '@/components/settings/disk-low-space-alerts';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
+import { useCan } from '@/components/permission-provider';
 import { jsonFetcher } from '@/lib/query-fetch';
 import type { ImageCacheDiagnostics } from '@/lib/cache/image-cache-accounting';
 import {
@@ -44,6 +45,10 @@ export default function StorageSettingsPage() {
   const { settings, loading, update } = useAppSettings();
   const queryClient = useQueryClient();
   const cacheImagesEnabled = settings?.cacheImagesEnabled ?? true;
+  // Cleanup history is the cleaners' audit trail: reading it is cleanup.view and
+  // clearing it cleanup.manage (as on the Cleanup page), not settings.storage.
+  const canViewCleanup = useCan('cleanup.view');
+  const canClearCleanup = useCan('cleanup.manage');
 
   const [purgingCache, setPurgingCache] = useState(false);
   const [olderThanDays, setOlderThanDays] = useState('30');
@@ -75,6 +80,7 @@ export default function StorageSettingsPage() {
   const summaryQuery = useQuery({
     queryKey: CLEANUP_SUMMARY_KEY,
     queryFn: jsonFetcher<{ total?: unknown; oldestAt?: unknown }>('/api/cleanup/history?summary=true'),
+    enabled: canViewCleanup,
   });
   const cleanupSummary = summaryQuery.data
     ? {
@@ -348,87 +354,104 @@ export default function StorageSettingsPage() {
 
       <DiskLowSpaceAlerts />
 
-      <GroupedSection title="Cleanup history" footer="Server action — affects all devices">
-        {/* A failed summary load must not sit on "Loading…" forever with the
-            cleanup actions silently disabled — surface it with a Retry. */}
-        {summaryQuery.isError && !summaryQuery.data && (
-          <ErrorState
-            compact
-            message="Couldn't load cleanup history."
-            onRetry={() => summaryQuery.refetch()}
-            retrying={summaryQuery.isFetching}
-          />
-        )}
-        <div className="grouped-row">
-          <span className="text-sm">Stored rows</span>
-          <span className="text-sm text-muted-foreground">
-            {summaryQuery.isError && cleanupSummary == null
-              ? 'Unavailable'
-              : cleanupSummary == null
-              ? 'Loading…'
-              : cleanupSummary.total === 0
-              ? 'No history yet'
-              : `${cleanupSummary.total.toLocaleString()} rows`}
-          </span>
-        </div>
-        {cleanupSummary?.oldestAt && (
+      {!canViewCleanup ? (
+        <GroupedSection title="Cleanup history">
+          <div className="px-4 py-3 text-sm text-muted-foreground">
+            Seeing cleanup history needs “View cleanup rules & history”, which an admin turns on in Settings → Users.
+          </div>
+        </GroupedSection>
+      ) : (
+        <GroupedSection
+          title="Cleanup history"
+          footer={canClearCleanup
+            ? 'Server action — affects all devices'
+            : 'Clearing it needs “Manage cleanup rules, run cleanups & clear history”, which an admin turns on in Settings → Users.'}
+        >
+          {/* A failed summary load must not sit on "Loading…" forever with the
+              cleanup actions silently disabled — surface it with a Retry. */}
+          {summaryQuery.isError && !summaryQuery.data && (
+            <ErrorState
+              compact
+              message="Couldn't load cleanup history."
+              onRetry={() => summaryQuery.refetch()}
+              retrying={summaryQuery.isFetching}
+            />
+          )}
           <div className="grouped-row">
-            <span className="text-sm">Oldest entry</span>
+            <span className="text-sm">Stored rows</span>
             <span className="text-sm text-muted-foreground">
-              {formatDateTime(cleanupSummary.oldestAt)}
+              {summaryQuery.isError && cleanupSummary == null
+                ? 'Unavailable'
+                : cleanupSummary == null
+                ? 'Loading…'
+                : cleanupSummary.total === 0
+                ? 'No history yet'
+                : `${cleanupSummary.total.toLocaleString()} rows`}
             </span>
           </div>
-        )}
-        <div className="grouped-row">
-          <Label htmlFor="olderThanDays" className="text-sm">Delete rows older than</Label>
-          <div className="flex items-center gap-2">
-            <Input
-              id="olderThanDays"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={3650}
-              value={olderThanDays}
-              onChange={(e) => setOlderThanDays(e.target.value)}
-              className="w-20 h-8 text-sm text-right"
-            />
-            <span className="text-sm text-muted-foreground">days</span>
-          </div>
-        </div>
-        <div className="px-4 py-3 flex gap-2">
-          <Button
-            variant="outline"
-            className="flex-1 h-9"
-            onClick={() => setConfirmOlder(true)}
-            disabled={
-              deletingHistory
-              || !cleanupSummary
-              || cleanupSummary.total === 0
-              || !Number.isFinite(Number(olderThanDays))
-              || !Number.isInteger(Number(olderThanDays))
-              || Number(olderThanDays) < 1
-              || Number(olderThanDays) > 3650
-            }
-          >
-            {deletingHistory ? (
-              <>
-                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                Deleting…
-              </>
-            ) : (
-              'Clear older'
-            )}
-          </Button>
-          <Button
-            variant="outline"
-            className="flex-1 h-9 text-destructive hover:text-destructive"
-            onClick={() => setConfirmAll(true)}
-            disabled={deletingHistory || !cleanupSummary || cleanupSummary.total === 0}
-          >
-            Clear all
-          </Button>
-        </div>
-      </GroupedSection>
+          {cleanupSummary?.oldestAt && (
+            <div className="grouped-row">
+              <span className="text-sm">Oldest entry</span>
+              <span className="text-sm text-muted-foreground">
+                {formatDateTime(cleanupSummary.oldestAt)}
+              </span>
+            </div>
+          )}
+          {canClearCleanup && (
+            <>
+              <div className="grouped-row">
+                <Label htmlFor="olderThanDays" className="text-sm">Delete rows older than</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="olderThanDays"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={3650}
+                    value={olderThanDays}
+                    onChange={(e) => setOlderThanDays(e.target.value)}
+                    className="w-20 h-8 text-sm text-right"
+                  />
+                  <span className="text-sm text-muted-foreground">days</span>
+                </div>
+              </div>
+              <div className="px-4 py-3 flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1 h-9"
+                  onClick={() => setConfirmOlder(true)}
+                  disabled={
+                    deletingHistory
+                    || !cleanupSummary
+                    || cleanupSummary.total === 0
+                    || !Number.isFinite(Number(olderThanDays))
+                    || !Number.isInteger(Number(olderThanDays))
+                    || Number(olderThanDays) < 1
+                    || Number(olderThanDays) > 3650
+                  }
+                >
+                  {deletingHistory ? (
+                    <>
+                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                      Deleting…
+                    </>
+                  ) : (
+                    'Clear older'
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1 h-9 text-destructive hover:text-destructive"
+                  onClick={() => setConfirmAll(true)}
+                  disabled={deletingHistory || !cleanupSummary || cleanupSummary.total === 0}
+                >
+                  Clear all
+                </Button>
+              </div>
+            </>
+          )}
+        </GroupedSection>
+      )}
 
       <ConfirmDialog
         open={confirmOlder}

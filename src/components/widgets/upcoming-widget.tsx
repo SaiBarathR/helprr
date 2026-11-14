@@ -27,15 +27,28 @@ import {
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { formatDate, formatDateTime } from '@/lib/date-format';
+import { recordBrowseFreshness } from '@/lib/browse-freshness';
+import { calendarEventDate, compareCalendarEvents, isReleaseDayEvent } from '@/lib/release-day';
 
 const DAYS_OPTIONS = [7, 14, 30] as const;
 const STORAGE_KEY = 'helprr-upcoming-days';
 
-function formatEventDate(dateStr: string): string {
-  const d = new Date(dateStr);
+// A film or album release is a day (release-day.ts): its date with no time,
+// and its distance from the start of that day here, not from upstream's UTC
+// midnight (the evening before west of UTC, 5:30 AM in India).
+function formatEventDate(ev: CalendarEvent): string {
+  const d = calendarEventDate(ev);
   if (!Number.isFinite(d.getTime())) return '';
-  if (d.getHours() === 0 && d.getMinutes() === 0) return formatDate(d, { month: 'short', day: 'numeric' });
+  // By its kind, not by a midnight hour: where that midnight does not exist
+  // (a DST start, as in Santiago) local midnight of the day reads 01:00.
+  // isReleaseDayEvent, not isAllDayEvent: this request has no scheduled alerts (no includeScheduled).
+  if (isReleaseDayEvent(ev) || (d.getHours() === 0 && d.getMinutes() === 0)) return formatDate(d, { month: 'short', day: 'numeric' });
   return formatDateTime(d, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function eventDistance(ev: CalendarEvent): string {
+  const d = calendarEventDate(ev);
+  return formatDistanceToNowSafe(Number.isFinite(d.getTime()) ? d.toISOString() : ev.date);
 }
 
 function getPoster(images: MediaImage[], hint?: ImageServiceHint): string | null {
@@ -99,16 +112,22 @@ export function UpcomingWidget({
   const { setWidgetLayoutOverride } = useDashboardLayout();
 
   const fetchUpcoming = useCallback(async (signal?: AbortSignal): Promise<CalendarEvent[]> => {
-    const res = await fetch(`/api/calendar?days=${days}`, { signal });
+    const path = `/api/calendar?days=${days}`;
+    const res = await fetch(path, { signal });
+    // An offline snapshot from the worker shows the shared "saved data" notice, as Calendar does.
+    recordBrowseFreshness(path, res);
     if (!res.ok) throw new ApiError(res.status, 'Request failed');
-    return res.json();
+    // Listed as Calendar lists them (by day here, all-day first), not upstream's instant order.
+    return ((await res.json()) as CalendarEvent[]).sort(compareCalendarEvents);
   }, [days]);
 
-  const { data, loading } = useWidgetData({
+  const { data, loading, error, offline } = useWidgetData({
     fetchFn: fetchUpcoming,
     refreshInterval,
     enabled: !editMode,
     cacheKey: `upcoming-${days}d`,
+    // Offline, still ask: the worker's saved copy shows with the saved-data notice.
+    networkMode: 'offlineFirst',
   });
   const list = data ?? [];
   const useList = narrow || layoutVariant === 'list';
@@ -172,7 +191,9 @@ export function UpcomingWidget({
         <SectionHeader title="Upcoming" badge={dayBadge} right={toggleNode} />
         <EmptyState>
           <Calendar size={18} />
-          Nothing upcoming
+          {/* Past the saved copy's five minutes (or with none), a failed load is
+              not an empty day: say why, as the Calendar page does. */}
+          {offline ? "You're offline" : error ?? 'Nothing upcoming'}
         </EmptyState>
       </div>
     );
@@ -254,7 +275,7 @@ export function UpcomingWidget({
                 tone={toneFromString(ev.title)}
                 imageUrl={poster ?? undefined}
                 check={Boolean(ev.hasFile)}
-                timePill={formatDistanceToNowSafe(ev.date)}
+                timePill={eventDistance(ev)}
                 badge={
                   !ev.hasFile
                     ? {
@@ -298,7 +319,7 @@ export function UpcomingWidget({
                     textOverflow: 'ellipsis',
                   }}
                 >
-                  {formatEventDate(ev.date)}
+                  {formatEventDate(ev)}
                 </div>
               </div>
             </>
@@ -383,7 +404,7 @@ function UpcomingRow({ ev }: { ev: CalendarEvent }) {
             textOverflow: 'ellipsis',
           }}
         >
-          {formatEventDate(ev.date)} · {formatDistanceToNowSafe(ev.date)}
+          {formatEventDate(ev)} · {eventDistance(ev)}
         </div>
       </div>
       <div

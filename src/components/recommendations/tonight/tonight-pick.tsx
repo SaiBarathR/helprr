@@ -13,6 +13,7 @@ import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { haptic } from '@/lib/haptics';
+import { useCloseOnBack } from '@/lib/overlay-history';
 import type { TonightTitle, TonightView } from '@/types/tonight';
 import { TonightSwipeCard } from './tonight-swipe-card';
 
@@ -35,17 +36,27 @@ function Participants({ view }: { view: TonightView }) {
     <ul className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto scrollbar-hide" aria-label="Who is in this pick">
       {view.participants.map((p) => {
         const done = p.voted >= view.titles.length;
+        // A name too long for its chip puts its last word on a line of its
+        // own: in a crowded row a chip is only ~4rem wide, and two names that
+        // start alike ("QA Member One", "QA Member Two") read the same when
+        // only their start shows.
+        const words = p.name.trim().split(/\s+/);
+        const last = words.length > 1 ? words.pop() : null;
         return (
           <li
             key={p.id}
+            title={p.name}
             // Long names shrink to an ellipsis before the row scrolls.
-            className={`inline-flex min-w-16 max-w-28 items-center justify-center gap-1 sm:max-w-40 whitespace-nowrap rounded-full px-2.5 py-1 text-xs ${p.joined
+            className={`inline-flex min-w-16 max-w-28 items-center justify-center gap-1 sm:max-w-40 whitespace-nowrap rounded-full px-2.5 py-1 text-xs leading-tight ${p.joined
               ? 'border border-primary/40 bg-primary/15 text-primary'
               : 'bg-accent/40 text-muted-foreground'
               }`}
           >
             {done && <Check className="h-3 w-3 shrink-0" aria-hidden />}
-            <span className="min-w-0 truncate">{p.name}</span>
+            <span className="flex min-w-0 flex-wrap justify-center gap-x-1">
+              <span className="min-w-0 truncate">{words.join(' ')}</span>
+              {last && <span className="min-w-0 truncate">{last}</span>}
+            </span>
             <span className="sr-only">
               {p.joined ? `, ${p.voted} of ${view.titles.length} voted` : ', not here yet'}
             </span>
@@ -131,6 +142,8 @@ export function TonightPick({ id, onClose, onOpenPick }: { id: string; onClose: 
   const joinedRef = useRef(false);
   const sentRef = useRef(new Set<number>());
   const dialogRef = useRef<HTMLDivElement>(null);
+  // Back closes the pick first and stays on Random (see overlay-history).
+  useCloseOnBack(true, onClose);
 
   const query = useQuery({
     queryKey: tonightQueryKey(id),

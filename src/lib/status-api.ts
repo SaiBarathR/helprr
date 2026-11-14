@@ -16,6 +16,7 @@ import {
   getRadarrClients,
   getSonarrClients,
 } from '@/lib/service-helpers';
+import { getAppTimeZone } from '@/lib/timezone';
 import type { QueueItem } from '@/types';
 import type { DiskSpace } from '@/types/service-stats';
 
@@ -111,7 +112,7 @@ async function readStorage(scopes: ReadonlySet<Capability>, state: { failed: boo
 
 async function readUpcoming(now: Date, includeLidarr: boolean) {
   const end = new Date(now.getTime() + UPCOMING_DAYS * 24 * 60 * 60 * 1000);
-  const result = await fetchServiceCalendarEvents(now.toISOString(), end.toISOString());
+  const result = await fetchServiceCalendarEvents(now.toISOString(), end.toISOString(), getAppTimeZone());
   if (!result.cacheable) throw new Error('No calendar instance answered');
   return result.events
     // Albums are Lidarr's: listed only while the owner may see the music library.

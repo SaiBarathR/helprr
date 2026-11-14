@@ -265,13 +265,15 @@ export function CommandPaletteDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
         showCloseButton={false}
-        className="overflow-hidden p-0 top-[12%] translate-y-0 sm:max-w-xl"
+        keyboardAnchorTop="12%"
+        // A column, so the list (not the whole palette) shrinks above the keyboard.
+        className="flex flex-col overflow-hidden p-0 top-[12%] translate-y-0 sm:max-w-xl"
       >
           <DialogTitle className="sr-only">Search</DialogTitle>
           <DialogDescription className="sr-only">
             Search your library, or type a scope alias like tm and press Tab to search a specific source.
           </DialogDescription>
-          <Command shouldFilter={false} className="bg-transparent">
+          <Command shouldFilter={false} className="min-h-0 bg-transparent">
             <div className="relative border-b border-border">
               {activeScope && (
                 <div className="flex items-center gap-2 px-3 pt-2">

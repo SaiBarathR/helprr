@@ -1,5 +1,7 @@
 import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
 import { can, type PermissionUser } from '@/lib/permissions';
+import { releaseDayKey } from '@/lib/release-day';
+import { getLocalDateKey } from '@/lib/timezone';
 import type { CalendarEvent, MovieReleaseType } from '@/types';
 
 export interface ServiceCalendarResult {
@@ -12,16 +14,30 @@ export interface ServiceCalendarResult {
   cacheable: boolean;
 }
 
+const DAY_MS = 86_400_000;
+
 /**
  * Fetch from every instance of Sonarr, Radarr and Lidarr in parallel, tagging
  * each event with its instance so detail links resolve to the right one. An
  * unreachable instance is skipped. Shared by the calendar page's API and the
  * subscribable feed, so both show the same events.
+ *
+ * Episodes are in the window by their air time. A film or album release is a
+ * day (see release-day.ts), in the window when that day is one of the window's
+ * days in `timeZone`: by instant, the window's first day lost its releases west
+ * of UTC and gained the next day's east of it. Radarr and Lidarr are asked for
+ * a day more on each side so those releases come back to be checked.
  */
-export async function fetchServiceCalendarEvents(start: string, end: string): Promise<ServiceCalendarResult> {
+export async function fetchServiceCalendarEvents(start: string, end: string, timeZone: string): Promise<ServiceCalendarResult> {
   const events: CalendarEvent[] = [];
-  const startMs = new Date(start).getTime();
-  const endMs = new Date(end).getTime();
+  const firstDay = getLocalDateKey(start, timeZone);
+  const lastDay = getLocalDateKey(end, timeZone);
+  const inWindow = (dateStr: string | undefined) => {
+    const day = releaseDayKey(dateStr);
+    return day !== null && day >= firstDay && day <= lastDay;
+  };
+  const releaseStart = new Date(new Date(start).getTime() - DAY_MS).toISOString();
+  const releaseEnd = new Date(new Date(end).getTime() + DAY_MS).toISOString();
 
   const [sonarrClients, radarrClients, lidarrClients] = await Promise.all([
     getSonarrClients().catch(() => []),
@@ -58,7 +74,7 @@ export async function fetchServiceCalendarEvents(start: string, end: string): Pr
     }),
     ...radarrClients.map(async ({ connection, client }) => {
       try {
-        const entries = await client.getCalendar(start, end);
+        const entries = await client.getCalendar(releaseStart, releaseEnd);
         anyOk = true;
         for (const m of entries) {
           const releases: Array<[MovieReleaseType, string | undefined]> = [
@@ -67,10 +83,8 @@ export async function fetchServiceCalendarEvents(start: string, end: string): Pr
             ['digital', m.digitalRelease],
           ];
           for (const [releaseType, dateStr] of releases) {
-            if (!dateStr) continue;
-            const ms = new Date(dateStr).getTime();
-            if (!Number.isFinite(ms)) continue;
-            if (ms < startMs || ms > endMs) continue;
+            // Radarr returns a film when any of its dates is in the window.
+            if (!dateStr || !inWindow(dateStr)) continue;
             events.push({
               id: `radarr-${connection.id}-${m.id}-${releaseType}`,
               type: 'movie',
@@ -93,12 +107,10 @@ export async function fetchServiceCalendarEvents(start: string, end: string): Pr
     }),
     ...lidarrClients.map(async ({ connection, client }) => {
       try {
-        const entries = await client.getCalendar(start, end);
+        const entries = await client.getCalendar(releaseStart, releaseEnd);
         anyOk = true;
         for (const album of entries) {
-          if (!album.releaseDate) continue;
-          const ms = new Date(album.releaseDate).getTime();
-          if (!Number.isFinite(ms) || ms < startMs || ms > endMs) continue;
+          if (!album.releaseDate || !inWindow(album.releaseDate)) continue;
           const stats = album.statistics;
           const complete = !!stats && stats.totalTrackCount > 0 && stats.trackFileCount >= stats.totalTrackCount;
           events.push({

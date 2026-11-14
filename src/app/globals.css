@@ -403,16 +403,17 @@
   --footer-cover: calc(var(--footer-height) + var(--player-bar-height));
 }
 
-/* The mini video player floats in the bottom corner; its 9rem height plus a gap
-   is the room the dashboard leaves under its last row. */
+/* The mini video player floats in the bottom corner, 0.75rem above the bars;
+   its 9rem height plus that gap is the room the dashboard leaves under its last
+   row, and what the offline pill rises by to sit above it, not on it. */
 :root:has([data-mini-player]) {
-  --mini-player-clearance: 9.25rem;
+  --mini-player-clearance: 9.75rem;
 }
 
-/* The offline "saved data" pill sits above the bars; while it shows, the page
-   keeps its last rows clear of it too. */
+/* The offline "saved data" pill sits above the bars (and the mini player);
+   while it shows, the page keeps its last rows clear of both. */
 :root:has([data-browse-notice]) {
-  --browse-notice-clearance: 3.25rem;
+  --browse-notice-clearance: calc(3.25rem + var(--mini-player-clearance, 0px));
 }
 
 :root:has([data-now-playing-bar]) .app-main {
@@ -1793,6 +1794,20 @@ html [data-sonner-toast][data-styled='true'] [data-close-button] {
     min-height: 2.75rem;
     padding-inline: 0.75rem;
   }
+}
+
+/* A sheet holding a form, lifted above the keyboard in a Safari tab (see
+   fitAboveKeyboard in ui/drawer.tsx), scrolls as one column: header, fields
+   and buttons together. Its own body was too short to show the fields either
+   side of the one being typed in, and Safari's ⌄ / ⌃ arrows skip those. The
+   boxes marked min-h-0 (the ones that shrink, so the body scrolls) take their
+   content's height instead. Pickers (no form) keep their search pinned over
+   the list. */
+[data-slot='drawer-content'][data-keyboard-tab]:has(form) {
+  overflow-y: auto;
+}
+[data-slot='drawer-content'][data-keyboard-tab]:has(form) .min-h-0 {
+  flex: none;
 }
 
 /* Floating overlays get the stronger material (alpha floor for legibility). */

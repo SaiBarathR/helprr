@@ -5,6 +5,7 @@ import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { useBackClosableOpen } from "@/lib/overlay-history"
+import { keepCentredDialogAboveKeyboard } from "@/lib/keyboard-fit"
 import { buttonVariants } from "@/components/ui/button"
 
 function AlertDialog({
@@ -49,8 +50,24 @@ function AlertDialogOverlay({
 
 function AlertDialogContent({
   className,
+  ref,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+  // Same as DialogContent: stays above the phone keyboard (a typed confirm).
+  const contentRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      if (typeof ref === "function") ref(node)
+      else if (ref) ref.current = node
+      if (!node) return
+      const stopFitting = keepCentredDialogAboveKeyboard(node)
+      return () => {
+        stopFitting()
+        if (typeof ref === "function") ref(null)
+        else if (ref) ref.current = null
+      }
+    },
+    [ref]
+  )
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
@@ -64,6 +81,7 @@ function AlertDialogContent({
           "*:min-w-0 max-h-[85dvh] overflow-y-auto",
           className
         )}
+        ref={contentRef}
         {...props}
       />
     </AlertDialogPortal>
