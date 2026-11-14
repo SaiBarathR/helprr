@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { ThemeApplier } from '@/components/theme-applier';
 import { THEME_BOOTSTRAP_SCRIPT } from '@/lib/dashboard-theme';
@@ -9,6 +9,7 @@ import { ServiceWorkerRegister } from '@/components/sw-register';
 import { OverlayHistoryListener } from '@/components/overlay-history-listener';
 import { PerformanceCollector } from '@/components/performance-collector';
 import { ClientLogCapture } from '@/components/client-log-capture';
+import { COOKIE_NAME } from '@/lib/auth';
 import './globals.css';
 
 const geistSans = Geist({
@@ -56,6 +57,9 @@ export default async function RootLayout({
   // forces dynamic rendering app-wide — required for nonce-based CSP, since a
   // static prerender can't carry a per-request nonce in its inline scripts.
   const nonce = (await headers()).get('x-nonce') ?? undefined;
+  // A hint only (the cookie is not verified here): it spares signed-out pages
+  // reads that can only 401.
+  const hasSessionCookie = (await cookies()).has(COOKIE_NAME);
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -78,7 +82,7 @@ export default async function RootLayout({
         </TooltipProvider>
         <Toaster />
         <ServiceWorkerRegister />
-        <ClientLogCapture />
+        <ClientLogCapture signedIn={hasSessionCookie} />
         <PerformanceCollector />
       </body>
     </html>

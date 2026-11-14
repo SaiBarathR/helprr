@@ -22,6 +22,13 @@ describe('section page guards', () => {
     expect(assertPageCapability).toHaveBeenLastCalledWith(capability);
   });
 
+  it('/library-gaps requires both series.view and movies.view, as its API does', async () => {
+    assertPageCapability.mockClear();
+    const { default: Layout } = await import('./library-gaps/layout');
+    await Layout({ children: null });
+    expect(assertPageCapability.mock.calls).toEqual([['series.view'], ['movies.view']]);
+  });
+
   it('/settings/file-audit is for admins, as its API is', async () => {
     const { default: Layout } = await import('./settings/file-audit/layout');
     await Layout({ children: null });

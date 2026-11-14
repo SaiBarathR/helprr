@@ -4,7 +4,7 @@ import { seedInitialLayouts, getActiveLayoutForUser } from '@/lib/dashboard-layo
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/permissions';
-import { NAV_ITEMS } from '@/lib/nav-config';
+import { NAV_ITEMS, navItemCapabilities } from '@/lib/nav-config';
 import { filterVisibleServiceTypes } from '@/lib/server/service-capabilities';
 import { getSetupChecklist } from '@/lib/setup-checklist';
 import { DashboardClient, type InitialDashboardLayout } from './dashboard-client';
@@ -24,13 +24,12 @@ export default async function DashboardPage() {
     // App entry (/, PWA launch) hardcodes /dashboard as its fallback without
     // consulting capabilities, so a denied user must be redirected to their
     // first allowed section rather than 404'd straight after login. Only items
-    // whose capability the user explicitly holds qualify — capability-less
-    // items (e.g. library-gaps) can still 403 on their data routes — with
-    // Settings (accessible to everyone) as the final fallback.
+    // whose capabilities the user explicitly holds qualify, with Settings
+    // (accessible to everyone) as the final fallback.
     const fallback = NAV_ITEMS.find((item) =>
       item.requiredAnyCapability
         ? item.requiredAnyCapability.some((cap) => can(user, cap))
-        : item.requiredCapability && can(user, item.requiredCapability)
+        : item.requiredCapability && navItemCapabilities(item).every((cap) => can(user, cap))
     );
     redirect(fallback?.href ?? '/settings');
   }

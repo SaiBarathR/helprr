@@ -18,6 +18,7 @@ import { getJellyfinPlaybackDeviceId, getJellyfinPlaybackDeviceName, secondsToTi
 import { canPlayHlsWithMse, canPlayNativeHls, detectBrowser } from '@/lib/jellyfin-playback/browser';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { useUIStore } from '@/lib/store';
+import { useCan } from '@/components/permission-provider';
 import { cueBottomPercent, subtitleCueLine } from '@/lib/jellyfin-playback/subtitle-appearance';
 import { playMedia } from '@/lib/jellyfin-playback/play-media';
 import { isLiveStream } from '@/lib/jellyfin-playback/live-stream';
@@ -724,6 +725,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     setMountedMedia(element);
   }, []);
   const subtitleAppearance = useUIStore((state) => state.subtitleAppearance);
+  const canUseJellyfin = useCan('jellyfin.view');
   const cueLineRef = useRef(subtitleCueLine(subtitleAppearance.verticalPosition));
   const obstructionRef = useRef(0);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
@@ -2147,16 +2149,17 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    * and its transcode outlive the app. Starting up is the first moment this
    * device can say so. Only when nothing is playing here, and the server
    * ignores any session still reporting, so a second tab sharing this device id
-   * is not stopped out from under itself.
+   * is not stopped out from under itself. Skipped without jellyfin.view: such
+   * a user can't have played anything here, and the route would refuse them.
    */
   useEffect(() => {
-    if (streamRef.current) return;
+    if (!canUseJellyfin || streamRef.current) return;
     void fetch('/api/jellyfin/stream/orphans', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ deviceId: getJellyfinPlaybackDeviceId() }),
     }).catch(() => {});
-  }, []);
+  }, [canUseJellyfin]);
 
   // Report Stopped when the page goes away. Without this the Jellyfin session
   // lingers in Active Devices and a transcode keeps running until Jellyfin's own

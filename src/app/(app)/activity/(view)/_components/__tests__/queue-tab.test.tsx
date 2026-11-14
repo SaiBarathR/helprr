@@ -152,3 +152,24 @@ describe('Queue tab without activity.manage', () => {
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
   });
 });
+
+describe('Queue tab: instance chips', () => {
+  it("names a download's instance when its app has several, and keeps the app chip otherwise", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/activity/queue?')) return Response.json({ records: QUEUE, totalRecords: QUEUE.length });
+      if (url === '/api/instances') {
+        return Response.json([
+          { id: 'rad-1', label: 'main', type: 'RADARR' },
+          { id: 'rad-2', label: 'radarr-anime', type: 'RADARR' },
+          { id: 'son-1', label: 'SONARR', type: 'SONARR' },
+        ]);
+      }
+      return Response.json({ success: true });
+    });
+    renderTab();
+    const card = (title: string) => screen.getByText(title).parentElement as HTMLElement;
+    await waitFor(() => expect(within(card('Movie.2026')).getByText('main (Radarr)')).toBeTruthy());
+    expect(within(card('Movie.Delayed')).getByText('radarr-anime')).toBeTruthy();
+    expect(within(card('Show.S01E01')).getByText('sonarr')).toBeTruthy();
+  });
+});
