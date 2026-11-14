@@ -70,7 +70,8 @@ export function NewAndHot({ railsFallback }: { railsFallback: React.ReactNode })
   }, []);
 
   const query = useQuery({
-    queryKey: ['jellyfin', 'catalog', 'upcoming-calendar', range.start, range.end],
+    // The zone in the key too: a device that changed zones must not reuse days matched in the old one.
+    queryKey: ['jellyfin', 'catalog', 'upcoming-calendar', range.start, range.end, getDeviceTimeZone()],
     // Release days matched on this device's days, as Calendar does (same URL as the rails', which share this key).
     queryFn: jsonFetcher<CalendarEvent[]>(`/api/calendar?start=${range.start}&end=${range.end}&tz=${encodeURIComponent(getDeviceTimeZone())}`),
     enabled: canSeeCalendar && tab === 'coming',

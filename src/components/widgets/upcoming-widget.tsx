@@ -41,6 +41,7 @@ function formatEventDate(ev: CalendarEvent): string {
   if (!Number.isFinite(d.getTime())) return '';
   // By its kind, not by a midnight hour: where that midnight does not exist
   // (a DST start, as in Santiago) local midnight of the day reads 01:00.
+  // isReleaseDayEvent, not isAllDayEvent: this request has no scheduled alerts (no includeScheduled).
   if (isReleaseDayEvent(ev) || (d.getHours() === 0 && d.getMinutes() === 0)) return formatDate(d, { month: 'short', day: 'numeric' });
   return formatDateTime(d, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
