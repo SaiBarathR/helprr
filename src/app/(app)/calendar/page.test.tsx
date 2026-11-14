@@ -50,8 +50,13 @@ vi.mock('@/components/ui/quick-context-menu', () => ({
 vi.mock('@/components/calendar/calendar-feed-dialog', () => ({
   CalendarFeedDialog: () => <p>Calendar feed dialog</p>,
 }));
+// Each row's alert button, by the title it schedules for.
+const alertButtons = vi.hoisted(() => new Map<string, { onSaved?: () => void }>());
 vi.mock('@/components/scheduled-alerts/scheduled-alert-dialog', () => ({
-  ScheduledAlertButton: () => null,
+  ScheduledAlertButton: (props: { draft: { title: string }; onSaved?: () => void }) => {
+    alertButtons.set(props.draft.title, props);
+    return null;
+  },
 }));
 
 import CalendarPage from './page';
@@ -317,6 +322,20 @@ it('refetches the shown range on pull to refresh', async () => {
   calendar.refetch = refetch;
   render(<CalendarPage />);
   await act(async () => { await calendar.pullToRefresh!.onRefresh(); });
+  expect(refetch).toHaveBeenCalledTimes(1);
+});
+
+// The row shows "Scheduled" from the calendar's answer, so a saved alert must reload it.
+it.each(['month', 'agenda'] as const)('reloads the calendar after an alert is saved from a %s row', async (view) => {
+  const refetch = vi.fn(() => Promise.resolve());
+  calendar.refetch = refetch;
+  alertButtons.clear();
+  useUIStore.setState({ calendarView: view });
+  render(<CalendarPage />);
+  if (view === 'month') fireEvent.click(screen.getByRole('button', { name: /October 15, 1 release/ }));
+  const button = alertButtons.get('Selected day movie');
+  expect(button?.onSaved).toBeTypeOf('function');
+  await act(async () => { button!.onSaved!(); });
   expect(refetch).toHaveBeenCalledTimes(1);
 });
 

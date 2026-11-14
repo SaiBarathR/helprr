@@ -139,6 +139,10 @@ export default function StorageSettingsPage() {
       }
       const deleted = typeof payload?.deleted === 'number' ? payload.deleted : 0;
       toast.success(deleted === 0 ? 'No matching rows to delete' : `Deleted ${deleted} row${deleted === 1 ? '' : 's'}`);
+      // Done: close the confirm. A failure above keeps it open beside its
+      // error toast, so the user can try again or cancel.
+      setConfirmOlder(false);
+      setConfirmAll(false);
       await queryClient.invalidateQueries({ queryKey: CLEANUP_SUMMARY_KEY });
     } catch {
       toast.error('Failed to delete cleanup history');

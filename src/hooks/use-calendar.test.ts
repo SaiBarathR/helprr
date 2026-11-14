@@ -29,6 +29,10 @@ it('refetch reloads the range in the background and settles once the new events 
   expect(settled).toBe(true);
   expect(result.current.events).toHaveLength(2);
   expect(fetchMock).toHaveBeenCalledTimes(2);
+  // The first load may use the browser's copy (max-age); a refetch follows a
+  // change it would not have, such as a saved alert.
+  expect((fetchMock.mock.calls[0] as unknown[])[1]).not.toHaveProperty('cache');
+  expect((fetchMock.mock.calls[1] as unknown[])[1]).toMatchObject({ cache: 'no-cache' });
 });
 
 it('reports an offline snapshot from the service worker to the shared saved-data notice', async () => {

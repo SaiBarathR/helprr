@@ -196,7 +196,8 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
     });
     // 403, not 401: the client sends every 401 to /login, and the session is fine.
     return NextResponse.json(
-      { error: user.passwordHash ? 'Current password is incorrect' : 'That Jellyfin password is incorrect' },
+      // field: the page marks the password, not the code, as the one that was wrong.
+      { error: user.passwordHash ? 'Current password is incorrect' : 'That Jellyfin password is incorrect', field: 'currentPassword' },
       { status: 403 },
     );
   }

@@ -33,6 +33,8 @@ export function DeleteAccountDrawer({
   const [confirmation, setConfirmation] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // The field the server said was wrong, so only that one is outlined red.
+  const [wrongField, setWrongField] = useState<'currentPassword' | 'code' | null>(null);
   const twoStep = useQuery({
     queryKey: queryKeys.twoFactor(),
     queryFn: jsonFetcher<{ enabled: boolean }>('/api/me/totp'),
@@ -49,9 +51,12 @@ export function DeleteAccountDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentPassword: confirmation, ...(needsCode ? { code: code.trim() } : {}) }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string; needsCode?: boolean };
+      const data = (await res.json().catch(() => ({}))) as { error?: string; field?: string; needsCode?: boolean };
       if (data.needsCode === true) setServerNeedsCode(true);
-      if (!res.ok) throw new ApiError(res.status, data.error ?? 'Failed to delete your account');
+      if (!res.ok) {
+        setWrongField(data.field === 'currentPassword' || data.field === 'code' ? data.field : null);
+        throw new ApiError(res.status, data.error ?? 'Failed to delete your account');
+      }
     },
     // The account and its sessions are gone: leave for Login in every tab,
     // which then says so instead of looking like a plain sign-out.
@@ -85,6 +90,7 @@ export function DeleteAccountDrawer({
           setCode('');
           setServerNeedsCode(false);
           setError(null);
+          setWrongField(null);
         }
         onOpenChange(o);
       }}
@@ -103,6 +109,7 @@ export function DeleteAccountDrawer({
             e.preventDefault();
             if (!canSubmit) return;
             setError(null);
+            setWrongField(null);
             mutation.mutate();
           }}
         >
@@ -124,8 +131,9 @@ export function DeleteAccountDrawer({
               onChange={(e) => {
                 setConfirmation(e.target.value);
                 setError(null);
+                setWrongField(null);
               }}
-              aria-invalid={error ? true : undefined}
+              aria-invalid={wrongField === 'currentPassword' ? true : undefined}
               aria-describedby={error ? 'da-error' : undefined}
             />
             {needsCode && (
@@ -143,8 +151,9 @@ export function DeleteAccountDrawer({
                   onChange={(e) => {
                     setCode(e.target.value);
                     setError(null);
+                    setWrongField(null);
                   }}
-                  aria-invalid={error ? true : undefined}
+                  aria-invalid={wrongField === 'code' ? true : undefined}
                   aria-describedby={error ? 'da-error' : undefined}
                 />
               </>

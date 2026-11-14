@@ -147,6 +147,55 @@ describe('Account: your data', () => {
     expect(mocks.endSession).not.toHaveBeenCalled();
   });
 
+  it('marks only the code as wrong after a wrong code', async () => {
+    mocks.me = me();
+    serve(() => new Response(JSON.stringify({ error: 'That code didn’t work. Try again.', field: 'code' }), { status: 403 }), true);
+    renderPage();
+    const { user, submit } = await openDelete();
+    const code = await screen.findByLabelText('Code from your app, or a recovery code');
+    const password = screen.getByLabelText('Current password');
+    await user.type(password, 'the words typed at sign in');
+    await user.type(code, '000000');
+    await user.click(submit);
+
+    await screen.findByRole('alert');
+    expect(code.getAttribute('aria-invalid')).toBe('true');
+    expect(password.hasAttribute('aria-invalid')).toBe(false);
+  });
+
+  it('marks only the password as wrong after a wrong password, and clears it on typing', async () => {
+    mocks.me = me();
+    serve(() => new Response(JSON.stringify({ error: 'Current password is incorrect', field: 'currentPassword' }), { status: 403 }), true);
+    renderPage();
+    const { user, submit } = await openDelete();
+    const code = await screen.findByLabelText('Code from your app, or a recovery code');
+    const password = screen.getByLabelText('Current password');
+    await user.type(password, 'not the right words');
+    await user.type(code, '123456');
+    await user.click(submit);
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/password is incorrect/);
+    expect(password.getAttribute('aria-invalid')).toBe('true');
+    expect(code.hasAttribute('aria-invalid')).toBe(false);
+    await user.type(password, 'x');
+    expect(password.hasAttribute('aria-invalid')).toBe(false);
+  });
+
+  it('marks neither field for a refusal that is about neither', async () => {
+    mocks.me = me({ role: 'admin' });
+    serve(() => new Response(
+      JSON.stringify({ error: 'You are the last active admin. Make someone else an admin first.' }), { status: 409 },
+    ));
+    renderPage();
+    const { user, submit } = await openDelete();
+    const password = screen.getByLabelText('Current password');
+    await user.type(password, 'the words typed at sign in');
+    await user.click(submit);
+
+    await screen.findByRole('alert');
+    expect(password.hasAttribute('aria-invalid')).toBe(false);
+  });
+
   it('asks for the code when the server says two-step is on after all', async () => {
     mocks.me = me();
     serve(() => new Response(

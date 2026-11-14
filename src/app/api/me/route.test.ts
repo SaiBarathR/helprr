@@ -204,7 +204,7 @@ describe('DELETE /api/me', () => {
   it('refuses a wrong password with 403 and counts it like a failed sign-in', async () => {
     const res = await del({ currentPassword: 'not the right words' });
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: 'Current password is incorrect' });
+    expect(await res.json()).toEqual({ error: 'Current password is incorrect', field: 'currentPassword' });
     expect(mocks.recordUsernameFailure).toHaveBeenCalledWith('member', 'not the right words');
     expect(mocks.recordGlobalLoginFailure).toHaveBeenCalledTimes(1);
     expect(mocks.recordFailedSignIn).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
