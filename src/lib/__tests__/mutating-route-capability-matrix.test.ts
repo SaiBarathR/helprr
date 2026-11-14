@@ -14,6 +14,7 @@ const AUTH_CALLS = new Set([
   'requireSession',
   'requireUser',
   'requireUserCapability',
+  'requireUserAnyCapability',
   'requireUserAllCapabilities',
 ]);
 
@@ -76,7 +77,6 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'PUT /api/settings/discover-layout',
     'POST /api/services/import',
     'POST /api/services/scan',
-    'PUT /api/settings',
     'POST /api/setup-checklist',
     'POST /api/sonarr/[id]/anime',
     'PATCH /api/sonarr/[id]/anime',
@@ -344,10 +344,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'PUT /api/settings/disk-thresholds',
   ],
   'cap:torrents.add': ['POST /api/qbittorrent'],
-  'cap:torrents.bandwidth': [
-    'PUT /api/qbittorrent/bandwidth-schedule',
-    'POST /api/qbittorrent/transfer/limits',
-  ],
+  'cap:torrents.bandwidth': ['POST /api/qbittorrent/transfer/limits'],
   'cap:torrents.manage': ['POST /api/qbittorrent/[hash]/files/priority'],
   'cap:watchlist.edit': [
     'DELETE /api/watchlist/[id]',
@@ -362,7 +359,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
 };
 
 interface SpecialPolicy {
-  readonly kind: 'dynamic-capability' | 'field-capability' | 'owned-or-capability' | 'service-capabilities' | 'item-capability';
+  readonly kind: 'dynamic-capability' | 'field-capability' | 'owned-or-capability' | 'service-capabilities' | 'item-capability' | 'any-capability';
   readonly marker: string;
   readonly capabilities: readonly Capability[];
 }
@@ -392,6 +389,18 @@ const SPECIAL_POLICIES: Record<string, SpecialPolicy> = {
     kind: 'dynamic-capability',
     marker: 'actionCapability',
     capabilities: ['torrents.delete', 'torrents.bandwidth', 'torrents.manage'],
+  },
+  // Admins write every field; a member only the Logging or Storage page's own.
+  'PUT /api/settings': {
+    kind: 'field-capability',
+    marker: 'appSettingsWriteAllowed',
+    capabilities: ['settings.logging', 'settings.storage'],
+  },
+  // The Torrents page's speed limits, or Settings → Downloads, the schedule's own page.
+  'PUT /api/qbittorrent/bandwidth-schedule': {
+    kind: 'any-capability',
+    marker: 'requireUserAnyCapability',
+    capabilities: ['torrents.bandwidth', 'settings.downloads'],
   },
   'PUT /api/sonarr/editor': {
     kind: 'field-capability',
@@ -682,6 +691,7 @@ describe('mutating API route capability matrix', () => {
       } else if (policy.kind === 'field-capability') {
         expect(
           hasCall(evidence, 'requireAuth')
+            || hasCall(evidence, 'requireUser')
             || hasCall(evidence, 'requireCapability')
             || hasCall(evidence, 'requireUserCapability'),
           `${route} must authenticate before applying its field guard`,
@@ -692,6 +702,10 @@ describe('mutating API route capability matrix', () => {
         }
         expect(evidence.handlerText).toContain('can(auth.user, SERVICE_ADD_CAPABILITY[');
         expect(SERVICE_ADD_CAPABILITY).toEqual({ RADARR: 'movies.add', SONARR: 'series.add' });
+      } else if (policy.kind === 'any-capability') {
+        for (const capability of policy.capabilities) {
+          expect(hasCall(evidence, 'requireUserAnyCapability', capability), `${route} must accept ${capability}`).toBe(true);
+        }
       } else if (policy.kind === 'item-capability') {
         expect(hasCall(evidence, 'requireUser')).toBe(true);
         expect(evidence.handlerText).toContain(`can(auth.user, viewCap)`);

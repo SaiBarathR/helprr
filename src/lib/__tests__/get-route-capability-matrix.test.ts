@@ -273,7 +273,6 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'cap:torrents.view': [
     'GET /api/qbittorrent/[hash]/details',
     'GET /api/qbittorrent/[hash]/files',
-    'GET /api/qbittorrent/bandwidth-schedule',
     'GET /api/qbittorrent/categories',
     'GET /api/qbittorrent/options',
     'GET /api/qbittorrent',
@@ -392,6 +391,10 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   ],
   'any:discover.view|settings.appearance': [
     'GET /api/discover/filters',
+  ],
+  // Settings → Downloads is the schedule's own page; the schedule names no torrent.
+  'any:torrents.view|settings.downloads': [
+    'GET /api/qbittorrent/bandwidth-schedule',
   ],
   'filtered-capability': [
     'GET /api/services/external-urls',

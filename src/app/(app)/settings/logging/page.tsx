@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { useCan } from '@/components/permission-provider';
 import { useAppSettings, type AppSettingsState } from '@/lib/hooks/use-app-settings';
 import { useDebouncedCommit } from '@/lib/hooks/use-debounced-commit';
 import {
@@ -37,6 +38,9 @@ function dispatchClientLogSettings(detail: ClientLogCaptureSettingsEvent) {
 
 export default function LoggingSettingsPage() {
   const { settings, loading, update } = useAppSettings();
+  // Deleting log files is "Delete logs" (logs.manage, DELETE /api/logs/files),
+  // a separate grant from these logging settings.
+  const canDeleteLogs = useCan('logs.manage');
   const previousLogEnabled = useRef<boolean | null>(null);
   const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
   const [purgingLogs, setPurgingLogs] = useState(false);
@@ -98,7 +102,7 @@ export default function LoggingSettingsPage() {
       logEnabled: result.logEnabled,
       logClientConsoleEnabled: result.logClientConsoleEnabled,
     });
-    if (wasEnabled === true && next === false) {
+    if (wasEnabled === true && next === false && canDeleteLogs) {
       setPurgeConfirmOpen(true);
     }
   }
@@ -265,13 +269,18 @@ export default function LoggingSettingsPage() {
         </fieldset>
       </GroupedSection>
 
-      <GroupedSection title="Files" footer="Server action — affects all devices">
+      <GroupedSection
+        title="Files"
+        footer={canDeleteLogs
+          ? 'Server action — affects all devices'
+          : 'Deleting log files needs “Delete logs”, which an admin turns on in Settings → Users.'}
+      >
         <div className="px-4 py-3">
           <Button
             variant="outline"
             className="w-full h-9"
             onClick={() => setPurgeConfirmOpen(true)}
-            disabled={purgingLogs}
+            disabled={purgingLogs || !canDeleteLogs}
           >
             {purgingLogs ? (
               <>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireAdmin } from '@/lib/auth';
+import { requireAuth, requireUser } from '@/lib/auth';
+import { can } from '@/lib/permissions';
+import type { Capability } from '@/lib/capabilities';
 import { pollingService } from '@/lib/polling-service';
 import { disableCachingAndPurgeCaches } from '@/lib/cache/admin';
 import { setCachedAnilistTtlSettings, setCachedCacheImagesEnabled } from '@/lib/cache/state';
@@ -13,6 +15,42 @@ import { normalizeRegionCode } from '@/lib/region';
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
 const UPCOMING_NOTIFY_MODES = new Set(['before_air', 'daily_digest']);
 const ACTIVITY_DIGEST_MODES = new Set(['off', 'daily', 'weekly']);
+
+// The AppSettings fields a member may write when an admin gives them that
+// settings page: exactly what the Logging and Storage pages save. Every other
+// field (polling, time zone, region, notification timing, …) stays admin-only.
+const CAPABILITY_FIELDS: ReadonlyArray<readonly [Capability, ReadonlySet<string>]> = [
+  ['settings.logging', new Set([
+    'logEnabled', 'logLevel', 'logMaxFileMb', 'logRetentionDays',
+    'logClientConsoleEnabled', 'logFailedRequestBodies', 'logFailedResponseBodies',
+  ])],
+  ['settings.storage', new Set(['cacheImagesEnabled'])],
+];
+
+/**
+ * Admins write any field. Anyone else only a non-empty set of fields that all
+ * belong to settings pages they hold; an unknown or admin-only key fails closed.
+ */
+function appSettingsWriteAllowed(user: Parameters<typeof can>[0], body: unknown): boolean {
+  if (user.role === 'admin') return true;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  const keys = Object.keys(body);
+  const allowed = CAPABILITY_FIELDS.filter(([cap]) => can(user, cap)).map(([, fields]) => fields);
+  return keys.length > 0 && keys.every((key) => allowed.some((fields) => fields.has(key)));
+}
+
+// Everyone reads these settings; the database backup time and schedule are for
+// admins (/api/admin/database-backup), so neither GET nor PUT returns them.
+function withoutDatabaseBackup<T extends Record<string, unknown>>(settings: T) {
+  const {
+    /* eslint-disable @typescript-eslint/no-unused-vars */
+    lastDatabaseBackupAt, databaseBackupSchedule, databaseBackupHour, databaseBackupDayOfWeek,
+    databaseBackupKeep, databaseBackupAlertDays, databaseBackupScheduledAt, databaseBackupAlertedAt,
+    /* eslint-enable @typescript-eslint/no-unused-vars */
+    ...rest
+  } = settings;
+  return rest;
+}
 
 function parseIntegerSetting(
   value: unknown,
@@ -51,15 +89,7 @@ async function getHandler() {
   if (authError) return authError;
 
   try {
-    // Everyone reads these; the database backup time and schedule are for admins
-    // (/api/admin/database-backup).
-    const {
-      /* eslint-disable @typescript-eslint/no-unused-vars */
-      lastDatabaseBackupAt, databaseBackupSchedule, databaseBackupHour, databaseBackupDayOfWeek,
-      databaseBackupKeep, databaseBackupAlertDays, databaseBackupScheduledAt, databaseBackupAlertedAt,
-      /* eslint-enable @typescript-eslint/no-unused-vars */
-      ...settings
-    } = await getOrCreateAppSettings();
+    const settings = withoutDatabaseBackup(await getOrCreateAppSettings());
 
     return NextResponse.json({
       ...settings,
@@ -85,16 +115,18 @@ async function getHandler() {
  * @returns The resulting settings object as JSON on success; on failure returns `{ error: 'Failed to update settings' }` with HTTP status 500.
  */
 async function putHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
   // The singleton AppSettings is global infrastructure (polling intervals,
-  // logging, timezone, etc.) — only admins write it. Genuinely-personal
-  // settings live on the per-user UserSettings route.
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
+  // logging, timezone, etc.): admins write it, and a member only the fields of
+  // a settings page an admin gave them (appSettingsWriteAllowed). Genuinely
+  // personal settings live on the per-user UserSettings route.
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await request.json();
+    if (!appSettingsWriteAllowed(auth.user, body)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     const {
       pollingIntervalSecs,
       activityRefreshIntervalSecs, torrentsRefreshIntervalSecs,
@@ -170,7 +202,18 @@ async function putHandler(request: NextRequest) {
       }
       data.timeZone = nextTimeZone;
     }
-    if (logEnabled !== undefined) data.logEnabled = Boolean(logEnabled);
+    // Strict booleans, like the other switches: Boolean("false") would turn logging on.
+    const logSwitches = { logEnabled, logClientConsoleEnabled, logFailedRequestBodies, logFailedResponseBodies };
+    for (const [field, value] of Object.entries(logSwitches)) {
+      if (value === undefined) continue;
+      if (typeof value !== 'boolean') {
+        return NextResponse.json(
+          { error: `${field} must be a boolean` },
+          { status: 400 }
+        );
+      }
+      data[field] = value;
+    }
     if (logLevel !== undefined) {
       if (typeof logLevel !== 'string' || !LOG_LEVELS.has(logLevel)) {
         return NextResponse.json(
@@ -210,12 +253,6 @@ async function putHandler(request: NextRequest) {
       }
       data.notificationHistoryRetentionDays = parsed;
     }
-    if (logClientConsoleEnabled !== undefined)
-      data.logClientConsoleEnabled = Boolean(logClientConsoleEnabled);
-    if (logFailedRequestBodies !== undefined)
-      data.logFailedRequestBodies = Boolean(logFailedRequestBodies);
-    if (logFailedResponseBodies !== undefined)
-      data.logFailedResponseBodies = Boolean(logFailedResponseBodies);
     if (watchProviderRegion !== undefined) {
       const code = normalizeRegionCode(watchProviderRegion);
       if (!code) {
@@ -386,7 +423,7 @@ async function putHandler(request: NextRequest) {
     }
 
     return NextResponse.json({
-      ...settings,
+      ...withoutDatabaseBackup(settings),
       envTimeZone: getEnvTimeZone(),
       cachePurge,
     });

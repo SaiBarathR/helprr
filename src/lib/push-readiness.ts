@@ -224,7 +224,8 @@ export function pushReadinessChecks(facts: PushFacts): PushCheck[] {
             state: 'warn',
             title: 'Quiet hours are on now',
             detail: `From ${window} pushes are skipped; they still show in Notifications. A test notification comes through.`,
-            fixHref: '/settings/notifications',
+            // Straight to the section: it sits below the device and event lists.
+            fixHref: '/settings/notifications#quiet-hours',
           }
         : { id: 'quiet-hours', state: 'ok', title: `Quiet hours ${window}: pushes are skipped then` },
     );

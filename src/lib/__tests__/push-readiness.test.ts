@@ -140,7 +140,7 @@ describe('quiet hours', () => {
 
   it('warns while they are on, and says so when they are off', () => {
     const on = byId({ ...ready, quietHours: { start: 12, end: 18, activeNow: true } })['quiet-hours'];
-    expect(on).toMatchObject({ state: 'warn', title: 'Quiet hours are on now', fixHref: '/settings/notifications' });
+    expect(on).toMatchObject({ state: 'warn', title: 'Quiet hours are on now', fixHref: '/settings/notifications#quiet-hours' });
     expect(byId({ ...ready, quietHours: { start: 12, end: 18, activeNow: false } })['quiet-hours'].state).toBe('ok');
     expect(byId({ ...ready, quietHours: null })['quiet-hours']).toBeUndefined();
   });
