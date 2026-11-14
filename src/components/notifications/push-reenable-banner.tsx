@@ -45,7 +45,7 @@ export function PushReenableBanner() {
     // The buttons wrap under the text where the row is narrow (large text or
     // zoom), rather than squeezing it to a word per line under them.
     <div className="mx-1 mb-2 flex flex-wrap items-start justify-between gap-x-3 gap-y-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm">
-      <div className="flex min-w-0 flex-[1_1_14rem] items-start gap-2.5">
+      <div className="flex min-w-0 flex-[1_1_10rem] items-start gap-2.5">
         <BellOff className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
         <div className="min-w-0">
           <div className="font-medium text-red-200">Notifications stopped on this device</div>

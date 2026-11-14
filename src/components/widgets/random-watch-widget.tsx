@@ -84,11 +84,12 @@ export function RandomWatchWidget({
 
   const pick = data?.pick ?? null;
 
-  // The one-row half-width phone cell (2×1): under the header the hero had no
-  // room left at all, so it takes the Discover rails' compact tile, as For You
-  // and Upcoming do there. The label opens the Random mode of For You; a new
-  // pick still lands with every poll.
-  if (narrow && (rowSpan ?? 1) <= 1) {
+  // Any one-row cell: under the header (and the filter chips in a wide one) the
+  // hero had 4–30px left, too little for any of the pick, so it takes the
+  // Discover rails' compact tile, as For You and Upcoming do in a 2×1. Unlike
+  // theirs, this layout is a hero and can't shrink to one row. The label opens
+  // the Random mode of For You; a new pick still lands with every poll.
+  if ((rowSpan ?? 1) <= 1) {
     const hint = pick?.mediaType === 'movie' ? 'radarr' : 'sonarr';
     return (
       <CompactRailTile
@@ -383,6 +384,8 @@ function PickHero({
   return (
     <Link
       href={pick.href}
+      // Its name even where a short hero hides the title (globals.css).
+      aria-label={pick.title}
       style={{
         textDecoration: 'none',
         color: 'inherit',

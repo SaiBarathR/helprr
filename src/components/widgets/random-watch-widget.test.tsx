@@ -34,10 +34,15 @@ describe('Random Pick sizes', () => {
     expect(row.textContent).toContain('2026 · Movie');
   });
 
-  it('keeps its header and filters in a wide one-row cell, as For You and Upcoming do', () => {
+  it('takes the compact tile in a wide one-row cell too, where the hero had no room under the header and chips', () => {
     render(<RandomWatchWidget refreshInterval={60_000} rowSpan={1} />);
-    expect(screen.queryByRole('link', { name: 'Random Pick, view all' })).toBeNull();
-    expect(screen.getByRole('group', { name: 'Random pick filters' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Random Pick, view all' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /The Sheep Detectives/ }).textContent).toContain('2026 · Movie');
+  });
+
+  it('names the hero link by the title in taller cells', () => {
+    render(<RandomWatchWidget refreshInterval={60_000} rowSpan={2} />);
+    expect(screen.getByRole('link', { name: 'The Sheep Detectives' }).getAttribute('href')).toBe('/movies/7?instance=r1');
   });
 
   it('does not claim "nothing matches" in a 2×1 cell in edit mode, which loads nothing', () => {
