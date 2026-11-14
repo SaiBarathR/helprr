@@ -44,6 +44,7 @@ describe('DrawerContent above the keyboard', () => {
     return {
       viewport,
       fire: () => listeners.forEach((listener) => listener()),
+      listening: () => listeners.size,
     };
   }
 
@@ -111,6 +112,26 @@ describe('DrawerContent above the keyboard', () => {
     const panel = open('content');
     expect(panel.style.paddingBottom).toBe('0px');
     expect(panel.hasAttribute('data-keyboard-tab')).toBe(false);
+  });
+
+  // vaul composes refs without passing a ref's cleanup on: the content must stop on its ref(null).
+  it('takes its keyboard listeners and measuring box away when it unmounts', () => {
+    const { listening } = stubViewport(window.innerHeight - 300);
+    const boxes = () => [...document.body.querySelectorAll<HTMLElement>('div[aria-hidden="true"]')]
+      .filter((box) => box.style.position === 'fixed' && box.style.visibility === 'hidden').length;
+    const view = render(
+      <Drawer open>
+        <DrawerContent size="content">
+          <DrawerTitle>Short form</DrawerTitle>
+        </DrawerContent>
+      </Drawer>,
+    );
+    expect(boxes()).toBe(1);
+    expect(listening()).toBeGreaterThan(0);
+    view.unmount();
+    expect(boxes()).toBe(0);
+    // Its visualViewport listeners (and vaul's own) are all gone.
+    expect(listening()).toBe(0);
   });
 
   it('leaves a drawer alone while no keyboard is open', () => {
