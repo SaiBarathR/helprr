@@ -97,6 +97,10 @@ Admins can also get these, by push or on a channel:
   (judged by the browser's name, so treat it as a hint, not proof),
   10 or more failed sign-ins within 10 minutes, or two-step sign-in turned off for an
   account. Each one links to **Settings → Operation audit → Security**.
+- **Database backup**: a scheduled backup failed, or the last backup (from Helprr or
+  `backup.sh`) is older than **Alert when older than** in **Settings → Backup &
+  Restore** (7 days by default, at most once a day; **Never** turns it off). An install
+  with no backup recorded gets one reminder.
 
 ## Backups
 

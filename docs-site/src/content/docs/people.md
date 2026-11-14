@@ -14,6 +14,13 @@ Each person gets their own account in **Settings → Users**. Helprr has two tem
 For each person you can switch single permissions on or off on top of their template.
 Anything not given is refused, including permissions added in later versions.
 
+Lidarr downloads, history, calendar entries and notifications need **Music**; without it
+a person sees and hears nothing from Lidarr. Renaming files and **Organize** need the
+title's **Manage files** permission, and for music the **Manage music files**
+permission. Polling, refresh intervals, Region and the server time zone in
+**Settings → Preferences** are shown only to admins. The Jellyfin connection's default user
+and custom headers are admin-only too, like its address and key.
+
 Giving someone admin asks you to confirm it is you: adding an admin, making someone
 admin, setting another admin's password or Jellyfin account, and making a reset or invite
 link for another admin need your current password, plus a code from your authenticator

@@ -1,0 +1,181 @@
+{
+  "release": "1.15.0",
+  "migrations": [
+    {
+      "name": "0001_init",
+      "sha256": "d914ed8c4209a78ab8e909eb7efa456c3517e453bc42469b66a6cec3dec19a30"
+    },
+    {
+      "name": "20260706224508_polling_state_queue_baseline_nullable",
+      "sha256": "3a06d48adba32b513a7d5a13809f8ea81ce4bcdf3c296172c138418dc7040135"
+    },
+    {
+      "name": "20260707010000_notification_history_dedupe_unique",
+      "sha256": "1a0b2f4ffdc3474cd48dbb4b0106b776749b17a488541de9ac94aa3ba6dac8aa"
+    },
+    {
+      "name": "20260708155457_add_custom_headers",
+      "sha256": "23065070b1883e0a05653a19d1d4b9f3c1ef2c5c09811551595e1e6b8b2511a4"
+    },
+    {
+      "name": "20260714110000_cleanup_preview_outcomes",
+      "sha256": "96282fcaddfb96717b7c1d657ca957d86d1939eae20a0c6fb31947fb7b50acda"
+    },
+    {
+      "name": "20260714140000_unified_operation_audit",
+      "sha256": "31a109e465832ee3623c882957371cc0e0fedf3408dee9c280a4b860bc70bc1d"
+    },
+    {
+      "name": "20260714170000_retention_session_index",
+      "sha256": "0299c2aaa90fc0c25c45dc47c74781390cef434252c8b45d064cb0b062b9349e"
+    },
+    {
+      "name": "20260716100157_recommendation_events_taste_profile",
+      "sha256": "d931772cc7cb9fbd1b08c1a2873c84b8f90028b22812ee24534792159c3bfc25"
+    },
+    {
+      "name": "20260730050000_notification_unread_partial_indexes",
+      "sha256": "87428832eaf84a7755911e9cc39afd6795bc48f39457148b0181f0124e6a665c"
+    },
+    {
+      "name": "20261017120000_cleanup_actor_audit_request_fields",
+      "sha256": "fffd8f7f6fba56bfbde894006d81f80456ca03ffcdf8e469cc2e2d09d5e06e87"
+    },
+    {
+      "name": "20261018010000_cleanup_strike_torrent_added_at",
+      "sha256": "2399731fb2b229e9f810cd9a4d531b3c0946026fc0e952fe147ae34c278c1baf"
+    },
+    {
+      "name": "20261019120000_manual_downloads",
+      "sha256": "7f98be997b7a646fb3a5a33f7d638caacb91b6755257254a26dc56bbcbb6906f"
+    },
+    {
+      "name": "20261019140000_manual_download_files",
+      "sha256": "89fba363f98c6beab9c97d0e5c52379ca6ee31676bfef95e1331d26e6b321650"
+    },
+    {
+      "name": "20261019160000_manual_download_import_sent_at",
+      "sha256": "27bcda7b22bc5704bca35bc3853cf969dd7a3c4a83e72ffea3eb7877e083145b"
+    },
+    {
+      "name": "20261020120000_taste_profile_marked_at",
+      "sha256": "fbd459a2360b7ec2bb3783257096a0ea933ebad094dce11f52732a048f288e45"
+    },
+    {
+      "name": "20261030120000_twitch_service_type",
+      "sha256": "f8ae7497d438d833f15d018ce4163ab3064a22af4656e30afb0cec70cafbaa1a"
+    },
+    {
+      "name": "20261030120100_twitch_tables",
+      "sha256": "e206e2e0b0e97ea874d0c4ca63c1a9d6be3aa26d63f10b83f2a57d1f8e7c79a0"
+    },
+    {
+      "name": "20261031120000_twitch_file_library",
+      "sha256": "19bd905a89543b1af051e4c95498c567da6f69b399ca0ed4fe07784dcc64717a"
+    },
+    {
+      "name": "20261101120000_archive_platform",
+      "sha256": "dcf2e30f7b44482c02e8b4a7af10917922871306b6b1894e3eb0321fe2cf372c"
+    },
+    {
+      "name": "20261101130000_youtube_foundation",
+      "sha256": "dfab53756375581e3f06da88b33f850a43f24b3bc841be5c711b0d4d55f9789c"
+    },
+    {
+      "name": "20261101140000_youtube_cleanup",
+      "sha256": "3508aa071d4e03e6d965a99bf69f7fb8f5d745a3db6e19e65c3707a3fd40a6ea"
+    },
+    {
+      "name": "20261101150000_youtube_real_formats",
+      "sha256": "d7f387b3663167d06c48016f541fbf4849e739890806b9d2bfdeabd019c3845c"
+    },
+    {
+      "name": "20261104150000_setup_checklist",
+      "sha256": "25852cbaf2cd1bdb9b9e3f1536c83df9e8903160115d7534b8c165e00d9a8027"
+    },
+    {
+      "name": "20261106120000_blocklist_audit",
+      "sha256": "8da3484e854222866517f1554d1b955ffc6497ce1e850dce97cddd76d0b9b263"
+    },
+    {
+      "name": "20261106174815_security_audit_events",
+      "sha256": "5623518d90f351636daf009fddcb5eadcaecb4185ea002b4522c72bb921a8893"
+    },
+    {
+      "name": "20261106190711_whats_new_last_seen_version",
+      "sha256": "501970f2c720068a06967b9d1bd685ebd35498a1a4821223224d80b06f3af480"
+    },
+    {
+      "name": "20261107010000_password_links",
+      "sha256": "5651a3471321f99ce73517cce4639e2440fdd5915f926a956ff0a1cc9b6b5cd1"
+    },
+    {
+      "name": "20261107160000_user_date_time_format",
+      "sha256": "35485fb62762ed0ade1bf1803e76fd22b8dabdc440e78b50974481987ef8bfcf"
+    },
+    {
+      "name": "20261107180000_move_media_audit",
+      "sha256": "1ab258dd83c4829120550d3753ad275815e58c95de58fff0264def169673bae1"
+    },
+    {
+      "name": "20261107200000_mark_failed_audit",
+      "sha256": "59c9e516962edc7180d34cefbc698c79535fe92eb4695e14c5a7103032610d14"
+    },
+    {
+      "name": "20261107210000_calendar_feed_token",
+      "sha256": "54e4d46fc7fbd2447effcefcf4176ed68ed1314d6f84fde604fe3a62d1647614"
+    },
+    {
+      "name": "20261107220000_last_database_backup",
+      "sha256": "dedc95dd4e407344cadb0dd0b472be03271feb997b750bed7db8dbb5f83ace6f"
+    },
+    {
+      "name": "20261107230000_user_totp",
+      "sha256": "222aeb773614628fc9a2d76131cafd0b60f133525187237b76655c597b03e9a5"
+    },
+    {
+      "name": "20261108000000_in_app_database_backups",
+      "sha256": "f867f237970a14c99ccefb6b5f743dcc18fbe211e6e6e86ee6b50b1a83bcf7f7"
+    },
+    {
+      "name": "20261108010000_queue_cleaner_apps",
+      "sha256": "ccd9be4df6b6de553f9938fe2b6a697dababcb13b946be8ab9715e83c53874c4"
+    },
+    {
+      "name": "20261108020000_calendar_feed_links",
+      "sha256": "3918c7afa2e37408b22abd96b09b5a202a84f164ce0b43b104cba05f6d60176c"
+    },
+    {
+      "name": "20261108020100_whats_new_existing_users",
+      "sha256": "49135ec72f41d20c8fd85d3309326ff168544078abacb437762607fdc6913c7b"
+    },
+    {
+      "name": "20261108030000_watchlist_available_notified_at",
+      "sha256": "4e712fa1cf0e4131a2cc5dee09fb4954629c4dc4bed21ecd9f58332ac0de58f2"
+    },
+    {
+      "name": "20261108040000_api_tokens",
+      "sha256": "37f0a02af4fd6038811245ae74fb316592d66a875d9b843219424bf4cf4a40d9"
+    },
+    {
+      "name": "20261108050000_notification_channels",
+      "sha256": "f27125a84cda6f1a87150f88c88caa3240769154d9e422527516f549050a4b47"
+    },
+    {
+      "name": "20261108055000_watching_episode_alerts",
+      "sha256": "7d095f6a10974b213866bb1a993e27fa556e3484141e29aa2a5ca7d3f5ddf7b6"
+    },
+    {
+      "name": "20261108060000_library_cleanup_leaving_soon",
+      "sha256": "f97c822e6608e811891ad9d140dc0b93c791329b8c46823285d18b7ba62ee810"
+    },
+    {
+      "name": "20261108080000_tonight_pick_invite_default_off",
+      "sha256": "95e8942c767c36861a593745688254287b6da7760c4d99d0e0ecb86e24df6070"
+    },
+    {
+      "name": "20261108090000_update_check_toggle_music_manage_files",
+      "sha256": "e347b263c413d79f1ed6f8f7fa92c61bc51de265ba1aba512e38cf740c363ce9"
+    }
+  ]
+}

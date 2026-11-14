@@ -7,28 +7,260 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-11-14
+
+A big release: two-step sign-in, invite links, database backups from inside Helprr,
+notifications beyond push, a calendar you can subscribe to, and library cleanup. The
+update changes the database and adds a backup volume to the Compose file, so back up
+first (see **For admins** below).
+
 ### Added
 
+#### Sign-in and accounts
+
+- **Two-step sign-in**: Settings → Account → Two-step sign-in adds a code from an
+  authenticator app after your password, with ten one-time recovery codes. It applies to
+  **Sign in with Jellyfin** too. If you lose your phone, an admin can turn it off for you
+  in Settings → Users, or send you a password-reset link.
+- **Invite links**: Settings → Users → **Add** makes an invite link by default. The person
+  opens it and picks their own password. Admins can also make a one-time password-reset
+  link for anyone. Invite links last 7 days and reset links 24 hours.
+- **Change your own password** in Settings → Account. Your other devices are signed out,
+  and this one stays signed in. The sign-in page has a **Forgot your password?** note that
+  says how to get back in.
+- **Your data**: Settings → Account → **Download my data** gives you one file with your
+  profile, settings, watchlist, alerts and history. It never includes passwords or
+  tokens. **Delete my account** is on the same page.
 - **Sign in once, at the proxy**: behind Authelia, Authentik or another proxy that asks for
   its own sign-in, Helprr can sign in the matching existing account from a header the proxy
   sends, proven by a shared secret (`HELPRR_TRUSTED_AUTH_HEADER`,
-  `HELPRR_TRUSTED_AUTH_SECRET`). Off unless both are set. See the HTTPS guide. Signing out
-  of Helprr then shows *Signed out* and waits for a tap on **Sign in**, instead of signing
-  straight back in.
+  `HELPRR_TRUSTED_AUTH_SECRET`). It stays off unless both are set; see the HTTPS guide.
+  When you sign out of Helprr, it shows **Signed out** and waits for you to tap **Sign
+  in**, so it doesn't sign you straight back in.
 - **Personal API tokens** and a read-only status API (`/api/v1/summary`, `/api/v1/queue`)
   for iOS Shortcuts, Homepage and other dashboards: Settings → Sessions → API tokens.
-  Admins can make them; members only when an admin turns on **Make personal API tokens**
-  for them (their tokens stop working while it is off). Admins see each person's tokens
-  in Settings → Users and can turn any of them off.
+  Admins can make them. Members can only when an admin turns on **Make personal API
+  tokens** for them, and their tokens stop working while it is off. Admins see each
+  person's tokens in Settings → Users and can turn any of them off.
+- **Security log** (admins): Settings → Operation audit → Security lists sign-ins, failed
+  sign-ins, and changes to users, permissions, sessions, links and connections. Each
+  record is kept for a year.
+
+#### Notifications
+
+- **Other channels**: notifications can also go to ntfy, Gotify, Apprise, a webhook (for
+  example Home Assistant) or email. Set them up in Settings → Notifications → Other
+  channels. Each person adds their own channels (up to 10) and picks which events go to
+  each.
+- **Now in your library**: get a notification when a movie or series on your watchlist
+  arrives. On Android and desktop it has a **Remove from watchlist** button. On iPhone, tap
+  the notification to do the same.
+- **New episode**: get a notification when a new episode arrives for a show you played in
+  Jellyfin recently. Settings → Notifications → Watchlist sets how recently (7 to 90 days,
+  14 by default). You need your own Jellyfin account linked in Account.
+- **Alerts for admins**: a new Helprr version is out; a security alert (an admin signed in
+  from a new browser, many failed sign-ins, or two-step sign-in turned off for an
+  account); a scheduled backup failed or the last backup is old.
+- **Music reminders**: **Schedule alert…** on an album page reminds you before its release.
+  **Alert on next album…** on an artist page tells you when Lidarr learns of a new album.
+
+#### Activity and the media apps
+
+- **Blocklist**: Activity → Blocklist lists what Sonarr, Radarr and Lidarr have blocked.
+  You can remove one entry, or select several and remove them together.
+- **Fix a bad download from Activity**: a failed download's sheet says why it failed and
+  offers **Search again** and **Interactive search**. **Mark as failed** works on a grab or
+  an import, **Grab now** starts a delayed download, and **Select** on the Queue removes
+  several downloads at once.
+- **Needs import** (was Failed) also lists the last 7 days of failed downloads. Lidarr
+  downloads get the same manual **Import** as Sonarr and Radarr.
+- **Missing and Cutoff Unmet** say what each date is (Aired, Released, Digital release…).
+  Films that aren't out yet fold under **Not released yet**. **Select** and **Search all**
+  search many items at once, and Search all skips films that aren't out yet.
+- **Edit many titles at once**: on Series, Movies and Music, **Select → More** changes the
+  quality profile, the root folder (moving the files if you choose), and more for every
+  selected title, or organizes (renames) their files.
+- **Torrents**: move a torrent's files, add or remove tags, and change its queue position,
+  for one torrent or a selection. UDP trackers now show up, with each tracker's status.
+- **Monitor New Seasons** can be set on Add Series and Edit Series.
+- **Add pages remember** the last quality profile, folder and monitor choice for each
+  instance, separately for anime. With nothing remembered, they start from Seerr's
+  default.
+- **Queue Cleaner works with Lidarr**, and Cleanup → Queue → General has an on/off switch
+  for each app.
+- Music shows in **Recently Added** and in **Library completeness**.
+
+#### Calendar
+
+- **Subscribe in Calendar**: in the Calendar toolbar (the ⋯ menu on smaller screens),
+  this makes a private feed link for Apple
+  Calendar, Google Calendar and other calendar apps. You can have up to 10 named links,
+  each with its own filters, and turn any of them off. Film and album releases are all-day
+  events in your time zone.
+
+#### Library cleanup and backups
+
+- **Leaving soon** (admins): in Cleanup → Library, set rules for movies and series nobody
+  has watched, preview what they match, and mark titles as leaving after a countdown.
+  Leaving titles show on the Dashboard, Movies and Series, where anyone can tap **Keep**.
+  **Delete now** works only once the countdown is over, and only after a fresh check.
+  Helprr never deletes on its own. It needs a Jellyfin connection with admin access.
+- **Back up the database from Helprr** (admins): Settings → Backup & Restore has **Back up
+  now** and a daily or weekly schedule that keeps the newest copies (7 by default).
+  Backups are saved on the server, never downloaded through the browser. The page shows
+  when the last backup ran, including `backup.sh` runs.
+
+#### For You and Random
+
+- **Tonight pick**: in For You → Random, **Pick together** (in the ⋯ menu on smaller
+  screens) invites
+  others in your household. Everyone swipes, and the first title everyone says yes to wins.
+  Invite notifications are off by default.
+- Random has genre and movie-length filters, and **Unwatched only** has moved into
+  Filters.
+
+#### Settings and the app
+
+- **What's new** (this window) shows once after each update. **Settings → About** shows the
+  version, licence and credits.
+- **Settings search**, with the settings sorted into groups.
+- **Date and time format** and **your own time zone**: Settings → Preferences → Date &
+  Time.
+- **Settings → Tips & gestures** lists press-and-hold, swipe, pull to refresh and the
+  search shortcuts.
+- **Pull to refresh** also works on Dashboard, Calendar, Discover, Anime, Cleanup,
+  Insights, Library Gaps and Logs.
+- **Back closes the open sheet first**: Android Back and the browser's Back close an open
+  sheet, menu, list or dialog instead of leaving the page.
+- After library matches, global search offers TMDB and AniList, and TMDB results show
+  **Requested**.
+- Unmonitoring a movie or series shows **Undo**.
+- On movie and series pages, the watchlist bookmark shows when a title is already saved.
+- A **Skip to content** link for keyboard users.
 
 ### Changed
 
-- An admin's own password-reset link turns their two-step sign-in off too, as it does for
-  everyone else (when the link was made after two-step sign-in was turned on). Making that
-  link while two-step sign-in is on asks for the admin's password and a code first.
-- Settings → Users shows *two-step off* as well as *two-step on* for accounts with a
-  Helprr password. The security log records the role a new user was given ("made
-  admin"), and names the admin who made the reset link that turned two-step sign-in off.
+- **New phone layout for new users**: the tabs are Dashboard, Movies, Series and Activity,
+  at the bottom of the screen, with a round Search button beside them. Existing users keep
+  their own tabs and position. **More** shows a count and opens as a sheet, and the sheet
+  ends with **Customize tabs**.
+- Desktop sidebar: Notifications and Settings stay pinned at the bottom, and a single
+  divider follows your phone tabs.
+- On phones, sort, filter, view and ⋯ menus open as bottom sheets on every page. Every
+  toolbar fits on one row, even on a 320 px phone.
+- The Dashboard **Edit** button sits above the widgets instead of floating over them, and
+  only people who can customize the dashboard see it.
+- **Recommendations is now For You.** Buttons say **Add to library** and **Open in
+  library** instead of naming Sonarr or Radarr.
+- Monitoring uses the eye icon everywhere. The bookmark now means only the watchlist.
+- On phones, a movie or series page shows **Play** and the search buttons right under the
+  poster.
+- Easier to read: Liquid Glass light mode has stronger text and colours, and its bars are
+  more solid. On light palettes such as Cream, accent and category colours are darkened
+  until they are readable.
+- **Sign-ins end after 14 days without use** (still 30 days at most). Settings → Sessions
+  groups sign-ins by person.
+- "Is watching" notifications come once per person and title per 45 minutes, and music
+  says "is listening to".
+- **Release reminders** can't be set for something that is already out. Film reminders go
+  off at 9:00 in your time zone. Titles that aren't out yet show **Not released yet** or
+  **Not aired yet** instead of a red Missing.
+- Unfollowing a YouTube or Twitch channel tells you if someone else still follows it,
+  because new videos can still download. People who manage downloads get a **Turn off
+  auto-download** button.
+- Settings export now includes YouTube settings, rules and follows. Older files still
+  import.
+- A test push comes through during quiet hours, and **Check push setup** shows when quiet
+  hours are on.
+- On phones, toast messages appear at the top of the screen, so they don't cover a sheet's
+  buttons.
+- Faster: replies are compressed, Jellyfin artwork is smaller and is reused instead of
+  downloaded again, the AniList list is about four times smaller, and pages load fewer
+  files. More of the app stays saved for offline use.
+- Helprr checks less often on a Sonarr, Radarr or Lidarr that keeps failing (from 30 seconds up to 5 minutes).
+  A passing **Test connection** ends the wait.
+
+#### For admins
+
+- **The update applies 21 database changes. Back up first.**
+- **The Compose file has a new `helprr-backups` volume**, for backups made in Helprr.
+  Download the release's `docker-compose.yml` (CasaOS and TrueNAS: import it again).
+  Helprr works with your old file, but Back up now then says **Backup folder not
+  mounted**. In-app backups use PostgreSQL 16 tools, like the bundled database, so they
+  refuse a newer PostgreSQL server.
+- New optional settings: `HELPRR_TRUSTED_AUTH_HEADER`, `HELPRR_TRUSTED_AUTH_SECRET` and
+  `HELPRR_TRUSTED_AUTH_SECRET_HEADER` (sign-in at the proxy), and `BACKUP_DIR` (only when
+  running outside Docker).
+- Helprr checks GitHub for a new version every 6 hours and tells admins. To turn this
+  off, use Settings → Service status → **Check for updates**.
+- Admins get a reminder when the last database backup is older than **Alert when older
+  than** (7 days by default; **Never** turns it off). An install with no backup recorded
+  gets one reminder.
+- **Settings → Preferences**: Polling, the refresh intervals, Region and Server time zone
+  are now shown only to admins. Only admins could save them before, too.
+- Renaming and Organize need the title's **Manage files** permission. Music has a new
+  **Manage music files** permission, which the update gives to everyone who had **Delete
+  music**.
+- New notifications (Now in your library, New episode, the admin alerts) are on by
+  default. Each device can turn them off in Settings → Notifications.
+- The first Lidarr check after the update sends one notification for each Lidarr
+  download already waiting for a manual import.
+- Everyone sees these notes once after the update.
+
+### Security
+
+- **Confirming it's you**: you now need your password (and a code, if your two-step sign-in
+  is on) to give someone admin, apply the Admin template to a member, turn a disabled admin
+  back on, change another admin's password, Jellyfin link or username, turn off another
+  admin's two-step sign-in, import a backup that contains user accounts, or add Jellyfin
+  or change its address or key.
+- **Disabling an account signs it out everywhere**, so turning the account back on doesn't
+  bring its old sessions back. A new Jellyfin address signs out the accounts linked to
+  Jellyfin.
+- **Jellyfin is admin-only**: its address, key, external URL, default user and custom
+  headers, and deleting it. Members see the connection read-only.
+- **Devices are your own**: Settings → Notifications → Devices and **Revoke all** cover only
+  your own devices, for admins too. Before, an admin's Revoke all turned off push for
+  everyone.
+- The image's PostgreSQL tools (used for backups from Helprr) include November's
+  PostgreSQL security fixes.
+- **Music needs the Music permission**: people without it don't see Lidarr downloads,
+  history, badges, calendar entries, notifications or digest lines, and API tokens don't
+  show them either.
+
+### Fixed
+
+- **Offline**: pages you have opened now open offline, even when the app starts with no
+  connection. Pages say **You're offline** instead of telling you to check Settings, and
+  widgets say **Can't reach Helprr right now**. The offline page retries by itself. The
+  app no longer reloads over and over when opened offline. Calendar now shows the
+  saved-data notice too.
+- Behind a sign-in proxy that guards every page, the app's install file now loads.
+- After an update, an open app reloads instead of getting stuck on a page that no longer
+  exists.
+- **Back** on a page opened from a notification now goes to that page's section, instead
+  of doing nothing.
+- **iPhone**: sheets stay above the keyboard, and lists open once the keyboard closes. In
+  landscape, the notch no longer covers the sidebar or buttons. Taps in the More sheet
+  work after scrolling. Long-pressing a poster no longer opens Safari's link preview.
+- On Missing, Radarr films came back in reverse title order, and some films that aren't
+  out yet showed in the main list.
+- The Prowlarr indexer sheet showed other indexers' history.
+- YouTube and Twitch: watched videos that finished downloading while Jellyfin was
+  unreachable are now cleaned up. A followed playlist no longer announces a channel's old
+  videos, and the Queue says **Cancel re-encode** for a re-encode.
+- Lidarr: downloads you added by hand now reach Needs import, event names are readable,
+  and album covers show in the Calendar.
+- On a setup with several instances, monitoring a title no longer flips a different title
+  that has the same number on another instance.
+- A Queue Cleaner **Change category** rule could delete a torrent no app had queued. It is
+  now skipped.
+- Changing audio, subtitles or quality in the middle of a run of skips no longer loses
+  the skip.
+- Editing a season or episode alert no longer turns it into a series alert.
+- Many layout fixes for phones (down to 320 px), tablets and desktop: 44 px tap targets,
+  readable widths on desktop, no jump when a page's backdrop loads, swipes no longer stuck
+  inside lists on Activity, and the setup checklist's count now matches its ticks.
 
 ## [1.14.0] - 2026-11-06
 
