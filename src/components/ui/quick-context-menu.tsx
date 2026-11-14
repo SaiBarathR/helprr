@@ -12,7 +12,6 @@ import {
 } from 'react';
 import {
   ArrowLeft,
-  ArrowRight,
   ExternalLink,
   Loader2,
   RotateCw,
@@ -66,11 +65,6 @@ interface QuickContextMenuProps {
 export interface OpenInNewTabTarget {
   href: string;
   external?: boolean;
-}
-
-interface HistoryNavState {
-  canGoBack: boolean;
-  canGoForward: boolean;
 }
 
 const INTERACTIVE_SELECTOR =
@@ -152,24 +146,10 @@ export function resolveOpenInNewTabTarget(
   return null;
 }
 
-export function getHistoryNavState(): HistoryNavState {
-  const navigation = (window as Window & {
-    navigation?: { canGoBack?: boolean; canGoForward?: boolean };
-  }).navigation;
-
-  if (typeof navigation?.canGoBack === 'boolean' && typeof navigation.canGoForward === 'boolean') {
-    return {
-      canGoBack: navigation.canGoBack,
-      canGoForward: navigation.canGoForward,
-    };
-  }
-
-  return {
-    canGoBack: window.history.length > 1,
-    // Without the Navigation API we cannot know; keep forward available and
-    // let history.forward() no-op when there is nowhere to go.
-    canGoForward: true,
-  };
+function canGoBackInHistory(): boolean {
+  const navigation = (window as Window & { navigation?: { canGoBack?: boolean } }).navigation;
+  if (typeof navigation?.canGoBack === 'boolean') return navigation.canGoBack;
+  return window.history.length > 1;
 }
 
 export function resolveOpenInNewTabUrl(href: string): string {
@@ -229,10 +209,7 @@ export function QuickContextMenu({
   const portalPressCleanupRef = useRef<(() => void) | null>(null);
   const menuOpenRef = useRef(false);
   const [nestedControlActive, setNestedControlActive] = useState(false);
-  const [historyNav, setHistoryNav] = useState<HistoryNavState>({
-    canGoBack: false,
-    canGoForward: false,
-  });
+  const [canGoBack, setCanGoBack] = useState(false);
 
   const disarmSelectGuard = () => {
     selectGuardCleanupRef.current?.();
@@ -303,12 +280,9 @@ export function QuickContextMenu({
     menuOpenRef.current = next;
     if (next) {
       closeOpenSwipeRow();
-      setHistoryNav({
-        canGoBack: getHistoryNavState().canGoBack,
-        // The open menu puts its own Back entry on history (see
-        // overlay-history), and that push drops every forward entry.
-        canGoForward: false,
-      });
+      // No Forward beside Back: the open menu puts its own Back entry on
+      // history (see overlay-history), and that push drops every forward entry.
+      setCanGoBack(canGoBackInHistory());
       // Drop any native selection the long-press (or right-click) created so
       // the floating menu is not fighting a blue highlight / callout handles.
       clearTextSelection();
@@ -512,7 +486,7 @@ export function QuickContextMenu({
         >
           <ContextMenuItem
             className={TOOLBAR_ITEM_CLASS}
-            disabled={!historyNav.canGoBack}
+            disabled={!canGoBack}
             aria-label="Back"
             title="Back"
             onSelect={() => {
@@ -521,17 +495,6 @@ export function QuickContextMenu({
             }}
           >
             <ArrowLeft />
-          </ContextMenuItem>
-          <ContextMenuItem
-            className={TOOLBAR_ITEM_CLASS}
-            disabled={!historyNav.canGoForward}
-            aria-label="Forward"
-            title="Forward"
-            onSelect={() => {
-              window.history.forward();
-            }}
-          >
-            <ArrowRight />
           </ContextMenuItem>
           <ContextMenuItem
             className={TOOLBAR_ITEM_CLASS}

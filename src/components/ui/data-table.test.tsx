@@ -157,3 +157,50 @@ describe('DataTable column resize', () => {
     expect(cols()[0].style.minWidth).toBe('200px');
   });
 });
+
+describe('DataTable stored widths that no longer fit', () => {
+  const columns = [
+    { id: 'title', label: 'Title', width: 200, grow: true, cell: (row: string) => row },
+    { id: 'year', label: 'Year', width: 80, cell: () => '1979' },
+    { id: 'size', label: 'Size', width: 90, cell: () => '4 GB' },
+  ];
+  const cols = () => [...document.querySelectorAll('col')] as HTMLTableColElement[];
+
+  it('fits widths widened at a wider window, keeps the stored ones, and keeps the sticky header', () => {
+    // Title widened to 600 and Year to 180 at 1440: 870 px in all.
+    localStorage.setItem('helprr-table:fit-test', JSON.stringify({ widths: { title: 600, year: 180 } }));
+    containerWidth = tableWidth = 600;
+    render(<DataTable tableId="fit-test" columns={columns} rows={['Alien']} rowKey={String} stickyHeader />);
+    // 230 px of room over the 370 px of defaults, shared 400:100.
+    expect(cols().map((col) => col.style.minWidth || col.style.width)).toEqual(['384px', '126px', '90px']);
+    expect(screen.getByRole('table').style.minWidth).toBe('600px');
+    expect(screen.getAllByRole('columnheader')[0].classList.contains('sticky')).toBe(true);
+    expect(JSON.parse(localStorage.getItem('helprr-table:fit-test') ?? '{}').widths).toEqual({ title: 600, year: 180 });
+    // A wider window shows them as stored again.
+    containerWidth = tableWidth = 1000;
+    act(() => notifyResize());
+    expect(cols().map((col) => col.style.minWidth || col.style.width)).toEqual(['600px', '180px', '90px']);
+  });
+
+  it('applies them as stored where even the defaults need sideways scrolling', () => {
+    localStorage.setItem('helprr-table:fit-test', JSON.stringify({ widths: { title: 600 } }));
+    containerWidth = 320;
+    render(<DataTable tableId="fit-test" columns={columns} rows={['Alien']} rowKey={String} stickyHeader />);
+    expect(cols()[0].style.minWidth).toBe('600px');
+  });
+
+  it('widens a column only into the room left, so the table keeps fitting', () => {
+    HTMLElement.prototype.setPointerCapture = vi.fn();
+    containerWidth = tableWidth = 500;
+    render(<DataTable tableId="fit-test" columns={columns} rows={['Alien']} rowKey={String} stickyHeader />);
+    const grip = screen.getAllByRole('separator')[1];
+    act(() => {
+      grip.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 100 }));
+      grip.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 400 }));
+      grip.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 400 }));
+    });
+    // 500 - 370 = 130 px of room: Year goes 80 -> 210, not 380.
+    expect(cols()[1].style.width).toBe('210px');
+    expect(JSON.parse(localStorage.getItem('helprr-table:fit-test') ?? '{}').widths).toEqual({ year: 210 });
+  });
+});

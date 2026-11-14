@@ -9,7 +9,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Check, ChevronDown, Play, Plus, RotateCcw, X } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog as DialogPrimitive } from 'radix-ui';
+import { Dialog, DialogOverlay, DialogPortal, DialogTitle } from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -354,8 +355,29 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
 
   return (
     <Dialog open={Boolean(itemId)} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent
-        showCloseButton={false}
+      <DialogPortal>
+      {/* The overlay scrolls, not the panel (Radix's scrollable overlay). A
+          classic, always-shown scrollbar (Safari with "always show scroll
+          bars", Chromium on Linux) takes its gutter from the box that
+          scrolls: on the panel that left a dark strip beside the hero art.
+          On the overlay it sits at the window's edge, as the site's does,
+          and the art reaches the panel's edge. hpr-cine-scroll restyles it:
+          the platform one is a light grey slab, the loudest thing on the
+          overlay. py-4 rather than the panel's margin: a scroller's last
+          margin is not part of what it scrolls in every engine. */}
+      <DialogOverlay className="hpr-cine-scroll overflow-y-auto overscroll-contain px-[4vw] py-4">
+      <DialogPrimitive.Content
+        data-slot="dialog-content"
+        // A press on the overlay's own scrollbar is a press outside the
+        // panel: it scrolls, it doesn't close.
+        onPointerDownOutside={(event) => {
+          const press = event.detail.originalEvent;
+          const target = press.target;
+          if (target instanceof HTMLElement && target.dataset.slot === 'dialog-overlay'
+            && press.clientX >= target.getBoundingClientRect().left + target.clientWidth) {
+            event.preventDefault();
+          }
+        }}
         // 850px wide with a 6px radius at a 1440 viewport, pinned near the top
         // rather than vertically centred — all measured from the site (the
         // panel sits at x=295 in a 1440 viewport: 295 + 850 + 295).
@@ -364,27 +386,24 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
         // glass rule matches on [data-slot='dialog-content'] and outranked the
         // bg-[#181818] utility below, so the overlay rendered translucent with
         // the rails showing through it; the site's panel is flat #181818.
-        // `flex flex-col` overrides DialogContent's own `grid`. It matters:
-        // a stretched grid item ignores aspect-ratio for its height, so the
-        // 16:9 hero collapsed and the metadata landed on top of it.
+        // `flex flex-col`: a stretched grid item ignores aspect-ratio for its
+        // height, so in a grid the 16:9 hero collapsed and the metadata landed
+        // on top of it.
         // Deliberately NOT .hpr-watch. That class carries the Watch section's
         // *layout* — min-height:100dvh and position:relative for the ambient
-        // wash — and putting it on a portalled dialog overrode Radix's
-        // position:fixed, dropping the panel into normal flow at the foot of
-        // the page where it was invisible. The palette does not need it: the
+        // wash — and putting it on a portalled dialog dropped the panel into
+        // its own full-height block. The palette does not need it: the
         // tokens live on the root, which the portal is still inside.
-        // top-4 / 100dvh-2rem rather than top-8 / 100vh-4rem: the site's panel
-        // effectively fills the window, and a 64px vertical inset left ours
-        // floating in the middle of a tall viewport with obvious ground above
-        // and below it. dvh so a phone browser's collapsing toolbar does not
-        // leave the foot of the panel under it. Still max-height, not height:
-        // a film with no episode list is genuinely short, and stretching it
-        // would just add empty panel below the last section.
+        // 16px above it (the overlay's py-4) rather than 32px: the site's
+        // panel effectively fills the window, and a 64px vertical inset left
+        // ours floating in the middle of a tall viewport. Its own height, not
+        // the window's: a film with no episode list is genuinely short, and
+        // stretching it would just add empty panel below the last section.
         //
-        // hpr-cine-scroll restyles the panel's own scrollbar — the platform
-        // one is a light grey slab down the side of a #181818 sheet, which is
-        // the loudest thing on the overlay.
-        className="hpr-cine-modal hpr-cine-scroll top-4 flex max-h-[calc(100dvh-2rem)] w-[92vw] max-w-[850px] translate-y-0 flex-col gap-0 overflow-x-hidden overflow-y-auto rounded-[6px] border-0 bg-[#181818] p-0 shadow-2xl sm:max-w-[850px]"
+        // overflow-x-clip, not hidden: hidden makes the panel a scroll
+        // container, and the sticky Close below would pin to it rather than
+        // to the overlay that scrolls.
+        className="hpr-cine-modal data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 relative mx-auto flex w-full max-w-[850px] flex-col overflow-x-clip rounded-[6px] bg-[#181818] shadow-2xl outline-none duration-200"
       >
         {/* Close rides the scroll rather than the hero. It used to sit inside
             the 16:9 header, which is fine on a film and useless on a series:
@@ -638,7 +657,9 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
             </ModalSection>
           </>
         )}
-      </DialogContent>
+      </DialogPrimitive.Content>
+      </DialogOverlay>
+      </DialogPortal>
     </Dialog>
   );
 }
