@@ -226,24 +226,32 @@ describe('widgetUnavailable', () => {
   const noAnswer = { ...base, isError: true, error: new OfflineError(new TypeError('Failed to fetch')) };
   afterEach(() => vi.unstubAllGlobals());
 
-  it('covers at once with nothing on screen, and data on screen after two failed polls in a row', () => {
-    expect(widgetUnavailable({ ...noAnswer, data: undefined }, 1)).toBe('unreachable');
-    expect(widgetUnavailable(noAnswer, 1)).toBeNull();
-    expect(widgetUnavailable(noAnswer, 2)).toBe('unreachable');
+  it('covers at once with nothing on screen, and data on screen of a fast poller after two failed polls in a row', () => {
+    expect(widgetUnavailable({ ...noAnswer, data: undefined }, 1, 15_000)).toBe('unreachable');
+    expect(widgetUnavailable(noAnswer, 1, 15_000)).toBeNull();
+    expect(widgetUnavailable(noAnswer, 2, 15_000)).toBe('unreachable');
+  });
+
+  it("covers a slow poller's data at its first failure: its second is a minute or more away", () => {
+    expect(widgetUnavailable(noAnswer, 1, 30_000)).toBe('unreachable');
+    expect(widgetUnavailable(noAnswer, 1, 60_000)).toBe('unreachable');
+    // No polling at all (a manual refresh failed): no second failure would come.
+    expect(widgetUnavailable(noAnswer, 1, 0)).toBe('unreachable');
+    expect(widgetUnavailable(noAnswer, 0, 60_000)).toBeNull();
   });
 
   it('waiting for the network says offline only when the browser is offline', () => {
-    expect(widgetUnavailable({ ...base, fetchStatus: 'paused' }, 0)).toBe('unreachable');
+    expect(widgetUnavailable({ ...base, fetchStatus: 'paused' }, 0, 15_000)).toBe('unreachable');
     vi.stubGlobal('navigator', { onLine: false });
-    expect(widgetUnavailable({ ...base, fetchStatus: 'paused' }, 0)).toBe('offline');
-    expect(widgetUnavailable(noAnswer, 2)).toBe('offline');
+    expect(widgetUnavailable({ ...base, fetchStatus: 'paused' }, 0, 15_000)).toBe('offline');
+    expect(widgetUnavailable(noAnswer, 2, 15_000)).toBe('offline');
   });
 
   it("leaves a server's error answer, a bug in the widget's own code and a working load to the widget", () => {
-    expect(widgetUnavailable({ ...base, isError: true, error: new ApiError(502, 'Bad gateway') }, 5)).toBeNull();
-    expect(widgetUnavailable({ ...base, isError: true, error: new TypeError("Cannot read properties of undefined (reading 'map')") }, 5)).toBeNull();
-    expect(widgetUnavailable(base, 0)).toBeNull();
-    expect(widgetUnavailable({ ...base, fetchStatus: 'fetching' }, 0)).toBeNull();
+    expect(widgetUnavailable({ ...base, isError: true, error: new ApiError(502, 'Bad gateway') }, 5, 15_000)).toBeNull();
+    expect(widgetUnavailable({ ...base, isError: true, error: new TypeError("Cannot read properties of undefined (reading 'map')") }, 5, 15_000)).toBeNull();
+    expect(widgetUnavailable(base, 0, 15_000)).toBeNull();
+    expect(widgetUnavailable({ ...base, fetchStatus: 'fetching' }, 0, 15_000)).toBeNull();
   });
 });
 

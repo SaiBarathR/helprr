@@ -54,6 +54,12 @@ interface QuickContextMenuProps {
   actions?: ContextAction[];
   groups?: ContextActionGroup[];
   disabled?: boolean;
+  /**
+   * Opens even for one action. Off by default: one action usually repeats
+   * what a tap on the surface already does. A row whose only action (a
+   * cancelled alert's Delete) has no tap path besides its ⋯ opts in.
+   */
+  allowSingleAction?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
 
@@ -202,6 +208,7 @@ export function QuickContextMenu({
   actions,
   groups,
   disabled = false,
+  allowSingleAction = false,
   onOpenChange,
 }: QuickContextMenuProps) {
   const normalizedGroups = useMemo(
@@ -290,7 +297,7 @@ export function QuickContextMenu({
     portalPressCleanupRef.current?.();
   }, []);
 
-  if (disabled || enabledActionCount < 2) return children;
+  if (disabled || enabledActionCount < (allowSingleAction ? 1 : 2)) return children;
 
   const handleOpenChange = (next: boolean) => {
     menuOpenRef.current = next;

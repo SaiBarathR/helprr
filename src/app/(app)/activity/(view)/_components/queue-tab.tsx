@@ -814,9 +814,7 @@ export function QueueTab({
                   <div className="flex items-center gap-2 flex-wrap">
                     {selectedItem.source && (
                       <Badge variant="outline" className="text-[10px]">
-                        {sourceChipLabel(selectedItem) === selectedItem.source
-                          ? selectedItem.source.toUpperCase()
-                          : sourceChipLabel(selectedItem)}
+                        {sourceChipLabel(selectedItem)}
                       </Badge>
                     )}
                     {selectedItem.indexer && (

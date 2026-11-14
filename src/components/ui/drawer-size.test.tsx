@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Drawer, DrawerContent, DrawerTitle } from './drawer';
@@ -106,6 +107,53 @@ describe('DrawerContent above the keyboard', () => {
     expect(panel.hasAttribute('data-keyboard-tab')).toBe(true);
   });
 
+  // vaul's sheet has touch-action: none and a ::after that runs on below it,
+  // so the sheet itself must not be the box that scrolls (a finger couldn't
+  // scroll it, and the ::after added blank space and covered the buttons).
+  it('in a Safari tab, scrolls a form sheet inside the sheet, not the sheet itself', () => {
+    const css = readFileSync('src/app/globals.css', 'utf8');
+    const rules = css.slice(css.indexOf('/* A sheet holding a form'), css.indexOf('/* Floating overlays'));
+    expect(rules).toContain("[data-slot='drawer-scroll']");
+    const style = document.createElement('style');
+    style.textContent = rules;
+    document.head.appendChild(style);
+    try {
+      stubViewport(window.innerHeight - 300);
+      vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
+      render(
+        <Drawer open>
+          <DrawerContent size="content" scrollTogether>
+            <DrawerTitle>Change password</DrawerTitle>
+            <form className="min-h-0 flex-1">
+              <div data-testid="body" className="min-h-0 flex-1 overflow-y-auto">
+                <input aria-label="Current password" />
+              </div>
+            </form>
+          </DrawerContent>
+        </Drawer>,
+      );
+      const panel = screen.getByRole('dialog', { name: 'Change password' });
+      const scroller = panel.querySelector<HTMLElement>(':scope > [data-slot="drawer-scroll"]')!;
+      // Header and form both in the one box, so they scroll together.
+      expect(scroller.contains(screen.getByText('Change password'))).toBe(true);
+      expect(scroller.contains(screen.getByRole('textbox', { name: 'Current password' }))).toBe(true);
+      expect(getComputedStyle(scroller).overflowY).toBe('auto');
+      expect(getComputedStyle(panel).overflowY).not.toBe('auto');
+      expect(getComputedStyle(screen.getByTestId('body')).flex).toBe('0 0 auto');
+      // Out of a Safari tab (or once the keyboard closes) the form's own body scrolls again.
+      panel.removeAttribute('data-keyboard-tab');
+      expect(getComputedStyle(scroller).overflowY).not.toBe('auto');
+    } finally {
+      style.remove();
+    }
+  });
+
+  it('keeps a drawer without scrollTogether as it was', () => {
+    stubViewport(window.innerHeight - 300);
+    const panel = open('content');
+    expect(panel.querySelector('[data-slot="drawer-scroll"]')).toBeNull();
+  });
+
   it('keeps its own body scrolling in the Home Screen app', () => {
     stubViewport(window.innerHeight - 300);
     vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)', standalone: true });
@@ -197,7 +245,8 @@ describe('DrawerContent on iOS', () => {
     vi.spyOn(code, 'getBoundingClientRect').mockReturnValue({ top: 500, bottom: 536 } as DOMRect);
     vi.spyOn(body, 'getBoundingClientRect').mockReturnValue({ top: 100, bottom: 300 } as DOMRect);
     code.focus();
-    await waitFor(() => expect(body.scrollTop).toBe(360));
+    // Just far enough to show it: its bottom on the box's bottom.
+    await waitFor(() => expect(body.scrollTop).toBe(236));
   });
 
   it('leaves a scroll that ends on a field alone', () => {

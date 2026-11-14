@@ -62,8 +62,8 @@ function fitAboveKeyboard(node: HTMLElement): () => void {
     node.style.paddingBottom = tab ? "3.75rem" : "0px"
     // That leaves a form's body too short to show more than the field being
     // typed in, and Safari's ⌄ / ⌃ keyboard arrows skip a field whose centre
-    // isn't on screen (WebKit hit-tests it), so the whole sheet scrolls as one
-    // instead (globals.css).
+    // isn't on screen (WebKit hit-tests it), so a `scrollTogether` sheet's
+    // header, fields and buttons scroll as one instead (globals.css).
     node.toggleAttribute("data-keyboard-tab", tab)
   })
 }
@@ -106,6 +106,7 @@ function DrawerContent({
   className,
   children,
   size = "full",
+  scrollTogether = false,
   ref,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Content> & {
@@ -113,6 +114,9 @@ function DrawerContent({
    *  for short forms and confirmations. "full" (default) is a fixed 90dvh
    *  panel whose body fills it with `flex-1 min-h-0` and scrolls. */
   size?: "full" | "content"
+  /** For a sheet holding a form: in a Safari tab with the keyboard up, its
+   *  header, fields and buttons scroll together (see fitAboveKeyboard). */
+  scrollTogether?: boolean
 }) {
   // Stopped on the null call, not through a returned cleanup: vaul composes
   // refs without passing a ref's cleanup on, so React detaches this one with
@@ -158,7 +162,17 @@ function DrawerContent({
         {...props}
       >
         <div className="bg-muted mx-auto mt-4 hidden h-2 w-[100px] shrink-0 rounded-full group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />
-        {children}
+        {scrollTogether ? (
+          // The box that scrolls in a Safari tab (globals.css), not the sheet
+          // itself: vaul gives the sheet touch-action: none, so a finger
+          // couldn't scroll it, and a ::after that runs on below it, which
+          // inside the scroll added blank space and rode up over the buttons.
+          <div data-slot="drawer-scroll" className="flex min-h-0 flex-1 flex-col">
+            {children}
+          </div>
+        ) : (
+          children
+        )}
       </DrawerPrimitive.Content>
     </DrawerPortal>
   )

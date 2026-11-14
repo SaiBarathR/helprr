@@ -48,6 +48,8 @@ interface UseWidgetDataResult<T> {
 const savedCopies = new Map<string, SavedCopy>();
 // The query's error count at its last success, by query key: the polls failed since.
 const errorsAtSuccess = new Map<string, number>();
+// Polling faster than this, two failures in a row stay within ~30 s of last values.
+const FAST_POLL_MS = 30_000;
 
 /**
  * Widget data hook, backed by TanStack Query. Behavior:
@@ -116,16 +118,13 @@ export function useWidgetData<T>({
   useEffect(() => {
     if (!savedAt) return;
     let cancelled = false;
-    const forget = () => savedCopies.get(key)?.paths.forEach(forgetBrowseFreshness);
     const timer = setTimeout(() => {
-      // Offline the refetch waits for the network, so the notice goes now.
-      forget();
       // Online, a route slower than the worker's 2 s timeout is answered from
       // the copy too: ask once more, and cover only if no newer answer came.
       // Not cancelling a fetch another widget on this key already started.
+      // (Offline the refetch waits for the network, which covers the widget.)
       void refetch({ cancelRefetch: false }).then(() => {
         if (cancelled || savedCopies.get(key)?.at !== savedAt) return;
-        forget();
         setExpiredAt(savedAt);
       });
     }, Math.max(0, savedAt + SNAPSHOT_MAX_AGE_MS - Date.now()));
@@ -140,9 +139,15 @@ export function useWidgetData<T>({
     copyRef.current = copy;
   }, [copy]);
   useEffect(() => () => copyRef.current?.paths.forEach(forgetBrowseFreshness), []);
-  const unavailable = widgetUnavailable(query, query.errorUpdateCount - (errorsAtSuccess.get(key) ?? 0))
+  const unavailable = widgetUnavailable(query, query.errorUpdateCount - (errorsAtSuccess.get(key) ?? 0), refreshInterval)
     ?? (savedAt && expiredAt === savedAt ? (navigator.onLine ? 'unreachable' : 'offline') : null);
   useReportWidgetUnavailable(unavailable);
+  // The saved copy leaves the notice only once the cover hides it (a live
+  // answer replacing it clears it in recordBrowseFreshness): a failed request
+  // or the expiry re-check still leaves it on screen until then.
+  useEffect(() => {
+    if (unavailable) copyRef.current?.paths.forEach(forgetBrowseFreshness);
+  }, [unavailable]);
 
   return {
     data: query.data ?? null,
@@ -163,21 +168,24 @@ export function useWidgetData<T>({
  * bug in a widget's own code, is left to the widget's own message.
  *
  * `failedPolls` is how many polls in a row have failed since the last success.
- * Data still on screen survives one, so on a patchy connection a live widget
- * doesn't blink between its data and the cover.
+ * On a fast poller data still on screen survives one, so on a patchy
+ * connection a live widget doesn't blink between its data and the cover. A
+ * slow poller's second failure is a minute or more away, too long to show its
+ * last values ("13/13 online") as live, so it is covered at the first.
  */
 export function widgetUnavailable(query: {
   isError: boolean;
   error: unknown;
   fetchStatus: FetchStatus;
   data: unknown;
-}, failedPolls: number): WidgetUnavailable | null {
+}, failedPolls: number, refreshInterval: number): WidgetUnavailable | null {
   // TanStack's online state can lag after an iOS resume; the browser's decides the wording.
   const reason = typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'unreachable';
   // Waiting to retry until the device is back online: no poll goes out until then.
   if (query.fetchStatus === 'paused') return reason;
   if (!query.isError || !(query.error instanceof OfflineError)) return null;
-  if (query.data !== undefined && failedPolls < 2) return null;
+  const grace = refreshInterval > 0 && refreshInterval < FAST_POLL_MS ? 2 : 1;
+  if (query.data !== undefined && failedPolls < grace) return null;
   return reason;
 }
 

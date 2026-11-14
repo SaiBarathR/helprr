@@ -39,6 +39,7 @@ import { WidgetRenderer } from '../widget-renderer';
 import { TorrentWidget } from '../torrent-widget';
 import { ProwlarrIndexersWidget } from '../prowlarr-indexers-widget';
 import { WantedItemsWidget } from '../wanted-items-widget';
+import { ServiceHealthWidget } from '../service-health-widget';
 import { fetchSectionsCached } from '../discover-section-widget';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 
@@ -118,19 +119,69 @@ describe('dashboard widgets with Helprr out of reach', () => {
     expect(getBrowseFreshness()).toBe(0);
   });
 
-  it('a live widget with data on screen survives one failed poll, and is covered after two in a row', async () => {
+  it('a fast-polling live widget with data on screen survives one failed poll, and is covered after two in a row', async () => {
+    mocks.interval = 15;
     let up = true;
     const live = { total: 3, downloading: 1, seeding: 2, paused: 0 };
     await show('Torrents', TorrentWidget, () => (up ? Promise.resolve(json(live)) : unreachable()));
     expect(screen.queryByRole('status')).toBeNull();
     up = false;
-    await act(async () => vi.advanceTimersByTimeAsync(30_100));
+    await act(async () => vi.advanceTimersByTimeAsync(15_100));
     expect(screen.queryByRole('status')).toBeNull();
-    await act(async () => vi.advanceTimersByTimeAsync(30_100));
+    await act(async () => vi.advanceTimersByTimeAsync(15_100));
     expect(screen.getByRole('status').textContent).toBe('TorrentsCan’t reach Helprr right now.');
     up = true;
-    await act(async () => vi.advanceTimersByTimeAsync(30_100));
+    await act(async () => vi.advanceTimersByTimeAsync(15_100));
     expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it("a slow-polling live widget is covered at its first failed poll, so its last values don't read as live for minutes", async () => {
+    mocks.interval = 60;
+    let up = true;
+    const live = { total: 3, downloading: 1, seeding: 2, paused: 0 };
+    await show('Torrents', TorrentWidget, () => (up ? Promise.resolve(json(live)) : unreachable()));
+    up = false;
+    await act(async () => vi.advanceTimersByTimeAsync(59_000));
+    expect(screen.queryByRole('status')).toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(1_100));
+    expect(screen.getByRole('status').textContent).toBe('TorrentsCan’t reach Helprr right now.');
+    up = true;
+    await act(async () => vi.advanceTimersByTimeAsync(60_100));
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it("Service Health polls Helprr itself, not the browser's 3-minute copy, and is covered at its first failed poll", async () => {
+    let up = true;
+    await show('Service Health', ServiceHealthWidget, () => (up ? Promise.resolve(json([{ instanceId: 'a', type: 'SONARR', name: 'Sonarr', label: 'Sonarr', ok: true }])) : unreachable()));
+    // The route lets the browser keep its answer (60 s + 120 s stale): with Helprr down that copy read "online".
+    expect(vi.mocked(fetch).mock.calls[0]).toEqual(['/api/services/health', expect.objectContaining({ cache: 'no-cache' })]);
+    expect(screen.queryByRole('status')).toBeNull();
+    up = false;
+    await act(async () => vi.advanceTimersByTimeAsync(30_100));
+    expect(screen.getByRole('status').textContent).toBe('Service HealthCan’t reach Helprr right now.');
+  });
+
+  it('keeps the notice while the saved copy is on screen, through a slow failing re-check, until the cover hides it', async () => {
+    mocks.interval = 300;
+    const savedAt = NOW - 4 * 60_000;
+    let calls = 0;
+    await show('Wanted', WantedItemsWidget, () => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.resolve(json({ missingTotal: 21, cutoffTotal: 47 }, { [SNAPSHOT_STALE_HEADER]: '1', [SNAPSHOT_TIME_HEADER]: String(savedAt) }));
+      }
+      // Past five minutes the worker has no copy left; the request fails slowly.
+      return new Promise<Response>((_, reject) => setTimeout(() => reject(new TypeError('Failed to fetch')), 20_000));
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(60_100));
+    expect(calls).toBe(2);
+    // The re-check is still out: the copy shows, and so does the notice.
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.body.textContent).toContain('21');
+    expect(getBrowseFreshness()).toBe(savedAt);
+    await act(async () => vi.advanceTimersByTimeAsync(20_000));
+    expect(screen.getByRole('status').textContent).toBe('WantedCan’t reach Helprr right now.');
+    expect(getBrowseFreshness()).toBe(0);
   });
 
   it("a TypeError from the widget's own code is not taken for an unreachable Helprr", async () => {

@@ -806,6 +806,31 @@ html {
   }
 }
 
+/* The widget offline cover (widget-renderer.tsx). A one-cell phone widget
+   (about 44×60 inside the card at 320, 62×60 at 390) fits the name and
+   "Can't reach Helprr", not the icon or "right now.". */
+.widget-cover-body {
+  gap: 6px;
+}
+@container widget-cover (max-width: 100px) {
+  .widget-cover-tail {
+    display: none;
+  }
+}
+@container widget-cover (max-width: 70px) {
+  .widget-cover-body {
+    gap: 2px;
+  }
+  .widget-cover-body > svg {
+    display: none;
+  }
+}
+@container widget-cover (max-height: 50px) {
+  .widget-cover-body > svg {
+    display: none;
+  }
+}
+
 /* The empty state's next-step link needs room under icon + message; a short
    cell drops it rather than clipping it (the header's "View all" remains). */
 @container bento-empty (max-height: 80px) {
@@ -1796,17 +1821,17 @@ html [data-sonner-toast][data-styled='true'] [data-close-button] {
   }
 }
 
-/* A sheet holding a form, lifted above the keyboard in a Safari tab (see
-   fitAboveKeyboard in ui/drawer.tsx), scrolls as one column: header, fields
-   and buttons together. Its own body was too short to show the fields either
-   side of the one being typed in, and Safari's ⌄ / ⌃ arrows skip those. The
-   boxes marked min-h-0 (the ones that shrink, so the body scrolls) take their
-   content's height instead. Pickers (no form) keep their search pinned over
-   the list. */
-[data-slot='drawer-content'][data-keyboard-tab]:has(form) {
+/* A sheet holding a form (DrawerContent scrollTogether), lifted above the
+   keyboard in a Safari tab (see fitAboveKeyboard in ui/drawer.tsx), scrolls as
+   one column inside the sheet: header, fields and buttons together. Its own
+   body was too short to show the fields either side of the one being typed
+   in, and Safari's ⌄ / ⌃ arrows skip those. The boxes marked min-h-0 (the ones
+   that shrink, so the body scrolls) take their content's height instead.
+   Pickers keep their search pinned over the list. */
+[data-slot='drawer-content'][data-keyboard-tab] > [data-slot='drawer-scroll'] {
   overflow-y: auto;
 }
-[data-slot='drawer-content'][data-keyboard-tab]:has(form) .min-h-0 {
+[data-slot='drawer-content'][data-keyboard-tab] > [data-slot='drawer-scroll'] .min-h-0 {
   flex: none;
 }
 

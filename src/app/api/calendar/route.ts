@@ -30,9 +30,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const fullDay = searchParams.get('fullDay') === 'true';
     const type = searchParams.get('type');
     const includeScheduled = searchParams.get('includeScheduled') === 'true';
-    // The zone whose days the window's film and album releases are matched on:
-    // the Calendar page sends this device's, as it shows its days; other callers
-    // get the app's, which their now-anchored windows are built in.
+    // The zone whose days the window's film and album releases are matched on,
+    // and, for a now-anchored window, whose today and day boundaries it uses:
+    // the Calendar page and the Today widget send this device's, as they show
+    // its days; callers without one get the app's.
     const requestedTimeZone = searchParams.get('tz');
 
     const authUser = includeScheduled ? await requireUser() : null;
@@ -57,11 +58,11 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     // now-anchored, so fold today's LOCAL date into the key — otherwise a cached entry could
     // outlive local midnight and serve the previous day's window.
     const explicitWindow = Boolean(start && end);
-    const settings = explicitWindow ? null : await getOrCreateAppSettings();
-    const anchorKey = settings ? getLocalDateKey(new Date(), settings.timeZone) : '';
-    const releaseTimeZone = explicitWindow && isValidTimeZone(requestedTimeZone)
-      ? requestedTimeZone
-      : (settings ?? await getOrCreateAppSettings()).timeZone;
+    // Its canonical spelling, so "pacific/auckland" and "Pacific/Auckland" share one entry.
+    const releaseTimeZone = isValidTimeZone(requestedTimeZone)
+      ? new Intl.DateTimeFormat('en', { timeZone: requestedTimeZone }).resolvedOptions().timeZone
+      : (await getOrCreateAppSettings()).timeZone;
+    const anchorKey = explicitWindow ? '' : getLocalDateKey(new Date(), releaseTimeZone);
     const cacheKeySeed = `${start ?? ''}|${end ?? ''}|${days ?? ''}|${fullDay}|${anchorKey}|${releaseTimeZone}`;
     const cachedEvents = !includeScheduled
       ? await getCachedJson<CalendarEvent[]>('calendar', cacheKeySeed)
@@ -74,12 +75,11 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     }
 
     // If days provided without start/end, allow opting into full local day boundaries.
-    // fullDay=true respects process TZ (e.g. TZ=Asia/Kolkata) for date-only widgets.
+    // fullDay=true uses that zone's day boundaries (the caller's tz, else the app's) for date-only widgets.
     if (!start || !end) {
       const parsedDays = days ? parseInt(days, 10) : 30;
       const daysNum = Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : 30;
-      // settings was fetched above for the now-anchored key; reuse it (the ?? never runs).
-      const tz = (settings ?? await getOrCreateAppSettings()).timeZone;
+      const tz = releaseTimeZone;
 
       let startDate: Date;
       let endDate: Date;

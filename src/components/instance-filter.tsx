@@ -25,6 +25,11 @@ const APP_NAMES: Record<string, string> = {
   anilist: 'AniList',
 };
 
+/** An app's name as Helprr writes it ("Lidarr" for a row's "lidarr" source). */
+export function appDisplayName(type: string): string {
+  return APP_NAMES[type.toLowerCase()] ?? type;
+}
+
 /**
  * "main (Sonarr)": instances of different apps are often named alike. A label
  * that already names its app ("sonarr-anime") stays as it is.

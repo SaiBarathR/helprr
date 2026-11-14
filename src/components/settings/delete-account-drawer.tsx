@@ -68,7 +68,7 @@ export function DeleteAccountDrawer({
         onOpenChange(o);
       }}
     >
-      <DrawerContent size="content">
+      <DrawerContent size="content" scrollTogether>
         <DrawerHeader className="text-center">
           <DrawerTitle>Delete my account</DrawerTitle>
           <DrawerDescription>
