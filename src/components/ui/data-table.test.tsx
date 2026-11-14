@@ -107,6 +107,22 @@ describe('DataTable column resize', () => {
     expect(Math.max(...z)).toBeLessThan(30);
   });
 
+  it.each([
+    // [drag, saved minimum]: at 1440 Title shows 640px over its 200px minimum.
+    [40, 680],
+    // Narrower lowers the minimum; it never saves the wide on-screen width
+    // (which made the table scroll sideways at 1280 and below).
+    [-40, 160],
+  ])('a %ipx drag on the grow column at a wide viewport saves %ipx', (dx, saved) => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { width: this.tagName === 'TH' ? 640 : tableWidth } as DOMRect;
+    });
+    render(<DataTable tableId="resize-test" columns={columns} rows={['Alien']} rowKey={String} />);
+    drag(screen.getAllByRole('separator')[0], 300, 300 + dx);
+    expect(cols()[0].style.minWidth).toBe(`${saved}px`);
+    expect(JSON.parse(localStorage.getItem('helprr-table:resize-test') ?? '{}').widths).toEqual({ title: saved });
+  });
+
   it('resizes the grow column from its width on screen and keeps it absorbing the leftover space', () => {
     // The grow column shows 500px wide: well over its 200px minimum.
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {

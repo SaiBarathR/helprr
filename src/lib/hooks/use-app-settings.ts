@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ApiError } from '@/lib/query-fetch';
 import { fetchAppSettings, forgetAppSettingsFetch } from '@/lib/app-settings-fetch';
@@ -126,6 +126,23 @@ export interface UseAppSettingsResult {
   reload: () => Promise<void>;
 }
 
+const SETTINGS_SCOPE = 'app-settings';
+
+/** Whether a save from the shared queue (update() without keepalive) is in flight or waiting. */
+function settingsSaving(qc: QueryClient): boolean {
+  return qc.isMutating({ predicate: (mutation) => mutation.options.scope?.id === SETTINGS_SCOPE }) > 0;
+}
+
+/** Runs `run` once the shared save queue is idle. */
+function whenSettingsSaved(qc: QueryClient, run: () => void) {
+  if (!settingsSaving(qc)) return run();
+  const unsubscribe = qc.getMutationCache().subscribe(() => {
+    if (settingsSaving(qc)) return;
+    unsubscribe();
+    run();
+  });
+}
+
 // Backed by TanStack Query: a single ['settings'] cache shared across every
 // consumer (replacing the module singleton + listener set + in-flight dedup).
 // `update` keeps the optimistic-write + rollback + toast/successMessage contract.
@@ -144,7 +161,7 @@ export function useAppSettings(): UseAppSettingsResult {
     // mutations sharing a scope id run in series, so a second update() stays paused
     // until the first settles. Its onMutate then reads the reconciled cache, and
     // out-of-order PUT responses can't clobber each other.
-    scope: { id: 'app-settings' },
+    scope: { id: SETTINGS_SCOPE },
     mutationFn: async (patch: AppSettingsPatch) => {
       const res = await fetch('/api/settings', {
         method: 'PUT',
@@ -178,6 +195,14 @@ export function useAppSettings(): UseAppSettingsResult {
       if (opts?.keepalive) {
         const previous = qc.getQueryData<AppSettingsState>(SETTINGS_KEY);
         if (previous) qc.setQueryData<AppSettingsState>(SETTINGS_KEY, { ...previous, ...patch });
+        // It can't wait for a save already in the queue, so the two may land
+        // in either order. Another field's can't clash (the PUT is a partial
+        // patch); the same field's earlier value could only be in flight if
+        // its own debounced save went out a moment before the page hid. For a
+        // page still alive afterwards, re-read once the queue is idle so the
+        // form shows what the server kept rather than whichever answer came
+        // back last.
+        const raced = settingsSaving(qc);
         try {
           const res = await fetch('/api/settings', {
             method: 'PUT',
@@ -187,7 +212,11 @@ export function useAppSettings(): UseAppSettingsResult {
           });
           if (!res.ok) throw new Error('Failed to save');
           const state = normalize((await res.json().catch(() => null)) ?? {});
-          qc.setQueryData(SETTINGS_KEY, state);
+          if (raced || settingsSaving(qc)) {
+            whenSettingsSaved(qc, () => void qc.invalidateQueries({ queryKey: SETTINGS_KEY }));
+          } else {
+            qc.setQueryData(SETTINGS_KEY, state);
+          }
           return state;
         } catch {
           // Still here (a backgrounded app that came back): show what's saved.

@@ -38,27 +38,34 @@ export function useUnsavedChangesGuard(dirty: boolean) {
  * Back while it is up leaves the page. Chrome's Back button skips an entry
  * whose page pushed the next one without a user gesture (its history
  * manipulation intervention), and an entry pushed in answer to Back has none:
- * Back on the confirm skipped the page and closed the tab instead.
+ * Back on the confirm skipped the page and closed the tab instead. That holds
+ * at the start of history too, where Discard goes to `href`.
+ *
+ * A CloseWatcher would let Android's second Back close the confirm instead,
+ * but putting the guard entry back afterwards is again a push with no user
+ * gesture, so the Back after that would skip the page: it would only move the
+ * silent leave one Back later.
  */
 export function useLeaveConfirm(dirty: boolean, href: string) {
   const router = useAppRouter();
-  const [asking, setAsking] = useState<'link' | 'back' | null>(null);
+  // Who asked (Back holds no entry for the confirm, the link's does), and
+  // whether Discard steps back or goes to `href`: at the start of history
+  // (the page opened directly) a confirmed Back has no step back to take.
+  const [asking, setAsking] = useState<{ byBack: boolean; stepBack: boolean } | null>(null);
   const [leaving, setLeaving] = useState(false);
-  // At the start of history (the page opened directly) there is no step
-  // back to take, so a confirmed Back goes to `href` like the link.
-  useBackGuard(dirty && asking === null && !leaving, () => setAsking(canGoBackInApp() ? 'back' : 'link'));
+  useBackGuard(dirty && asking === null && !leaving, () => setAsking({ byBack: true, stepBack: canGoBackInApp() }));
 
   return {
-    leave: () => (dirty ? setAsking('link') : router.push(href)),
+    leave: () => (dirty ? setAsking({ byBack: false, stepBack: false }) : router.push(href)),
     dialog: {
       open: asking !== null,
-      closeOnBack: asking !== 'back',
+      closeOnBack: !asking?.byBack,
       onOpenChange: (open: boolean) => {
         if (!open) setAsking(null);
       },
       onConfirm: () => {
         setLeaving(true);
-        if (asking === 'back') router.back();
+        if (asking?.stepBack) router.back();
         else router.push(href);
       },
     },

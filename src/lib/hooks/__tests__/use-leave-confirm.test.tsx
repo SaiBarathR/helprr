@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { afterOverlayHistory, resetOverlayHistoryForTests } from '@/lib/overlay-history';
 import { useLeaveConfirm } from '../use-unsaved-changes-guard';
 
@@ -27,11 +28,20 @@ const systemBack = () => act(async () => {
 
 function Page({ initialDirty = true }: { initialDirty?: boolean }) {
   const [dirty, setDirty] = useState(initialDirty);
+  const [sheet, setSheet] = useState(false);
   const leave = useLeaveConfirm(dirty, '/settings');
   return (
     <>
       <button onClick={leave.leave}>Settings</button>
       <button onClick={() => setDirty(false)}>Save</button>
+      <button onClick={() => setDirty(true)}>Edit</button>
+      <button onClick={() => setSheet(true)}>Open sheet</button>
+      <Sheet open={sheet} onOpenChange={setSheet}>
+        <SheetContent>
+          <SheetTitle>Filters</SheetTitle>
+          <SheetDescription>Pick one</SheetDescription>
+        </SheetContent>
+      </Sheet>
       <ConfirmDialog {...leave.dialog} title="Discard unsaved changes?" confirmLabel="Discard changes" cancelLabel="Keep editing" />
     </>
   );
@@ -115,6 +125,11 @@ it('a confirmed Back at the start of history goes to the parent page instead', a
   nav.canGoBack = false;
   await systemBack();
   await screen.findByRole('alertdialog');
+  // Still opened by Back: no entry of its own (Chrome would skip the page
+  // under it, and with nothing before the page, close the tab).
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  expect(marker()).toBeUndefined();
+  expect(window.history.length).toBe(pageLength + 1);
   await userEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
   await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/settings'));
   expect(nav.back).not.toHaveBeenCalled();
@@ -150,4 +165,36 @@ it('another in-app navigation takes the guard entry off without asking', async (
   expect(window.history.length).toBe(pageLength + 1);
   expect(marker()).toBeUndefined();
   expect(screen.queryByRole('alertdialog')).toBeNull();
+});
+
+it('dirty and clean toggles leave at most one guard entry, and none once clean', async () => {
+  render(<Page initialDirty={false} />);
+  for (let i = 0; i < 3; i++) {
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await waitFor(() => expect(marker()).toBeDefined());
+    expect(window.history.length).toBe(pageLength + 1);
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(marker()).toBeUndefined());
+  }
+  expect(window.location.pathname).toBe('/settings/downloads');
+  // The next Back leaves straight away.
+  await act(async () => { window.history.back(); await popstate(); });
+  expect(window.location.pathname).toBe('/settings');
+});
+
+it('a sheet over a dirty page: Back closes the sheet, the next Back asks', async () => {
+  render(<Page />);
+  await waitFor(() => expect(marker()).toBeDefined());
+  await userEvent.click(screen.getByRole('button', { name: 'Open sheet' }));
+  await screen.findByRole('dialog', { name: 'Filters' });
+  await waitFor(() => expect(window.history.length).toBe(pageLength + 2));
+
+  await systemBack();
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Filters' })).toBeNull());
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  expect(window.location.pathname).toBe('/settings/downloads');
+
+  await systemBack();
+  expect(await screen.findByRole('alertdialog')).toBeTruthy();
+  expect(window.location.pathname).toBe('/settings/downloads');
 });

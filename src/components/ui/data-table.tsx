@@ -149,7 +149,7 @@ export function DataTable<T>({
   }, [pageState.resetSignature, resetSignature, setPage]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Live drag state kept in a ref; only the resulting width goes through setState.
-  const dragRef = useRef<{ columnId: string; startX: number; startWidth: number } | null>(null);
+  const dragRef = useRef<{ columnId: string; startX: number; shownWidth: number; storedWidth: number } | null>(null);
 
   const widthOf = useCallback(
     (col: DataTableColumn<T>) => Math.max(col.minWidth ?? RESIZE_MIN_WIDTH, widthOverrides[col.id] ?? col.width),
@@ -166,18 +166,23 @@ export function DataTable<T>({
   const handleResizeStart = useCallback((e: React.PointerEvent<HTMLSpanElement>, col: DataTableColumn<T>) => {
     e.preventDefault();
     e.stopPropagation();
-    // Start from the width on screen: the grow column is wider than its
-    // stored minimum, and starting from that minimum made the first move
-    // snap it narrower by the leftover space.
-    const startWidth = e.currentTarget.parentElement?.getBoundingClientRect().width || widthOf(col);
-    dragRef.current = { columnId: col.id, startX: e.clientX, startWidth };
+    // Widening starts from the width on screen: the grow column shows wider
+    // than its stored minimum, and starting from that minimum snapped it
+    // narrower by the leftover space. Narrowing lowers the stored width, so
+    // for the grow column a narrower drag lowers its minimum rather than
+    // saving its (wide) on-screen width as one. Other columns show exactly
+    // their stored width, so both starts are the same for them.
+    const storedWidth = widthOf(col);
+    const shownWidth = e.currentTarget.parentElement?.getBoundingClientRect().width || storedWidth;
+    dragRef.current = { columnId: col.id, startX: e.clientX, shownWidth, storedWidth };
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
 
     const onMove = (ev: globalThis.PointerEvent) => {
       const drag = dragRef.current;
       if (!drag) return;
-      const next = Math.round(Math.max(col.minWidth ?? RESIZE_MIN_WIDTH, drag.startWidth + (ev.clientX - drag.startX)));
+      const delta = ev.clientX - drag.startX;
+      const next = Math.round(Math.max(col.minWidth ?? RESIZE_MIN_WIDTH, (delta >= 0 ? drag.shownWidth : drag.storedWidth) + delta));
       setWidthOverrides((prev) => (prev[drag.columnId] === next ? prev : { ...prev, [drag.columnId]: next }));
     };
     const onUp = () => {

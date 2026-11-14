@@ -444,8 +444,16 @@ export function useCloseOnBack(open: boolean, close: () => void) {
  * Makes the system Back ask before leaving a page with unsaved edits: one
  * history entry while `active`, and `onBack` (which opens the page's confirm)
  * when Back takes it, instead of leaving. The page passes `active` false
- * while its confirm is open, so that Back closes the confirm, and once it
- * leaves. An in-app navigation takes the entry off without asking.
+ * while its confirm is open and once it leaves. An in-app navigation takes
+ * the entry off without asking.
+ *
+ * The entry goes on top of history like an overlay's. A page that turns
+ * dirty from a pick that also closes its sheet or select takes that closing
+ * entry over (see openEntry), but one that turned dirty while a sheet stayed
+ * open would put the guard above the sheet: Back would then ask first, and
+ * the sheet would lose its Back. No guarded page edits inside an open sheet
+ * today; putting the entry under open ones would mean traversing back past
+ * them and pushing them again.
  */
 export function useBackGuard(active: boolean, onBack: () => void) {
   useBackEntry(active, onBack, true);

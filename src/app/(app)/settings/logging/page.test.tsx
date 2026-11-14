@@ -125,3 +125,17 @@ it('with logs.manage, offers to delete the files after turning logging off', asy
   await act(async () => toggle.click());
   expect(document.body.textContent).toContain('Delete log files on disk?');
 });
+
+it.each([
+  ['log-max-file-mb', '0'],
+  ['log-retention-days', '5000'],
+])('%s: an invalid draft stays as typed, with no toast, when the app is only switched away from', async (id, invalid) => {
+  await type(input(id), invalid);
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+  visibility.mockRestore();
+
+  expect(mocks.update).not.toHaveBeenCalled();
+  expect(mocks.toastError).not.toHaveBeenCalled();
+  expect(input(id).value).toBe(invalid);
+});

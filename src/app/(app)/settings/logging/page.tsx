@@ -68,11 +68,12 @@ export default function LoggingSettingsPage() {
   // Debounced commits that flush (instead of cancelling) on unmount, so a
   // quick back-nav can't silently drop the last edit. Validation runs in the
   // commit so timer, blur, and unmount all share it; an invalid draft at
-  // unmount is dropped silently (no toast/reset from an unmounting page).
+  // unmount or page hide is dropped silently (no toast/reset from a page
+  // that is going away, or only switched away from on iOS and still alive).
   const maxFileMbCommit = useDebouncedCommit<string>((value, reason) => {
     const parsed = parseInt(value, 10);
     if (!Number.isFinite(parsed) || parsed < 1 || parsed > 1024) {
-      if (reason !== 'unmount') {
+      if (reason !== 'unmount' && reason !== 'pagehide') {
         toast.error('Rotate at must be between 1 and 1024 MB');
         if (settings) setMaxFileMbDraft(String(settings.logMaxFileMb));
       }
@@ -84,7 +85,7 @@ export default function LoggingSettingsPage() {
   const retentionDaysCommit = useDebouncedCommit<string>((value, reason) => {
     const parsed = parseInt(value, 10);
     if (!Number.isFinite(parsed) || parsed < 1 || parsed > 3650) {
-      if (reason !== 'unmount') {
+      if (reason !== 'unmount' && reason !== 'pagehide') {
         toast.error('Retention must be between 1 and 3650 days');
         if (settings) setRetentionDaysDraft(String(settings.logRetentionDays));
       }
