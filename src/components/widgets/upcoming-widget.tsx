@@ -117,11 +117,13 @@ export function UpcomingWidget({
     return res.json();
   }, [days]);
 
-  const { data, loading } = useWidgetData({
+  const { data, loading, error, offline } = useWidgetData({
     fetchFn: fetchUpcoming,
     refreshInterval,
     enabled: !editMode,
     cacheKey: `upcoming-${days}d`,
+    // Offline, still ask: the worker's saved copy shows with the saved-data notice.
+    networkMode: 'offlineFirst',
   });
   const list = data ?? [];
   const useList = narrow || layoutVariant === 'list';
@@ -185,7 +187,9 @@ export function UpcomingWidget({
         <SectionHeader title="Upcoming" badge={dayBadge} right={toggleNode} />
         <EmptyState>
           <Calendar size={18} />
-          Nothing upcoming
+          {/* Past the saved copy's five minutes (or with none), a failed load is
+              not an empty day: say why, as the Calendar page does. */}
+          {offline ? "You're offline" : error ?? 'Nothing upcoming'}
         </EmptyState>
       </div>
     );

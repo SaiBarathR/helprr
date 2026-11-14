@@ -1,8 +1,9 @@
 'use client';
 
 import { useId } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type NetworkMode } from '@tanstack/react-query';
 import { useWidgetVisibility } from './widget-visibility-context';
+import { isQueryOffline } from '@/lib/network-error';
 
 interface UseWidgetDataOptions<T> {
   /** Receives TanStack Query's AbortSignal so fetchers that forward it to
@@ -27,12 +28,20 @@ interface UseWidgetDataOptions<T> {
    * (calendar, upcoming, stats, …) leave it off and wait for the next interval.
    */
   refetchOnFocus?: boolean;
+  /**
+   * 'offlineFirst' still asks once while the device is offline, so the service
+   * worker can answer with its labelled saved copy (the calendar widgets, as
+   * the Calendar page does); the default pauses until back online.
+   */
+  networkMode?: NetworkMode;
 }
 
 interface UseWidgetDataResult<T> {
   data: T | null;
   loading: boolean;
   error: string | null;
+  /** Nothing loaded because the device is offline (a paused or offline-failed fetch). */
+  offline: boolean;
   refresh: () => Promise<void>;
 }
 
@@ -57,6 +66,7 @@ export function useWidgetData<T>({
   cacheKey,
   staleTime,
   refetchOnFocus = false,
+  networkMode,
 }: UseWidgetDataOptions<T>): UseWidgetDataResult<T> {
   // No cacheKey → a stable per-instance key so instances don't share (matches the
   // old behavior where keyless callers each fetched independently).
@@ -77,12 +87,14 @@ export function useWidgetData<T>({
     // Live widgets retain immediate focus refresh; explicit freshness wins.
     staleTime: staleTime ?? (refetchOnFocus ? 0 : Math.min(refreshInterval, 30_000)),
     gcTime: 5 * 60_000,
+    ...(networkMode ? { networkMode } : {}),
   });
 
   return {
     data: query.data ?? null,
     loading: query.isLoading,
     error: query.isError ? widgetErrorText(query.error) : null,
+    offline: isQueryOffline(query),
     refresh: async () => {
       await query.refetch();
     },

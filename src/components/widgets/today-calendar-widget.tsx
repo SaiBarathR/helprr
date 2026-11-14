@@ -119,11 +119,13 @@ export function TodayCalendarWidget({
     ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
     : 10;
   const visibleCount = Math.max(listVisible, carouselVisible);
-  const { data, loading } = useWidgetData({
+  const { data, loading, error, offline } = useWidgetData({
     fetchFn: fetchToday,
     refreshInterval,
     enabled: !editMode,
     cacheKey: 'today-calendar',
+    // Offline, still ask: the worker's saved copy shows with the saved-data notice.
+    networkMode: 'offlineFirst',
   });
   const list = data ?? [];
   // Unmeasured (0) keeps the chosen layout until the cell's height is known.
@@ -164,7 +166,9 @@ export function TodayCalendarWidget({
         <SectionHeader title="Today" badge={<Pill color={HPR.amber}>0</Pill>} right={toggleNode} />
         <EmptyState>
           <CalendarDays size={18} />
-          Nothing airing today
+          {/* Past the saved copy's five minutes (or with none), a failed load is
+              not an empty day: say why, as the Calendar page does. */}
+          {offline ? "You're offline" : error ?? 'Nothing airing today'}
         </EmptyState>
       </div>
     );
