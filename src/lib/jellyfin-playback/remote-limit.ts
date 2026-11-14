@@ -41,21 +41,29 @@ type Families = { ipv4: boolean; ipv6: boolean };
 const serverCache = new Map<string, { at: number; value: Promise<ServerLimits> }>();
 const userCache = new Map<string, { at: number; value: Promise<number> }>();
 
-/** One `LocalNetworkSubnets` entry as .NET's `IPNetwork.TryParse` reads it: an
- *  address, or an address and a prefix within its size with no bits set past
- *  it. Null for anything else, which Jellyfin skips too. */
-function parseSubnet(entry: string): { address: string; prefix: number; type: Family } | null {
+type Subnet = { address: string; prefix: number; type: Family };
+/**
+ * One `LocalNetworkSubnets` entry as .NET's `IPNetwork.TryParse` reads it: an
+ * address, or an address and a prefix within its size with no bits set past
+ * it. `'refused'` for an entry .NET refuses too (Jellyfin skips it).
+ * `'unknown'` when Node cannot read what .NET may: .NET also takes IPv4 in
+ * short, hex and octal forms (`10.0`, `0x0a.0.0.5`, `192.168.1.010`) and
+ * bracketed IPv6 (`[fe80::5]`), so Helprr cannot tell what Jellyfin made of it.
+ */
+function parseSubnet(entry: string): Subnet | 'refused' | 'unknown' {
   const [address, prefixText, extra] = entry.split('/');
   const family = isIP(address);
-  if (!family || extra !== undefined) return null;
+  if (!family) return 'unknown';
+  if (prefixText !== undefined && !/^\d+$/.test(prefixText)) return 'unknown';
+  if (extra !== undefined) return 'refused';
   const size = family === 6 ? 128 : 32;
   // A bare 0.0.0.0 or :: is "any" to Jellyfin (IPv4Any, IPv6Any), not one address.
   const any = prefixText === undefined && expandIPv6Bytes(address, family).every((byte) => byte === 0);
-  const prefix = any ? 0 : prefixText === undefined ? size : /^\d+$/.test(prefixText) ? Number(prefixText) : NaN;
-  if (!(prefix >= 0 && prefix <= size)) return null;
+  const prefix = any ? 0 : prefixText === undefined ? size : Number(prefixText);
+  if (prefix > size) return 'refused';
   const type = family === 6 ? 'ipv6' : 'ipv4';
   // Bits set past the prefix: .NET refuses the network, so Jellyfin skips it.
-  if (prefix < size && !hostBitsClear(address, prefix, type)) return null;
+  if (prefix < size && !hostBitsClear(address, prefix, type)) return 'refused';
   return { address, prefix, type };
 }
 
@@ -87,30 +95,53 @@ function expandIPv6(address: string): number[] {
   return groups.flatMap((group) => { const value = parseInt(group || '0', 16); return [value >> 8, value & 0xff]; });
 }
 
-/** Jellyfin's LAN from `LocalNetworkSubnets`: its entries, or the defaults
- *  for the enabled families when none of them is a usable subnet, minus the
- *  `!` exclusions. */
-export function lanFromSubnets(subnets: readonly unknown[], families: Families = { ipv4: true, ipv6: false }): Lan {
-  const lan: Lan = {
+function emptyLan(): Lan {
+  return {
     ipv4: { include: new BlockList(), exclude: new BlockList() },
     ipv6: { include: new BlockList(), exclude: new BlockList() },
   };
+}
+
+/**
+ * Jellyfin's LAN from `LocalNetworkSubnets`: its entries, or the defaults for
+ * the enabled families when none of them is a usable subnet, minus the `!`
+ * exclusions.
+ *
+ * Where Helprr cannot tell what Jellyfin read (see `parseSubnet`), it errs to
+ * capping: an exclusion it cannot read leaves only loopback local, since
+ * skipping it would make the excluded host local; and a list whose includes
+ * are all unreadable does too, rather than widening to the defaults Jellyfin
+ * may not be using. An unreadable include beside readable ones is skipped,
+ * which only narrows the LAN.
+ */
+export function lanFromSubnets(subnets: readonly unknown[], families: Families = { ipv4: true, ipv6: false }): Lan {
+  const lan = emptyLan();
   let included = 0;
+  let unknownInclude = false;
   for (const raw of subnets) {
     if (typeof raw !== 'string') continue;
     const entry = raw.trim();
     const negated = entry.startsWith('!');
-    // Not trimmed again after the '!': Jellyfin parses the rest as it stands,
-    // so "! 10.0.0.5" is refused there and skipped here.
+    // Not trimmed again after the '!': Jellyfin parses the rest as it stands.
     const subnet = parseSubnet(negated ? entry.slice(1) : entry);
-    if (!subnet) continue;
-    lan[subnet.type][negated ? 'exclude' : 'include'].addSubnet(subnet.address, subnet.prefix, subnet.type);
-    if (!negated) included++;
+    if (subnet === 'refused') continue;
+    if (subnet !== 'unknown') {
+      try {
+        lan[subnet.type][negated ? 'exclude' : 'include'].addSubnet(subnet.address, subnet.prefix, subnet.type);
+        if (!negated) included++;
+        continue;
+      } catch {
+        // An address Node reads but cannot use in a rule (a zone id): unknown.
+      }
+    }
+    if (negated) return emptyLan();
+    unknownInclude = true;
   }
   if (!included) {
+    if (unknownInclude) return emptyLan();
     const defaults = [...(families.ipv6 ? DEFAULT_LAN_V6 : []), ...(families.ipv4 ? DEFAULT_LAN_V4 : [])];
     for (const entry of defaults) {
-      const subnet = parseSubnet(entry)!;
+      const subnet = parseSubnet(entry) as Subnet;
       lan[subnet.type].include.addSubnet(subnet.address, subnet.prefix, subnet.type);
     }
   }
@@ -168,9 +199,9 @@ export async function remoteBitrateCap(
     }),
     cached(userCache, `${serverKey}|${jellyfinUserId}`, async () => (await client.getUser(jellyfinUserId)).Policy?.RemoteClientBitrateLimit ?? 0),
   ]);
-  // The server's own LAN where it could be read, else Jellyfin's default one
-  // (IPv6 off, as Jellyfin ships: the stricter guess).
-  const lan = server.status === 'fulfilled' ? server.value.lan : lanFromSubnets([]);
+  // The server's own LAN where it could be read. Without it, only loopback is
+  // local: the defaults could be wider than a LAN the admin narrowed.
+  const lan = server.status === 'fulfilled' ? server.value.lan : emptyLan();
   if (clientIp && isLanAddress(clientIp, lan)) return undefined;
   // The user's limit, else the server's, as Jellyfin's GetMaxBitrate has it:
   // a user limit that was read decides alone, whatever the server read did.

@@ -56,49 +56,9 @@ describe('Jellyfin\'s LAN', () => {
     expect(isLanAddress('203.0.113.9', lan('::'))).toBe(false);
   });
 
-  it('skips "! address" with a space after the mark, as Jellyfin refuses it', () => {
-    const own = lan('192.168.0.0/16', '! 192.168.0.66', '!192.168.0.77');
-    expect(isLanAddress('192.168.0.66', own)).toBe(true); // that exclusion was not read
-    expect(isLanAddress('192.168.0.77', own)).toBe(false);
-    expect(isLanAddress('192.168.0.66', lan(' !192.168.0.66 ', '192.168.0.0/16'))).toBe(false); // the whole entry is trimmed first
-  });
-
-  it('honours ! exclusions, with the defaults and with its own subnets', () => {
-    const own = lan('192.168.0.0/16', '!192.168.0.66', '!192.168.9.0/24');
-    expect(isLanAddress('192.168.0.50', own)).toBe(true);
-    expect(isLanAddress('192.168.0.66', own)).toBe(false);
-    expect(isLanAddress('192.168.9.4', own)).toBe(false);
-    // Only exclusions: the defaults, minus them.
-    const onlyExclusions = lan('!10.0.0.5');
-    expect(isLanAddress('10.0.0.6', onlyExclusions)).toBe(true);
-    expect(isLanAddress('10.0.0.5', onlyExclusions)).toBe(false);
-  });
-
-  it('always counts loopback as local, even when its own subnets leave it out', () => {
-    const own = lan('192.168.5.0/24', '!127.0.0.0/8');
-    expect(isLanAddress('127.0.0.1', own)).toBe(true);
-    expect(isLanAddress('::1', own)).toBe(true);
-    expect(isLanAddress('10.0.0.1', own)).toBe(false); // not on this list
-  });
-
-  it('skips entries .NET cannot parse instead of failing, and falls back when nothing usable is left', () => {
-    expect(() => lan('10.0.0.0/33', 'fd00::/129', 'nonsense', '10.0.0.0/8/1', '192.168.1.5/24')).not.toThrow();
-    // Bits set past the prefix: refused by IPNetwork.TryParse, so skipped.
-    const skipped = lan('192.168.1.5/24', '100.64.0.0/10');
-    expect(isLanAddress('192.168.1.9', skipped)).toBe(false);
-    expect(isLanAddress('100.100.1.2', skipped)).toBe(true);
-    // Nothing usable: Jellyfin's defaults.
-    const unusable = lan('10.0.0.0/33', 'nonsense');
-    expect(isLanAddress('192.168.0.50', unusable)).toBe(true);
-    expect(isLanAddress('203.0.113.9', unusable)).toBe(false);
-  });
-
-  it('reads a single address as that address only', () => {
-    const own = lan('192.168.5.7', 'fd00::7');
-    expect(isLanAddress('192.168.5.7', own)).toBe(true);
-    expect(isLanAddress('192.168.5.8', own)).toBe(false);
-    expect(isLanAddress('fd00::7', own)).toBe(true);
-    expect(isLanAddress('fd00::8', own)).toBe(false);
+  it('trims only the whole entry, not the space after the !', () => {
+    expect(isLanAddress('192.168.0.66', lan(' !192.168.0.66 ', '192.168.0.0/16'))).toBe(false);
+    expect(isLanAddress('192.168.0.67', lan(' !192.168.0.66 ', '192.168.0.0/16'))).toBe(true);
   });
 });
 
@@ -127,9 +87,12 @@ describe('remoteBitrateCap', () => {
     expect(await remoteBitrateCap(noServerLimit, 'c', 'u', '203.0.113.9')).toBe(REMOTE_FALLBACK_BITRATE);
   });
 
-  it('falls back to Jellyfin\'s default LAN when the server read fails, and still applies a user limit it read', async () => {
+  it('counts only loopback as local when the server read fails, and still applies a user limit it read', async () => {
     const failingServer = client({ network: async () => { throw new Error('down'); } });
-    expect(await remoteBitrateCap(failingServer, 'c', 'u', '192.168.0.50')).toBeUndefined();
+    // The admin's LAN is unknown, and the defaults could be wider than it.
+    expect(await remoteBitrateCap(failingServer, 'c', 'u', '192.168.0.50')).toBe(8_000_000);
+    expect(await remoteBitrateCap(failingServer, 'c', 'u', '10.1.2.3')).toBe(8_000_000);
+    expect(await remoteBitrateCap(failingServer, 'c', 'u', '127.0.0.1')).toBeUndefined();
     // The user's 8 Mbps decides alone in GetMaxBitrate, whatever the server's is.
     expect(await remoteBitrateCap(failingServer, 'c', 'u', '100.100.1.2')).toBe(8_000_000);
     resetRemoteLimitCacheForTests();

@@ -126,8 +126,9 @@ applies the limit itself; Helprr applies it, by the viewer's address:
   `TRUST_FORWARDED_PROTO=true` (Tailscale Serve, Caddy, Cloudflare Tunnel). Otherwise (no
   proxy, or one that passes a visitor's headers on unchanged), **every viewer counts as
   remote whenever such a limit is set**, including viewers at home. With no limit set,
-  nothing changes. With it on, a viewer at home who opens Helprr's port directly, not
-  through the proxy, sends no forwarded address and counts as remote too.
+  nothing changes. Where Helprr's port is still open on your network (the Tailscale Serve
+  and Caddy recipes leave it open at home), a viewer who opens it directly, not through the
+  proxy, sends no forwarded address and counts as remote too.
 - Local means on Jellyfin's LAN networks (Dashboard → Networking → LAN networks; your
   private ranges when that list is empty, plus IPv6's link-local and unique-local ranges
   only if IPv6 is enabled there). A Tailscale address (`100.64.0.0/10`, or
@@ -147,10 +148,12 @@ You need a domain whose DNS is on Cloudflare.
    name it, and run the installation command it shows on Helprr's machine.
 2. In the tunnel, open **Routes → Add route → Published application**: enter a subdomain
    (such as `helprr`), choose your domain, and set **Service URL** to
-   `http://localhost:3050`.
+   `http://localhost:3050` with `cloudflared` installed on the machine itself, or to
+   `http://helprr:3050` with `cloudflared` in a container on Helprr's Docker network (see
+   [above](#what-helprr-needs-from-it)).
 
    If you run `cloudflared` with a config file instead, the same thing is one ingress
-   rule:
+   rule (`service: http://helprr:3050` for the container):
 
    ```yaml
    ingress:
@@ -159,13 +162,27 @@ You need a domain whose DNS is on Cloudflare.
      - service: http_status:404
    ```
 
-3. In `.env`, set `APP_ORIGIN=https://helprr.example.com` and
-   `TRUST_FORWARDED_PROTO=true`. Cloudflare keeps an `X-Forwarded-For` a visitor sends but
-   adds the visitor's real address after it, and Helprr reads it from the end, so leave
-   `TRUSTED_PROXY_HOPS` at its default of 1. Make Helprr's port answer `cloudflared` only:
-   `HELPRR_PORT=127.0.0.1:3050` with `cloudflared` on the host, or Helprr's Docker network
-   with `cloudflared` in a container (see [above](#what-helprr-needs-from-it)). Otherwise
-   anyone who reaches the port directly can send a made-up address. Restart Helprr.
+3. In `.env`, set `APP_ORIGIN=https://helprr.example.com`,
+   `TRUST_FORWARDED_PROTO=true` and `HELPRR_PORT=127.0.0.1:3050`, in both cases (for the
+   container, on top of joining Helprr's network). Cloudflare keeps an `X-Forwarded-For`
+   a visitor sends but adds the visitor's real address after it, and Helprr reads it from
+   the end, so leave `TRUSTED_PROXY_HOPS` at its default of 1. The port setting makes
+   Helprr answer `cloudflared` only: otherwise anyone who reaches the port directly can
+   send a made-up address. Restart Helprr.
+
+   What that costs: Helprr no longer answers at its address on your network, so open it at
+   `https://helprr.example.com`, at home too. Sonarr and Radarr fetch `.torrent` files at
+   the tunnel's address (`APP_ORIGIN`), or at `http://127.0.0.1:3050` on the machine itself
+   and `http://helprr:3050` on Helprr's network (`ARR_CALLBACK_ORIGIN`). With Cloudflare
+   Access in front, apps on other machines cannot pass it: add torrents by magnet link.
+
+   Keep the tunnel pointing at Helprr itself. A second proxy behind it that replaces
+   `X-Forwarded-For` with the address it received the request from (Caddy by default)
+   makes every visitor look like `cloudflared`: everyone then counts as local, with one
+   shared sign-in limit. If you need one, make it keep the header and add to it for
+   `cloudflared`'s address (in Caddy, the global `servers` option
+   `trusted_proxies static 127.0.0.1/32`, with `cloudflared`'s address), and set
+   `TRUSTED_PROXY_HOPS=2`.
 
 To keep strangers away from the sign-in page, put
 [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) in
