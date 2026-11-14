@@ -109,13 +109,15 @@ async function patchHandler(
     }
   }
 
-  // Making someone admin, or setting another admin's password or Jellyfin link
-  // (a way into their account, as a reset link is), needs the acting admin's
+  // Making someone admin, or setting another admin's password, Jellyfin link or
+  // username (a way into their account, as a reset link is: trusted-header
+  // sign-in finds the account by its username) needs the acting admin's
   // password (and code), not just a session.
   const promoting = data.role === 'admin' && existing.role !== 'admin';
   const intoOtherAdmin = existing.role === 'admin' && existing.id !== admin.user.id && (
     (typeof body.password === 'string' && body.password.length > 0)
     || (data.jellyfinUserId !== undefined && data.jellyfinUserId !== existing.jellyfinUserId)
+    || (data.username !== undefined && data.username !== existing.username)
   );
   // Turning an admin back on (from disabled, or pending, which a disable can
   // pass through) gives admin access again, so it asks too.
@@ -161,7 +163,7 @@ async function patchHandler(
       // saw, as whether it needed the step-up above depends on it.
       const statusChanges = data.status !== undefined && data.status !== existing.status;
       const roleDecides = data.role !== undefined || data.passwordHash !== undefined || data.jellyfinUserId !== undefined
-        || statusChanges;
+        || data.username !== undefined || statusChanges;
       const updated = await tx.user.update({
         where: {
           id,

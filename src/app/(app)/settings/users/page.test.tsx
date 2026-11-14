@@ -568,6 +568,26 @@ describe('round 10: the Admin template, turning an admin back on, and another ad
     expect(sent[0].body).toMatchObject({ status: 'active', currentPassword: 'my password', code: '123456' });
   });
 
+  it("renaming another admin asks for your password and code (a proxy sign-in finds them by name)", async () => {
+    mocks.me = { id: 'me' };
+    const sent: Array<{ url: string; method: string; body: unknown }> = [];
+    stub({ ...member, role: 'admin', hasPassword: true, passwordLink: null, twoStepEnabled: false }, sent);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    // The reset-link section asks on its own; the details form asks once the name changes.
+    const asked = () => screen.queryAllByLabelText('Your current password');
+    const before = asked().length;
+    const name = screen.getAllByLabelText('Username').at(-1)!;
+    await userEvent.clear(name);
+    await userEvent.type(name, 'eve');
+    expect(asked()).toHaveLength(before + 1);
+    await userEvent.type(asked()[0], 'my password');
+    await userEvent.type(screen.getAllByLabelText('Authenticator or recovery code')[0], '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Save details' }));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0].body).toMatchObject({ username: 'eve', currentPassword: 'my password', code: '123456' });
+  });
+
   it('a disabled member turns back on with no password asked', async () => {
     mocks.me = { id: 'me' };
     const sent: Array<{ url: string; method: string; body: unknown }> = [];
