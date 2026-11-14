@@ -115,12 +115,16 @@ Lidarr did not answer, so its downloads are missing from the list and the total.
 These two paths are the only ones a token opens, and only with `GET`. Sent to
 any other address in Helprr, a token is refused.
 
-## iOS Shortcuts: "What's downloading?"
+## iOS Shortcuts: "Helprr downloads"
 
 This shortcut asks Helprr for the queue and reads it out, so you can ask Siri
-*"What's downloading?"*. Make a token with **Download queue (size and items)** ticked first.
+*"Helprr downloads"*. Make a token with **Download queue (size and items)** ticked first.
 
-1. In **Shortcuts**, tap **+** and name the shortcut **What's downloading**.
+Siri runs a shortcut when you say its name, but a phrase Siri already answers
+itself wins. *"What's downloading?"* is one: Siri reports the iPhone's own
+downloads instead. So give the shortcut a name with **Helprr** in it.
+
+1. In **Shortcuts**, tap **+** and name the shortcut **Helprr downloads**.
 2. Add **Get Contents of URL**. Set the URL to
    `https://helprr.example.com/api/v1/queue` (your Helprr address). Tap **Show
    More**, leave **Method** on **GET**, and under **Headers** add a header with
@@ -137,7 +141,9 @@ This shortcut asks Helprr for the queue and reads it out, so you can ask Siri
    *Nothing is downloading*.
 
 Run it once from the Shortcuts app and allow it to connect to your Helprr address.
-Then say *"Hey Siri, what's downloading"*. To show it on the Home Screen, add the
+Then say *"Hey Siri, Helprr downloads"* (or *"Hey Siri, run Helprr downloads"*).
+To rename a shortcut you already made, press and hold it in Shortcuts and choose
+**Rename**. To show it on the Home Screen, add the
 Shortcuts widget. For a quick total instead, use `/api/v1/summary` and read
 `queue` → `total`.
 
