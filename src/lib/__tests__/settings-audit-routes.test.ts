@@ -42,9 +42,10 @@ vi.mock('@/lib/youtube/settings', () => ({
 }));
 vi.mock('@/lib/twitch/settings', () => ({ getTwitchSettings: vi.fn(async () => ({ browserAuthToken: null })) }));
 vi.mock('@/lib/youtube/cleanup', () => ({ invalidateQueuedCleanup: vi.fn(async () => {}) }));
+const jellyfinUser = vi.hoisted(() => vi.fn(async (id: string) => ({ Id: id })));
 vi.mock('@/lib/service-helpers', () => ({
   getJellyfinClientContext: vi.fn(async () => ({
-    client: { getUser: vi.fn(async (id: string) => ({ Id: id })) },
+    client: { getUser: jellyfinUser },
     connection: { id: 'conn-1' },
     connectionFingerprint: 'fingerprint-1',
   })),
@@ -123,8 +124,12 @@ describe('settings saves are audited with the keys only', () => {
     expect((await put(diskThresholds.PUT, { thresholds: [{ diskId: '', minFreeGb: 1, enabled: true }] })).status).toBe(400);
     mocks.creatorFind.mockResolvedValue(null);
     expect((await put(twitchPolicies.PUT, { streamerId: 'gone', policy: {} })).status).toBe(404);
+    // Auto-cleanup: Jellyfin answers with another user, so nothing is saved or audited.
+    jellyfinUser.mockResolvedValueOnce({ Id: 'someone-else' });
+    expect((await put(youtubeCleanup.PUT, { enabled: true, viewerId: 'jf-viewer' })).status).toBe(502);
+    expect(mocks.youtubeUpdate).not.toHaveBeenCalled();
     mocks.allowed = false;
-    for (const handler of [diskThresholds.PUT, discoverLayout.PUT, youtubeSettings.PUT, twitchSettings.PUT, twitchPolicies.PUT, youtubePolicies.PUT]) {
+    for (const handler of [diskThresholds.PUT, discoverLayout.PUT, youtubeSettings.PUT, twitchSettings.PUT, twitchPolicies.PUT, youtubePolicies.PUT, youtubeCleanup.PUT]) {
       expect((await put(handler, { autoDownloadEnabled: true })).status).toBe(403);
     }
     expect(mocks.audit).not.toHaveBeenCalled();
