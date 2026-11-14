@@ -164,9 +164,14 @@ export function keepIosFromScrolling(node: HTMLElement): () => void {
 }
 
 /**
- * Scrolls the overlay (or the box in it that scrolls) so the field being
- * typed in sits near its top, with what follows it (the next field, the
- * button that sends the form) in view above the keyboard rather than under it.
+ * Scrolls the overlay (or the box in it that scrolls) as little as it takes
+ * to show the field being typed in and the centres of the fields either side
+ * of it. iOS's ⌃ / ⌄ keyboard arrows skip a field whose centre is not on
+ * screen (WebKit hit-tests it, bugs 220929 and 242060), so a field scrolled
+ * out of the box, above or below, could no longer be reached with them; an
+ * earlier rule that put the focused field near the box's top did that to the
+ * field before it. When both neighbours don't fit, the next one wins: it is
+ * the way through the form, towards the button that sends it.
  */
 export function revealFocusedField(node: HTMLElement) {
   const field = document.activeElement;
@@ -175,10 +180,44 @@ export function revealFocusedField(node: HTMLElement) {
     if (box.scrollHeight <= box.clientHeight) continue;
     const overflow = getComputedStyle(box).overflowY;
     if (overflow !== 'auto' && overflow !== 'scroll') continue;
-    // Its label sits just above it.
-    box.scrollTop += field.getBoundingClientRect().top - box.getBoundingClientRect().top - 40;
+    const viewTop = box.getBoundingClientRect().top + box.clientTop;
+    const viewBottom = viewTop + box.clientHeight;
+    // How far the box may scroll (+ is down) and keep `top`–`bottom` in view.
+    const keep = (top: number, bottom: number) => ({ min: bottom - viewBottom, max: top - viewTop });
+    const fieldRect = field.getBoundingClientRect();
+    let range = keep(fieldRect.top, fieldRect.bottom);
+    const fields = [...node.querySelectorAll<HTMLElement>('input, textarea, select')].filter(
+      (el) => el === field || isArrowStop(el),
+    );
+    const at = fields.indexOf(field);
+    // The nearest field each way with a box: one hidden by CSS has none, and
+    // the arrows go on to the one after it. None when focus isn't on a field.
+    const nearest = (step: 1 | -1) => {
+      for (let i = at + step; at >= 0 && i >= 0 && i < fields.length; i += step) {
+        const rect = fields[i].getBoundingClientRect();
+        if (rect.bottom > rect.top) return { el: fields[i], rect };
+      }
+      return null;
+    };
+    for (const found of [nearest(1), nearest(-1)]) {
+      // One in a part that doesn't scroll (a pinned search box) doesn't move.
+      if (!found || !box.contains(found.el)) continue;
+      const { rect } = found;
+      const centre = (rect.top + rect.bottom) / 2;
+      const both = { min: Math.max(range.min, centre + 4 - viewBottom), max: Math.min(range.max, centre - 4 - viewTop) };
+      if (both.min <= both.max) range = both;
+    }
+    // Taller than the box (a long text area): show its top.
+    const by = range.min > range.max ? range.max : Math.min(Math.max(0, range.min), range.max);
+    if (by) box.scrollTop += by;
     return;
   }
+}
+
+/** A field the keyboard's ⌃ / ⌄ arrows go to: shown, enabled, typed into or picked from. */
+function isArrowStop(el: HTMLElement) {
+  if (!(isTextField(el) || el instanceof HTMLSelectElement) || el.disabled || el.closest('[hidden], [inert]')) return false;
+  return !(el instanceof HTMLInputElement && el.type === 'hidden');
 }
 
 /**

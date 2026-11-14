@@ -198,7 +198,7 @@ export function AnilistStatusDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent>
+      <DrawerContent scrollTogether>
         <DrawerHeader>
           <DrawerTitle>{loading || loadError ? 'AniList Entry' : entry ? 'Edit AniList Entry' : 'Add to AniList'}</DrawerTitle>
           <DrawerDescription className="line-clamp-1">{mediaTitle}</DrawerDescription>
