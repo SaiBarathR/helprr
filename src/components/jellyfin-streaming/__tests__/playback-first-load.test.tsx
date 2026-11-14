@@ -48,8 +48,9 @@ vi.mock('hls.js', () => ({
 }));
 // The start bound running out, without waiting 30 s for it.
 vi.mock('@/lib/jellyfin-playback/play-media', async (importOriginal) => {
-  const { PlaybackFailure } = await importOriginal<typeof import('@/lib/jellyfin-playback/play-media')>();
+  const { PAUSED_START, PlaybackFailure } = await importOriginal<typeof import('@/lib/jellyfin-playback/play-media')>();
   return {
+    PAUSED_START,
     PlaybackFailure,
     playMedia: async (el: HTMLMediaElement) => {
       if (media.playsTo) {

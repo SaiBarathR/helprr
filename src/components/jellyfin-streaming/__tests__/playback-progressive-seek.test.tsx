@@ -215,7 +215,7 @@ describe('seeking a progressive transcode', () => {
       await Promise.all([first, second]);
       for (let i = 0; i < 10; i += 1) await flush();
     });
-    expect(h.requests.at(-1)?.startTimeTicks).toBe(110 * 10_000_000);
-    expect(h.requests.at(-1)?.audioStreamIndex).toBe(3);
+    expect(h.requestOnPlayer()?.startTimeTicks).toBe(110 * 10_000_000);
+    expect(h.requestOnPlayer()?.audioStreamIndex).toBe(3);
   });
 });

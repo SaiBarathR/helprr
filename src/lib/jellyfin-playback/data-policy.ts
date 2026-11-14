@@ -32,15 +32,18 @@ export class PlaybackBandwidthEstimate {
   }
   /**
    * Start from a measured download (`probeBandwidth`) instead of the fixed
-   * guess. Only ever lowers the guess: on a fast link the first stream stays
-   * exactly what it was before, and the stream's own transfers can still raise
-   * the ceiling as they arrive.
+   * guess. It can bring the ceiling down, for a slow link, but never pushes it
+   * above the higher of the 6 Mbps guess and what streams have already shown
+   * the link to carry: a fast link starts exactly where it did before, and a
+   * ceiling hls.js has learned is not thrown away.
    */
   seed(bitsPerSecond: number, now = Date.now()): void {
     this.seededAt = now;
     if (!(bitsPerSecond > 0)) return;
     const candidate = effectiveBitrate(0, Math.round(bitsPerSecond * 0.6 / 100_000) * 100_000);
-    this.ceiling = Math.min(AUTOMATIC_INITIAL_BITRATE, candidate);
+    const next = Math.min(Math.max(AUTOMATIC_INITIAL_BITRATE, this.ceiling), candidate);
+    if (next === this.ceiling) return;
+    this.ceiling = next;
     this.samples = 0;
   }
   observe(bytes: number, milliseconds: number): void {

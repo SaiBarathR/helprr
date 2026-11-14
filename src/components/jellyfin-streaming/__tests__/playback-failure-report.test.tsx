@@ -273,6 +273,20 @@ describe('after a failure that ended playback', () => {
     expect(stoppedReports()).toHaveLength(1);
     await h.act(async () => { await h.playback().stop(); });
     expect(stoppedReports()).toHaveLength(1);
+    // session-1 was released by the track change; neither its failure, nor
+    // Retry's, nor Close asks again.
+    expect(h.encodingStops).toEqual(['session-1']);
+  });
+
+  it('releases a failed stream once when it fails twice', async () => {
+    await watching({ progressive: true });
+    await h.act(() => {
+      h.element().dispatchEvent(new Event('error'));
+      h.element().dispatchEvent(new Event('error'));
+    });
+    await h.act(async () => { await vi.waitFor(() => expect(h.encodingStops).toContain('session-1')); });
+    await h.act(async () => { await h.playback().stop(); });
+    expect(h.encodingStops).toEqual(['session-1']);
   });
 
   it("says the stream couldn't be reached, without a transcode retry, when the request itself fails", async () => {
@@ -293,6 +307,21 @@ describe('after a failure that ended playback', () => {
 });
 
 describe('a track change while paused', () => {
+  it("on an iPhone's native HLS is ready at metadata, without playing or waiting for a frame", async () => {
+    await watching({ hls: true });
+    await h.act(() => { h.playback().togglePause(); });
+    // Safari stops a paused HLS element at metadata until play().
+    Object.defineProperty(h.element(), 'readyState', { configurable: true, get: () => 1 });
+    const play = vi.spyOn(h.element(), 'play');
+    const started = Date.now();
+
+    await h.act(async () => { await h.playback().setAudioStream(2); });
+
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(play).not.toHaveBeenCalled();
+    expect(h.playback().status).toBe('paused');
+  });
+
   it('loads the new stream without playing it, and reports it paused', async () => {
     await watching();
     await h.act(() => { h.playback().togglePause(); });

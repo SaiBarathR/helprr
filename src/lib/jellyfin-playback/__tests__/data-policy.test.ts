@@ -44,4 +44,19 @@ describe('playback data ceiling', () => {
     expect(unknown.ceiling).toBe(6_000_000);
     expect(unknown.needsProbe()).toBe(false); // a failed probe is not retried at every start
   });
+  it('does not let a measurement cap a ceiling the stream has already learned', () => {
+    const learned = new PlaybackBandwidthEstimate();
+    for (let i = 0; i < 3; i++) learned.observe(2_000_000, 1_000);
+    expect(learned.ceiling).toBe(9_600_000);
+    learned.seed(50_000_000);
+    expect(learned.ceiling).toBe(9_600_000); // not back to 6 Mbps
+    learned.seed(5_000_000);
+    expect(learned.ceiling).toBe(3_000_000); // the link really got slower
+
+    const stalled = new PlaybackBandwidthEstimate();
+    stalled.stalled();
+    expect(stalled.ceiling).toBe(3_000_000);
+    stalled.seed(50_000_000);
+    expect(stalled.ceiling).toBe(6_000_000);
+  });
 });

@@ -71,6 +71,12 @@ export interface Harness {
   media: FakeMedia;
   /** Stream requests the provider made, oldest first. */
   requests: StreamRequest[];
+  /**
+   * The request behind the stream now on the player (session-N is the Nth
+   * request). Not `requests.at(-1)`: a superseded restart may reach the server
+   * last, and is then released.
+   */
+  requestOnPlayer: () => StreamRequest | undefined;
   /** Session reports the provider sent, oldest first. */
   reports: SessionReport[];
   encodingStops: string[];
@@ -268,6 +274,10 @@ export async function mountPlayback(options: { hls?: boolean; audioIds?: string[
     },
     media: { paused: () => state.paused, currentTime: () => state.currentTime },
     requests,
+    requestOnPlayer: () => {
+      const session = holder.current?.stream?.playSessionId?.match(/^session-(\d+)$/)?.[1];
+      return session ? requests[Number(session) - 1] : undefined;
+    },
     reports,
     encodingStops,
     holdStopRequests: () => {

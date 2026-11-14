@@ -8,7 +8,7 @@ const MIN_BYTES = 64_000;
 const DEFAULT_BYTES = 500_000;
 
 /** Random, so no compression on the way can make the link look faster than it is. */
-let payload: Buffer | null = null;
+let payload: Uint8Array<ArrayBuffer> | null = null;
 
 /**
  * A timed download for the player's Automatic quality: what jellyfin-web asks
@@ -20,6 +20,12 @@ let payload: Buffer | null = null;
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('jellyfin.view');
   if (!auth.ok) return auth.response;
+  // Nothing plays without a linked account (the start gates on it next), so
+  // no 500 kB ahead of the Connect form. Presence only: a revoked token is
+  // caught by the start itself.
+  if (!auth.user.jellyfinToken) {
+    return NextResponse.json({ error: 'jellyfin_connect_required' }, { status: 409 });
+  }
 
   const requested = Number(request.nextUrl.searchParams.get('size'));
   const size = Number.isFinite(requested) && requested > 0
@@ -27,7 +33,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     : DEFAULT_BYTES;
   payload ??= randomBytes(MAX_BYTES);
 
-  return new NextResponse(new Uint8Array(payload.subarray(0, size)), {
+  return new NextResponse(payload.subarray(0, size), {
     headers: {
       'Content-Type': 'application/octet-stream',
       'Content-Length': String(size),

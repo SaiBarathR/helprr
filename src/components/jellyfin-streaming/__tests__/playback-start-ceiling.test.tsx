@@ -21,6 +21,7 @@ const PROBE = '/api/jellyfin/stream/bitrate-test';
 /** Serve the probe as `chunks` pieces of 125 kB, `gapMs` apart. */
 function serveProbe(chunks: number, gapMs: number) {
   const originalFetch = globalThis.fetch;
+  const signals: (AbortSignal | undefined)[] = [];
   const fetchSpy = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     if (!String(input).startsWith(PROBE)) return originalFetch(input, init);
     let sent = 0;
@@ -32,10 +33,12 @@ function serveProbe(chunks: number, gapMs: number) {
         controller.enqueue(new Uint8Array(125_000));
       },
     });
+    signals.push(init?.signal ?? undefined);
     return Promise.resolve(new Response(body, { status: 200 }));
   });
   vi.stubGlobal('fetch', fetchSpy);
   return {
+    signals,
     probes: () => fetchSpy.mock.calls.filter(([url]) => String(url).startsWith(PROBE)).length,
     ceilings: () => fetchSpy.mock.calls
       .filter(([url]) => String(url) === '/api/jellyfin/stream/info')
@@ -82,4 +85,47 @@ it('does not measure for an explicit quality or for music', async () => {
   await h.act(async () => { await h.playback().playItem(ITEM, { maxStreamingBitrate: 10_000_000 }); });
 
   expect(probe.probes()).toBe(0);
+});
+
+it('never measures for a restart of the title on the player, even once the measurement is old', async () => {
+  h = await mountPlayback();
+  const probe = serveProbe(4, 300);
+  await h.act(async () => { await h.playback().playItem(ITEM); });
+  const [first] = probe.ceilings();
+  expect(first).toBeLessThan(6_000_000);
+
+  // Fifteen minutes on: a track change neither waits on a test nor loses the
+  // ceiling the stream is running at.
+  const later = Date.now() + 15 * 60_000;
+  vi.spyOn(Date, 'now').mockReturnValue(later);
+  await h.act(async () => { await h.playback().setAudioStream(2); });
+  expect(probe.probes()).toBe(1);
+  expect(probe.ceilings()).toEqual([first, first]);
+
+  // A fresh pick of another title does measure again, the old result expired.
+  await h.act(async () => { await h.playback().playItem({ ...ITEM, Id: 'item-2' }); });
+  expect(probe.probes()).toBe(2);
+});
+
+it('shares one test between starts that overlap it, and Stop cancels it', async () => {
+  h = await mountPlayback();
+  const probe = serveProbe(4, 300);
+
+  let firstStart!: Promise<void>;
+  let secondStart!: Promise<void>;
+  await h.act(() => { firstStart = h.playback().playItem(ITEM); });
+  await h.act(() => { secondStart = h.playback().playItem({ ...ITEM, Id: 'item-2' }); });
+  await h.act(async () => { await Promise.all([firstStart, secondStart]); });
+  expect(probe.probes()).toBe(1);
+  expect(h.playback().stream?.item.Id).toBe('item-2');
+
+  // A test cut short by Stop measures nothing, so the next start tries again.
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 15 * 60_000);
+  let third!: Promise<void>;
+  await h.act(() => { third = h.playback().playItem({ ...ITEM, Id: 'item-3' }); });
+  await h.act(async () => { await h.playback().stop(); await third; });
+  expect(probe.probes()).toBe(2);
+  expect(probe.signals.at(-1)?.aborted).toBe(true);
+  await h.act(async () => { await h.playback().playItem({ ...ITEM, Id: 'item-4' }); });
+  expect(probe.probes()).toBe(3);
 });

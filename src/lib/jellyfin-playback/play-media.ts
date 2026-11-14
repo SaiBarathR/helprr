@@ -12,11 +12,19 @@ export class PlaybackFailure extends Error {
 }
 
 /**
- * How long a paused start waits for the browser to load the stream by itself
- * before it falls back to playing it. iOS Safari may load nothing until
- * `play()`; everything else buffers a paused element.
+ * How a paused start knows the stream is there without playing it.
+ *
+ * `buffered`: a frame is loaded (readyState 2); hls.js and progressive files
+ * get there on a paused element. `native`: metadata (readyState 1) is enough,
+ * because Safari's own HLS — every iPhone — usually stops there until `play()`,
+ * and waiting for a frame only ran the fallback. Either way, a stream that has
+ * loaded nothing after `fallbackMs` is played after all (the caller pauses it).
  */
-const PAUSED_LOAD_FALLBACK_MS = 4_000;
+export const PAUSED_START = {
+  buffered: { readyState: 2, fallbackMs: 4_000 },
+  native: { readyState: 1, fallbackMs: 1_500 },
+} as const;
+type PausedStart = (typeof PAUSED_START)[keyof typeof PAUSED_START];
 
 /**
  * Bound silent startup stalls even when the browser emits no media events.
@@ -24,15 +32,15 @@ const PAUSED_LOAD_FALLBACK_MS = 4_000;
  * `paused` starts the stream without playing it: a track change or a seek made
  * while paused. Calling `play()` for those played a moment of the title, and
  * the element read as playing for the seconds the new stream took to load.
- * Ready once a frame is there; with metadata alone if the browser will not
- * buffer a paused element; and only if it has loaded nothing at all does it
- * play after all, leaving the caller to pause it, as before.
+ * Ready at the readiness `paused` names; with metadata alone if the browser
+ * will not buffer further by its fallback; and only if it has loaded nothing
+ * at all does it play after all, leaving the caller to pause it, as before.
  */
 export function playMedia(
   el: HTMLMediaElement,
   isCurrent: () => boolean,
   timeoutMs = 30_000,
-  paused = false,
+  paused: PausedStart | null = null,
 ): Promise<boolean> {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -49,7 +57,7 @@ export function playMedia(
     };
     const check = () => {
       if (!isCurrent()) finish(false);
-      else if (!playing && el.readyState >= 2) finish(true);
+      else if (!playing && paused && el.readyState >= paused.readyState) finish(true);
       else if (playResolved && el.readyState >= 3) finish(true);
     };
     const poll = setInterval(check, 250);
@@ -76,7 +84,7 @@ export function playMedia(
       if (!isCurrent()) finish(false);
       else if (el.readyState >= 1) finish(true);
       else play();
-    }, PAUSED_LOAD_FALLBACK_MS) : undefined;
+    }, paused.fallbackMs) : undefined;
     if (paused) check();
     else play();
   });
