@@ -12,7 +12,7 @@ import {
 } from 'react';
 import type { JellyfinItem, JellyfinMediaStream } from '@/types/jellyfin';
 import type { HelprrStreamInfo, JellyfinPlayMethod, MediaSegment } from '@/types/jellyfin-streaming';
-import { effectiveBitrate, normalizeBitrateChoice, PlaybackBandwidthEstimate, PLAYBACK_POLICY_KEY } from '@/lib/jellyfin-playback/data-policy';
+import { effectiveBitrate, LONG_HIDDEN_MS, normalizeBitrateChoice, PlaybackBandwidthEstimate, PLAYBACK_POLICY_KEY } from '@/lib/jellyfin-playback/data-policy';
 import { getDeviceProfile } from '@/lib/jellyfin-playback/device-profile';
 import { getJellyfinPlaybackDeviceId, getJellyfinPlaybackDeviceName, secondsToTicks, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { canPlayHlsWithMse, canPlayNativeHls, detectBrowser } from '@/lib/jellyfin-playback/browser';
@@ -851,7 +851,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const canUseJellyfin = useCan('jellyfin.view');
   const cueLineRef = useRef(subtitleCueLine(subtitleAppearance.verticalPosition));
   const obstructionRef = useRef(0);
-  const hlsRef = useRef<{ destroy: () => void } | null>(null);
+  const hlsRef = useRef<{ destroy: () => void; stopLoad: () => void; startLoad: () => void } | null>(null);
   const assRef = useRef<{ dispose?: () => void; resize?: () => void } | null>(null);
   /**
    * Whether libass has already failed on this device.
@@ -1010,12 +1010,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    * it slow. Stop cancels it.
    */
   const probeRef = useRef<{ done: Promise<void>; controller: AbortController } | null>(null);
-  const measureLink = useCallback(() => {
+  const measureLink = useCallback((mayLower = true) => {
     if (!probeRef.current) {
       const controller = new AbortController();
       const done = probeBandwidth(controller.signal)
         .then((bitsPerSecond) => {
-          if (bitsPerSecond !== null && !controller.signal.aborted) bandwidthRef.current.seed(bitsPerSecond, Date.now(), downlinkMaxMbps());
+          if (bitsPerSecond !== null && !controller.signal.aborted) bandwidthRef.current.seed(bitsPerSecond, Date.now(), downlinkMaxMbps(), mayLower);
         })
         .finally(() => {
           if (probeRef.current?.controller === controller) probeRef.current = null;
@@ -1023,6 +1023,27 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       probeRef.current = { done, controller };
     }
     return probeRef.current.done;
+  }, []);
+  // A measurement belongs to the network it was made on. Chrome reports a
+  // connection change; going offline and back is a change everywhere; iOS
+  // reports neither, so a page hidden for a long while (the phone in a pocket,
+  // the home-screen app in the background) counts as one too.
+  useEffect(() => {
+    const changed = () => bandwidthRef.current.networkChanged();
+    let hiddenAt = 0;
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') hiddenAt = Date.now();
+      else if (hiddenAt && Date.now() - hiddenAt > LONG_HIDDEN_MS) changed();
+    };
+    const connection = (navigator as Navigator & { connection?: EventTarget }).connection;
+    connection?.addEventListener?.('change', changed);
+    window.addEventListener('online', changed);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      connection?.removeEventListener?.('change', changed);
+      window.removeEventListener('online', changed);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
   /**
    * Sessions whose encoder this player has already asked Jellyfin to stop.
@@ -1477,16 +1498,15 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       }
     }
 
+    // Stop or a newer start can retire this attachment while HLS, layout, or
+    // the subtitle engine is loading. It must not resume the shared element.
+    if (!isCurrent()) return;
     // The new source is on the element: its first frame replaces the one held.
     const held = frameHoldRef.current;
     if (held) {
       held.cancel?.();
       held.cancel = whenFramePresented(el, () => { if (frameHoldRef.current === held) releaseFrameHold(); });
     }
-
-    // Stop or a newer start can retire this attachment while HLS, layout, or
-    // the subtitle engine is loading. It must not resume the shared element.
-    if (!isCurrent()) return;
     await applySubtitleTrack(next, requestedSubtitleIndex ?? next.mediaSource.DefaultSubtitleStreamIndex ?? null, isCurrent);
     if (!isCurrent()) return;
 
@@ -1587,12 +1607,17 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         }
         if (releaseOutgoing && outgoingSession) await releaseEncodings(outgoingSession);
       })();
-      // A restart of the title on screen keeps its picture up until the new
-      // stream has one (a hold already up from a restart still loading stays);
-      // another title starts from black.
-      if (streamRef.current?.item.Id === nextItem.Id && mediaRef.current) {
+      // A restart of the title on screen at the same moment (a track or
+      // quality change) keeps its picture up until the new stream has one; a
+      // hold already up from a restart still loading stays. A seek's frame
+      // would show the old moment under the new time, and another title
+      // starts from black.
+      const outgoingEl = mediaRef.current;
+      const samePlace = streamRef.current?.item.Id === nextItem.Id && outgoingEl
+        && Math.abs(ticksToSeconds(resumeTicks - streamRef.current.transcodingOffsetTicks) - outgoingEl.currentTime) < 2;
+      if (samePlace && outgoingEl) {
         if (!frameHoldRef.current) {
-          const hold = holdFrame(mediaRef.current);
+          const hold = holdFrame(outgoingEl);
           if (hold) frameHoldRef.current = { hold };
         }
       } else {
@@ -1606,6 +1631,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       // element holds a real position.
       reachedStartRef.current = false;
       setStream(nextStream);
+      // A remote viewer's stream is capped by Jellyfin's Internet limit.
+      if (nextStream.bitrateCap && nextStream.bitrateCap < ceiling) setEffectiveMaxBitrate(nextStream.bitrateCap);
       // What the viewer asked for wins over what came back. Jellyfin returns
       // the *file's* defaults in DefaultAudioStreamIndex/DefaultSubtitleStreamIndex
       // rather than echoing the request, so reading the response back here was
@@ -2242,9 +2269,17 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     try { localStorage.setItem(PLAYBACK_POLICY_KEY, String(choice)); } catch { /* best effort */ }
     // Picking Automatic measures the link again first, however recent the last
     // test, as jellyfin-web's does (playbackmanager.js `setMaxStreamingBitrate`).
+    // The stream on screen would share the link with the test and make it
+    // read slow, so hls.js stops loading for it; a stream Helprr cannot pause
+    // (Safari's own HLS, a file) lets this test raise the ceiling only.
     if (choice === 0 && streamRef.current && streamRef.current.item.MediaType !== 'Audio') {
-      await measureLink();
-      if (pick !== bitratePickRef.current) return;
+      const hls = hlsRef.current;
+      hls?.stopLoad();
+      await measureLink(Boolean(hls));
+      if (pick !== bitratePickRef.current) {
+        if (hls && hlsRef.current === hls) hls.startLoad();
+        return;
+      }
     }
     await restartWith({ maxStreamingBitrate: choice });
   }, [measureLink, restartWith]);

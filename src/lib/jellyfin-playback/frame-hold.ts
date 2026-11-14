@@ -19,9 +19,16 @@ export interface FrameHold {
 export function holdFrame(el: HTMLVideoElement): FrameHold | null {
   const parent = el.parentElement;
   if (!parent || el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !el.videoWidth || !el.videoHeight) return null;
+  // No more pixels than the screen shows: a 4K frame at full size is ~33 MB,
+  // which counts against iOS's canvas memory. Letterboxed, the picture is the
+  // smaller of the two ratios; cropped by Fill, the larger.
+  const dpr = window.devicePixelRatio || 1;
+  const ratios = [el.clientWidth * dpr / el.videoWidth, el.clientHeight * dpr / el.videoHeight];
+  const fit = el.hasAttribute('data-fill') ? Math.max(...ratios) : Math.min(...ratios);
+  const scale = Math.min(1, fit || 1);
   const canvas = document.createElement('canvas');
-  canvas.width = el.videoWidth;
-  canvas.height = el.videoHeight;
+  canvas.width = Math.max(1, Math.round(el.videoWidth * scale));
+  canvas.height = Math.max(1, Math.round(el.videoHeight * scale));
   const context = canvas.getContext('2d');
   if (!context) return null;
   try {
@@ -29,9 +36,9 @@ export function holdFrame(el: HTMLVideoElement): FrameHold | null {
   } catch {
     return null;
   }
-  // Fitted as the element fits its picture (letterboxed, or cropped by the
-  // player's zoom to fill), over the same box. The element's positioned
-  // ancestor is the player surface, which it fills.
+  // Over the same box: the element's positioned ancestor is the player
+  // surface, which it fills. Fitted by globals.css like the element, so the
+  // player's zoom to fill and the mini player crop it the same way.
   canvas.setAttribute('aria-hidden', 'true');
   canvas.dataset.frameHold = '';
   Object.assign(canvas.style, {
@@ -39,12 +46,19 @@ export function holdFrame(el: HTMLVideoElement): FrameHold | null {
     inset: '0',
     width: '100%',
     height: '100%',
-    objectFit: getComputedStyle(el).objectFit || 'contain',
     background: 'black',
     pointerEvents: 'none',
   });
   el.after(canvas);
-  return { release: () => canvas.remove() };
+  return {
+    release: () => {
+      canvas.remove();
+      // Frees the bitmap now rather than at the next collection, which WebKit
+      // may put off while the canvas memory limit counts it.
+      canvas.width = 0;
+      canvas.height = 0;
+    },
+  };
 }
 
 type FrameCallbackVideo = HTMLVideoElement & {

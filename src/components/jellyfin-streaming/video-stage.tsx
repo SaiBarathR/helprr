@@ -1602,17 +1602,24 @@ function Panel({ children }: { children: React.ReactNode }) {
  *
  *  Keyboard as the ARIA radio group pattern has it: Tab enters the group once,
  *  on the picked row (the first when none is), and the next Tab leaves it;
- *  the arrow keys, Home and End move between rows. They move focus without
- *  picking, and Space or Enter picks: a pick of audio or quality restarts the
- *  stream, which arrowing past three tracks would do three times. */
+ *  the arrow keys, Home and End move between rows, taking the tab stop with
+ *  them so Tab leaves from where focus is. They move focus without picking,
+ *  and Space or Enter picks: a pick of audio or quality restarts the stream,
+ *  which arrowing past three tracks would do three times. */
 function PanelChoices({ label, children }: { label: string; children: React.ReactNode }) {
   const groupRef = useRef<HTMLDivElement>(null);
   const radios = () => Array.from(groupRef.current?.querySelectorAll<HTMLElement>('[role="radio"]') ?? []);
-  // Every render, since a pick moves the tab stop.
-  useLayoutEffect(() => {
+  const setStop = (stop: HTMLElement | undefined) => {
+    for (const row of radios()) row.tabIndex = row === stop ? 0 : -1;
+  };
+  const stopOnPicked = () => {
     const rows = radios();
-    const stop = rows.find((row) => row.getAttribute('aria-checked') === 'true') ?? rows[0];
-    for (const row of rows) row.tabIndex = row === stop ? 0 : -1;
+    setStop(rows.find((row) => row.getAttribute('aria-checked') === 'true') ?? rows[0]);
+  };
+  // Every render, since a pick moves the tab stop; not while focus is in the
+  // group, where the stop follows focus.
+  useLayoutEffect(() => {
+    if (!groupRef.current?.contains(document.activeElement)) stopOnPicked();
   });
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const rows = radios();
@@ -1626,9 +1633,18 @@ function PanelChoices({ label, children }: { label: string; children: React.Reac
     if (next === null) return;
     // Handled here, so the player's own arrow keys (seek, volume) stay out of it.
     event.preventDefault();
+    setStop(rows[next]);
     rows[next].focus();
   };
-  return <div ref={groupRef} role="radiogroup" aria-label={label} onKeyDown={onKeyDown} className="flex flex-col gap-1">{children}</div>;
+  // Focus that lands on a row any other way (a click) takes the stop too.
+  const onFocus = (event: React.FocusEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).getAttribute('role') === 'radio') setStop(event.target as HTMLElement);
+  };
+  // Leaving the group puts the stop back on the picked row, for the next Tab in.
+  const onBlur = (event: React.FocusEvent<HTMLDivElement>) => {
+    if (!groupRef.current?.contains(event.relatedTarget as Node | null)) stopOnPicked();
+  };
+  return <div ref={groupRef} role="radiogroup" aria-label={label} onKeyDown={onKeyDown} onFocus={onFocus} onBlur={onBlur} className="flex flex-col gap-1">{children}</div>;
 }
 
 /** A row in a panel: a radio in a PanelChoices list (`active` given), else a

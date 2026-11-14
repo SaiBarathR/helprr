@@ -81,3 +81,24 @@ it('drops the frame on Stop', async () => {
   await h.act(async () => { await h.playback().stop(); });
   expect(held()).toBe(false);
 });
+
+it('holds no frame for a seek, whose frame would show the old moment under the new time', async () => {
+  // A progressive transcode restarts for a seek; its element counts from the start it was given.
+  h = await mountPlayback({ progressive: true });
+  await h.act(async () => { await h.playback().playItem(RESUME); });
+  const el = h.element();
+  el.currentTime = 5; // 605 s into the title
+  el.dispatchEvent(new Event('timeupdate'));
+  await h.act(() => { h.playback().togglePause(); });
+  const before = h.requests.length;
+
+  await h.act(async () => { await h.playback().seek(900); });
+  expect(h.requests.length).toBe(before + 1);
+  expect(h.requests.at(-1)?.startTimeTicks).toBe(900 * 10_000_000);
+  expect(held()).toBe(false);
+
+  // An audio change at the same moment still holds (the new element counts from 900 s).
+  el.currentTime = 0;
+  await h.act(async () => { await h.playback().setAudioStream(2); });
+  expect(held()).toBe(true);
+});

@@ -226,7 +226,7 @@ export class JellyfinNotConnectedError extends Error {
  */
 export async function getJellyfinPlaybackContext(
   user: Pick<User, 'id' | 'role' | 'jellyfinUserId' | 'jellyfinToken'>
-): Promise<{ client: JellyfinClient; jellyfinUserId: string }> {
+): Promise<{ client: JellyfinClient; jellyfinUserId: string; connectionFingerprint: string }> {
   const playbackToken = readJellyfinToken(user);
   if (!playbackToken) throw new JellyfinNotConnectedError();
 
@@ -250,6 +250,7 @@ export async function getJellyfinPlaybackContext(
       playbackToken,
     ),
     jellyfinUserId: userId,
+    connectionFingerprint: buildJellyfinConnectionFingerprint(connection),
   };
 }
 

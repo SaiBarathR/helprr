@@ -118,6 +118,8 @@ export interface HelprrStreamInfo {
   transcodingOffsetTicks: number;
   liveStreamId?: string;
   subtitleTracks: HelprrSubtitleTrack[];
+  /** Set when the stream route capped the request for a remote viewer (Jellyfin's Internet streaming limit). */
+  bitrateCap?: number;
 }
 
 export interface HelprrSubtitleTrack {

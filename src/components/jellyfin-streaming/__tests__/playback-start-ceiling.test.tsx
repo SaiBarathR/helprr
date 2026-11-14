@@ -181,3 +181,56 @@ it('shares one test between starts that overlap it, and Stop cancels it', async 
   await h.act(async () => { await h.playback().playItem({ ...ITEM, Id: 'item-4' }); });
   expect(probe.probes()).toBe(5);
 });
+
+it('measures again after a network change, and after the page was hidden a long while', async () => {
+  h = await mountPlayback();
+  const probe = serveProbe(150);
+  await h.act(async () => { await h.playback().playItem(ITEM); });
+  expect(probe.probes()).toBe(2);
+
+  await h.act(() => { window.dispatchEvent(new Event('online')); });
+  await h.act(async () => { await h.playback().playItem({ ...ITEM, Id: 'item-2' }); });
+  expect(probe.probes()).toBe(4);
+
+  // Hidden five minutes: still trusted.
+  const visibility = vi.spyOn(document, 'visibilityState', 'get');
+  const now = Date.now();
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+  visibility.mockReturnValue('hidden');
+  await h.act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+  clock.mockReturnValue(now + 5 * 60_000);
+  visibility.mockReturnValue('visible');
+  await h.act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+  await h.act(async () => { await h.playback().playItem({ ...ITEM, Id: 'item-3' }); });
+  expect(probe.probes()).toBe(4);
+
+  // Hidden eleven minutes: measured again (the iPhone has no change event).
+  visibility.mockReturnValue('hidden');
+  await h.act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+  clock.mockReturnValue(now + 16 * 60_000);
+  visibility.mockReturnValue('visible');
+  await h.act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+  await h.act(async () => { await h.playback().playItem({ ...ITEM, Id: 'item-4' }); });
+  expect(probe.probes()).toBe(6);
+});
+
+it('starts a restart no higher than the first guess once the network changed', async () => {
+  h = await mountPlayback();
+  serveProbe(1); // a fast LAN: 120 Mbps
+  await h.act(async () => { await h.playback().playItem(ITEM); });
+  const probe = serveProbe(1);
+  await h.act(() => { window.dispatchEvent(new Event('online')); });
+  await h.act(async () => { await h.playback().setAudioStream(2); });
+  expect(probe.probes()).toBe(0); // a restart never waits on a test
+  expect(probe.ceilings()).toEqual([6_000_000]);
+});
+
+it('does not let the test on picking Automatic lower the ceiling under a stream it cannot pause', async () => {
+  h = await mountPlayback(); // a file: not hls.js, so its download keeps running
+  serveProbe(1);
+  await h.act(async () => { await h.playback().playItem(ITEM); });
+  const slow = serveProbe(800); // the playing stream shares the link
+  await h.act(async () => { await h.playback().setMaxBitrate(0); });
+  expect(slow.probes()).toBe(1);
+  expect(slow.ceilings()).toEqual([120_000_000]);
+});

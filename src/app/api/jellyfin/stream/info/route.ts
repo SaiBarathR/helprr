@@ -5,6 +5,8 @@ import { withApiLogging } from '@/lib/api-logger';
 import { jellyfinConnectGateResponse, upstreamErrorResponse } from '@/lib/api-error';
 import { buildHelprrStreamInfo } from '@/lib/jellyfin-playback/stream-info';
 import { itemAccess } from '@/lib/jellyfin-playback/item-access';
+import { remoteBitrateCap } from '@/lib/jellyfin-playback/remote-limit';
+import { getClientIp } from '@/lib/login-rate-limit';
 import { bindLiveStream, bindPlaySession, liveStreamBelongsTo } from '@/lib/jellyfin-playback/live-stream-binding';
 import type { JellyfinDeviceProfile, PlaybackInfoRequest } from '@/types/jellyfin-streaming';
 
@@ -39,7 +41,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   const startTimeTicks = typeof body.startTimeTicks === 'number' ? Math.max(0, body.startTimeTicks) : 0;
-  const maxStreamingBitrate = typeof body.maxStreamingBitrate === 'number' && body.maxStreamingBitrate > 0
+  const requestedBitrate = typeof body.maxStreamingBitrate === 'number' && body.maxStreamingBitrate > 0
     ? Math.min(body.maxStreamingBitrate, 120_000_000)
     : undefined;
 
@@ -48,7 +50,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     deviceId,
     deviceName: typeof body.deviceName === 'string' ? body.deviceName.slice(0, 80) : 'Helprr',
     startTimeTicks,
-    maxStreamingBitrate,
+    maxStreamingBitrate: requestedBitrate,
     audioStreamIndex: typeof body.audioStreamIndex === 'number' ? body.audioStreamIndex : body.audioStreamIndex === null ? null : undefined,
     subtitleStreamIndex: typeof body.subtitleStreamIndex === 'number' ? body.subtitleStreamIndex : body.subtitleStreamIndex === null ? null : undefined,
     mediaSourceId: typeof body.mediaSourceId === 'string' ? body.mediaSourceId : undefined,
@@ -56,12 +58,21 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     enableDirectPlay: typeof body.enableDirectPlay === 'boolean' ? body.enableDirectPlay : undefined,
     enableDirectStream: typeof body.enableDirectStream === 'boolean' ? body.enableDirectStream : undefined,
     isPlayback: true,
-    deviceProfile: maxStreamingBitrate ? { ...body.deviceProfile, MaxStreamingBitrate: maxStreamingBitrate, MaxStaticBitrate: maxStreamingBitrate } : body.deviceProfile,
+    deviceProfile: body.deviceProfile,
     alwaysBurnInSubtitleWhenTranscoding: body.alwaysBurnInSubtitleWhenTranscoding === true,
   };
 
   try {
-    const { client } = await getJellyfinPlaybackContext(auth.user);
+    const { client, jellyfinUserId, connectionFingerprint } = await getJellyfinPlaybackContext(auth.user);
+    // Jellyfin's Internet streaming limits, which it cannot apply itself
+    // through Helprr (see remoteBitrateCap): a remote viewer's request, a
+    // picked quality included, is capped here.
+    const remoteCap = await remoteBitrateCap(client, connectionFingerprint, jellyfinUserId, getClientIp(request));
+    const maxStreamingBitrate = remoteCap ? Math.min(requestedBitrate ?? remoteCap, remoteCap) : requestedBitrate;
+    playbackRequest.maxStreamingBitrate = maxStreamingBitrate;
+    if (maxStreamingBitrate) {
+      playbackRequest.deviceProfile = { ...playbackRequest.deviceProfile, MaxStreamingBitrate: maxStreamingBitrate, MaxStaticBitrate: maxStreamingBitrate };
+    }
     // The media proxy's gate (and cache), checked before PlaybackInfo so a refused
     // item, such as a channel for an account without Live TV, opens no stream.
     // Throws if Jellyfin cannot be asked, which the catch reports as a failure
@@ -87,7 +98,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
     if (stream.liveStreamId) await bindLiveStream(auth.user.id, stream.liveStreamId, itemId);
     if (stream.playSessionId) await bindPlaySession(auth.user.id, stream.playSessionId, itemId);
-    return NextResponse.json(stream);
+    // The player shows the ceiling it plays under.
+    return NextResponse.json(remoteCap ? { ...stream, bitrateCap: remoteCap } : stream);
   } catch (error) {
     const gate = await jellyfinConnectGateResponse(auth.user, error);
     if (gate) return gate;

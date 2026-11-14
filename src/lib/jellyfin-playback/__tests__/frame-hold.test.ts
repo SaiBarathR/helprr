@@ -2,13 +2,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { holdFrame, whenFramePresented } from '../frame-hold';
 
-function video({ readyState = 4, width = 1920, height = 1080 } = {}) {
+function video({ readyState = 4, width = 1920, height = 1080, box = [0, 0] } = {}) {
   const host = document.createElement('div');
   const el = document.createElement('video');
   Object.defineProperty(el, 'readyState', { value: readyState });
   Object.defineProperty(el, 'videoWidth', { value: width });
   Object.defineProperty(el, 'videoHeight', { value: height });
-  el.style.objectFit = 'cover';
+  Object.defineProperty(el, 'clientWidth', { value: box[0] });
+  Object.defineProperty(el, 'clientHeight', { value: box[1] });
   host.append(el);
   document.body.append(host);
   return el;
@@ -22,7 +23,7 @@ afterEach(() => {
 });
 
 describe('holdFrame', () => {
-  it('draws the frame on screen into a canvas over the element, fitted as it is, until released', () => {
+  it('draws the frame on screen into a canvas over the element, and frees it on release', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
     const el = video();
     const hold = holdFrame(el);
@@ -30,12 +31,29 @@ describe('holdFrame', () => {
     expect(canvas.tagName).toBe('CANVAS');
     expect(drawImage).toHaveBeenCalledWith(el, 0, 0, 1920, 1080);
     expect([canvas.width, canvas.height]).toEqual([1920, 1080]);
-    expect(canvas.style.objectFit).toBe('cover');
+    // Fitted by globals.css next to the video, Fill included, not inline.
+    expect(canvas.hasAttribute('data-frame-hold')).toBe(true);
+    expect(canvas.style.objectFit).toBe('');
     expect(canvas.style.position).toBe('absolute');
     expect(canvas.style.pointerEvents).toBe('none');
     expect(canvas.getAttribute('aria-hidden')).toBe('true');
     hold?.release();
     expect(el.nextElementSibling).toBeNull();
+    expect([canvas.width, canvas.height]).toEqual([0, 0]);
+  });
+
+  it('keeps no more pixels than the box shows on screen', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
+    vi.stubGlobal('devicePixelRatio', 2);
+    const el = video({ width: 3840, height: 2160, box: [390, 844] }); // 4K on a portrait phone
+    holdFrame(el)?.release();
+    // Letterboxed: 390 px wide at 2x.
+    expect(drawImage).toHaveBeenLastCalledWith(el, 0, 0, 780, 439);
+    // Cropped by Fill: 844 px tall at 2x.
+    el.setAttribute('data-fill', '');
+    holdFrame(el);
+    expect(drawImage).toHaveBeenLastCalledWith(el, 0, 0, 3001, 1688);
+    vi.unstubAllGlobals();
   });
 
   it('holds nothing without a frame, or without a 2D canvas', () => {
