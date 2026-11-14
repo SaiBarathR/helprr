@@ -31,13 +31,25 @@ import {
 } from '@/lib/jellyfin-playback/subtitle-appearance';
 import { DEFAULT_SKIP_SECONDS, isSkipLength } from '@/lib/jellyfin-playback/skip-length';
 import { DEFAULT_RANDOM_WATCH_PREFS, normalizeRandomWatchPrefs, type RandomWatchPrefs } from '@/lib/random-watch-filters';
+import {
+  MOVIE_FILTERS,
+  MOVIE_SORT_KEYS,
+  MUSIC_FILTERS,
+  MUSIC_SORT_KEYS,
+  SERIES_FILTERS,
+  SERIES_SORT_KEYS,
+} from '@/lib/library-filtering';
 
-export type MediaViewMode = 'posters' | 'overview' | 'table';
+const MEDIA_VIEW_MODES = ['posters', 'overview', 'table'] as const;
+export type MediaViewMode = (typeof MEDIA_VIEW_MODES)[number];
 /** A Twitch or YouTube feed: by channel, or every video together. */
-export type FeedView = 'grouped' | 'grid' | 'list';
+const FEED_VIEWS = ['grouped', 'grid', 'list'] as const;
+export type FeedView = (typeof FEED_VIEWS)[number];
 /** A Twitch or YouTube library: by channel, or one list. */
-export type LibraryView = 'grouped' | 'list';
-export type PosterSize = 'small' | 'medium' | 'large';
+const LIBRARY_VIEWS = ['grouped', 'list'] as const;
+export type LibraryView = (typeof LIBRARY_VIEWS)[number];
+const POSTER_SIZES = ['small', 'medium', 'large'] as const;
+export type PosterSize = (typeof POSTER_SIZES)[number];
 export type VisibleFieldsByMode = Record<MediaViewMode, string[]>;
 
 export interface DiscoverFiltersState {
@@ -102,56 +114,60 @@ export interface AnimeFiltersState {
   status: string;
 }
 
-export type TorrentsFilterPreference =
-  | 'all'
-  | 'downloading'
-  | 'seeding'
-  | 'completed'
-  | 'paused'
-  | 'active';
-export type TorrentsSortKeyPreference =
-  | 'name'
-  | 'size'
-  | 'progress'
-  | 'dlspeed'
-  | 'upspeed'
-  | 'eta'
-  | 'ratio'
-  | 'added_on'
-  | 'completion_on'
-  | 'num_seeds'
-  | 'num_leechs'
-  | 'priority'
-  | 'category'
-  | 'state'
-  | 'uploaded'
-  | 'downloaded'
-  | 'amount_left'
-  | 'time_active'
-  | 'seeding_time';
+const TORRENTS_FILTERS = ['all', 'downloading', 'seeding', 'completed', 'paused', 'active'] as const;
+export type TorrentsFilterPreference = (typeof TORRENTS_FILTERS)[number];
+const TORRENTS_SORT_KEYS = [
+  'name',
+  'size',
+  'progress',
+  'dlspeed',
+  'upspeed',
+  'eta',
+  'ratio',
+  'added_on',
+  'completion_on',
+  'num_seeds',
+  'num_leechs',
+  'priority',
+  'category',
+  'state',
+  'uploaded',
+  'downloaded',
+  'amount_left',
+  'time_active',
+  'seeding_time',
+] as const;
+export type TorrentsSortKeyPreference = (typeof TORRENTS_SORT_KEYS)[number];
 export type TorrentsSortDirectionPreference = 'asc' | 'desc';
 // 'auto' shows the table on wide screens and cards elsewhere.
-export type TorrentsViewPreference = 'auto' | 'card' | 'table';
-export type ActivityTabPreference = 'queue' | 'failed' | 'missing' | 'cutoff';
-export type ActivitySortPreference = 'title' | 'progress' | 'timeleft' | 'size';
+const TORRENTS_VIEWS = ['auto', 'card', 'table'] as const;
+export type TorrentsViewPreference = (typeof TORRENTS_VIEWS)[number];
+const ACTIVITY_TABS = ['queue', 'failed', 'missing', 'cutoff'] as const;
+export type ActivityTabPreference = (typeof ACTIVITY_TABS)[number];
+const ACTIVITY_SORTS = ['title', 'progress', 'timeleft', 'size'] as const;
+export type ActivitySortPreference = (typeof ACTIVITY_SORTS)[number];
 export type ActivitySortDirectionPreference = 'asc' | 'desc';
 export type NotificationsReadStatePreference = 'all' | 'unread' | 'read';
 
-export type RequestsTabPreference = 'requests' | 'users';
-export type RequestsFilterPreference =
-  | 'all'
-  | 'pending'
-  | 'approved'
-  | 'processing'
-  | 'available'
-  | 'unavailable'
-  | 'failed'
-  | 'completed'
-  | 'deleted';
+const REQUESTS_TABS = ['requests', 'users'] as const;
+export type RequestsTabPreference = (typeof REQUESTS_TABS)[number];
+const REQUESTS_FILTERS = [
+  'all',
+  'pending',
+  'approved',
+  'processing',
+  'available',
+  'unavailable',
+  'failed',
+  'completed',
+  'deleted',
+] as const;
+export type RequestsFilterPreference = (typeof REQUESTS_FILTERS)[number];
 
 /** Empty = all types. Values match Seerr request `type` field. */
 export type RequestsTypeFilterPreference = ('movie' | 'tv')[];
-export type RequestsSortPreference = 'added' | 'modified';
+const REQUESTS_SORTS = ['added', 'modified'] as const;
+export type RequestsSortPreference = (typeof REQUESTS_SORTS)[number];
 export type RequestsSortDirectionPreference = 'asc' | 'desc';
 
 /** Jellyfin watch filter for movies/series list pages. */
@@ -165,7 +181,8 @@ export type MediaWatchFilterPreference = 'all' | 'watched' | 'unwatched';
  * billboard hero, and receding chrome. Presentation only — both skins read the
  * same catalog API.
  */
-export type WatchSkinPreference = 'classic' | 'cinematic';
+const WATCH_SKINS = ['classic', 'cinematic'] as const;
+export type WatchSkinPreference = (typeof WATCH_SKINS)[number];
 
 const WATCH_FILTER_PERSISTED_KEYS: ReadonlySet<string> = new Set([
   'moviesWatchFilter',
@@ -895,6 +912,95 @@ function isSearchHistoryMap(value: unknown): value is Record<string, string[]> {
   );
 }
 
+type PersistedKey = (typeof PERSISTED_KEYS)[number];
+const SORT_DIRECTIONS = ['asc', 'desc'] as const;
+
+// The values a persisted choice can take. One outside them (an older build's,
+// or edited by hand) falls back to the default when the store loads: the
+// version migration runs only when the version changes, and a page indexing by
+// an unknown view crashed (Movies with moviesView 'grid').
+const PERSISTED_CHOICES: Partial<Record<PersistedKey, readonly unknown[]>> = {
+  mediaView: ['grid', 'list'],
+  calendarView: ['month', 'week', 'agenda'],
+  moviesView: MEDIA_VIEW_MODES,
+  seriesView: MEDIA_VIEW_MODES,
+  musicView: MEDIA_VIEW_MODES,
+  twitchFeedView: FEED_VIEWS,
+  youtubeFeedView: FEED_VIEWS,
+  twitchLibraryView: LIBRARY_VIEWS,
+  youtubeLibraryView: LIBRARY_VIEWS,
+  moviesPosterSize: POSTER_SIZES,
+  seriesPosterSize: POSTER_SIZES,
+  musicPosterSize: POSTER_SIZES,
+  moviesSort: MOVIE_SORT_KEYS,
+  seriesSort: SERIES_SORT_KEYS,
+  musicSort: MUSIC_SORT_KEYS,
+  moviesSortDirection: SORT_DIRECTIONS,
+  seriesSortDirection: SORT_DIRECTIONS,
+  musicSortDirection: SORT_DIRECTIONS,
+  discoverSortDirection: SORT_DIRECTIONS,
+  torrentsSortDir: SORT_DIRECTIONS,
+  activitySortDirection: SORT_DIRECTIONS,
+  requestsSortDirection: SORT_DIRECTIONS,
+  moviesWatchFilter: ['all', 'watched', 'unwatched'],
+  seriesWatchFilter: ['all', 'watched', 'unwatched'],
+  torrentsSortKey: TORRENTS_SORT_KEYS,
+  torrentsView: TORRENTS_VIEWS,
+  activityTab: ACTIVITY_TABS,
+  activitySortBy: ACTIVITY_SORTS,
+  requestsTab: REQUESTS_TABS,
+  requestsFilter: [null, ...REQUESTS_FILTERS],
+  requestsSort: REQUESTS_SORTS,
+  calendarTypeFilter: ['all', 'episode', 'movie', 'album'],
+  watchSkin: WATCH_SKINS,
+  navPosition: ['top', 'bottom'],
+};
+
+// Persisted lists of choices (filters): an unknown entry is dropped, the rest kept.
+const PERSISTED_CHOICE_LISTS: Partial<Record<PersistedKey, readonly unknown[]>> = {
+  moviesFilter: MOVIE_FILTERS,
+  seriesFilter: SERIES_FILTERS,
+  musicFilter: MUSIC_FILTERS,
+  torrentsFilter: TORRENTS_FILTERS,
+  requestsTypeFilter: ['movie', 'tv'],
+};
+
+const UNUSABLE = Symbol('unusable');
+
+function valueKind(value: unknown): string {
+  return Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value;
+}
+
+/**
+ * A stored or imported value for `key`, made safe to read, or UNUSABLE (the
+ * default stays). Choices must be known ones; anything else must at least
+ * have the default's kind (a string where a list is read crashes the page).
+ */
+function usablePersistedValue(key: PersistedKey, value: unknown, fallback: unknown): unknown {
+  const choices = PERSISTED_CHOICES[key];
+  if (choices) return choices.includes(value) ? value : UNUSABLE;
+  const listChoices = PERSISTED_CHOICE_LISTS[key];
+  if (listChoices) return Array.isArray(value) ? value.filter((entry) => listChoices.includes(entry)) : UNUSABLE;
+  if (VISIBLE_FIELDS_KEYS.has(key)) return isVisibleFieldsByMode(value) ? value : UNUSABLE;
+  if (key === 'searchHistory') return isSearchHistoryMap(value) ? value : UNUSABLE;
+  // A null or unset default (a date, a cached layout) has no kind to hold to.
+  if (fallback === null || fallback === undefined) return value;
+  return valueKind(value) === valueKind(fallback) ? value : UNUSABLE;
+}
+
+/** The persisted keys of `persisted` that are safe to read, for the store to load. */
+export function sanitizeUiPrefs(persisted: unknown, defaults: UIState): Partial<UIState> {
+  if (!persisted || typeof persisted !== 'object') return {};
+  const stored = persisted as Record<string, unknown>;
+  const next: Record<string, unknown> = {};
+  for (const key of PERSISTED_KEYS) {
+    if (!(key in stored)) continue;
+    const value = usablePersistedValue(key, stored[key], defaults[key]);
+    if (value !== UNUSABLE) next[key] = value;
+  }
+  return next as Partial<UIState>;
+}
+
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
@@ -1210,8 +1316,12 @@ export const useUIStore = create<UIState>()(
       applyImportedUiPrefs: (partial) =>
         set((state) => {
           const next: Record<string, unknown> = {};
-          for (const [key, value] of Object.entries(partial)) {
+          for (const [key, raw] of Object.entries(partial)) {
             if (!PERSISTED_KEY_SET.has(key)) continue;
+            // The same rule as loading from storage, against the defaults: an
+            // unknown view or sort crashes its page.
+            const value = usablePersistedValue(key as PersistedKey, raw, useUIStore.getInitialState()[key as PersistedKey]);
+            if (value === UNUSABLE) continue;
             // Imported files can be hand-edited or come from an older export
             // where a string field has since become an array (e.g. moviesFilter).
             // Drop values whose shape would break call sites.
@@ -1277,6 +1387,8 @@ export const useUIStore = create<UIState>()(
         state?.setHasHydrated(true);
       },
       migrate: (persisted, version) => migrateUiPrefs(persisted, version) as unknown as UIState,
+      // Every load, not just a version change: only persisted keys, each checked.
+      merge: (persisted, current) => ({ ...current, ...sanitizeUiPrefs(persisted, current) }),
       partialize: (state) =>
         Object.fromEntries(PERSISTED_KEYS.map((k) => [k, state[k]])) as Partial<UIState>,
     }

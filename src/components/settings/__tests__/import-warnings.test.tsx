@@ -14,6 +14,7 @@ vi.mock('sonner', () => ({ toast: { warning: mocks.warning, success: mocks.succe
 
 import {
   ImportWarningsNotice,
+  rememberImportNotice,
   rememberImportWarnings,
   showImportWarnings,
   useImportWarnings,
@@ -139,6 +140,53 @@ describe('warnings remembered across the reload that applies an import', () => {
     await renderNotice();
     await press('Dismiss');
     expect(container.textContent).toBe('');
+  });
+});
+
+describe('the import result kept across the reload', () => {
+  it('shows its toast once after the reload, after the toaster can listen', async () => {
+    vi.useFakeTimers();
+    try {
+      rememberImportNotice({ type: 'success', message: 'Settings imported.' });
+      await renderNotice(true);
+      // Not in the commit that mounts the page: the root toaster subscribes in it, after the page.
+      expect(mocks.success).not.toHaveBeenCalled();
+      await act(async () => { vi.runAllTimers(); });
+      expect(mocks.success).toHaveBeenCalledTimes(1);
+      expect(mocks.success).toHaveBeenCalledWith('Settings imported.');
+
+      act(() => root!.unmount());
+      root = null;
+      await renderNotice();
+      await act(async () => { vi.runAllTimers(); });
+      expect(mocks.success).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a notes warning as a warning and ignores a stored value it did not write', async () => {
+    vi.useFakeTimers();
+    try {
+      rememberImportNotice({ type: 'warning', message: 'Imported with notes: x' });
+      await renderNotice();
+      await act(async () => { vi.runAllTimers(); });
+      expect(mocks.warning).toHaveBeenCalledWith('Imported with notes: x');
+
+      act(() => root!.unmount());
+      sessionStorage.setItem('helprr:import-notice', JSON.stringify({ type: 'dismiss', message: 'x' }));
+      await renderNotice();
+      await act(async () => { vi.runAllTimers(); });
+      expect(mocks.warning).toHaveBeenCalledTimes(1);
+      expect(mocks.success).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not stop the reload when it cannot be kept', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+    expect(() => rememberImportNotice({ type: 'success', message: 'Settings imported.' })).not.toThrow();
   });
 });
 

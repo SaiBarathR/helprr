@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { isImportFollowUp, type ImportWarning } from '@/lib/settings-import/follow-up-tasks';
 
 const STORAGE_KEY = 'helprr:import-warnings';
+const NOTICE_KEY = 'helprr:import-notice';
 const TITLE = 'Imported, but not all of it is in effect yet';
 
 /** Re-run the steps behind these warnings; resolves with what is still not done. */
@@ -39,6 +40,41 @@ export function showImportWarnings(warnings: ImportWarning[]) {
   toast.warning(TITLE, { description: <WarningList warnings={warnings} />, duration: Infinity });
 }
 
+/** The one-line result of an import ("Settings imported."), as a toast. */
+export interface ImportNotice {
+  type: 'success' | 'warning' | 'info';
+  message: string;
+}
+
+export function showImportNotice(notice: ImportNotice) {
+  toast[notice.type](notice.message);
+}
+
+/**
+ * Keep the result's toast across the page reload that applies an import: the
+ * reload follows it within a second and takes it away. Best effort; the
+ * reload goes ahead without it.
+ */
+export function rememberImportNotice(notice: ImportNotice): void {
+  try {
+    sessionStorage.setItem(NOTICE_KEY, JSON.stringify(notice));
+  } catch { }
+}
+
+function takeRememberedImportNotice(): ImportNotice | null {
+  try {
+    const raw = sessionStorage.getItem(NOTICE_KEY);
+    sessionStorage.removeItem(NOTICE_KEY);
+    const stored: unknown = raw ? JSON.parse(raw) : null;
+    if (!stored || typeof stored !== 'object') return null;
+    const { type, message } = stored as Partial<ImportNotice>;
+    if ((type !== 'success' && type !== 'warning' && type !== 'info') || typeof message !== 'string') return null;
+    return { type, message };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Keep warnings across the page reload that applies an import. False when they
  * could not be kept, so the caller must show them without reloading.
@@ -69,7 +105,8 @@ function takeRememberedImportWarnings(): ImportWarning[] {
 /**
  * The warnings an import left before the page reloaded. They are shown in the
  * page rather than as a toast: the page reads them while it hydrates, before
- * the toaster is listening.
+ * the toaster is listening. The result's one-line notice is shown as a toast
+ * again, once the toaster listens.
  */
 export function useImportWarnings(): [ImportWarning[], Dispatch<SetStateAction<ImportWarning[]>>] {
   const [warnings, setWarnings] = useState<ImportWarning[]>([]);
@@ -81,6 +118,10 @@ export function useImportWarnings(): [ImportWarning[], Dispatch<SetStateAction<I
     if (taken.current) return;
     taken.current = true;
     setWarnings(takeRememberedImportWarnings());
+    // Taken once, so a later reload doesn't show it again. Next task: the
+    // root layout's toaster starts listening in this same commit, after the page.
+    const notice = takeRememberedImportNotice();
+    if (notice) window.setTimeout(() => showImportNotice(notice));
   }, []);
 
   return [warnings, setWarnings];

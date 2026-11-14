@@ -4,9 +4,10 @@ import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ImportWarning } from '@/lib/settings-import/follow-up-tasks';
+import type { ImportNotice } from '@/components/settings/import-warnings';
 
 const mocks = vi.hoisted(() => ({
-  onImported: null as null | ((warnings: ImportWarning[]) => void),
+  onImported: null as null | ((warnings: ImportWarning[], notice: ImportNotice) => void),
   role: 'member' as 'admin' | 'member',
 }));
 
@@ -20,7 +21,7 @@ vi.mock('@/components/settings/database-backup-section', () => ({
 }));
 vi.mock('@/components/settings/export-settings-dialog', () => ({ ExportSettingsDialog: () => null }));
 vi.mock('@/components/settings/import-settings-dialog', () => ({
-  ImportSettingsDialog: ({ onImported }: { onImported: (warnings: ImportWarning[]) => void }) => {
+  ImportSettingsDialog: ({ onImported }: { onImported: (warnings: ImportWarning[], notice: ImportNotice) => void }) => {
     mocks.onImported = onImported;
     return null;
   },
@@ -31,6 +32,7 @@ import BackupSettingsPage from './page';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const warnings: ImportWarning[] = [{ task: 'cleanupSchedulers', message: 'Schedulers did not restart.' }];
+const notice: ImportNotice = { type: 'success', message: 'Settings imported.' };
 let root: Root;
 let container: HTMLElement;
 
@@ -55,17 +57,19 @@ describe('backup page after an import', () => {
   it('keeps the warnings across the reload that applies the import', async () => {
     const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
 
-    await act(async () => mocks.onImported!(warnings));
+    await act(async () => mocks.onImported!(warnings, notice));
 
     expect(reloadsScheduled(setTimeoutSpy)).toBe(1);
     expect(JSON.parse(sessionStorage.getItem('helprr:import-warnings') ?? '[]')).toEqual(warnings);
+    // The success toast goes with the reload; it is shown again after it.
+    expect(JSON.parse(sessionStorage.getItem('helprr:import-notice') ?? 'null')).toEqual(notice);
   });
 
   it('stays on the page and shows the warnings when they cannot be kept', async () => {
     const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
 
-    await act(async () => mocks.onImported!(warnings));
+    await act(async () => mocks.onImported!(warnings, notice));
 
     expect(reloadsScheduled(setTimeoutSpy)).toBe(0);
     expect(container.textContent).toContain('Schedulers did not restart.');

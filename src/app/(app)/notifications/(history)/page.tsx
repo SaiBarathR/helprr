@@ -19,6 +19,7 @@ import {
   type ActiveFilter,
 } from '@/components/ui/active-filter-bar';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { ErrorState } from '@/components/ui/error-state';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
@@ -58,6 +59,8 @@ import { toast } from 'sonner';
 import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { keepPreviousData, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { fetchOrOffline, isQueryOffline } from '@/lib/network-error';
+import { isFinalClientError } from '@/lib/query-client';
 import { useUIStore } from '@/lib/store';
 import { EVENT_GROUPS, EVENT_META, type NotificationEventType } from '@/lib/notification-events';
 import { EventIcon, getEventColorClass } from '@/components/notifications/event-visuals';
@@ -239,7 +242,7 @@ export default function NotificationsPage() {
   const notificationsQuery = useInfiniteQuery({
     queryKey: listKey,
     queryFn: async ({ pageParam, signal }) => {
-      const res = await fetch(`/api/notifications?${buildParams(pageParam).toString()}`, { signal });
+      const res = await fetchOrOffline(`/api/notifications?${buildParams(pageParam).toString()}`, { signal });
       if (!res.ok) throw new ApiError(res.status, `GET /api/notifications → ${res.status}`);
       return (await res.json()) as NotificationsPage;
     },
@@ -259,6 +262,10 @@ export default function NotificationsPage() {
   );
   const total = notificationsQuery.data?.pages[0]?.totalRecords ?? 0;
   const loading = !hasHydrated || notificationsQuery.isLoading;
+  // Offline, a first load pauses instead of failing, so it has no error; either
+  // way an unloaded list must not claim there are no notifications.
+  const offline = isQueryOffline(notificationsQuery);
+  const loadFailed = notifications.length === 0 && (offline || notificationsQuery.isError);
 
   // Event types present in the user's history — so anything they can see is
   // filterable, even without the matching notify.* receive capability.
@@ -684,6 +691,12 @@ export default function NotificationsPage() {
 
       {loading ? (
         <PageSpinner />
+      ) : loadFailed ? (
+        <ErrorState
+          message={offline ? "You're offline" : "Couldn't load notifications"}
+          onRetry={isFinalClientError(notificationsQuery.error) ? undefined : () => void notificationsQuery.refetch()}
+          retrying={notificationsQuery.isFetching}
+        />
       ) : notifications.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />

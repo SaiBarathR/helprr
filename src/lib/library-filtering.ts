@@ -30,37 +30,41 @@ function direction(result: number, sortDir: SortDirection): number {
   return sortDir === 'asc' ? result : -result;
 }
 
-export type MovieSortKey =
-  | 'title'
-  | 'originalTitle'
-  | 'year'
-  | 'dateAdded'
-  | 'imdbRating'
-  | 'tmdbRating'
-  | 'tomatoRating'
-  | 'traktRating'
-  | 'popularity'
-  | 'sizeOnDisk'
-  | 'runtime'
-  | 'inCinemas'
-  | 'digitalRelease'
-  | 'physicalRelease'
-  | 'studio'
-  | 'qualityProfile'
-  | 'monitored'
-  | 'path'
-  | 'certification'
-  | 'originalLanguage'
-  | 'tags';
+export const MOVIE_SORT_KEYS = [
+  'title',
+  'originalTitle',
+  'year',
+  'dateAdded',
+  'imdbRating',
+  'tmdbRating',
+  'tomatoRating',
+  'traktRating',
+  'popularity',
+  'sizeOnDisk',
+  'runtime',
+  'inCinemas',
+  'digitalRelease',
+  'physicalRelease',
+  'studio',
+  'qualityProfile',
+  'monitored',
+  'path',
+  'certification',
+  'originalLanguage',
+  'tags',
+] as const;
+export type MovieSortKey = (typeof MOVIE_SORT_KEYS)[number];
 
-export type MovieFilter =
-  | 'monitored'
-  | 'unmonitored'
-  | 'missing'
-  | 'hasFile'
-  | 'released'
-  | 'inCinemas'
-  | 'announced';
+export const MOVIE_FILTERS = [
+  'monitored',
+  'unmonitored',
+  'missing',
+  'hasFile',
+  'released',
+  'inCinemas',
+  'announced',
+] as const;
+export type MovieFilter = (typeof MOVIE_FILTERS)[number];
 
 export function prepareMovieRows(movies: RadarrMovieListItem[]): PreparedLibraryRow<RadarrMovieListItem, MovieSortKey>[] {
   return movies.map((movie) => ({
@@ -123,26 +127,36 @@ export function deriveMovieBaseRows(
   return filtered.sort((a, b) => direction(compareValues(a.sortKeys[opts.sort], b.sortKeys[opts.sort]), opts.sortDir));
 }
 
-export type SeriesSortKey =
-  | 'title'
-  | 'year'
-  | 'dateAdded'
-  | 'rating'
-  | 'sizeOnDisk'
-  | 'nextAiring'
-  | 'previousAiring'
-  | 'network'
-  | 'runtime'
-  | 'qualityProfile'
-  | 'monitored'
-  | 'originalLanguage'
-  | 'seasons'
-  | 'episodes'
-  | 'episodeCount'
-  | 'path'
-  | 'tags';
+export const SERIES_SORT_KEYS = [
+  'title',
+  'year',
+  'dateAdded',
+  'rating',
+  'sizeOnDisk',
+  'nextAiring',
+  'previousAiring',
+  'network',
+  'runtime',
+  'qualityProfile',
+  'monitored',
+  'originalLanguage',
+  'seasons',
+  'episodes',
+  'episodeCount',
+  'path',
+  'tags',
+] as const;
+export type SeriesSortKey = (typeof SERIES_SORT_KEYS)[number];
 
-export type SeriesFilter = 'monitored' | 'unmonitored' | 'continuing' | 'ended' | 'missing' | 'upcoming';
+export const SERIES_FILTERS = [
+  'monitored',
+  'unmonitored',
+  'continuing',
+  'ended',
+  'missing',
+  'upcoming',
+] as const;
+export type SeriesFilter = (typeof SERIES_FILTERS)[number];
 
 export function prepareSeriesRows(series: SonarrSeriesListItem[]): PreparedLibraryRow<SonarrSeriesListItem, SeriesSortKey>[] {
   return series.map((item) => ({
@@ -200,19 +214,29 @@ export function deriveSeriesBaseRows(
   return filtered.sort((a, b) => direction(compareValues(a.sortKeys[opts.sort], b.sortKeys[opts.sort]), opts.sortDir));
 }
 
-export type MusicSortKey =
-  | 'sortName'
-  | 'dateAdded'
-  | 'albumCount'
-  | 'trackCount'
-  | 'sizeOnDisk'
-  | 'rating'
-  | 'qualityProfile'
-  | 'monitored'
-  | 'artistType'
-  | 'path';
+export const MUSIC_SORT_KEYS = [
+  'sortName',
+  'dateAdded',
+  'albumCount',
+  'trackCount',
+  'sizeOnDisk',
+  'rating',
+  'qualityProfile',
+  'monitored',
+  'artistType',
+  'path',
+] as const;
+export type MusicSortKey = (typeof MUSIC_SORT_KEYS)[number];
 
-export type MusicFilter = 'monitored' | 'unmonitored' | 'missing' | 'complete' | 'continuing' | 'ended';
+export const MUSIC_FILTERS = [
+  'monitored',
+  'unmonitored',
+  'missing',
+  'complete',
+  'continuing',
+  'ended',
+] as const;
+export type MusicFilter = (typeof MUSIC_FILTERS)[number];
 
 export function prepareMusicRows(artists: LidarrArtistListItem[]): PreparedLibraryRow<LidarrArtistListItem, MusicSortKey>[] {
   return artists.map((artist) => ({

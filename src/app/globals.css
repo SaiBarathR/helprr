@@ -1854,6 +1854,12 @@ html [data-sonner-toast][data-styled='true'] [data-close-button] {
   border-color: var(--border);
 }
 
+/* Its description (an import's notes) took the same light-theme grey, #3f3f3f:
+   unreadable on a dark toast. The app's secondary text passes AA on both. */
+html [data-sonner-toast][data-styled='true'] [data-description] {
+  color: var(--muted-foreground);
+}
+
 /* A toast's action ("Undo", "Turn off auto-download") is 24px tall by default. */
 @media (pointer: coarse) {
   html [data-sonner-toast][data-styled='true'] [data-button] {

@@ -37,7 +37,7 @@ import {
 } from '@/lib/settings-export';
 import type { ServiceType } from '@prisma/client';
 import type { ImportWarning } from '@/lib/settings-import/follow-up-tasks';
-import { showImportWarnings } from '@/components/settings/import-warnings';
+import { showImportNotice, showImportWarnings, type ImportNotice } from '@/components/settings/import-warnings';
 import {
   AutoCleanupConfirmDialog,
   CLEANER_NAMES,
@@ -60,8 +60,12 @@ import { deferLoginRedirect, holdLoginRedirect } from '@/lib/query-client';
 interface ImportSettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Receives what the import saved but could not put into effect yet. */
-  onImported?: (warnings: ImportWarning[]) => void;
+  /**
+   * Receives what the import saved but could not put into effect yet, and its
+   * result notice (already shown as a toast), which a page that reloads to
+   * apply the import keeps to show again after the reload.
+   */
+  onImported?: (warnings: ImportWarning[], notice: ImportNotice) => void;
 }
 
 interface ParsedFile {
@@ -557,6 +561,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       let mergedUiPrefs: Record<string, unknown> | null = null;
       let importWarnings: ImportWarning[] = [];
       let signedOut = false;
+      let notice: ImportNotice = { type: 'info', message: 'Nothing to import.' };
       if (useUi.size > 0) {
         const merged: Record<string, unknown> = {};
         for (const id of useUi) {
@@ -685,21 +690,20 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
             },
           );
         } else if (skipped.length > 0) {
-          toast.warning(`Imported with notes: ${skipped.join('; ')}`);
+          notice = { type: 'warning', message: `Imported with notes: ${skipped.join('; ')}` };
         } else {
-          toast.success(successMsg);
+          notice = { type: 'success', message: successMsg };
         }
       } else if (mergedUiPrefs) {
         applyImportedUiPrefs(mergedUiPrefs);
-        toast.success('UI preferences imported.');
-      } else {
-        toast.info('Nothing to import.');
+        notice = { type: 'success', message: 'UI preferences imported.' };
       }
 
       // Signed out, the warnings are in that message, and the page's reload
       // would only land on Sign in and hide why.
       if (!signedOut) {
-        if (onImported) onImported(importWarnings);
+        showImportNotice(notice);
+        if (onImported) onImported(importWarnings, notice);
         else showImportWarnings(importWarnings);
       }
       // Not a later opening's to close.

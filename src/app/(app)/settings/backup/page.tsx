@@ -10,6 +10,7 @@ import { DatabaseBackupSection } from '@/components/settings/database-backup-sec
 import { useMe } from '@/components/permission-provider';
 import {
   ImportWarningsNotice,
+  rememberImportNotice,
   rememberImportWarnings,
   useImportWarnings,
 } from '@/components/settings/import-warnings';
@@ -89,10 +90,12 @@ export default function BackupSettingsPage() {
       <ImportSettingsDialog
         open={importOpen}
         onOpenChange={setImportOpen}
-        onImported={(warnings) => {
+        onImported={(warnings, notice) => {
           // Warnings that cannot be kept across the reload are shown here instead.
-          if (rememberImportWarnings(warnings)) window.setTimeout(() => window.location.reload(), 600);
-          else setImportWarnings(warnings);
+          if (rememberImportWarnings(warnings)) {
+            rememberImportNotice(notice);
+            window.setTimeout(() => window.location.reload(), 600);
+          } else setImportWarnings(warnings);
         }}
       />
     </div>

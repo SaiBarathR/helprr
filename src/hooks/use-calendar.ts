@@ -14,7 +14,7 @@ interface UseCalendarReturn {
   events: CalendarEvent[];
   loading: boolean;
   error: string | null;
-  /** Reloads the current range without flagging `loading`, so the views stay up. */
+  /** Reloads the current range without flagging `loading`, so the views stay up, past the browser cache. */
   refetch: () => Promise<void>;
 }
 
@@ -54,7 +54,9 @@ export function useCalendar({ start, end, type, includeScheduled }: UseCalendarP
       }
 
       const path = `/api/calendar?${params.toString()}`;
-      const res = await fetch(path, { signal });
+      // A refetch follows a change (a saved alert, a pull to refresh): past the
+      // browser's own copy (max-age=120), which would still lack it.
+      const res = await fetch(path, background ? { signal, cache: 'no-cache' } : { signal });
       // An offline snapshot from the worker shows the shared "saved data" notice, as library pages do.
       recordBrowseFreshness(path, res);
 

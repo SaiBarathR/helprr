@@ -4,8 +4,10 @@ import { isFreshArrival, readRouteScrollState, routeScrollKey, setFreshArrival }
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import {
+  createContext,
   forwardRef,
   useCallback,
+  useContext,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -158,6 +160,10 @@ function RowBackdrop({ src }: { src: string | null }) {
     </div>
   );
 }
+
+// The page's calendar refetch, for the rows' alert buttons: a saved alert
+// shows as "Scheduled" on its row at once, not after a reload.
+const AlertSavedContext = createContext<(() => void) | undefined>(undefined);
 
 function scheduleDraftFromEvent(event: CalendarEvent): ScheduledAlertDraft | null {
   const q = event.instanceId ? `?instance=${event.instanceId}` : '';
@@ -633,6 +639,7 @@ function AgendaEventRow({ row, showImages }: { row: AgendaRow; showImages: boole
   const href = eventHref(event);
   const eventDate = calendarEventDate(event);
   const scheduleDraft = event.origin !== 'scheduled' ? scheduleDraftFromEvent(event) : null;
+  const onAlertSaved = useContext(AlertSavedContext);
   const poster = posterSrc(event);
 
   return (
@@ -710,7 +717,7 @@ function AgendaEventRow({ row, showImages }: { row: AgendaRow; showImages: boole
       </CalendarEventContext>
       {scheduleDraft && (
         <div className="relative shrink-0 pr-1 pt-3">
-          <ScheduledAlertButton draft={scheduleDraft} />
+          <ScheduledAlertButton draft={scheduleDraft} onSaved={onAlertSaved} />
         </div>
       )}
     </div>
@@ -863,6 +870,7 @@ function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: 
   const href = eventHref(event);
   const eventDate = calendarEventDate(event);
   const scheduleDraft = event.origin !== 'scheduled' ? scheduleDraftFromEvent(event) : null;
+  const onAlertSaved = useContext(AlertSavedContext);
   const poster = posterSrc(event);
 
   return (
@@ -927,7 +935,7 @@ function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: 
       </CalendarEventContext>
       {scheduleDraft && (
         <div className="relative shrink-0 pr-2">
-          <ScheduledAlertButton draft={scheduleDraft} />
+          <ScheduledAlertButton draft={scheduleDraft} onSaved={onAlertSaved} />
         </div>
       )}
     </div>
@@ -1471,6 +1479,7 @@ export default function CalendarPage() {
     type: typeFilter !== 'all' ? typeFilter : undefined,
     includeScheduled: showScheduled,
   });
+  const onAlertSaved = useCallback(() => { void refetch(); }, [refetch]);
 
   // The configured instances drive the instance filter, not the ones in the
   // loaded range: a week with one instance's events would hide the button and
@@ -1739,7 +1748,7 @@ export default function CalendarPage() {
           empty range still shows its "No events" placeholder) or we already have
           events to keep on screen during a background refetch. */}
       {(!loading || events.length > 0) && (
-        <>
+        <AlertSavedContext.Provider value={onAlertSaved}>
           {calendarView === 'agenda' && (
             <AgendaView ref={agendaViewRef} events={filteredEvents} showImages={showImages} stickyOffset={stickyOffset || 80} />
           )}
@@ -1749,7 +1758,7 @@ export default function CalendarPage() {
           {calendarView === 'week' && (
             <WeekView currentDate={currentDate} events={filteredEvents} showImages={showImages} />
           )}
-        </>
+        </AlertSavedContext.Provider>
       )}
     </div>
   );
