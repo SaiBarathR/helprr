@@ -29,6 +29,8 @@ export function inSafariTab() {
 
 /** How long (about 4 frames) iOS's brief scroll of the visible part may last before it is followed. */
 export const PAN_HOLD_MS = 70;
+/** How long the visible part must stay put before a new move of it is held again. */
+export const PAN_STILL_MS = 100;
 
 /**
  * Calls `place` with how much of the layout viewport the keyboard covers (0
@@ -42,9 +44,11 @@ export const PAN_HOLD_MS = 70;
  * scrolls the visual viewport towards it for a frame or three and then back
  * (offsetTop 26 or 123 on an iPhone 18 Pro, height unchanged). Followed, a
  * pinned sheet dipped by that much and sprang back on every ⌄ / ⌃ or tap. So
- * on iOS a move of the visible part alone keeps the last placement until it
- * goes back or has lasted PAN_HOLD_MS, timed from the move; one that lasts is
- * followed then, as a pan to a field always was.
+ * on iOS the first move of the visible part alone, away from a steady
+ * placement, keeps that placement until it goes back or has lasted
+ * PAN_HOLD_MS. One that lasts is a real pan (a drag, or iOS's animated scroll
+ * to a hidden field): it is followed then, and so is every later frame of it
+ * at once, until the visible part has stayed put for PAN_STILL_MS.
  */
 export function followKeyboard(node: HTMLElement, place: (covered: number, viewport: VisualViewport) => void): () => void {
   const viewport = window.visualViewport;
@@ -58,10 +62,11 @@ export function followKeyboard(node: HTMLElement, place: (covered: number, viewp
   document.body.appendChild(layout);
   let frame = 0;
   let visibleHeight = 0;
-  // The last placement while the keyboard is up, and since when the visible
-  // part alone has been somewhere else (null: it hasn't).
+  // The last placement while the keyboard is up; since when a move away from
+  // it has been held (null: none is); when a move was last followed.
   let placed: { covered: number; height: number } | null = null;
   let movedAt: number | null = null;
+  let followedAt = -Infinity;
   let recheck = 0;
   const ios = isIOS();
   const measure = () => {
@@ -75,20 +80,26 @@ export function followKeyboard(node: HTMLElement, place: (covered: number, viewp
     if (covered < 1) {
       visibleHeight = 0;
       placed = null;
+      movedAt = null;
+      followedAt = -Infinity;
       place(0, viewport);
       return;
     }
     if (ios && placed && placed.height === viewport.height && placed.covered !== covered) {
       const now = performance.now();
-      movedAt ??= now;
-      if (now - movedAt < PAN_HOLD_MS) {
-        // Look again once it has lasted that long, in case it stays.
-        if (!recheck) recheck = window.setTimeout(() => {
-          recheck = 0;
-          schedule();
-        }, PAN_HOLD_MS - (now - movedAt) + 1);
-        return;
+      // Still panning: follow this frame too.
+      if (now - followedAt >= PAN_STILL_MS) {
+        movedAt ??= now;
+        if (now - movedAt < PAN_HOLD_MS) {
+          // Look again once it has lasted that long, in case it stays.
+          if (!recheck) recheck = window.setTimeout(() => {
+            recheck = 0;
+            schedule();
+          }, PAN_HOLD_MS - (now - movedAt) + 1);
+          return;
+        }
       }
+      followedAt = now;
     }
     movedAt = null;
     placed = { covered, height: viewport.height };
@@ -224,6 +235,9 @@ export function revealFocusedField(node: HTMLElement) {
     const keep = (top: number, bottom: number) => ({ min: bottom - viewBottom, max: top - viewTop });
     const fieldRect = field.getBoundingClientRect();
     let range = keep(fieldRect.top, fieldRect.bottom);
+    // iOS's arrows skip a read-only field: on two-step's code step ⌃ is
+    // disabled, the key field above being read-only (iOS 27 Simulator, SE).
+    // arrowRoomNeeded still counts it, so the scroll-together switch is unchanged.
     const fields = [...node.querySelectorAll<HTMLElement>('input, textarea, select')].filter(
       (el) => el === field || (isArrowStop(el) && !('readOnly' in el && el.readOnly)),
     );

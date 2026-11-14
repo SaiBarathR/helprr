@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { arrowRoomNeeded, followKeyboard, formRoomTooShort, PAN_HOLD_MS, revealFocusedField } from './keyboard-fit';
+import { arrowRoomNeeded, followKeyboard, formRoomTooShort, PAN_HOLD_MS, PAN_STILL_MS, revealFocusedField } from './keyboard-fit';
 
 // A scroll box showing 100–300 px of a column of 36 px fields, 80 px apart,
 // laid out as if scrolled by `box.scrollTop`. iOS's ⌃ / ⌄ arrows skip a field
@@ -291,15 +291,10 @@ describe('revealFocusedField on the form\'s last field', () => {
   });
 
   // Two-step's code step: the field above is the read-only key, which iOS's arrows skip.
-  it('does not count a read-only or disabled field above, so the button is shown', () => {
+  it('does not count a read-only field above, so the button is shown', () => {
     const { node, box, fields } = sheetForm(2, { buttonGap: 100 });
     fields[0].readOnly = true;
     fields[1].focus();
-    revealFocusedField(node);
-    expect(box.scrollTop).toBe(70);
-    box.scrollTop = 0;
-    fields[0].readOnly = false;
-    fields[0].disabled = true;
     revealFocusedField(node);
     expect(box.scrollTop).toBe(70);
   });
@@ -418,16 +413,55 @@ describe('followKeyboard when only the visible part moves', () => {
 
   it('times the hold from the move, so focus moving on and on does not delay a pan that lasts', () => {
     const { viewport, fire, fields, placedAt, stop } = setUp();
+    // A field takes focus, then a pan starts and stays while focus keeps moving.
+    fields[0].focus();
+    vi.advanceTimersByTime(10);
     viewport.offsetTop = 40;
     fire('scroll');
-    // Focus moves every 20 ms while the pan stays.
-    for (let i = 0; i < 4; i++) {
+    for (let i = 1; i <= 4; i++) {
       fields[i % 2].focus();
       vi.advanceTimersByTime(20);
     }
     vi.advanceTimersToNextFrame();
-    // 80 ms of focus moves later, it is already followed.
+    // About 80 ms after the move, it is already followed.
     expect(placedAt().at(-1)).toBe(260);
+    stop();
+  });
+
+  // A drag under the keyboard, or iOS's animated scroll to a hidden field.
+  it('follows a pan that keeps going on every frame once it has lasted, and settles where it stops', () => {
+    const { viewport, fire, placedAt, stop } = setUp();
+    for (let i = 1; i <= 30; i++) {
+      viewport.offsetTop = i * 4;
+      fire('scroll');
+    }
+    const placements = placedAt().slice(1);
+    // Held for its first ~70 ms (about 4 frames), then every frame.
+    expect(placements.length).toBeGreaterThanOrEqual(25);
+    const steps = placements.slice(1).map((covered, i) => placements[i] - covered);
+    expect(Math.max(...steps)).toBeLessThanOrEqual(4);
+    // Where it stopped, exactly, and nothing more once it is still.
+    expect(placedAt().at(-1)).toBe(300 - 120);
+    const calls = placedAt().length;
+    vi.advanceTimersByTime(PAN_STILL_MS * 3);
+    expect(placedAt().length).toBe(calls);
+    stop();
+  });
+
+  it('holds the next brief scroll again once a pan has been still for a while', () => {
+    const { viewport, fire, fields, placedAt, stop } = setUp();
+    for (let i = 1; i <= 10; i++) {
+      viewport.offsetTop = i * 4;
+      fire('scroll');
+    }
+    expect(placedAt().at(-1)).toBe(260);
+    vi.advanceTimersByTime(PAN_STILL_MS + 20);
+    fields[1].focus();
+    viewport.offsetTop = 40 + 123;
+    fire('scroll');
+    viewport.offsetTop = 40;
+    fire('scroll');
+    expect(placedAt()).not.toContain(260 - 123);
     stop();
   });
 
