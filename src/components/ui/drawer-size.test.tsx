@@ -113,6 +113,29 @@ describe('DrawerContent above the keyboard', () => {
     expect(panel.hasAttribute('data-keyboard-tab')).toBe(false);
   });
 
+  // vaul composes refs without passing a ref's cleanup on: the content must stop on its ref(null).
+  it('takes its keyboard listeners and measuring box away when it unmounts', () => {
+    stubViewport(window.innerHeight - 300);
+    const add = vi.spyOn(window, 'addEventListener');
+    const remove = vi.spyOn(window, 'removeEventListener');
+    const boxes = () => [...document.body.querySelectorAll<HTMLElement>('div[aria-hidden="true"]')]
+      .filter((box) => box.style.position === 'fixed' && box.style.visibility === 'hidden').length;
+    const view = render(
+      <Drawer open>
+        <DrawerContent size="content">
+          <DrawerTitle>Short form</DrawerTitle>
+        </DrawerContent>
+      </Drawer>,
+    );
+    expect(boxes()).toBe(1);
+    const onResize = add.mock.calls.find(([type]) => type === 'resize')?.[1];
+    view.unmount();
+    expect(boxes()).toBe(0);
+    expect(remove).toHaveBeenCalledWith('resize', onResize);
+    add.mockRestore();
+    remove.mockRestore();
+  });
+
   it('leaves a drawer alone while no keyboard is open', () => {
     stubViewport(window.innerHeight);
     const panel = open('content');

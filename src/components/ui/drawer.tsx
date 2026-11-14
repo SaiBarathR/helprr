@@ -114,18 +114,23 @@ function DrawerContent({
    *  panel whose body fills it with `flex-1 min-h-0` and scrolls. */
   size?: "full" | "content"
 }) {
+  // Stopped on the null call, not through a returned cleanup: vaul composes
+  // refs without passing a ref's cleanup on, so React detaches this one with
+  // ref(null), and a cleanup returned here never ran (every drawer opened
+  // left its keyboard listeners and measuring box behind).
+  const stopRef = React.useRef<(() => void) | null>(null)
   const contentRef = React.useCallback(
     (node: HTMLDivElement | null) => {
+      stopRef.current?.()
+      stopRef.current = null
       if (typeof ref === "function") ref(node)
       else if (ref) ref.current = node
       if (!node) return
       const stopFitting = fitAboveKeyboard(node)
       const stopGuarding = keepIosFromScrolling(node)
-      return () => {
+      stopRef.current = () => {
         stopFitting()
         stopGuarding()
-        if (typeof ref === "function") ref(null)
-        else if (ref) ref.current = null
       }
     },
     [ref]
