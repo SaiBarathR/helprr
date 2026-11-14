@@ -194,7 +194,7 @@ describe('webhook', () => {
 
 describe('Apprise', () => {
   it('posts to /notify/{key} with the tags and the link in the body', async () => {
-    await sendToChannel('apprise', { apiUrl: origin, key: 'family', tags: 'phone, tv' }, {}, message);
+    await sendToChannel('apprise', { apiUrl: origin, tags: 'phone, tv' }, { key: 'family' }, message);
     expect(received[0]).toMatchObject({ method: 'POST', url: '/notify/family' });
     expect(received[0].body).toEqual({
       title: 'Imported: Dune',
@@ -202,6 +202,11 @@ describe('Apprise', () => {
       type: 'info',
       tag: 'phone,tv',
     });
+  });
+
+  it('still sends a channel saved with the key in its config (edge builds before 1.15.0)', async () => {
+    await sendToChannel('apprise', { apiUrl: origin, key: 'old' }, {}, message);
+    expect(received[0]).toMatchObject({ method: 'POST', url: '/notify/old' });
   });
 });
 

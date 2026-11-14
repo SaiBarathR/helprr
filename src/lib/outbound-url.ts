@@ -1,5 +1,6 @@
 import { lookup as dnsLookup, type LookupAddress } from 'node:dns';
 import { BlockList, isIP } from 'node:net';
+import { networkInterfaces } from 'node:os';
 
 /**
  * Where Helprr may send a notification a user configured (ntfy, Gotify,
@@ -105,12 +106,26 @@ function embeddedIpv4(address: string): string | null {
   return null;
 }
 
+/**
+ * Whether the address is one of this server's own (a VPS's public address on
+ * its interface included): a member's channel must not call this machine.
+ * Read each time, as interfaces can change; sends are rare.
+ */
+function isOwnAddress(address: string, type: 'ipv4' | 'ipv6'): boolean {
+  const own = new BlockList();
+  for (const list of Object.values(networkInterfaces())) {
+    for (const item of list ?? []) own.addAddress(item.address.replace(/%.*$/, ''), item.family === 'IPv4' ? 'ipv4' : 'ipv6');
+  }
+  return own.check(address, type);
+}
+
 /** Whether an IP address (v4, v6, or IPv4 wrapped in v6) is one Helprr never connects to under these rules. */
 export function isBlockedAddress(address: string, rules: OutboundRules = { allowPrivate: true }): boolean {
   const family = isIP(address);
   if (family === 0) return true;
   const type = family === 4 ? 'ipv4' : 'ipv6';
   if (BLOCKED.check(address, type) || (!rules.allowPrivate && PRIVATE.check(address, type))) return true;
+  if (!rules.allowPrivate && isOwnAddress(address, type)) return true;
   const inner = family === 6 ? embeddedIpv4(address) : null;
   return inner !== null && isBlockedAddress(inner, rules);
 }

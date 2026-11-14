@@ -20,6 +20,24 @@ describe('validateChannelInput', () => {
     expect(result).toEqual({ ok: true, config: { serverUrl: 'https://ntfy.sh', priority: '3' }, secrets: { topic: 'helprr-abc' } });
   });
 
+  it('keeps the Apprise key with the secrets, never in the exported config', () => {
+    const typed = validateChannelInput('apprise', { apiUrl: 'https://apprise.example.com' }, { key: 'family' }, ADMIN);
+    expect(typed).toEqual({ ok: true, config: { apiUrl: 'https://apprise.example.com' }, secrets: { key: 'family' } });
+    // Left empty on a new channel, it is the usual "apprise".
+    const blank = validateChannelInput('apprise', { apiUrl: 'https://apprise.example.com' }, {}, ADMIN);
+    expect(blank).toMatchObject({ ok: true, secrets: { key: 'apprise' } });
+    expect(validateChannelInput('apprise', { apiUrl: 'https://apprise.example.com' }, { key: 'no spaces' }, ADMIN)).toMatchObject({ ok: false });
+  });
+
+  it('moves an Apprise key saved in the config (edge builds) into the secrets on the next save', () => {
+    const existing = { config: { apiUrl: 'https://apprise.example.com', key: 'family' }, secrets: {} };
+    const saved = validateChannelInput('apprise', { apiUrl: 'https://apprise.example.com', tags: 'tv' }, {}, { ...ADMIN, existing });
+    expect(saved).toEqual({ ok: true, config: { apiUrl: 'https://apprise.example.com', tags: 'tv' }, secrets: { key: 'family' } });
+    // Sending it somewhere else needs it typed again, as any kept secret does.
+    expect(validateChannelInput('apprise', { apiUrl: 'https://other.example.com' }, {}, { ...ADMIN, existing }))
+      .toEqual({ ok: false, error: REENTER_CHANNEL_SECRET_MESSAGE });
+  });
+
   it('refuses a channel address that points at cloud metadata', () => {
     expect(validateChannelInput('webhook', {}, { url: 'http://169.254.169.254/latest/meta-data' }, ADMIN)).toMatchObject({ ok: false });
     expect(validateChannelInput('gotify', { serverUrl: 'http://metadata.google.internal' }, { appToken: 'x' }, ADMIN)).toMatchObject({ ok: false });
