@@ -115,7 +115,8 @@ export function RecentlyAddedWidget({
         title="Recently Added"
         viewAllHref="/activity"
         editMode={editMode}
-        note={loading ? 'Loading…' : 'No recent imports'}
+        // Edit mode doesn't load, so "none" would be untrue there (as For You).
+        note={loading ? 'Loading…' : editMode ? 'Newest import' : 'No recent imports'}
         item={top ? {
           href: top.href,
           title: top.title,

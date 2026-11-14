@@ -100,6 +100,13 @@ describe('Poster rails in a 2×1 phone cell', () => {
     expect(screen.queryByText('No suggestions yet')).toBeNull();
     expect(screen.getByText('Top suggestion')).toBeTruthy();
   });
+
+  it('Recently Added does not claim "no recent imports" in edit mode either', () => {
+    mocks.data = [];
+    render(<RecentlyAddedWidget refreshInterval={60_000} narrow rowSpan={1} editMode />);
+    expect(screen.queryByText('No recent imports')).toBeNull();
+    expect(screen.getByText('Newest import')).toBeTruthy();
+  });
 });
 
 describe('Service Health', () => {

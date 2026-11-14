@@ -221,7 +221,8 @@ export function UpcomingWidget({
         title="Upcoming"
         viewAllHref="/calendar"
         editMode={editMode}
-        note={loading ? 'Loading…' : offline ? "You're offline" : error ?? 'Nothing upcoming'}
+        // Edit mode doesn't load, so "nothing" would be untrue there (as For You).
+        note={loading ? 'Loading…' : editMode ? 'Next release' : offline ? "You're offline" : error ?? 'Nothing upcoming'}
         item={top ? {
           href: eventHref(top),
           title: top.title,

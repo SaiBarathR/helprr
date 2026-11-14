@@ -81,4 +81,11 @@ describe('Upcoming widget, one row per film-day', () => {
     expect(row.getAttribute('href')).toBe('/movies/511?instance=c1');
     expect(row.textContent).toContain('Nov 17 · PHY · DIG');
   });
+
+  it('does not claim "nothing upcoming" in a 2×1 cell in edit mode, which loads nothing', () => {
+    mocks.data = [];
+    const { container } = render(<UpcomingWidget refreshInterval={60_000} narrow rowSpan={1} editMode />);
+    expect(container.textContent).not.toContain('Nothing upcoming');
+    expect(container.textContent).toContain('Next release');
+  });
 });

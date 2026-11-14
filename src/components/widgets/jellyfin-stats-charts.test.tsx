@@ -18,7 +18,7 @@ function axisLabels(container: HTMLElement) {
 
 describe('Play Activity date axis', () => {
   it('spaces whole labels a slot apart, counted back from the last day', () => {
-    // A 400px body leaves a 376px bar row, room for 7 labels: every 5th bar from the last.
+    // A 400px body leaves a 376px bar row: 7 slots, so every 5th bar from the last (6 labels).
     const { container } = render(<PlayActivityChart data={data} width={400} />);
     const labels = axisLabels(container);
     expect(labels.map((l) => l.textContent)).toEqual([
