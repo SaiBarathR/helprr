@@ -3,9 +3,12 @@ import {
   broadcastAuthenticationBoundary,
   clearUserScopedBrowserCaches,
   endSessionInThisBrowser,
+  markUserScopedCachesInUse,
   requestSessionLogout,
   subscribeToAuthenticationBoundaries,
   subscribeToSessionEnd,
+  userScopedCachesMayBeInUse,
+  userScopedCachesMayRemain,
 } from '@/lib/client-cache';
 
 afterEach(() => {
@@ -332,5 +335,58 @@ describe('ending this browser session', () => {
     endSessionInThisBrowser();
 
     expect(replace).toHaveBeenCalledWith('/login');
+  });
+});
+
+// Login asks the server whether a session ended only while this is set.
+describe('user-scoped cache marker', () => {
+  function storage() {
+    const values = new Map<string, string>();
+    return {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+      removeItem: (key: string) => { values.delete(key); },
+    };
+  }
+
+  it('is set by a signed-in shell and removed once the caches are cleared', async () => {
+    vi.stubGlobal('window', { localStorage: storage(), caches: { delete: vi.fn(async () => true) } });
+    expect(userScopedCachesMayBeInUse()).toBe(false);
+    markUserScopedCachesInUse();
+    expect(userScopedCachesMayBeInUse()).toBe(true);
+    await clearUserScopedBrowserCaches();
+    expect(userScopedCachesMayBeInUse()).toBe(false);
+  });
+
+  it('stays set when the clear fails, so Login asks again', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('window', {
+      localStorage: storage(),
+      caches: { delete: vi.fn(() => new Promise<boolean>(() => undefined)) },
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+    });
+    markUserScopedCachesInUse();
+    const clearing = expect(clearUserScopedBrowserCaches()).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(60_000);
+    await clearing;
+    expect(userScopedCachesMayBeInUse()).toBe(true);
+  });
+
+  it('still asks when a user\'s caches are there without the marker, not for the login shell alone', async () => {
+    const present = new Set<string>(['pages']);
+    vi.stubGlobal('window', { localStorage: storage(), caches: { has: vi.fn(async (name: string) => present.has(name)) } });
+    expect(await userScopedCachesMayRemain()).toBe(false);
+    present.add('api-images');
+    expect(await userScopedCachesMayRemain()).toBe(true);
+    markUserScopedCachesInUse();
+    present.clear();
+    expect(await userScopedCachesMayRemain()).toBe(true);
+  });
+
+  it('counts unreadable storage as in use', () => {
+    vi.stubGlobal('window', { get localStorage(): Storage { throw new Error('denied'); } });
+    expect(userScopedCachesMayBeInUse()).toBe(true);
+    expect(() => markUserScopedCachesInUse()).not.toThrow();
   });
 });

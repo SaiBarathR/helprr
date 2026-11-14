@@ -5,11 +5,12 @@ import type { PlayActivityUser } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { JellyfinStatsWidgetShell } from './jellyfin-widget-shell';
 import { PlayActivityChart } from './jellyfin-stats-charts';
+import { fetchOrOffline } from '@/lib/network-error';
 
 async function fetchPlayActivity({ days, userId, signal }: { days: number; userId: string; signal?: AbortSignal }): Promise<PlayActivityUser[]> {
   const params = new URLSearchParams({ days: String(days) });
   if (userId) params.set('userId', userId);
-  const res = await fetch(`/api/jellyfin/playback/activity?${params}`, { signal });
+  const res = await fetchOrOffline(`/api/jellyfin/playback/activity?${params}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return Array.isArray(data.data) ? data.data : [];

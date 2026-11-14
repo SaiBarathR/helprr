@@ -6,6 +6,7 @@ import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useUIStore } from '@/lib/store';
 import type { ColSpan, RowSpan } from '@/lib/widgets/types';
+import { compactGridRects, sameGridRects } from '@/lib/widgets/compact-layout';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { ThemeInspector } from './theme-inspector';
 import { useVisibleDashboardWidgets, WidgetGridItem } from './widget-grid-shared';
@@ -17,22 +18,30 @@ export function WidgetGridDesktop({ onConfigureRefresh }: { onConfigureRefresh: 
   const editMode = useUIStore((s) => s.dashboardEditMode);
   const visibleWidgets = useVisibleDashboardWidgets(dashboardLayout);
 
-  const layoutItems: Layout = useMemo(
-    () => visibleWidgets.map((instance) => ({
+  const layoutItems: Layout = useMemo(() => {
+    const rects = visibleWidgets.map((instance) => ({
       i: instance.id,
       x: instance.x ?? 0,
       y: instance.y ?? 0,
       w: instance.colSpan,
       h: instance.rowSpan,
+    }));
+    // Packed like the static grid, so entering edit mode moves nothing.
+    const packed = compactGridRects(rects, 12);
+    return rects.map((rect) => ({
+      ...rect,
+      ...packed.get(rect.i),
       minW: 2,
       maxW: 12,
       minH: 1,
       static: !editMode,
-    })),
-    [visibleWidgets, editMode],
-  );
+    }));
+  }, [visibleWidgets, editMode]);
 
   function handleLayoutChange(newLayout: Layout) {
+    // Nothing moved from what is shown: keep the saved positions (and the
+    // layout clean) rather than store the packing of a viewer's visible widgets.
+    if (sameGridRects(newLayout, layoutItems)) return;
     updateWidgetPositions(
       newLayout.map((item) => ({
         id: item.i,

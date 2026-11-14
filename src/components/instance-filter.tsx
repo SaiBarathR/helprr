@@ -39,6 +39,22 @@ export function withAppName(label: string, type?: string): string {
 }
 
 /**
+ * Display names for the instances of apps that have more than one, by
+ * instanceId: a row's "radarr" chip can't say which Radarr it came from.
+ * Instances of an app with only one are left out, so their rows keep the plain
+ * app chip.
+ */
+export function severalInstanceLabels(
+  connections: ReadonlyArray<{ id: string; label: string; type: string }>,
+): Map<string, string> {
+  const perType = new Map<string, number>();
+  for (const { type } of connections) perType.set(type, (perType.get(type) ?? 0) + 1);
+  return new Map(connections
+    .filter(({ type }) => (perType.get(type) ?? 0) > 1)
+    .map(({ id, label, type }) => [id, withAppName(label, type)]));
+}
+
+/**
  * Collect the distinct instances present in an already-tagged list of items
  * (preserving first-seen order). Used to build the options for {@link InstanceFilter}.
  */

@@ -13,6 +13,7 @@ import {
   Lock,
   LockOpen,
   Maximize,
+  Minimize,
   Pause,
   PictureInPicture2,
   Play,
@@ -43,7 +44,7 @@ const QueuePanel = dynamic(() => import('@/components/jellyfin-streaming/queue-p
 import { LiveBadge } from '@/components/jellyfin-streaming/live-badge';
 import { usePlayerSheet } from '@/components/jellyfin-streaming/use-player-sheet';
 import { isOverlayPopState } from '@/lib/overlay-history';
-import { toggleFullscreen } from '@/lib/jellyfin-playback/browser';
+import { isDocumentFullscreen, toggleFullscreen } from '@/lib/jellyfin-playback/browser';
 import { bitrateOptions } from '@/lib/jellyfin-playback/device-profile';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
@@ -124,6 +125,48 @@ function useCoarsePointer(): boolean {
   );
 }
 
+function subscribeFullscreen(onChange: () => void) {
+  document.addEventListener('fullscreenchange', onChange);
+  document.addEventListener('webkitfullscreenchange', onChange);
+  return () => {
+    document.removeEventListener('fullscreenchange', onChange);
+    document.removeEventListener('webkitfullscreenchange', onChange);
+  };
+}
+
+/**
+ * Whether the page is fullscreen, however it got there: the button, the `f`
+ * key, or the browser's own control or Escape. iPhone's video-only fullscreen
+ * covers the page, button included, so it has nothing to show.
+ */
+function useDocumentFullscreen(): boolean {
+  return useSyncExternalStore(subscribeFullscreen, () => isDocumentFullscreen(document), () => false);
+}
+
+/**
+ * Whether the stream has run dry mid-play: the element is waiting for data it
+ * was asked to play. The provider's status stays `playing` through a stall
+ * (progress reports carry on), so without this a stalled HLS stream showed the
+ * Pause icon as if it were playing.
+ */
+function useStalled(mediaRef: React.RefObject<HTMLVideoElement | null>, stream: unknown): boolean {
+  const [stalled, setStalled] = useState(false);
+  useEffect(() => {
+    const el = mediaRef.current;
+    if (!el) return undefined;
+    const onWaiting = () => setStalled(!el.paused);
+    const onResumed = () => setStalled(false);
+    const resumed = ['playing', 'pause', 'emptied', 'ended'] as const;
+    el.addEventListener('waiting', onWaiting);
+    resumed.forEach((type) => el.addEventListener(type, onResumed));
+    return () => {
+      el.removeEventListener('waiting', onWaiting);
+      resumed.forEach((type) => el.removeEventListener(type, onResumed));
+    };
+  }, [mediaRef, stream]);
+  return stalled;
+}
+
 type TapSide = 'left' | 'middle' | 'right';
 
 /**
@@ -150,6 +193,10 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
   const [controlsVisible, setControlsVisible] = useState(true);
   const [panel, setPanel] = useState<'none' | 'subs' | 'quality' | 'speed' | 'chapters' | 'stats' | 'more'>('none');
   const coarse = useCoarsePointer();
+  const fullscreen = useDocumentFullscreen();
+  const stalled = useStalled(mediaRef, playback.stream);
+  // Starting, or stalled while playing: the same spinner either way.
+  const waiting = playback.status === 'loading' || (stalled && playback.status === 'playing');
   const skipBack = useUIStore((state) => state.playerSkipBackSeconds);
   const skipForward = useUIStore((state) => state.playerSkipForwardSeconds);
   const setSkipBack = useUIStore((state) => state.setPlayerSkipBackSeconds);
@@ -638,13 +685,19 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
               click/gesture bubbling independently of the media portal tree. */}
           <div className="absolute inset-0" aria-hidden="true" />
 
-            {playback.status === 'loading' && !centreTransport && (
+            {waiting && !centreTransport && (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">Loading stream…</div>
             )}
             {playback.needsJellyfinConnect ? (
               // Marked as a panel so taps on its blank space neither toggle
               // the hidden controls nor count towards a double-tap skip.
-              <div data-player-panel className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-black/90 p-6 [--destructive-text:var(--destructive-on-dark)]">
+              // Opaque, with only the top bar (Minimize, Close) lifted above it
+              // below: at 90% the transport icons showed through the username
+              // field, and Close sat under the form, out of reach. The form's
+              // inputs take the theme's colours, so the dark ones (the
+              // Cinematic skin's) are set here: a light theme typed black text
+              // into them, on black.
+              <div data-player-panel className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-black p-6 text-white [color-scheme:dark] [--destructive-text:var(--destructive-on-dark)] [--foreground:#ffffff] [--input:rgb(255_255_255/0.14)] [--muted-foreground:#b3b3b3]">
                 <div className="w-full max-w-xs space-y-4">
                   <div className="space-y-1.5 text-center">
                     <p className="text-sm font-medium text-white">Connect your Jellyfin account</p>
@@ -766,7 +819,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                       onClick={playback.togglePause}
                       aria-label={transportShowsPlay(playback.status) ? 'Play' : 'Pause'}
                     >
-                      {playback.status === 'loading'
+                      {waiting
                         ? <LoaderCircle className="size-9 animate-spin" />
                         : transportShowsPlay(playback.status)
                           ? <Play className="size-9 fill-current" />
@@ -790,7 +843,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                     sits in the same corner, and the title moved down into the
                     control row. A phone has no room for a centred title there,
                     so it stays up here beside the button. */}
-                <div className="flex items-start gap-3 pt-[max(1rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-4 pl-[max(1rem,env(safe-area-inset-left))] md:pr-[max(2rem,env(safe-area-inset-right))] md:pl-[max(2rem,env(safe-area-inset-left))]">
+                <div className={cn(playback.needsJellyfinConnect && 'relative z-30', 'flex items-start gap-3 pt-[max(1rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-4 pl-[max(1rem,env(safe-area-inset-left))] md:pr-[max(2rem,env(safe-area-inset-right))] md:pl-[max(2rem,env(safe-area-inset-left))]')}>
                   <Button variant="ghost" size="icon" className="shrink-0 text-white" onClick={() => playback.setVideoExpanded(false)} aria-label="Minimize player">
                     <ChevronDown />
                   </Button>
@@ -1069,10 +1122,11 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                         variant="ghost"
                         size="icon"
                         className="text-white"
-                        aria-label="Fullscreen"
+                        // Named for what it does next, as Play/Pause and Mute are.
+                        aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
                         onClick={() => toggleFullscreen(document.documentElement, mediaRef.current)}
                       >
-                        <Maximize />
+                        {fullscreen ? <Minimize /> : <Maximize />}
                       </Button>
                       {/* Everything low-frequency lives behind one gear, on every
                           breakpoint — twelve inline controls was a debug toolbar. */}
@@ -1487,7 +1541,11 @@ function Panel({ children }: { children: React.ReactNode }) {
       // Marks the panel for the surface tap handler, which dismisses whatever
       // panel is open when the tap lands anywhere but inside one.
       data-player-panel
-      className="app-glass-overlay max-h-48 overflow-y-auto rounded-lg border border-white/10 bg-black/70 p-2"
+      // Its own dark frosted surface, not the app's `.app-glass-overlay`: the
+      // player is dark in every theme, and Liquid Glass's light material (or
+      // the opaque light surface it falls back to) put the panel's white text
+      // on near-white.
+      className="max-h-48 overflow-y-auto rounded-lg border border-white/10 bg-black/75 p-2 backdrop-blur-xl"
     >
       <div className="flex flex-col gap-1">{children}</div>
     </div>

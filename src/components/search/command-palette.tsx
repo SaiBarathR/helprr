@@ -11,7 +11,7 @@ export function SearchLoadingDialog() {
   const setOpen = useSearchPalette((state) => state.setOpen);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="top-[12%] translate-y-0 sm:max-w-xl">
+      <DialogContent keyboardAnchorTop="12%" className="top-[12%] translate-y-0 sm:max-w-xl">
         <DialogTitle>Search</DialogTitle>
         <DialogDescription role="status" className="flex items-center gap-2">
           <Loader2 className="size-4 animate-spin" /> Loading search…

@@ -518,11 +518,15 @@ filters, `calendar.view`). Turning one off deletes its row
 in the security audit. The single link from before named links became one named
 "Calendar" with no stored filters; its URL's `?type=&instance=&monitored=` still
 apply, and on any link they can only narrow its own filters. Movie and album
-releases are all-day events on the local date of the upstream instant in the
-link owner's time zone (`UserSettings.timeZone`, Settings -> Preferences -> Your time zone,
-when set and valid, else the app's, `AppSettings.timeZone`, Settings -> Preferences ->
-Timezone; `getUserTimeZone` in `src/lib/app-settings.ts`), not its UTC date (the Calendar page itself uses the browser's zone); episodes
-stay timed in UTC. A password change (own, an
+releases are all-day events on their release day: Radarr and Lidarr send a day
+as its UTC midnight, so the day is that value's UTC date in every zone
+(`src/lib/release-day.ts`, shared with the Calendar page, the Dashboard widgets
+and the daily digest; read as an instant it fell a day early west of UTC). The
+feed's window is whole days in the link owner's time zone (`UserSettings.timeZone`,
+Settings -> Preferences -> Your time zone, when set and valid, else the app's,
+`AppSettings.timeZone`, Settings -> Preferences -> Timezone), and a release is in
+it when its day is one of those days (`/api/calendar` does the same in the zone the
+Calendar page sends, the browser's); episodes stay timed in UTC. A password change (own, an
 admin reset, a reset link used, or the `HELPRR_ADMIN_PASSWORD_RESET` startup
 reset), an admin disabling the user, and a settings import that restores a
 different password hash or status also delete it, in the same transaction as the

@@ -149,8 +149,9 @@ async function forward(request: NextRequest, pathSegments: string[], user: User)
 
   if (upstream.status === 401 || upstream.status === 403) {
     // Revoked upstream mid-stream. Drop the stored copy so the next request
-    // gates cleanly instead of retrying a dead token segment after segment.
-    await invalidateJellyfinToken(user.id).catch((error) =>
+    // gates cleanly instead of retrying a dead token segment after segment;
+    // only if it is still the one sent, not one a newer sign-in stored.
+    await invalidateJellyfinToken(user.id, user.jellyfinToken).catch((error) =>
       console.error('[api] Failed to drop a revoked Jellyfin token:', error),
     );
     return NextResponse.json(

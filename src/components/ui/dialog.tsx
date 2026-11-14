@@ -6,6 +6,7 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { useBackClosableOpen } from "@/lib/overlay-history"
+import { keepCentredDialogAboveKeyboard } from "@/lib/keyboard-fit"
 import { Button } from "@/components/ui/button"
 
 function Dialog({
@@ -57,10 +58,28 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  keyboardAnchorTop,
+  ref,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  /** For a dialog placed from the top: its top offset, so the keyboard only shortens it. */
+  keyboardAnchorTop?: string
 }) {
+  const contentRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      if (typeof ref === "function") ref(node)
+      else if (ref) ref.current = node
+      if (!node) return
+      const stopFitting = keepCentredDialogAboveKeyboard(node, keyboardAnchorTop)
+      return () => {
+        stopFitting()
+        if (typeof ref === "function") ref(null)
+        else if (ref) ref.current = null
+      }
+    },
+    [ref, keyboardAnchorTop]
+  )
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -77,6 +96,7 @@ function DialogContent({
           "max-h-[85dvh] overflow-y-auto",
           className
         )}
+        ref={contentRef}
         {...props}
       >
         {children}

@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { getInstallKey } from '@/lib/install-key';
 
 /**
  * At-rest storage for a member's Jellyfin AccessToken.
@@ -16,16 +17,13 @@ import { prisma } from '@/lib/db';
  * store in `anilist-oauth.ts` — same AES-256-GCM construction, same key
  * derivation, same prefix marker — so the two behave the same way when the
  * app secret rotates. It is duplicated rather than shared because extracting it
- * would mean editing a working, unrelated module.
+ * would mean editing a working, unrelated module. The key derivation itself
+ * lives in `install-key.ts`, which the Jellyfin sign-in DeviceId also uses.
  */
 const ENCRYPTED_TOKEN_PREFIX = 'enc:v1:';
 
 function getTokenEncryptionKey(): Buffer {
-  const secret = process.env.JWT_SECRET || process.env.APP_PASSWORD;
-  if (!secret) {
-    throw new Error('JWT_SECRET or APP_PASSWORD is required to store Jellyfin tokens securely');
-  }
-  return crypto.createHash('sha256').update(secret).digest();
+  return getInstallKey('store Jellyfin tokens securely');
 }
 
 function encryptToken(value: string): string {
@@ -81,7 +79,23 @@ export function readJellyfinToken(user: Pick<User, 'jellyfinToken'>): string | n
  * Drop a token Jellyfin has stopped accepting. A Jellyfin admin deleting the
  * device in Dashboard → Devices revokes it silently, so the only signal is a
  * 401/403 on a playback call.
+ *
+ * `failedStoredValue` is the `jellyfinToken` column value the failing request
+ * read, and the token is cleared only while the column still holds it. A member
+ * signing in again on another device stores a new token; a request still
+ * holding the old one that gets its 401 afterwards must not wipe the new one.
+ * The comparison runs inside the database on the stored (encrypted) value, so
+ * nothing is decrypted to make it.
  */
-export async function invalidateJellyfinToken(userId: string): Promise<void> {
+export async function invalidateJellyfinToken(userId: string, failedStoredValue: string | null): Promise<void> {
+  if (!failedStoredValue) return;
+  await prisma.user.updateMany({
+    where: { id: userId, jellyfinToken: failedStoredValue },
+    data: { jellyfinToken: null },
+  });
+}
+
+/** Disconnect: drop the member's token, whatever it currently is. */
+export async function clearJellyfinToken(userId: string): Promise<void> {
   await prisma.user.update({ where: { id: userId }, data: { jellyfinToken: null } });
 }

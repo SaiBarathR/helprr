@@ -396,3 +396,25 @@ it('shows an album cover in the day panel, through the image proxy', () => {
   expect(src.searchParams.get('src')).toBe('https://imagecache.example/release/7/466');
   expect(src.searchParams.get('service')).toBe('lidarr');
 });
+
+it("lists a day's all-day film before that morning's episodes, east of UTC too", () => {
+  vi.stubEnv('TZ', 'Asia/Kolkata');
+  try {
+    // Upstream's instant order: 04:30 IST episode, the film (UTC midnight, 05:30 IST), a 06:00 episode.
+    calendar.events = [
+      { id: 'ep-1', type: 'episode', title: 'Early show', subtitle: 'S01E01', seriesId: 1, date: '2026-10-14T23:00:00Z', monitored: true, hasFile: false },
+      { id: 'movie-2', type: 'movie', title: 'Film of the day', subtitle: '2026', movieId: 2, releaseType: 'digital', date: '2026-10-15T00:00:00Z', monitored: true, hasFile: false },
+      { id: 'ep-3', type: 'episode', title: 'Morning show', subtitle: 'S01E02', seriesId: 3, date: '2026-10-15T00:30:00Z', monitored: true, hasFile: false },
+    ];
+    render(<CalendarPage />);
+    fireEvent.click(screen.getByRole('button', { name: /October 15, 3 release/ }));
+    const panel = screen.getByRole('heading', { level: 2 }).closest('section')!;
+    const order = ['Film of the day', 'Early show', 'Morning show']
+      .map((title) => [title, panel.textContent!.indexOf(title)] as const)
+      .sort((a, b) => a[1] - b[1])
+      .map(([title]) => title);
+    expect(order).toEqual(['Film of the day', 'Early show', 'Morning show']);
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});

@@ -160,6 +160,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/jellyfin/playback/history',
     'GET /api/jellyfin/recently-added',
     'GET /api/jellyfin/resume',
+    'GET /api/jellyfin/stream/bitrate-test',
     'GET /api/jellyfin/watch-status',
     'GET /api/jellyfin/watch-status/series',
   ],
@@ -273,7 +274,6 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'cap:torrents.view': [
     'GET /api/qbittorrent/[hash]/details',
     'GET /api/qbittorrent/[hash]/files',
-    'GET /api/qbittorrent/bandwidth-schedule',
     'GET /api/qbittorrent/categories',
     'GET /api/qbittorrent/options',
     'GET /api/qbittorrent',
@@ -392,6 +392,10 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   ],
   'any:discover.view|settings.appearance': [
     'GET /api/discover/filters',
+  ],
+  // Settings → Downloads is the schedule's own page; the schedule names no torrent.
+  'any:torrents.view|settings.downloads': [
+    'GET /api/qbittorrent/bandwidth-schedule',
   ],
   'filtered-capability': [
     'GET /api/services/external-urls',
@@ -566,7 +570,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(287);
+    expect(handlers.size).toBe(288);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

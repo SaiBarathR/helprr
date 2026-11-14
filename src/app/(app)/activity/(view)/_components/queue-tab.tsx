@@ -41,7 +41,7 @@ import { RemoveQueueDialog, type RemoveQueueOptions } from '../../_components/re
 import { compareActivityQueueItems } from '@/lib/activity-queue-sort';
 import type { ActivitySortDirectionPreference } from '@/lib/store';
 import { QUEUE_PAGE_SIZE, QUEUE_QUERY_KEY, QueuePage, QueueRecord, RemoveTarget, appNameFor, canManualImport, downloadSiblings, episodeLabel, formatBytes, getQueueCustomFormats, getQueueItemQuality, getQueueMediaHref, groupQueueByDownload, isPendingRelease, manualImportHref, packNoun, queueRecordKey, queueRemovalBatches, queueRemovalDelta, statusColor, statusLabel, uniqueQueueRecords } from './queue-records';
-import { ManualImportStrip, TabErrorState } from './shared';
+import { ManualImportStrip, TabErrorState, useSourceChipLabel } from './shared';
 import { SortKey } from './view-state';
 
 /**
@@ -68,6 +68,7 @@ export function QueueTab({
 }) {
   const router = useRouter();
   const canManageActivity = useCan('activity.manage');
+  const sourceChipLabel = useSourceChipLabel();
   const { adjustBadge } = useBadgeActions();
   const queryClient = useQueryClient();
   const pendingImports = usePendingImports();
@@ -474,7 +475,7 @@ export function QueueTab({
                               {statusLabel(rep)}
                             </Badge>
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                              {rep.source}
+                              {sourceChipLabel(rep)}
                             </Badge>
                             {qualityName && (
                               <Badge variant="outline" className="text-[10px] px-1.5 py-0">
@@ -634,7 +635,7 @@ export function QueueTab({
                               {group.items.length} {packNoun(rep.source)}
                             </Badge>
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                              {rep.source}
+                              {sourceChipLabel(rep)}
                             </Badge>
                             {qualityName && (
                               <Badge variant="outline" className="text-[10px] px-1.5 py-0">
@@ -813,7 +814,9 @@ export function QueueTab({
                   <div className="flex items-center gap-2 flex-wrap">
                     {selectedItem.source && (
                       <Badge variant="outline" className="text-[10px]">
-                        {selectedItem.source?.toUpperCase()}
+                        {sourceChipLabel(selectedItem) === selectedItem.source
+                          ? selectedItem.source.toUpperCase()
+                          : sourceChipLabel(selectedItem)}
                       </Badge>
                     )}
                     {selectedItem.indexer && (

@@ -8,6 +8,7 @@ import { formatBytes } from '@/lib/format';
 import type { WidgetProps } from '@/lib/widgets/types';
 import type { QBittorrentSummaryResponse } from '@/types';
 import { Eyebrow, FONT_DISPLAY, FONT_MONO, Hairline, HPR, ICON_HIDE_HEIGHT_THRESHOLD, ICON_HIDE_THRESHOLD, mix } from './bento-primitives';
+import { fetchOrOffline } from '@/lib/network-error';
 
 interface TorrentData {
   total: number;
@@ -23,7 +24,7 @@ interface TorrentData {
 }
 
 async function fetchTorrentData(signal?: AbortSignal): Promise<TorrentData> {
-  const res = await fetch('/api/qbittorrent/summary?view=counters', { signal });
+  const res = await fetchOrOffline('/api/qbittorrent/summary?view=counters', { signal });
   if (!res.ok) throw new Error('Failed to fetch');
   const data: Pick<QBittorrentSummaryResponse, 'transferInfo'> & Pick<TorrentData, 'total' | 'downloading' | 'seeding' | 'paused'> = await res.json();
   const ti = data.transferInfo;
@@ -47,7 +48,9 @@ export function TorrentWidget({
   narrow = false,
 }: WidgetProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
-  const compact = narrow;
+  // A small desktop span (colSpan 4 beside an expanded sidebar at 820px) has
+  // no room for the two speeds side by side either: stack them, as on phones.
+  const compact = narrow || (width > 0 && width < 220);
   const hideIcon = width > 0 && height > 0 && (width < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
   const { data, loading } = useWidgetData({
     fetchFn: fetchTorrentData,

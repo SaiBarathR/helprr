@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   connectionFindFirst: vi.fn(),
   userUpdate: vi.fn(),
   storeJellyfinToken: vi.fn(),
-  invalidateJellyfinToken: vi.fn(),
+  clearJellyfinToken: vi.fn(),
   recordUsernameFailure: vi.fn(),
   recordGlobalLoginFailure: vi.fn(),
   readJellyfinToken: vi.fn(),
@@ -26,7 +26,7 @@ vi.mock('@/lib/db', () => ({
 }));
 vi.mock('@/lib/jellyfin-token', () => ({
   storeJellyfinToken: mocks.storeJellyfinToken,
-  invalidateJellyfinToken: mocks.invalidateJellyfinToken,
+  clearJellyfinToken: mocks.clearJellyfinToken,
   readJellyfinToken: mocks.readJellyfinToken,
 }));
 vi.mock('@/lib/login-rate-limit', () => ({
@@ -176,10 +176,10 @@ describe('DELETE /api/account/jellyfin/link', () => {
 
   it('drops the token but keeps the identity link', async () => {
     signedInAs('jf-sai');
-    mocks.invalidateJellyfinToken.mockResolvedValue(undefined);
+    mocks.clearJellyfinToken.mockResolvedValue(undefined);
     const res = await DELETE();
     expect(res.status).toBe(200);
-    expect(mocks.invalidateJellyfinToken).toHaveBeenCalledWith('helprr-1');
+    expect(mocks.clearJellyfinToken).toHaveBeenCalledWith('helprr-1');
     expect(mocks.userUpdate).not.toHaveBeenCalled();
   });
 
@@ -189,7 +189,7 @@ describe('DELETE /api/account/jellyfin/link', () => {
       response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
     });
     expect((await DELETE()).status).toBe(401);
-    expect(mocks.invalidateJellyfinToken).not.toHaveBeenCalled();
+    expect(mocks.clearJellyfinToken).not.toHaveBeenCalled();
   });
 });
 

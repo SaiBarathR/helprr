@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ userUpdate: vi.fn() }));
+const mocks = vi.hoisted(() => ({ userUpdate: vi.fn(), userUpdateMany: vi.fn() }));
 
-vi.mock('@/lib/db', () => ({ prisma: { user: { update: mocks.userUpdate } } }));
+vi.mock('@/lib/db', () => ({ prisma: { user: { update: mocks.userUpdate, updateMany: mocks.userUpdateMany } } }));
 
-import { invalidateJellyfinToken, readJellyfinToken, storeJellyfinToken } from '@/lib/jellyfin-token';
+import { clearJellyfinToken, invalidateJellyfinToken, readJellyfinToken, storeJellyfinToken } from '@/lib/jellyfin-token';
 
 /** The value storeJellyfinToken would have written for `plaintext`. */
 async function ciphertextFor(plaintext: string): Promise<string> {
@@ -60,9 +60,42 @@ describe('jellyfin token store', () => {
     expect(readJellyfinToken({ jellyfinToken: null })).toBeNull();
   });
 
-  it('invalidate clears the stored token', async () => {
+  it('invalidate clears the token only while the stored value is still the one that failed', async () => {
+    mocks.userUpdateMany.mockResolvedValue({ count: 1 });
+    const failed = await ciphertextFor('old-token');
+    await invalidateJellyfinToken('user-1', failed);
+    expect(mocks.userUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'user-1', jellyfinToken: failed },
+      data: { jellyfinToken: null },
+    });
+  });
+
+  it('invalidate leaves a newer token another sign-in stored', async () => {
+    // A stand-in for the column: the conditional update only matches its current value.
+    let column: string | null = await ciphertextFor('old-token');
+    const failed = column;
+    column = await ciphertextFor('new-token');
+    mocks.userUpdateMany.mockImplementation(async ({ where, data }) => {
+      if (where.jellyfinToken !== column) return { count: 0 };
+      column = data.jellyfinToken;
+      return { count: 1 };
+    });
+    await invalidateJellyfinToken('user-1', failed);
+    expect(column).not.toBeNull();
+    expect(readJellyfinToken({ jellyfinToken: column })).toBe('new-token');
+    await invalidateJellyfinToken('user-1', column);
+    expect(column).toBeNull();
+  });
+
+  it('invalidate does nothing when the request read no token', async () => {
+    await invalidateJellyfinToken('user-1', null);
+    expect(mocks.userUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.userUpdate).not.toHaveBeenCalled();
+  });
+
+  it('clear drops whatever token is stored, for an explicit disconnect', async () => {
     mocks.userUpdate.mockResolvedValue({});
-    await invalidateJellyfinToken('user-1');
+    await clearJellyfinToken('user-1');
     expect(mocks.userUpdate).toHaveBeenCalledWith({ where: { id: 'user-1' }, data: { jellyfinToken: null } });
   });
 });

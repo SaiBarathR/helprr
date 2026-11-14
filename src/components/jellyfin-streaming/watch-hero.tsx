@@ -71,16 +71,12 @@ function ClassicHero({ items, onPlay, pending }: WatchHeroProps) {
     );
   }
   const item = items[Math.min(index, items.length - 1)]!;
-  const logo = item.ImageTags?.Logo ? jellyfinImageUrl(item.Id, 'Logo', 640) : null;
   // Every slide stays mounted in a fixed order. Keying one <img> on the item
   // reset its load state and flashed the shimmer; mounting only a moving window
   // reordered the DOM, and reordered nodes drop their CSS transition. A stable
   // list of five layers is the only version that actually crossfades. Widths are
   // capped below 1920 to keep five backdrops affordable.
   const layers = items;
-  const runtime = ticksToSeconds(item.RunTimeTicks) > 0 ? formatClock(ticksToSeconds(item.RunTimeTicks)) : null;
-  const certificate = formatCertificate(item.OfficialRating);
-  const rating = formatCommunityRating(item.CommunityRating);
 
   return (
     <section
@@ -121,30 +117,60 @@ function ClassicHero({ items, onPlay, pending }: WatchHeroProps) {
 
       <div className="relative flex h-full flex-col justify-end gap-3 p-[var(--main-pad-x)] pb-6 md:pb-8">
         <div className="max-w-xl space-y-3">
-          <HeroTitle
-            name={item.Name}
-            logoUrl={logo}
-            as="p"
-            frameClassName="h-16 w-56 md:h-20 md:w-72"
-            textClassName="text-3xl font-semibold tracking-tight text-balance md:text-4xl"
-          />
+          {/* Every slide's copy — logo, details, overview — stays mounted too,
+              stacked in one grid cell, and crossfades with its backdrop on the
+              same 0.7 s. Switched on its own, the text changed at the instant
+              of rotation and sat under the outgoing title's logo and art for
+              most of the fade; one title swapping its logo's src also fetched
+              the new logo only then (the image route answers no-cache), so it
+              popped in late. The cell takes the tallest slide's copy, so the
+              buttons under it hold still. */}
+          <div className="grid">
+            {layers.map((slide, slideIndex) => {
+              const runtime = ticksToSeconds(slide.RunTimeTicks) > 0 ? formatClock(ticksToSeconds(slide.RunTimeTicks)) : null;
+              const certificate = formatCertificate(slide.OfficialRating);
+              const rating = formatCommunityRating(slide.CommunityRating);
+              return (
+                <div
+                  key={slide.Id}
+                  aria-hidden={slideIndex !== index}
+                  className={cn(
+                    'space-y-3 self-end [grid-area:1/1] transition-opacity duration-700 motion-reduce:transition-none',
+                    slideIndex === index ? 'opacity-100' : 'opacity-0',
+                  )}
+                >
+                  <HeroTitle
+                    name={slide.Name}
+                    logoUrl={slide.ImageTags?.Logo ? jellyfinImageUrl(slide.Id, 'Logo', 640) : null}
+                    // Mounted, if hidden, from the first paint, where opacity
+                    // does not defer a lazy image: the later slides' logos must
+                    // not compete with the backdrop and page actually on screen.
+                    fetchPriority={slideIndex === index ? undefined : 'low'}
+                    as="p"
+                    frameClassName="h-16 w-56 md:h-20 md:w-72"
+                    textClassName="text-3xl font-semibold tracking-tight text-balance md:text-4xl"
+                  />
 
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            {certificate && (
-              <span className="rounded border border-current px-1.5 py-px text-[11px] font-medium tracking-wide">
-                {certificate}
-              </span>
-            )}
-            <span>
-              {[item.ProductionYear, runtime, rating, item.Genres?.slice(0, 2).join(', ')]
-                .filter(Boolean)
-                .join(' · ')}
-            </span>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    {certificate && (
+                      <span className="rounded border border-current px-1.5 py-px text-[11px] font-medium tracking-wide">
+                        {certificate}
+                      </span>
+                    )}
+                    <span>
+                      {[slide.ProductionYear, runtime, rating, slide.Genres?.slice(0, 2).join(', ')]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  </div>
+
+                  {slide.Overview && (
+                    <p className="line-clamp-3 max-w-lg text-sm text-muted-foreground">{slide.Overview}</p>
+                  )}
+                </div>
+              );
+            })}
           </div>
-
-          {item.Overview && (
-            <p className="line-clamp-3 max-w-lg text-sm text-muted-foreground">{item.Overview}</p>
-          )}
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <Button size="lg" className="rounded-full px-6" onClick={() => onPlay(item)}>

@@ -7,6 +7,7 @@ import 'react-resizable/css/styles.css';
 import { useUIStore } from '@/lib/store';
 import type { ColSpan, RowSpan } from '@/lib/widgets/types';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
+import { compactGridRects, sameGridRects } from '@/lib/widgets/compact-layout';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { useVisibleDashboardWidgets, WidgetGridItem } from './widget-grid-shared';
 import { ThemeInspector } from './theme-inspector';
@@ -22,7 +23,7 @@ export function WidgetGridMobile({ onConfigureRefresh }: { onConfigureRefresh: (
 
   const { layoutItems, layoutLookup } = useMemo(() => {
     const lookup = new Map<string, { col: number; row: number; narrow: boolean }>();
-    const items: Layout = visibleWidgets.map((instance) => {
+    const rects = visibleWidgets.map((instance) => {
       const def = getWidgetDefinition(instance.widgetId, discoverLayout)!;
       const col = Math.min(
         MOBILE_COLS,
@@ -30,18 +31,18 @@ export function WidgetGridMobile({ onConfigureRefresh }: { onConfigureRefresh: (
       );
       const row = Math.max(1, (instance.mobileRowSpan ?? def.defaultMobileSpan.rowSpan) as number);
       lookup.set(instance.id, { col, row, narrow: col <= 2 });
-      return {
-        i: instance.id,
-        x: instance.mobileX ?? 0,
-        y: instance.mobileY ?? 0,
-        w: col,
-        h: row,
-        minW: 1,
-        maxW: MOBILE_COLS,
-        minH: 1,
-        static: !editMode,
-      };
+      return { i: instance.id, x: instance.mobileX ?? 0, y: instance.mobileY ?? 0, w: col, h: row };
     });
+    // Packed like the static grid, so entering edit mode moves nothing.
+    const packed = compactGridRects(rects, MOBILE_COLS);
+    const items: Layout = rects.map((rect) => ({
+      ...rect,
+      ...packed.get(rect.i),
+      minW: 1,
+      maxW: MOBILE_COLS,
+      minH: 1,
+      static: !editMode,
+    }));
     return { layoutItems: items, layoutLookup: lookup };
   }, [visibleWidgets, discoverLayout, editMode]);
 
@@ -49,6 +50,9 @@ export function WidgetGridMobile({ onConfigureRefresh }: { onConfigureRefresh: (
     // RGL fires onLayoutChange on mount/reconciliation even with static items.
     // Without this guard, a non-edit reflow would silently persist positions.
     if (!editMode) return;
+    // Nothing moved from what is shown: keep the saved positions (and the
+    // layout clean) rather than store the packing of a viewer's visible widgets.
+    if (sameGridRects(newLayout, layoutItems)) return;
     updateMobileWidgetPositions(
       newLayout.map((item) => ({
         id: item.i,

@@ -25,9 +25,10 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
+import { fetchOrOffline } from '@/lib/network-error';
 
 async function fetchResumeItems(limit: number, signal?: AbortSignal): Promise<JellyfinItem[]> {
-  const res = await fetch(`/api/jellyfin/resume?limit=${limit}`, { signal });
+  const res = await fetchOrOffline(`/api/jellyfin/resume?limit=${limit}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return data.items || [];

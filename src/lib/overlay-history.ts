@@ -24,6 +24,8 @@ import { useEffect, useEffectEvent, useState } from 'react';
 //   since a pushState made meanwhile would be the entry it leaves.
 // - These popstates are not navigations: listeners that act on Back (the
 //   player collapsing, the scroll restorer) skip them via isOverlayPopState.
+// - A page with unsaved edits holds one too (useBackGuard), so Back opens its
+//   "Discard unsaved changes?" confirm instead of leaving.
 
 const MARKER = '__helprrOverlay';
 const ROUTER_KEYS = ['__NA', '__PRIVATE_NEXTJS_INTERNALS_TREE'];
@@ -39,6 +41,9 @@ type Entry = {
   id: number;
   /** Closes the overlay when Back takes its entry; null once it has closed. */
   onBack: (() => void) | null;
+  /** A page's unsaved-changes guard (useBackGuard), not an overlay: an
+   *  in-app navigation takes it off without running onBack. */
+  guard: boolean;
   /** The Navigation API's key for the entry, which survives replaceState. */
   key: string | null;
   /** Without that API: history.length and the path just after the push, to
@@ -73,6 +78,10 @@ let closing: Entry[] = [];
 /** Work waiting for the traversal to settle. */
 let waiting: Array<() => void> = [];
 let flushQueued = false;
+/** Overlays that opened and have yet to put their entry up (see openEntry). */
+let pendingOpens = 0;
+/** Counts resetOverlayHistoryForTests calls (see openEntry). */
+let resets = 0;
 let listening = false;
 let navigateListener: { api: NavigationLike; listener: (event: Event) => void } | null = null;
 /** Which way the user's latest Back or Forward went, and the entry it left,
@@ -325,6 +334,8 @@ function queueFlush() {
   // ⋯ sheet's action) takes the closing one's entry over instead.
   queueMicrotask(() => {
     flushQueued = false;
+    // An overlay opened in the same task puts its entry up first.
+    if (pendingOpens > 0) return queueFlush();
     whenSettled(() => {
       let closed = 0;
       while (closed < entries.length && !entries[entries.length - 1 - closed].onBack) closed++;
@@ -363,24 +374,37 @@ function listen() {
 
 if (typeof window !== 'undefined') listen();
 
-function openEntry(onBack: () => void): Entry {
-  const entry: Entry = { id: nextId++, onBack, key: null, length: 0, pathname: '' };
+function openEntry(onBack: () => void, guard = false): Entry {
+  const entry: Entry = { id: nextId++, onBack, guard, key: null, length: 0, pathname: '' };
   listen();
-  whenSettled(() => {
-    if (!entry.onBack) return;
-    const state = { ...currentState(), [MARKER]: `${PAGE_LOAD}:${entry.id}` };
-    const top = entries[entries.length - 1];
-    if (top && !top.onBack && onTopEntry()) {
-      window.history.replaceState(state, '');
-      entries.pop();
-    } else {
-      window.history.pushState(state, '');
-    }
-    entry.key = navigationApi()?.currentEntry?.key ?? null;
-    if (entry.key) closedKeys.delete(entry.key);
-    entry.length = window.history.length;
-    entry.pathname = window.location.pathname;
-    entries.push(entry);
+  // A microtask later, so an overlay closing in the same task hands its entry
+  // over: a ⋯ menu item that opens a confirm commits the confirm first
+  // (Radix flushes onSelect synchronously) and closes the menu after it. That
+  // relies on the closing commit landing before this microtask, as React's
+  // own update microtask does; a menu closing in a later task (after an exit
+  // animation) would leave its entry to the flush, one step back.
+  pendingOpens++;
+  const load = resets;
+  queueMicrotask(() => {
+    // An open from before resetOverlayHistoryForTests belongs to nobody now.
+    if (load !== resets) return;
+    pendingOpens--;
+    whenSettled(() => {
+      if (!entry.onBack) return;
+      const state = { ...currentState(), [MARKER]: `${PAGE_LOAD}:${entry.id}` };
+      const top = entries[entries.length - 1];
+      if (top && !top.onBack && onTopEntry()) {
+        window.history.replaceState(state, '');
+        entries.pop();
+      } else {
+        window.history.pushState(state, '');
+      }
+      entry.key = navigationApi()?.currentEntry?.key ?? null;
+      if (entry.key) closedKeys.delete(entry.key);
+      entry.length = window.history.length;
+      entry.pathname = window.location.pathname;
+      entries.push(entry);
+    });
   });
   return entry;
 }
@@ -401,7 +425,9 @@ export function afterOverlayHistory(navigate: () => void) {
   whenSettled(() => {
     if (!onTopEntry()) return navigate();
     const taken = takeEntries(0).reverse();
-    goBack(taken.length, taken);
+    // A guard's onBack asks before leaving; this navigation is the leaving
+    // (the page's own confirmed link, or one it doesn't guard).
+    goBack(taken.length, taken.filter((entry) => !entry.guard));
     waiting.unshift(navigate);
   });
 }
@@ -411,6 +437,29 @@ export function afterOverlayHistory(navigate: () => void) {
  * while it is open, and `close` when Back takes it.
  */
 export function useCloseOnBack(open: boolean, close: () => void) {
+  useBackEntry(open, close, false);
+}
+
+/**
+ * Makes the system Back ask before leaving a page with unsaved edits: one
+ * history entry while `active`, and `onBack` (which opens the page's confirm)
+ * when Back takes it, instead of leaving. The page passes `active` false
+ * while its confirm is open and once it leaves. An in-app navigation takes
+ * the entry off without asking.
+ *
+ * The entry goes on top of history like an overlay's. A page that turns
+ * dirty from a pick that also closes its sheet or select takes that closing
+ * entry over (see openEntry), but one that turned dirty while a sheet stayed
+ * open would put the guard above the sheet: Back would then ask first, and
+ * the sheet would lose its Back. No guarded page edits inside an open sheet
+ * today; putting the entry under open ones would mean traversing back past
+ * them and pushing them again.
+ */
+export function useBackGuard(active: boolean, onBack: () => void) {
+  useBackEntry(active, onBack, true);
+}
+
+function useBackEntry(open: boolean, close: () => void, guard: boolean) {
   // Bumped when Back takes the entry, so an overlay that refused to close
   // (a busy confirm) puts a new one up for the next Back.
   const [backs, setBacks] = useState(0);
@@ -420,19 +469,21 @@ export function useCloseOnBack(open: boolean, close: () => void) {
   });
   useEffect(() => {
     if (!open) return;
-    const entry = openEntry(onBack);
+    const entry = openEntry(onBack, guard);
     return () => closeEntry(entry);
-  }, [open, backs]);
+  }, [open, backs, guard]);
 }
 
 /**
  * The open state of a sheet or dialog that the system Back closes, for the
  * shared overlay roots: controlled when `open` is given, else held here.
+ * `closeOnBack` false holds no entry (see useLeaveConfirm).
  */
 export function useBackClosableOpen(
   open: boolean | undefined,
   defaultOpen: boolean | undefined,
   onOpenChange: ((open: boolean) => void) | undefined,
+  closeOnBack = true,
 ): [boolean, (open: boolean) => void] {
   const [ownOpen, setOwnOpen] = useState(defaultOpen ?? false);
   const isOpen = open ?? ownOpen;
@@ -440,7 +491,7 @@ export function useBackClosableOpen(
     if (open === undefined) setOwnOpen(next);
     onOpenChange?.(next);
   };
-  useCloseOnBack(isOpen, () => setOpen(false));
+  useCloseOnBack(closeOnBack && isOpen, () => setOpen(false));
   return [isOpen, setOpen];
 }
 
@@ -459,6 +510,8 @@ export function resetOverlayHistoryForTests() {
   bouncing = false;
   keep = null;
   flushQueued = false;
+  pendingOpens = 0;
+  resets++;
   lastTraverse = -1;
   clearTimeout(traverseTimer);
 }

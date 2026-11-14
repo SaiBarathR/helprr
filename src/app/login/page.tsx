@@ -6,7 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChevronDown, Clapperboard, Loader2 } from 'lucide-react';
-import { ACCOUNT_DELETED_KEY, clearUserScopedBrowserCaches, subscribeToAuthenticationBoundaries } from '@/lib/client-cache';
+import {
+  ACCOUNT_DELETED_KEY,
+  clearUserScopedBrowserCaches,
+  subscribeToAuthenticationBoundaries,
+  userScopedCachesMayRemain,
+} from '@/lib/client-cache';
 import { completeBrowserSignIn, setDeviceCookieFromMatchMedia } from '@/lib/client-sign-in';
 import { SIGN_IN_HELP_URL } from '@/lib/docs-links';
 
@@ -119,13 +124,16 @@ export default function LoginPage() {
   // closed on its own. A signed-in visitor (Login opened from another tab) and
   // an offline one keep them. A sign-in here or in another tab first makes the
   // answer stale, so it cancels the clear rather than wipe the new session's.
+  // Not asked when nothing is left to clear (never signed in here, or signed
+  // out, which already cleared): the answer would be a 401 console error.
   useEffect(() => {
     let active = true;
     const unsubscribe = subscribeToAuthenticationBoundaries(() => {
       active = false;
     });
-    void fetch('/api/me', { cache: 'no-store' })
-      .then((res) => (active && res.status === 401 ? clearUserScopedBrowserCaches() : undefined))
+    void userScopedCachesMayRemain()
+      .then((mayRemain) => (active && mayRemain ? fetch('/api/me', { cache: 'no-store' }) : null))
+      .then((res) => (active && res?.status === 401 ? clearUserScopedBrowserCaches() : undefined))
       .catch(() => undefined);
     return () => {
       active = false;

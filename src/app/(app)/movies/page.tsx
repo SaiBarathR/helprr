@@ -41,7 +41,8 @@ import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { BulkActionBar } from '@/components/media/bulk-action-bar';
 import type { BulkEditChanges } from '@/components/media/bulk-edit-sheet';
 import { getListViewState, setListViewState } from '@/lib/media-list-cache';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { invalidateAfterLibraryRemove } from '@/lib/query-invalidation';
 import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
 import { isQueryOffline } from '@/lib/network-error';
@@ -193,6 +194,7 @@ export default function MoviesPage() {
     selectionMode, selectedKeys, count: selectedCount,
     toggle, selectMany, deselectMany, enter, exit,
   } = useBulkSelection();
+  const queryClient = useQueryClient();
   const {
     data: moviesData,
     isLoading: loading,
@@ -439,10 +441,15 @@ export default function MoviesPage() {
         body: JSON.stringify({ ids, deleteFiles }),
       }));
     reportBulk('Deleted', ok, fail, { noun: 'movie', pluralNoun: 'movies', reason: firstError });
+    // Discover and Anime drop the deleted copies at once. Which ones failed isn't
+    // known after a partial failure, so then they only refetch.
+    if (ok > 0) {
+      invalidateAfterLibraryRemove(queryClient, 'radarr', fail === 0 ? items.map((item) => ({ id: item.id, instanceId: item.instanceId })) : []);
+    }
     await refetchMovies();
     if (fail === 0 && leaveSelection) exit();
     return fail === 0;
-  }, [fanOutItems, refetchMovies, exit]);
+  }, [fanOutItems, queryClient, refetchMovies, exit]);
 
   const handleDelete = useCallback(
     (deleteFiles: boolean) => runDelete(selectedMovies, deleteFiles, true).then(() => undefined),

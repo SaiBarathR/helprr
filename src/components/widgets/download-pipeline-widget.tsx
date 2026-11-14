@@ -11,6 +11,7 @@ import { DaysPill } from './widget-filter-controls';
 import { useWidgetFilter } from './use-widget-filter';
 import { InsightsWidgetFrame, INSIGHTS_DAYS_OPTIONS, daysToRange, gridColumns } from './insights-widget-frame';
 import { Stat, fmtWait } from '@/components/insights/insights-shared';
+import { fetchOrOffline } from '@/lib/network-error';
 
 const PipelineHourChart = dynamic(
   () => import('@/components/insights/download-pipeline-card').then((m) => m.PipelineHourChart),
@@ -19,7 +20,7 @@ const PipelineHourChart = dynamic(
 
 async function fetchPipeline(days: number, signal?: AbortSignal): Promise<InsightsPipelineResponse> {
   const { from, to } = daysToRange(days);
-  const res = await fetch(`/api/insights/pipeline?from=${from}&to=${to}`, { signal });
+  const res = await fetchOrOffline(`/api/insights/pipeline?from=${from}&to=${to}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }

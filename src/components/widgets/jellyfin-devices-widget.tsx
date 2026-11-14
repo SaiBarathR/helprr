@@ -10,6 +10,7 @@ import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { SectionHeader, HPR, FONT_MONO, ViewModeToggle, EmptyState } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { DeviceItem, DevicesSeeAllDrawer } from '@/components/jellyfin/device-item';
+import { fetchOrOffline } from '@/lib/network-error';
 
 const ROW_HEIGHT = 56;
 const CAROUSEL_MAX = 15;
@@ -20,7 +21,7 @@ interface DevicesData {
 }
 
 async function fetchDevicesData(signal?: AbortSignal): Promise<DevicesData> {
-  const res = await fetch('/api/jellyfin/devices', { signal });
+  const res = await fetchOrOffline('/api/jellyfin/devices', { signal });
   if (!res.ok) return { devices: [], selfDeviceId: '' };
   const data = await res.json();
   return {

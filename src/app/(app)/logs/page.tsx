@@ -17,6 +17,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCan } from '@/components/permission-provider';
 import { Button } from '@/components/ui/button';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { PageTitle } from '@/components/layout/page-title';
 
 function entryKey(entry: LogEntry, index: number) {
   // Index keeps keys unique even if two lines share a timestamp + requestId.
@@ -293,6 +294,7 @@ export default function LogsPage() {
   return (
     <div className="animate-content-in pb-6 space-y-2">
       <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['logs'] })} />
+      <PageTitle>Logs</PageTitle>
       <LogsToolbar
         searchInput={searchInput}
         onSearchInputChange={setSearchInput}

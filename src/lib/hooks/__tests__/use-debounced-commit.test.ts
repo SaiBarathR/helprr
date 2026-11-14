@@ -60,6 +60,19 @@ describe('createDebouncedCommit', () => {
     expect(commit).not.toHaveBeenCalled();
   });
 
+  it('keeps a value pending when the commit says not now, and runs it again once the timer can fire', () => {
+    const commit = vi.fn((_value: string, reason: string) => (reason === 'pagehide' ? false : undefined));
+    const d = createDebouncedCommit<string>(commit, 600);
+    d.schedule('5000');
+    d.pagehide();
+    expect(commit).toHaveBeenLastCalledWith('5000', 'pagehide');
+    vi.advanceTimersByTime(600);
+    expect(commit).toHaveBeenLastCalledWith('5000', 'timer');
+    expect(commit).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(600);
+    expect(commit).toHaveBeenCalledTimes(2);
+  });
+
   it('a new schedule after a commit starts a fresh cycle', () => {
     const commit = vi.fn();
     const d = createDebouncedCommit<string>(commit, 600);

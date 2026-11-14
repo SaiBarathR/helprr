@@ -10,6 +10,7 @@ import { EmptyChartState } from './prowlarr-stats-shared';
 import { DaysPill } from './widget-filter-controls';
 import { useWidgetFilter } from './use-widget-filter';
 import { InsightsWidgetFrame, INSIGHTS_DAYS_OPTIONS, daysToRange } from './insights-widget-frame';
+import { fetchOrOffline } from '@/lib/network-error';
 
 // Chart lives in the insights card module (imports recharts); load it lazily so
 // recharts stays out of the dashboard's initial chunk.
@@ -28,7 +29,7 @@ const SERIES = [
 
 async function fetchLibrary(days: number, signal?: AbortSignal): Promise<InsightsLibraryResponse> {
   const { from, to } = daysToRange(days);
-  const res = await fetch(`/api/insights/library?from=${from}&to=${to}`, { signal });
+  const res = await fetchOrOffline(`/api/insights/library?from=${from}&to=${to}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }

@@ -193,6 +193,8 @@ describe('WantedTab', () => {
     expect(screen.queryByRole('button', { name: 'Select' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Search all' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Search for release' })).toBeNull();
-    expect(fetchMock.mock.calls.some(([url]) => url === '/api/instances')).toBe(false);
+    // The instance list is still read, to name each row's instance on its app
+    // chip; the page's instance filter loads the same cached list for everyone.
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/command')).length).toBe(0);
   });
 });

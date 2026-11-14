@@ -165,7 +165,7 @@ async function patchHandler(
 }
 
 async function deleteHandler(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   const auth = await requireUserCapability('scheduledAlerts.edit');
@@ -174,6 +174,21 @@ async function deleteHandler(
   const { id } = await params;
   const existing = await ownedAlert(auth.user.id, id);
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  // ?permanent=true removes a cancelled alert for good (its occurrences go with
+  // it). Only a cancelled one: an active alert is cancelled first, so one stray
+  // request can never wipe a live reminder. The owner check above still applies.
+  if (request.nextUrl.searchParams.get('permanent') === 'true') {
+    if (existing.status !== 'cancelled') {
+      return NextResponse.json({ error: 'Cancel the alert before deleting it' }, { status: 409 });
+    }
+    // Scoped to the owner and status again, in case it changed since the read.
+    const { count } = await prisma.scheduledAlert.deleteMany({
+      where: { id, userId: auth.user.id, status: 'cancelled' },
+    });
+    if (count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json({ ok: true, deleted: true });
+  }
 
   const now = new Date();
   await prisma.$transaction([

@@ -41,6 +41,22 @@ describe('default phone tabs', () => {
   });
 });
 
+describe('nav capability gates', () => {
+  const libraryGaps = NAV_ITEMS.find((item) => item.id === 'library-gaps')!;
+
+  // /api/library-gaps needs both libraries; the page would only show a load failure.
+  it('shows Library Gaps only with both series.view and movies.view', () => {
+    expect(navItemAllowed(libraryGaps, () => true, null)).toBe(true);
+    expect(navItemAllowed(libraryGaps, (cap) => cap !== 'series.view', null)).toBe(false);
+    expect(navItemAllowed(libraryGaps, (cap) => cap !== 'movies.view', null)).toBe(false);
+  });
+
+  it('gives every item but Settings a capability gate', () => {
+    const ungated = NAV_ITEMS.filter((item) => !item.requiredCapability && !item.requiredAnyCapability);
+    expect(ungated.map((item) => item.id)).toEqual(['settings']);
+  });
+});
+
 describe('saved navigation survives the new defaults', () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => {

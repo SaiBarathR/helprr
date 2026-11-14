@@ -111,6 +111,7 @@ export default function ScheduledAlertsPage() {
   const [addAt, setAddAt] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<SerializedAlert | null>(null);
   const [cancelTarget, setCancelTarget] = useState<SerializedAlert | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SerializedAlert | null>(null);
   const [cancelOccurrence, setCancelOccurrence] = useState<{ alertId: string; occurrenceId: string; title: string } | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
@@ -212,6 +213,22 @@ export default function ScheduledAlertsPage() {
     } finally {
       setCancelling(false);
       setCancelTarget(null);
+    }
+  }
+
+  // A cancelled alert can only be filtered out of the list otherwise.
+  async function deleteAlert(alert: SerializedAlert) {
+    setCancelling(true);
+    try {
+      const res = await fetch(`/api/scheduled-alerts/${alert.id}?permanent=true`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Failed to delete alert');
+      toast.success('Alert deleted');
+      invalidate();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to delete');
+    } finally {
+      setCancelling(false);
+      setDeleteTarget(null);
     }
   }
 
@@ -420,15 +437,25 @@ export default function ScheduledAlertsPage() {
                         },
                         {
                           id: 'destructive',
-                          actions: canEdit && alert.status === 'active'
-                            ? [{
-                                id: 'cancel-all',
-                                label: 'Cancel alert',
-                                icon: <Trash2 className="h-4 w-4" />,
-                                destructive: true,
-                                onSelect: () => setCancelTarget(alert),
-                              }]
-                            : [],
+                          actions: !canEdit
+                            ? []
+                            : alert.status === 'active'
+                              ? [{
+                                  id: 'cancel-all',
+                                  label: 'Cancel alert',
+                                  icon: <Trash2 className="h-4 w-4" />,
+                                  destructive: true,
+                                  onSelect: () => setCancelTarget(alert),
+                                }]
+                              : alert.status === 'cancelled'
+                                ? [{
+                                    id: 'delete-alert',
+                                    label: 'Delete alert',
+                                    icon: <Trash2 className="h-4 w-4" />,
+                                    destructive: true,
+                                    onSelect: () => setDeleteTarget(alert),
+                                  }]
+                                : [],
                         },
                       ]}
                     >
@@ -517,6 +544,27 @@ export default function ScheduledAlertsPage() {
                           <ResponsiveMenuActionItem destructive onSelect={() => setCancelTarget(alert)}>
                             <Trash2 className="h-4 w-4" />
                             Cancel alert
+                          </ResponsiveMenuActionItem>
+                        </ResponsiveMenu>
+                      )}
+                      {canEdit && alert.status === 'cancelled' && (
+                        <ResponsiveMenu
+                          title={alert.title}
+                          actions
+                          align="end"
+                          trigger={(
+                            <button
+                              type="button"
+                              className="relative touch-target p-1.5 rounded-md text-muted-foreground hover:bg-muted"
+                              aria-label="Alert actions"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </button>
+                          )}
+                        >
+                          <ResponsiveMenuActionItem destructive onSelect={() => setDeleteTarget(alert)}>
+                            <Trash2 className="h-4 w-4" />
+                            Delete alert
                           </ResponsiveMenuActionItem>
                         </ResponsiveMenu>
                       )}
@@ -678,6 +726,23 @@ export default function ScheduledAlertsPage() {
         busy={cancelling}
         onConfirm={() => {
           if (cancelTarget) void cancelAlert(cancelTarget);
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete this alert?"
+        description={
+          deleteTarget
+            ? `"${deleteTarget.title}" is removed from your alerts for good. Notifications it already sent stay in your history.`
+            : ''
+        }
+        confirmLabel="Delete alert"
+        destructive
+        busy={cancelling}
+        onConfirm={() => {
+          if (deleteTarget) void deleteAlert(deleteTarget);
         }}
       />
 

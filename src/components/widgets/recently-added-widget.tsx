@@ -25,6 +25,7 @@ import {
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { formatDate } from '@/lib/date-format';
+import { fetchOrOffline } from '@/lib/network-error';
 
 interface RecentItem {
   id: string;
@@ -61,7 +62,7 @@ function formatShortDate(dateStr: string): string {
 }
 
 async function fetchRecent(limit: number, signal?: AbortSignal): Promise<RecentItem[]> {
-  const res = await fetch(`/api/activity/recent?limit=${limit}`, { signal });
+  const res = await fetchOrOffline(`/api/activity/recent?limit=${limit}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return Array.isArray(data) ? data : [];

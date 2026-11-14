@@ -20,6 +20,7 @@ export function HeroTitle({
   textClassName,
   align = 'left',
   as: Tag = 'h1',
+  fetchPriority,
 }: {
   name: string;
   logoUrl: string | null;
@@ -32,6 +33,8 @@ export function HeroTitle({
    * one document is a duplicate landmark, so the hero passes 'p' there.
    */
   as?: 'h1' | 'p';
+  /** For a logo that loads before it is shown (the hero's later slides). */
+  fetchPriority?: 'high' | 'low' | 'auto';
 }) {
   const [logoFailed, setLogoFailed] = useState(false);
 
@@ -47,6 +50,7 @@ export function HeroTitle({
         fill
         sizes="384px"
         unoptimized
+        fetchPriority={fetchPriority}
         onError={() => setLogoFailed(true)}
         // Logo art is often dark; a shadow keeps it legible on a dark backdrop.
         className={cn(

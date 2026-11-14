@@ -4,6 +4,7 @@ import Link from '@/components/ui/app-link';
 import { Bookmark, ExternalLink, Film, List, Sparkles, Tv } from 'lucide-react';
 import { ApiError } from '@/lib/query-fetch';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { widgetFetch } from '@/lib/widgets/widget-fetch';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowShort } from '@/lib/format';
@@ -69,7 +70,7 @@ function typeBadge(mediaType: WatchlistWidgetItem['mediaType']) {
 }
 
 async function fetchWatchlist(signal?: AbortSignal): Promise<WatchlistWidgetItem[]> {
-  const res = await fetch('/api/watchlist', { signal });
+  const res = await widgetFetch('/api/watchlist', { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = (await res.json()) as WatchlistWidgetItem[];
   if (!Array.isArray(data)) return [];

@@ -36,7 +36,7 @@ import { useUIStore } from '@/lib/store';
 import { queryKeys } from '@/lib/query-keys';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
-import { invalidateCollections } from '@/lib/query-invalidation';
+import { invalidateCollections, invalidateLibraryMembership } from '@/lib/query-invalidation';
 import type { CollectionSummary } from '@/types';
 import { PageTitle } from '@/components/layout/page-title';
 
@@ -157,6 +157,7 @@ export default function MovieCollectionsPage() {
           missingMovies: Math.max(0, collection.missingMovies - result.addedTmdbIds.length),
         });
         invalidateCollections(queryClient);
+        invalidateLibraryMembership(queryClient);
       }
       if (result.firstError) handleAuthError(result.firstError);
       if (result.failed === 0) {

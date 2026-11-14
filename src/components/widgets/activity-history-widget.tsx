@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { Download, Film, Tv, AlertTriangle, Trash2, Info, Import, Clock, History } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { widgetFetch } from '@/lib/widgets/widget-fetch';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowShort, formatBytes } from '@/lib/format';
@@ -106,7 +107,7 @@ function getPosterUrl(r: HistoryRecord): string | null {
 }
 
 async function fetchHistory(pageSize: number, signal?: AbortSignal): Promise<HistoryRecord[]> {
-  const res = await fetch(`/api/activity/history?pageSize=${pageSize}`, { signal });
+  const res = await widgetFetch(`/api/activity/history?pageSize=${pageSize}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return data.records || [];

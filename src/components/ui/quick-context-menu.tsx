@@ -26,6 +26,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { closeOpenSwipeRow } from '@/components/ui/swipe-row';
+import { afterOverlayHistory } from '@/lib/overlay-history';
 import { cn } from '@/lib/utils';
 import { haptic } from '@/lib/haptics';
 
@@ -295,7 +296,12 @@ export function QuickContextMenu({
     menuOpenRef.current = next;
     if (next) {
       closeOpenSwipeRow();
-      setHistoryNav(getHistoryNavState());
+      setHistoryNav({
+        canGoBack: getHistoryNavState().canGoBack,
+        // The open menu puts its own Back entry on history (see
+        // overlay-history), and that push drops every forward entry.
+        canGoForward: false,
+      });
       // Drop any native selection the long-press (or right-click) created so
       // the floating menu is not fighting a blue highlight / callout handles.
       clearTextSelection();
@@ -503,7 +509,8 @@ export function QuickContextMenu({
             aria-label="Back"
             title="Back"
             onSelect={() => {
-              window.history.back();
+              // Past the menu's own Back entry, to the page before.
+              afterOverlayHistory(() => window.history.back());
             }}
           >
             <ArrowLeft />

@@ -18,6 +18,7 @@ import { DaysPill, JELLYFIN_DAYS_OPTIONS, MAX_DAYS } from './widget-filter-contr
 import { SectionHeader, HPR, EmptyState } from './bento-primitives';
 import { formatDurationSeconds } from '@/lib/jellyfin-helpers';
 import { formatDateTime } from '@/lib/date-format';
+import { fetchOrOffline } from '@/lib/network-error';
 
 interface Filters {
   days: number;
@@ -34,9 +35,11 @@ interface UserActivityData {
 async function fetchUserActivity(days: number, signal?: AbortSignal): Promise<UserActivityData> {
   const queryDays = days === 0 ? MAX_DAYS : days;
   const [pbRes, jfRes] = await Promise.allSettled([
-    fetch(`/api/jellyfin/playback/users?days=${queryDays}`, { signal }),
-    fetch('/api/jellyfin/users', { signal }),
+    fetchOrOffline(`/api/jellyfin/playback/users?days=${queryDays}`, { signal }),
+    fetchOrOffline('/api/jellyfin/users', { signal }),
   ]);
+  // Neither reached Helprr: say so, rather than an empty user list.
+  if (pbRes.status === 'rejected' && jfRes.status === 'rejected') throw pbRes.reason;
   let users: PlaybackUserActivity[] = [];
   let jellyfinUsers: JellyfinUser[] = [];
   let pluginAvailable = true;

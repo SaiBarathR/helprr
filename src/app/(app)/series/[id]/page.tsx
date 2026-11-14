@@ -9,6 +9,7 @@ import Link from '@/components/ui/app-link';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { PageHeader } from '@/components/layout/page-header';
+import { NotFoundState } from '@/components/ui/not-found-state';
 import { AniListRemapDrawer } from '@/components/anime/anilist-remap-drawer';
 import { getImageUrl } from '@/components/media/media-card';
 import {
@@ -18,7 +19,7 @@ import {
 import type { SonarrSeries, SonarrEpisode, DiscoverTvFullDetail } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { ensureArray, jsonFetcher, nullOn404 } from '@/lib/query-fetch';
+import { ApiError, ensureArray, jsonFetcher, nullOn404 } from '@/lib/query-fetch';
 import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
 import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
@@ -217,12 +218,14 @@ export default function SeriesDetailPage() {
 
   // Fetch failure is not "not found": only a confirmed 404 resolves to null.
   if (seriesQuery.isError && !series) {
+    // A refusal is not an outage, and retrying it can't help.
+    const forbidden = seriesQuery.error instanceof ApiError && seriesQuery.error.status === 403;
     return (
       <>
         <PageHeader title="Series" />
         <ErrorState
-          message="Couldn't load this series. Sonarr may be unreachable."
-          onRetry={() => seriesQuery.refetch()}
+          message={forbidden ? "You don't have access to Series." : "Couldn't load this series. Sonarr may be unreachable."}
+          onRetry={forbidden ? undefined : () => seriesQuery.refetch()}
           retrying={seriesQuery.isFetching}
         />
       </>
@@ -230,7 +233,7 @@ export default function SeriesDetailPage() {
   }
 
   if (!series) {
-    return <div className="text-center py-12 text-muted-foreground">Series not found</div>;
+    return <><PageHeader title="Series" /><NotFoundState message="Series not found" /></>;
   }
 
   const poster = getImageUrl(series.images, 'poster', 'sonarr');

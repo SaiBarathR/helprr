@@ -16,7 +16,7 @@ import { queryKeys } from '@/lib/query-keys';
 import { applyPendingImports, usePendingImports } from '@/lib/manual-import-tracker';
 import { useCan } from '@/components/permission-provider';
 import { canManualImport, getQueueMediaHref, manualImportHref, needsManualImport, statusLabel } from './queue-records';
-import { TabErrorState } from './shared';
+import { TabErrorState, useSourceChipLabel } from './shared';
 import { HistoryEventDrawer, HistoryEventRow, type HistoryRecord } from './history-event';
 
 const RECENT_FAILURE_DAYS = 7;
@@ -76,6 +76,7 @@ function RecentFailures({ filterBy, instanceFilter }: { filterBy: string[]; inst
   });
   // Only for those who can choose Lidarr in the filter: without music.view it isn't offered.
   const canViewMusic = useCan('music.view');
+  const sourceChipLabel = useSourceChipLabel();
   const lidarrSkipped = canViewMusic && hasLidarr && filterBy.length === 0 && instanceFilter === 'all';
   const failures = useMemo(
     () => (failuresQuery.data?.records ?? []).filter(
@@ -117,6 +118,7 @@ function RecentFailures({ filterBy, instanceFilter }: { filterBy: string[]; inst
           <HistoryEventRow
             key={`${item.source}-${item.instanceId ?? ''}-${item.id}-${i}`}
             item={item}
+            sourceLabel={sourceChipLabel(item)}
             onSelect={() => setSelected(item)}
           />
         ))}

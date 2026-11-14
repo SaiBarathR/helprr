@@ -9,6 +9,7 @@ import { formatDelta } from '@/lib/cleanup/format-delta';
 import type { WidgetProps } from '@/lib/widgets/types';
 import type { AutoRunMode } from '@/lib/cleanup/types';
 import { FONT_DISPLAY, FONT_MONO, HPR, Pill, SectionHeader, mix } from './bento-primitives';
+import { fetchOrOffline } from '@/lib/network-error';
 
 interface SchedulerLeg {
   autoRunMode: AutoRunMode;
@@ -47,15 +48,19 @@ interface CleanupStatusData {
 async function fetchCleanupStatus(signal?: AbortSignal): Promise<CleanupStatusData> {
   // Per-request fallbacks: a single endpoint failing (network error or non-2xx)
   // degrades just its own section instead of blanking the whole widget.
-  const [schedRes, strikesRes, statsRes] = await Promise.all([
-    fetch('/api/cleanup/scheduler-status', { signal }).catch(() => null),
+  const results = await Promise.allSettled([
+    fetchOrOffline('/api/cleanup/scheduler-status', { signal }),
     // Compact preview: top 5 strikes; the header count comes from the response total.
-    fetch('/api/cleanup/strikes?limit=5', { signal }).catch(() => null),
+    fetchOrOffline('/api/cleanup/strikes?limit=5', { signal }),
     // Offset at local midnight (not now) so DST-transition days keep the
     // server's "today" boundary aligned with the user's calendar day.
-    fetch(`/api/cleanup/stats?tzOffsetMinutes=${new Date(new Date().setHours(0, 0, 0, 0)).getTimezoneOffset()}`, { signal }).catch(() => null),
+    fetchOrOffline(`/api/cleanup/stats?tzOffsetMinutes=${new Date(new Date().setHours(0, 0, 0, 0)).getTimezoneOffset()}`, { signal }),
   ]);
   signal?.throwIfAborted();
+  // None reached Helprr: say so, rather than "0 strikes" and an idle scheduler.
+  const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (failed.length === results.length) throw failed[0].reason;
+  const [schedRes, strikesRes, statsRes] = results.map((r) => (r.status === 'fulfilled' ? r.value : null));
   const strikesJson = strikesRes?.ok
     ? ((await strikesRes.json()) as { records?: StrikeRow[]; total?: number })
     : { records: [], total: 0 };
@@ -97,8 +102,9 @@ export function CleanupStatusWidget({ refreshInterval, editMode = false }: Widge
           </Link>
         }
       />
-      {/* 2×2 below 220px so labels and values stay fully readable. */}
-      <div className="mb-2 grid grid-cols-4 gap-1.5 @max-[219px]/cell:grid-cols-2">
+      {/* 2×2 below 320px so labels and values stay fully readable: a quarter
+          of a ~280px cell (colSpan 4 at 1023px) cut "Re-search" short. */}
+      <div className="mb-2 grid grid-cols-4 gap-1.5 @max-[319px]/cell:grid-cols-2">
         <CleanupTile label="Today" value={stats?.removedToday} color={HPR.fgMute} />
         <CleanupTile label="Past 7d" value={stats?.removedThisWeek} color={HPR.green} />
         <CleanupTile label="Strikes" value={stats?.totalStrikes} color={HPR.amber} />

@@ -8,9 +8,10 @@ import { HPR } from './bento-primitives';
 import { InsightsWidgetFrame } from './insights-widget-frame';
 import { Stat } from '@/components/insights/insights-shared';
 import { StorageItemRow, KIND_COLOR } from '@/components/insights/storage-insights-card';
+import { fetchOrOffline } from '@/lib/network-error';
 
 async function fetchStorage(signal?: AbortSignal): Promise<InsightsStorageResponse> {
-  const res = await fetch('/api/insights/storage', { signal });
+  const res = await fetchOrOffline('/api/insights/storage', { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }

@@ -13,7 +13,7 @@ const props: ComponentProps<typeof DiscoverToolbar> = {
   searchParamsKey: 'section=upcoming', query: '', handleQueryChange: vi.fn(),
   discoverContentType: 'all', handleSelectContentType: vi.fn(), handleOpenFilters: vi.fn(),
   activeAdvancedFilterCount: 0, discoverSort: 'upcoming', handleSelectSort: vi.fn(),
-  rateLimitInfo: null, rateLimitCountdown: null,
+  rateLimitInfo: null, rateLimitCountdown: null, unavailable: null,
 };
 let chipBounds: { left: number; right: number };
 
@@ -127,5 +127,25 @@ describe('Discover sort chips during a search', () => {
     expect(chip.getAttribute('aria-pressed')).toBe('true');
     chip.click();
     expect(handleSelectSort).toHaveBeenCalledWith('upcoming');
+  });
+});
+
+describe('Discover partial-failure notice', () => {
+  it('names what is missing and retries only on a tap', () => {
+    const onRetry = vi.fn();
+    render(<DiscoverToolbar {...props} unavailable={{ names: ['Trending', 'Tamil Trending'], onRetry, retrying: false }} />);
+
+    expect(screen.getByText("Some of Discover couldn't load")).toBeTruthy();
+    expect(screen.getByText('Missing: Trending and Tamil Trending.')).toBeTruthy();
+    expect(onRetry).not.toHaveBeenCalled();
+    screen.getByRole('button', { name: 'Retry' }).click();
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it('holds Retry while the retry runs, and shows nothing when all loaded', () => {
+    const view = render(<DiscoverToolbar {...props} unavailable={{ names: ['Trending'], onRetry: vi.fn(), retrying: true }} />);
+    expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(true);
+    view.rerender(<DiscoverToolbar {...props} unavailable={null} />);
+    expect(screen.queryByText("Some of Discover couldn't load")).toBeNull();
   });
 });

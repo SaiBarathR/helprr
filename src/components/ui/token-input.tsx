@@ -218,7 +218,7 @@ export function TokenInput({
   };
 
   return (
-    <Popover open={open} onOpenChange={(o) => { if (!o) setDismissed(true); }} modal={false}>
+    <Popover open={open} onOpenChange={(o) => { if (!o) setDismissed(true); }} modal={false} backCloses={false}>
       <PopoverAnchor asChild>
         <div
           className={cn(

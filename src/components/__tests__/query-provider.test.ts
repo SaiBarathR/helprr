@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   cancelQueries: vi.fn(),
   clearBrowserCaches: vi.fn(),
+  markCachesInUse: vi.fn(),
   clearQueryClient: vi.fn(),
   invalidateQueries: vi.fn(),
   invalidateExternalUrls: vi.fn(),
@@ -44,6 +45,7 @@ vi.mock('@/lib/hooks/use-external-urls', () => ({
 }));
 vi.mock('@/lib/client-cache', () => ({
   clearUserScopedBrowserCaches: mocks.clearBrowserCaches,
+  markUserScopedCachesInUse: mocks.markCachesInUse,
   subscribeToAuthenticationBoundaries: mocks.subscribe,
   subscribeToSessionEnd: mocks.subscribeSessionEnd,
 }));
@@ -117,6 +119,15 @@ describe('QueryProvider service-worker synchronization', () => {
 });
 
 describe('QueryProvider authentication boundaries', () => {
+  // Login asks the server whether a session ended only after a signed-in shell ran here.
+  it('marks the user-scoped caches as in use when the signed-in shell mounts', async () => {
+    mocks.markCachesInUse.mockClear();
+    await act(async () => {
+      root.render(createElement(QueryProvider, null, 'Content'));
+    });
+    expect(mocks.markCachesInUse).toHaveBeenCalledTimes(1);
+  });
+
   it('commits the neutral screen before clearing persistent caches', async () => {
     let privateTreePresentWhenClearStarted: boolean | undefined;
     let boundaryScreenPresentWhenClearStarted: boolean | undefined;

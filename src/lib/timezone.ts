@@ -48,6 +48,11 @@ export function getSupportedTimeZones(): string[] {
   ];
 }
 
+/** This device's time zone (the browser's), as the screens show their days in it. */
+export function getDeviceTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
 export function toDate(input: Date | string | number): Date {
   return input instanceof Date ? input : new Date(input);
 }

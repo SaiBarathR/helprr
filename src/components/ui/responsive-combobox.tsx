@@ -6,7 +6,6 @@ import { Command, CommandInput, CommandList } from '@/components/ui/command';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { useIsMobile } from '@/hooks/use-is-mobile';
-import { useCloseOnBack } from '@/lib/overlay-history';
 
 /**
  * A long list to pick one from, with a search field: a popover from md up and,
@@ -36,10 +35,6 @@ export function ResponsiveCombobox({ open, onOpenChange, trigger, title, searchP
 }) {
   // Tailwind's md starts at 768px, so "below md" is up to 767px.
   const isPhone = useIsMobile(767);
-  // The phone sheet does this itself; the popover closes on Back too, one
-  // Back before the sheet or dialog it opened from.
-  useCloseOnBack(!isPhone && open, () => onOpenChange(false));
-
   // Each new search starts at the top of the list. On the first key cmdk
   // scrolled to the row still highlighted, the current pick, already sorted
   // ~30 rows down, then moved the highlight to the new best match without

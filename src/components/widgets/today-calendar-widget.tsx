@@ -4,6 +4,7 @@ import { ApiError } from '@/lib/query-fetch';
 import Link from '@/components/ui/app-link';
 import { Check, Disc3, Film, Tv, CalendarDays } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { widgetFetch } from '@/lib/widgets/widget-fetch';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
@@ -27,14 +28,21 @@ import {
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { formatTime as formatDisplayTime } from '@/lib/date-format';
+import { compareCalendarEvents, isReleaseDayEvent } from '@/lib/release-day';
 
 // The header plus a carousel card's poster (with its badges and air time) and
 // title line. A shorter cell, such as a phone's two-row default, cut the
 // poster and hid the title and time, so it shows the list, which scrolls.
 const CAROUSEL_FIT_HEIGHT = SECTION_HEADER_HEIGHT + CAROUSEL_CARD_HEIGHT + 24;
 
-function formatTime(dateStr: string): string {
-  const d = new Date(dateStr);
+/**
+ * An episode's air time. A film or album release is a day (release-day.ts):
+ * "All day", as on the Calendar page; upstream's UTC midnight read as a time
+ * was "5:30 AM" in India and the afternoon before west of UTC.
+ */
+function formatTime(ev: CalendarEvent): string {
+  if (isReleaseDayEvent(ev)) return 'All day';
+  const d = new Date(ev.date);
   if (!Number.isFinite(d.getTime())) return '';
   return formatDisplayTime(d);
 }
@@ -75,9 +83,12 @@ function typeColor(type: CalendarEvent['type']): string {
 }
 
 async function fetchToday(signal?: AbortSignal): Promise<CalendarEvent[]> {
-  const res = await fetch('/api/calendar?days=1&fullDay=true', { signal });
+  const path = '/api/calendar?days=1&fullDay=true';
+  // An offline snapshot from the worker shows the shared "saved data" notice, as Calendar does.
+  const res = await widgetFetch(path, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
-  return res.json();
+  // Listed as Calendar lists them (all-day first, then by time), not upstream's instant order.
+  return ((await res.json()) as CalendarEvent[]).sort(compareCalendarEvents);
 }
 
 function shortTagFor(ev: CalendarEvent): { label: string; color: string } | null {
@@ -108,7 +119,7 @@ export function TodayCalendarWidget({
     ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
     : 10;
   const visibleCount = Math.max(listVisible, carouselVisible);
-  const { data, loading } = useWidgetData({
+  const { data, loading, error, offline } = useWidgetData({
     fetchFn: fetchToday,
     refreshInterval,
     enabled: !editMode,
@@ -153,7 +164,9 @@ export function TodayCalendarWidget({
         <SectionHeader title="Today" badge={<Pill color={HPR.amber}>0</Pill>} right={toggleNode} />
         <EmptyState>
           <CalendarDays size={18} />
-          Nothing airing today
+          {/* Past the saved copy's five minutes (or with none), a failed load is
+              not an empty day: say why, as the Calendar page does. */}
+          {offline ? "You're offline" : error ?? 'Nothing airing today'}
         </EmptyState>
       </div>
     );
@@ -182,7 +195,7 @@ export function TodayCalendarWidget({
           }}
         >
           {list.slice(0, visibleCount).map((ev) => {
-            const time = formatTime(ev.date);
+            const time = formatTime(ev);
             const poster = getPoster(ev.images, posterHint(ev.type));
             const row = (
               <div
@@ -318,7 +331,7 @@ export function TodayCalendarWidget({
         style={{ display: 'flex', gap: CAROUSEL_GAP, overflowX: 'auto', paddingBottom: 4 }}
       >
         {list.slice(0, visibleCount).map((ev) => {
-          const time = formatTime(ev.date);
+          const time = formatTime(ev);
           const poster = getPoster(ev.images, posterHint(ev.type));
           const tag = shortTagFor(ev);
           const card = (

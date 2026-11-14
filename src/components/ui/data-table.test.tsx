@@ -80,3 +80,80 @@ describe('DataTable sticky header', () => {
     expect(screen.getByRole('columnheader').style.top).toBe('');
   });
 });
+
+describe('DataTable column resize', () => {
+  const columns = [
+    { id: 'title', label: 'Title', width: 200, grow: true, cell: (row: string) => row },
+    { id: 'year', label: 'Year', width: 80, cell: () => '1979' },
+    { id: 'size', label: 'Size', width: 90, cell: () => '4 GB' },
+  ];
+  const cols = () => [...document.querySelectorAll('col')] as HTMLTableColElement[];
+  const drag = (grip: Element, from: number, to: number) => act(() => {
+    grip.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: from }));
+    grip.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: to }));
+    grip.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: to }));
+  });
+
+  beforeEach(() => {
+    HTMLElement.prototype.setPointerCapture = vi.fn();
+  });
+
+  it('paints each sticky header cell over the next, so a grip overhanging the next cell stays grabbable', () => {
+    render(<DataTable tableId="resize-test" columns={columns} rows={['Alien']} rowKey={String} stickyHeader />);
+    const z = screen.getAllByRole('columnheader').map((th) => Number(th.style.zIndex));
+    expect(z[0]).toBeGreaterThan(z[1]);
+    expect(z[1]).toBeGreaterThan(z[2]);
+    // Still under the sticky page toolbar (z-index 30).
+    expect(Math.max(...z)).toBeLessThan(30);
+  });
+
+  it.each([
+    // [drag, saved minimum]: at 1440 Title shows 640px over its 200px minimum.
+    [40, 680],
+    // Narrower lowers the minimum; it never saves the wide on-screen width
+    // (which made the table scroll sideways at 1280 and below).
+    [-40, 160],
+  ])('a %ipx drag on the grow column at a wide viewport saves %ipx', (dx, saved) => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { width: this.tagName === 'TH' ? 640 : tableWidth } as DOMRect;
+    });
+    render(<DataTable tableId="resize-test" columns={columns} rows={['Alien']} rowKey={String} />);
+    drag(screen.getAllByRole('separator')[0], 300, 300 + dx);
+    expect(cols()[0].style.minWidth).toBe(`${saved}px`);
+    expect(JSON.parse(localStorage.getItem('helprr-table:resize-test') ?? '{}').widths).toEqual({ title: saved });
+  });
+
+  it('resizes the grow column from its width on screen and keeps it absorbing the leftover space', () => {
+    // The grow column shows 500px wide: well over its 200px minimum.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { width: this.tagName === 'TH' ? 500 : tableWidth } as DOMRect;
+    });
+    render(<DataTable tableId="resize-test" columns={columns} rows={['Alien']} rowKey={String} />);
+    drag(screen.getAllByRole('separator')[0], 100, 160);
+    // 500 + 60, not 200 + 60; still a minimum (no fixed width handing the
+    // leftover to Year and Size).
+    expect(cols()[0].style.minWidth).toBe('560px');
+    expect(cols()[0].style.width).toBe('');
+    expect(cols()[1].style.width).toBe('80px');
+    expect(JSON.parse(localStorage.getItem('helprr-table:resize-test') ?? '{}').widths).toEqual({ title: 560 });
+  });
+
+  it('decides a drag\'s way once: a wobble saves nothing, and a widening drag that comes back past its start never saves the wide width', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { width: this.tagName === 'TH' ? 500 : tableWidth } as DOMRect;
+    });
+    render(<DataTable tableId="resize-test" columns={columns} rows={['Alien']} rowKey={String} />);
+    const grip = screen.getAllByRole('separator')[0];
+    // A 2px touch wobble: inside the dead zone, nothing changes or is saved as a wide minimum.
+    drag(grip, 100, 102);
+    expect(cols()[0].style.minWidth).toBe('200px');
+    // Widening, then back past the start: it goes back to the stored width, not 500 - 20.
+    act(() => {
+      grip.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 100 }));
+      grip.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 110 }));
+      grip.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 80 }));
+      grip.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 80 }));
+    });
+    expect(cols()[0].style.minWidth).toBe('200px');
+  });
+});

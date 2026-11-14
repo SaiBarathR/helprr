@@ -22,6 +22,7 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useWidgetFilter } from './use-widget-filter';
+import { fetchOrOffline } from '@/lib/network-error';
 
 interface RandomWatchResponse {
   pick: RandomPick | null;
@@ -33,7 +34,7 @@ async function fetchRandomWatch(
   watch: 'all' | 'unwatched',
   signal?: AbortSignal,
 ): Promise<RandomWatchResponse> {
-  const res = await fetch(`/api/random-watch?type=${type}&watch=${watch}`, {
+  const res = await fetchOrOffline(`/api/random-watch?type=${type}&watch=${watch}`, {
     signal,
     cache: 'no-store',
   });

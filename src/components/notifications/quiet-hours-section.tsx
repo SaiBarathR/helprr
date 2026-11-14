@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { hourLabel } from '@/lib/format';
+import { useHashTarget } from '@/lib/hooks/use-hash-target';
 
 interface QuietHours {
   quietHoursEnabled: boolean;
@@ -23,8 +24,12 @@ interface QuietHours {
 const TRIGGER_CLASS =
   'w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5';
 
+// Check push setup's "Quiet hours are on now" row links to /settings/notifications#quiet-hours.
+const QUIET_HOURS_ANCHOR = 'quiet-hours';
+
 export function QuietHoursSection() {
   const queryClient = useQueryClient();
+  const anchorRef = useHashTarget<HTMLDivElement>(QUIET_HOURS_ANCHOR);
   const { data: state = null, isLoading: loading } = useQuery({
     queryKey: ['me-settings'],
     queryFn: jsonFetcher<QuietHours>('/api/me/settings'),
@@ -84,59 +89,61 @@ export function QuietHoursSection() {
   }
 
   return (
-    <GroupedSection
-      title="Quiet hours"
-      footer="Applies to your account across all devices, in your timezone. Service-down and health alerts always come through."
-    >
-      <div className="grouped-row items-start">
-        <div className="min-w-0 flex-1 pr-3">
-          <div className="text-sm font-medium">Mute non-critical pushes</div>
-          <div className="text-xs text-muted-foreground mt-0.5">
-            Silence downloads, imports, and other routine alerts overnight.
+    <div id={QUIET_HOURS_ANCHOR} ref={anchorRef} className="scroll-mt-[calc(var(--header-height,0px)+0.75rem)]">
+      <GroupedSection
+        title="Quiet hours"
+        footer="Applies to your account across all devices, in your timezone. Service-down and health alerts always come through."
+      >
+        <div className="grouped-row items-start">
+          <div className="min-w-0 flex-1 pr-3">
+            <div className="text-sm font-medium">Mute non-critical pushes</div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              Silence downloads, imports, and other routine alerts overnight.
+            </div>
           </div>
+          <Switch
+            checked={enabled}
+            onCheckedChange={handleToggle}
+            disabled={loading}
+            aria-label="Quiet hours"
+          />
         </div>
-        <Switch
-          checked={enabled}
-          onCheckedChange={handleToggle}
-          disabled={loading}
-          aria-label="Quiet hours"
-        />
-      </div>
 
-      {enabled && (
-        <>
-          <div className="grouped-row">
-            <span className="text-sm">From</span>
-            <Select value={String(start)} onValueChange={(v) => void patch({ quietHoursStart: parseInt(v, 10) })}>
-              <SelectTrigger className={TRIGGER_CLASS}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Array.from({ length: 24 }, (_, i) => (
-                  <SelectItem key={i} value={String(i)}>
-                    {hourLabel(i)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grouped-row">
-            <span className="text-sm">Until</span>
-            <Select value={String(end)} onValueChange={(v) => void patch({ quietHoursEnd: parseInt(v, 10) })}>
-              <SelectTrigger className={TRIGGER_CLASS}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Array.from({ length: 24 }, (_, i) => (
-                  <SelectItem key={i} value={String(i)}>
-                    {hourLabel(i)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </>
-      )}
-    </GroupedSection>
+        {enabled && (
+          <>
+            <div className="grouped-row">
+              <span className="text-sm">From</span>
+              <Select value={String(start)} onValueChange={(v) => void patch({ quietHoursStart: parseInt(v, 10) })}>
+                <SelectTrigger className={TRIGGER_CLASS}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <SelectItem key={i} value={String(i)}>
+                      {hourLabel(i)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grouped-row">
+              <span className="text-sm">Until</span>
+              <Select value={String(end)} onValueChange={(v) => void patch({ quietHoursEnd: parseInt(v, 10) })}>
+                <SelectTrigger className={TRIGGER_CLASS}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <SelectItem key={i} value={String(i)}>
+                      {hourLabel(i)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        )}
+      </GroupedSection>
+    </div>
   );
 }

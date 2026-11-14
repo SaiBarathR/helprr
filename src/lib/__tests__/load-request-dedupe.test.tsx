@@ -80,6 +80,18 @@ it('loads /api/settings once for the log capture, the settings query and the ref
   expect(callsTo('/api/settings')).toBe(1);
 });
 
+it('leaves /api/settings alone on a signed-out page, where it could only 401', async () => {
+  const { rerender } = render(<ClientLogCapture signedIn={false} />);
+  act(() => document.dispatchEvent(new Event('visibilitychange')));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+  expect(callsTo('/api/settings')).toBe(0);
+
+  // Signed in (the sign-in refresh re-renders the layout): it reads at once,
+  // not only at the next visibility change.
+  rerender(<ClientLogCapture signedIn />);
+  await waitFor(() => expect(callsTo('/api/settings')).toBe(1));
+});
+
 it('does not reuse a failed /api/settings read', async () => {
   fetchMock.mockResolvedValueOnce(new Response(null, { status: 503 }));
   await expect(fetchAppSettings()).rejects.toThrow();

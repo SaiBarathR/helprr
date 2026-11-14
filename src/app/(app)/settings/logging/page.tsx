@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { useCan } from '@/components/permission-provider';
 import { useAppSettings, type AppSettingsState } from '@/lib/hooks/use-app-settings';
 import { useDebouncedCommit } from '@/lib/hooks/use-debounced-commit';
 import {
@@ -37,6 +38,9 @@ function dispatchClientLogSettings(detail: ClientLogCaptureSettingsEvent) {
 
 export default function LoggingSettingsPage() {
   const { settings, loading, update } = useAppSettings();
+  // Deleting log files is "Delete logs" (logs.manage, DELETE /api/logs/files),
+  // a separate grant from these logging settings.
+  const canDeleteLogs = useCan('logs.manage');
   const previousLogEnabled = useRef<boolean | null>(null);
   const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
   const [purgingLogs, setPurgingLogs] = useState(false);
@@ -64,29 +68,35 @@ export default function LoggingSettingsPage() {
   // Debounced commits that flush (instead of cancelling) on unmount, so a
   // quick back-nav can't silently drop the last edit. Validation runs in the
   // commit so timer, blur, and unmount all share it; an invalid draft at
-  // unmount is dropped silently (no toast/reset from an unmounting page).
+  // unmount is dropped silently (no toast/reset from a page that is going
+  // away), and at page hide it waits for the page to be back.
   const maxFileMbCommit = useDebouncedCommit<string>((value, reason) => {
     const parsed = parseInt(value, 10);
     if (!Number.isFinite(parsed) || parsed < 1 || parsed > 1024) {
+      // Hidden but maybe still alive (an iOS app switch): keep it pending, so
+      // the error shows when the page is back instead of the value staying
+      // in the field unsaved and unexplained.
+      if (reason === 'pagehide') return false;
       if (reason !== 'unmount') {
         toast.error('Rotate at must be between 1 and 1024 MB');
         if (settings) setMaxFileMbDraft(String(settings.logMaxFileMb));
       }
       return;
     }
-    void update({ logMaxFileMb: parsed });
+    void update({ logMaxFileMb: parsed }, reason === 'pagehide' ? { keepalive: true } : undefined);
   }, 700);
 
   const retentionDaysCommit = useDebouncedCommit<string>((value, reason) => {
     const parsed = parseInt(value, 10);
     if (!Number.isFinite(parsed) || parsed < 1 || parsed > 3650) {
+      if (reason === 'pagehide') return false;
       if (reason !== 'unmount') {
         toast.error('Retention must be between 1 and 3650 days');
         if (settings) setRetentionDaysDraft(String(settings.logRetentionDays));
       }
       return;
     }
-    void update({ logRetentionDays: parsed });
+    void update({ logRetentionDays: parsed }, reason === 'pagehide' ? { keepalive: true } : undefined);
   }, 700);
 
   async function handleToggleEnabled(next: boolean) {
@@ -98,7 +108,7 @@ export default function LoggingSettingsPage() {
       logEnabled: result.logEnabled,
       logClientConsoleEnabled: result.logClientConsoleEnabled,
     });
-    if (wasEnabled === true && next === false) {
+    if (wasEnabled === true && next === false && canDeleteLogs) {
       setPurgeConfirmOpen(true);
     }
   }
@@ -265,13 +275,18 @@ export default function LoggingSettingsPage() {
         </fieldset>
       </GroupedSection>
 
-      <GroupedSection title="Files" footer="Server action — affects all devices">
+      <GroupedSection
+        title="Files"
+        footer={canDeleteLogs
+          ? 'Server action — affects all devices'
+          : 'Deleting log files needs “Delete logs”, which an admin turns on in Settings → Users.'}
+      >
         <div className="px-4 py-3">
           <Button
             variant="outline"
             className="w-full h-9"
             onClick={() => setPurgeConfirmOpen(true)}
-            disabled={purgingLogs}
+            disabled={purgingLogs || !canDeleteLogs}
           >
             {purgingLogs ? (
               <>

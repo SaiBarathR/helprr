@@ -25,6 +25,8 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
+import { fetchOrOffline } from '@/lib/network-error';
+import { CompactRailTile } from './compact-rail-tile';
 
 interface SeasonWindow {
   season: AniListMediaSeason;
@@ -94,7 +96,7 @@ async function fetchHomeDataCached(perPage: number, signal?: AbortSignal) {
   if (existing && !existing.signal?.aborted && now - existing.time < HOME_CACHE_TTL_MS) {
     return existing.promise;
   }
-  const promise = fetch(`/api/anime/home?perPage=${clamped}`, { signal })
+  const promise = fetchOrOffline(`/api/anime/home?perPage=${clamped}`, { signal })
     .then((res) => {
       if (!res.ok) throw new Error('Failed to fetch anime home data');
       return res.json() as Promise<HomeData>;
@@ -125,6 +127,7 @@ export function AnimeCarouselWidget({
   refreshInterval,
   editMode,
   narrow,
+  rowSpan,
   layoutVariant,
   instanceId,
   mobileGrid = false,
@@ -169,7 +172,7 @@ export function AnimeCarouselWidget({
   const { data: listData, loading: listLoading } = useWidgetData<AniListMediaListEntry[]>({
     fetchFn: async (signal) => {
       const status = carouselId === 'continueWatching' ? 'CURRENT' : 'PLANNING';
-      const res = await fetch(`/api/anilist/library?type=ANIME&status=${status}`, { signal });
+      const res = await fetchOrOffline(`/api/anilist/library?type=ANIME&status=${status}`, { signal });
       if (!res.ok) throw new Error(`Failed to fetch ${status} list`);
       const json = await res.json();
       return flattenEntries(json.collection);
@@ -261,6 +264,29 @@ export function AnimeCarouselWidget({
           No items
         </EmptyState>
       </div>
+    );
+  }
+
+  // The one-row narrow cell the watchlist widget also gives its own compact tile.
+  if (narrow && (rowSpan ?? 1) <= 1) {
+    const top = items[0];
+    const isManga = top && (top.format === 'MANGA' || top.format === 'NOVEL' || top.format === 'ONE_SHOT');
+    return (
+      <CompactRailTile
+        title={title}
+        viewAllHref={viewAllHref}
+        editMode={editMode}
+        item={top ? {
+          href: isManga ? `/anime/manga/${top.id}` : `/anime/${top.id}`,
+          title: top.title,
+          meta: [
+            top.format?.replace('_', ' '),
+            top.episodes != null ? `${top.episodes} eps` : null,
+            top.seasonYear != null ? String(top.seasonYear) : null,
+          ].filter(Boolean).join(' · '),
+          imageUrl: top.coverImage ? toCachedImageSrc(top.coverImage, 'anilist') || top.coverImage : null,
+        } : null}
+      />
     );
   }
 
