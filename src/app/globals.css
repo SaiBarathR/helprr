@@ -269,13 +269,17 @@
    88 pt, sharp again from 96 pt. The top nav's icons sat at 68.75–88.75 pt
    there and came out soft, while the bottom bar's stayed crisp. 27px lower
    they start at 96 pt. --header-height takes the same drop, so the page and
-   its sticky toolbars stay right under the bar. Only on an iPhone in portrait
-   (measured there, under the status bar; landscape has none) with the nav at
-   the top (the bar is the sidebar from md up), and not while the cinematic
-   skin hides the bar; a Safari tab starts below the status bar and has no
-   such band. data-iphone-app is stamped pre-paint (THEME_BOOTSTRAP_SCRIPT). */
+   its sticky toolbars stay right under the bar. The band grows with the
+   status bar (an iPhone SE's icons at 53.75 pt are crisp), and an iPad's
+   Home Screen app has it too (iPad mini, 32 pt inset: icons at 38.75 pt were
+   soft), so the same drop clears it there. Only in a portrait window (an
+   iPhone in landscape has no status bar) narrow enough for the top bar (it
+   is the sidebar from md up: an iPad mini in portrait, Split View, Slide
+   Over), with the nav at the top, and not while the cinematic skin hides the
+   bar; a Safari tab starts below the status bar and has no such band.
+   data-ios-app is stamped pre-paint (THEME_BOOTSTRAP_SCRIPT). */
 @media (max-width: 767.98px) and (orientation: portrait) {
-  :root[data-iphone-app]:not([data-nav-position="bottom"]):not([data-watch-skin='cinematic']:has(.hpr-watch)) {
+  :root[data-ios-app]:not([data-nav-position="bottom"]):not([data-watch-skin='cinematic']:has(.hpr-watch)) {
     --top-nav-drop: 27px;
   }
 }

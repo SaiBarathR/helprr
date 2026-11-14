@@ -120,10 +120,10 @@ describe('pre-paint nav position stamp', () => {
 });
 
 // globals.css lowers the top nav out of the band iOS blurs in a Home Screen app.
-describe('pre-paint iPhone Home Screen app stamp', () => {
+describe('pre-paint iOS Home Screen app stamp', () => {
   const run = () => new Function(THEME_BOOTSTRAP_SCRIPT)();
   const iPhone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)';
-  const stamped = () => document.documentElement.hasAttribute('data-iphone-app');
+  const stamped = () => document.documentElement.hasAttribute('data-ios-app');
 
   function device(userAgent: string, { standalone, displayStandalone }: { standalone?: boolean; displayStandalone: boolean }) {
     vi.stubGlobal('navigator', { ...navigator, userAgent, standalone });
@@ -133,7 +133,7 @@ describe('pre-paint iPhone Home Screen app stamp', () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => {
     localStorage.clear();
-    document.documentElement.removeAttribute('data-iphone-app');
+    document.documentElement.removeAttribute('data-ios-app');
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -162,15 +162,25 @@ describe('pre-paint iPhone Home Screen app stamp', () => {
     expect(stamped()).toBe(false);
   });
 
-  // The blur was measured on an iPhone; an iPad mini's 744 pt portrait window
-  // and narrow Split View or Stage Manager windows have the phone layout too.
-  it('leaves an iPad Home Screen app unmarked', () => {
+  // An iPad's Home Screen app has the blur too (iPad mini: soft icons at 38.75 pt).
+  it('marks an iPad Home Screen app, also when iPadOS asks for the desktop site as a Mac', () => {
     device('Mozilla/5.0 (iPad; CPU OS 27_0 like Mac OS X)', { standalone: true, displayStandalone: true });
     run();
-    expect(stamped()).toBe(false);
-    // iPadOS reports itself as a Mac with touch.
+    expect(stamped()).toBe(true);
+    document.documentElement.removeAttribute('data-ios-app');
     device('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', { standalone: true, displayStandalone: true });
     vi.stubGlobal('navigator', { ...navigator, platform: 'MacIntel', maxTouchPoints: 5 });
+    run();
+    expect(stamped()).toBe(true);
+  });
+
+  it('leaves an iPad Safari tab and a Mac without touch unmarked', () => {
+    device('Mozilla/5.0 (iPad; CPU OS 27_0 like Mac OS X)', { standalone: false, displayStandalone: false });
+    run();
+    expect(stamped()).toBe(false);
+    // A Mac web app (Add to Dock) is standalone, but has no touch.
+    device('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', { displayStandalone: true });
+    vi.stubGlobal('navigator', { ...navigator, platform: 'MacIntel', maxTouchPoints: 0 });
     run();
     expect(stamped()).toBe(false);
   });
@@ -204,14 +214,14 @@ describe('top nav drop below the iOS blur', () => {
   const media = css.slice(css.lastIndexOf('@media', at), css.indexOf('{', css.lastIndexOf('@media', at)));
   const selector = css.slice(css.indexOf('{', css.lastIndexOf('@media', at)) + 1, css.lastIndexOf('{', at)).trim();
 
-  it('applies only to a phone-width window in portrait', () => {
+  it('applies only to a window narrow enough for the top bar, in portrait (an iPad mini, Split View, Slide Over)', () => {
     expect(at).toBeGreaterThan(0);
     expect(media).toContain('(max-width: 767.98px)');
     expect(media).toContain('(orientation: portrait)');
   });
 
-  it('needs the iPhone app stamp, the nav at the top, and no cinematic skin', () => {
-    expect(selector).toContain('[data-iphone-app]');
+  it('needs the iOS app stamp, the nav at the top, and no cinematic skin', () => {
+    expect(selector).toContain('[data-ios-app]');
     expect(selector).toContain(':not([data-nav-position="bottom"])');
     expect(selector).toContain(":not([data-watch-skin='cinematic']:has(.hpr-watch))");
   });
