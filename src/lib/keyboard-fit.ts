@@ -15,7 +15,7 @@ export function isTextField(target: EventTarget | null): target is HTMLInputElem
   );
 }
 
-function isIOS() {
+export function isIOS() {
   return /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
@@ -212,6 +212,48 @@ export function revealFocusedField(node: HTMLElement) {
     if (by) box.scrollTop += by;
     return;
   }
+}
+
+/**
+ * The height a form's scroll box needs for iOS's ⌃ / ⌄ arrows to work on every
+ * field: the field whole plus the centres (4 px inside, as revealFocusedField
+ * keeps them) of the fields either side of it, for the field that needs the
+ * most. `fields` are the arrow stops' boxes, top to bottom.
+ */
+export function arrowRoomNeeded(fields: ReadonlyArray<{ top: number; bottom: number }>): number {
+  const centre = (rect: { top: number; bottom: number }) => (rect.top + rect.bottom) / 2;
+  return fields.reduce((need, rect, i) => {
+    const prev = fields[i - 1];
+    const next = fields[i + 1];
+    const top = prev ? Math.min(rect.top, centre(prev) - 4) : rect.top;
+    const bottom = next ? Math.max(rect.bottom, centre(next) + 4) : rect.bottom;
+    return Math.max(need, bottom - top);
+  }, 0);
+}
+
+/**
+ * Whether the form's own scroll box in a `scrollTogether` sheet (`scroll`, its
+ * drawer-scroll box) is shorter than arrowRoomNeeded, with the sheet's header
+ * and buttons pinned around it. On a short phone above the keyboard they leave
+ * it room for little more than one field, and iOS's arrows then skip the
+ * fields either side. Worked out the same way whether the header and buttons are
+ * pinned (`scroll` fits, the body has the rest) or scroll with the fields (the
+ * body is its full height, and `scroll` overflows by what pinning them would
+ * take from it), so the layout does not flip back once switched.
+ */
+export function formRoomTooShort(scroll: HTMLElement): boolean {
+  const fields = [...scroll.querySelectorAll<HTMLElement>('input, textarea, select')]
+    .filter(isArrowStop)
+    .map((el) => ({ el, rect: el.getBoundingClientRect() }))
+    .filter(({ rect }) => rect.bottom > rect.top);
+  if (!fields.length) return false;
+  // The form's body: the box that scrolls its first field, inside `scroll`.
+  let body = fields[0].el.parentElement;
+  while (body && body !== scroll && !['auto', 'scroll'].includes(getComputedStyle(body).overflowY)) body = body.parentElement;
+  if (!body || body === scroll) return false;
+  const box = body;
+  const room = box.clientHeight - Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+  return room < arrowRoomNeeded(fields.filter(({ el }) => box.contains(el)).map(({ rect }) => rect));
 }
 
 /** A field the keyboard's ⌃ / ⌄ arrows go to: shown, enabled, typed into or picked from. */

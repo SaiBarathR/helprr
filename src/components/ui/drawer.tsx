@@ -5,7 +5,7 @@ import { Drawer as DrawerPrimitive } from "vaul"
 
 import { cn } from "@/lib/utils"
 import { useBackClosableOpen } from "@/lib/overlay-history"
-import { followKeyboard, inSafariTab, keepIosFromScrolling } from "@/lib/keyboard-fit"
+import { followKeyboard, formRoomTooShort, inSafariTab, isIOS, keepIosFromScrolling } from "@/lib/keyboard-fit"
 
 function Drawer({
   open: openProp,
@@ -49,7 +49,7 @@ function fitAboveKeyboard(node: HTMLElement): () => void {
       node.style.removeProperty("bottom")
       node.style.removeProperty("max-height")
       node.style.removeProperty("padding-bottom")
-      node.removeAttribute("data-keyboard-tab")
+      node.removeAttribute("data-scroll-together")
       return
     }
     node.style.bottom = `${covered}px`
@@ -63,8 +63,12 @@ function fitAboveKeyboard(node: HTMLElement): () => void {
     // That leaves a form's body too short to show more than the field being
     // typed in, and Safari's ⌄ / ⌃ keyboard arrows skip a field whose centre
     // isn't on screen (WebKit hit-tests it), so a `scrollTogether` sheet's
-    // header, fields and buttons scroll as one instead (globals.css).
-    node.toggleAttribute("data-keyboard-tab", tab)
+    // header, fields and buttons scroll as one instead (globals.css). The
+    // Home Screen app has no address bar, so there only a short phone needs
+    // it: an iPhone SE left the body 84 px between the pinned header and
+    // buttons, less than a field and the centres of the fields either side.
+    const scroll = node.querySelector<HTMLElement>(':scope > [data-slot="drawer-scroll"]')
+    node.toggleAttribute("data-scroll-together", tab || (isIOS() && scroll !== null && formRoomTooShort(scroll)))
   })
 }
 
@@ -114,8 +118,9 @@ function DrawerContent({
    *  for short forms and confirmations. "full" (default) is a fixed 90dvh
    *  panel whose body fills it with `flex-1 min-h-0` and scrolls. */
   size?: "full" | "content"
-  /** For a sheet holding a form: in a Safari tab with the keyboard up, its
-   *  header, fields and buttons scroll together (see fitAboveKeyboard). */
+  /** For a sheet holding a form: with the keyboard up in a Safari tab, or in
+   *  the iOS Home Screen app when its form has too little room, its header,
+   *  fields and buttons scroll together (see fitAboveKeyboard). */
   scrollTogether?: boolean
 }) {
   // Stopped on the null call, not through a returned cleanup: vaul composes
@@ -163,7 +168,7 @@ function DrawerContent({
       >
         <div className="bg-muted mx-auto mt-4 hidden h-2 w-[100px] shrink-0 rounded-full group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />
         {scrollTogether ? (
-          // The box that scrolls in a Safari tab (globals.css), not the sheet
+          // The box that scrolls when they scroll together (globals.css), not the sheet
           // itself: vaul gives the sheet touch-action: none, so a finger
           // couldn't scroll it, and a ::after that runs on below it, which
           // inside the scroll added blank space and rode up over the buttons.

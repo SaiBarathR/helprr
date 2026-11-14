@@ -118,6 +118,59 @@ describe('pre-paint nav position stamp', () => {
   });
 });
 
+// globals.css lowers the top nav out of the band iOS blurs in a Home Screen app.
+describe('pre-paint iOS Home Screen app stamp', () => {
+  const run = () => new Function(THEME_BOOTSTRAP_SCRIPT)();
+  const iPhone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)';
+  const stamped = () => document.documentElement.hasAttribute('data-ios-app');
+
+  function device(userAgent: string, { standalone, displayStandalone }: { standalone?: boolean; displayStandalone: boolean }) {
+    vi.stubGlobal('navigator', { ...navigator, userAgent, standalone });
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(display-mode: standalone)' ? displayStandalone : false }));
+  }
+
+  beforeEach(() => localStorage.clear());
+  afterEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute('data-ios-app');
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('marks the iOS Home Screen app', () => {
+    device(iPhone, { standalone: true, displayStandalone: true });
+    run();
+    expect(stamped()).toBe(true);
+  });
+
+  it('marks it from display-mode alone too', () => {
+    device(iPhone, { displayStandalone: true });
+    run();
+    expect(stamped()).toBe(true);
+  });
+
+  it('leaves a Safari tab, an installed Android app and the desktop unmarked', () => {
+    device(iPhone, { standalone: false, displayStandalone: false });
+    run();
+    expect(stamped()).toBe(false);
+    device('Mozilla/5.0 (Linux; Android 16; Pixel 9) Chrome/145.0 Mobile', { displayStandalone: true });
+    run();
+    expect(stamped()).toBe(false);
+    device('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/605.1.15', { displayStandalone: true });
+    run();
+    expect(stamped()).toBe(false);
+  });
+
+  it('marks it even where localStorage throws', () => {
+    device(iPhone, { standalone: true, displayStandalone: true });
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+    run();
+    expect(stamped()).toBe(true);
+  });
+});
+
 describe('nav names', () => {
   // A phone tab may shorten its sidebar name, never rename it (gap plan U11).
   it.each([

@@ -2,7 +2,15 @@
 import { readFileSync } from 'node:fs';
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { formRoomTooShort } from '@/lib/keyboard-fit';
 import { Drawer, DrawerContent, DrawerTitle } from './drawer';
+
+// The room rule needs a real layout (keyboard-fit.test.ts covers it); here it is
+// only told what to answer.
+vi.mock('@/lib/keyboard-fit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/keyboard-fit')>()),
+  formRoomTooShort: vi.fn(() => false),
+}));
 
 function open(size?: 'full' | 'content') {
   render(
@@ -49,7 +57,10 @@ describe('DrawerContent above the keyboard', () => {
     };
   }
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.mocked(formRoomTooShort).mockReturnValue(false);
+  });
 
   it('sits on top of the keyboard and keeps its top on screen', () => {
     stubViewport(window.innerHeight - 300);
@@ -104,7 +115,7 @@ describe('DrawerContent above the keyboard', () => {
     vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
     const panel = open('content');
     expect(panel.style.paddingBottom).toBe('3.75rem');
-    expect(panel.hasAttribute('data-keyboard-tab')).toBe(true);
+    expect(panel.hasAttribute('data-scroll-together')).toBe(true);
   });
 
   // vaul's sheet has touch-action: none and a ::after that runs on below it,
@@ -141,7 +152,7 @@ describe('DrawerContent above the keyboard', () => {
       expect(getComputedStyle(panel).overflowY).not.toBe('auto');
       expect(getComputedStyle(screen.getByTestId('body')).flex).toBe('0 0 auto');
       // Out of a Safari tab (or once the keyboard closes) the form's own body scrolls again.
-      panel.removeAttribute('data-keyboard-tab');
+      panel.removeAttribute('data-scroll-together');
       expect(getComputedStyle(scroller).overflowY).not.toBe('auto');
     } finally {
       style.remove();
@@ -159,7 +170,44 @@ describe('DrawerContent above the keyboard', () => {
     vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)', standalone: true });
     const panel = open('content');
     expect(panel.style.paddingBottom).toBe('0px');
-    expect(panel.hasAttribute('data-keyboard-tab')).toBe(false);
+    expect(panel.hasAttribute('data-scroll-together')).toBe(false);
+  });
+
+  function openFormSheet() {
+    render(
+      <Drawer open>
+        <DrawerContent size="content" scrollTogether>
+          <DrawerTitle>Change password</DrawerTitle>
+          <input aria-label="Current password" />
+        </DrawerContent>
+      </Drawer>,
+    );
+    return screen.getByRole('dialog', { name: 'Change password' });
+  }
+
+  it('in the Home Screen app, scrolls a form sheet as one column when its form has too little room', () => {
+    vi.mocked(formRoomTooShort).mockReturnValue(true);
+    stubViewport(window.innerHeight - 300);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)', standalone: true });
+    const panel = openFormSheet();
+    expect(panel.hasAttribute('data-scroll-together')).toBe(true);
+    expect(vi.mocked(formRoomTooShort)).toHaveBeenCalledWith(panel.querySelector(':scope > [data-slot="drawer-scroll"]'));
+    // No address bar to keep clear of.
+    expect(panel.style.paddingBottom).toBe('0px');
+  });
+
+  it('keeps the buttons pinned in the Home Screen app when the form has room', () => {
+    stubViewport(window.innerHeight - 300);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)', standalone: true });
+    expect(openFormSheet().hasAttribute('data-scroll-together')).toBe(false);
+  });
+
+  // The rule is for iOS's ⌃ / ⌄ arrows; other phones keep the pinned buttons.
+  it('keeps the buttons pinned outside iOS, however short the room', () => {
+    vi.mocked(formRoomTooShort).mockReturnValue(true);
+    stubViewport(window.innerHeight - 300);
+    const panel = openFormSheet();
+    expect(panel.hasAttribute('data-scroll-together')).toBe(false);
   });
 
   // vaul composes refs without passing a ref's cleanup on: the content must stop on its ref(null).

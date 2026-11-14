@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { revealFocusedField } from './keyboard-fit';
+import { arrowRoomNeeded, formRoomTooShort, revealFocusedField } from './keyboard-fit';
 
 // A scroll box showing 100–300 px of a column of 36 px fields, 80 px apart,
 // laid out as if scrolled by `box.scrollTop`. iOS's ⌃ / ⌄ arrows skip a field
@@ -126,5 +126,91 @@ describe('revealFocusedField', () => {
     fields[2].disabled = true;
     focus(node, fields[1]);
     expect(box.scrollTop).toBe(0);
+  });
+});
+
+// Change password's three 44 px fields: New has a hint line under it.
+const CHANGE_PASSWORD = [
+  { top: 0, bottom: 44 },
+  { top: 80, bottom: 124 },
+  { top: 184, bottom: 228 },
+];
+
+describe('arrowRoomNeeded', () => {
+  it('is a field and the centres of the fields either side, 4 px inside, for the field needing most', () => {
+    // On New: Current's centre (22) to Confirm's (206), 4 px inside each.
+    expect(arrowRoomNeeded(CHANGE_PASSWORD)).toBe(192);
+    // A field at either end has one neighbour: on Confirm, New's centre (102) down to 228.
+    expect(arrowRoomNeeded(CHANGE_PASSWORD.slice(1))).toBe(130);
+  });
+
+  it('is the field itself when it has no neighbour', () => {
+    expect(arrowRoomNeeded([{ top: 10, bottom: 54 }])).toBe(44);
+    expect(arrowRoomNeeded([])).toBe(0);
+  });
+
+  it('is a field taller than that pair', () => {
+    expect(arrowRoomNeeded([{ top: 0, bottom: 44 }, { top: 60, bottom: 260 }])).toBe(260 - 18);
+    expect(arrowRoomNeeded([{ top: 0, bottom: 300 }, { top: 316, bottom: 360 }])).toBe(342);
+  });
+});
+
+describe('formRoomTooShort', () => {
+  // A drawer-scroll box holding a header, the form's scrolling body and the
+  // buttons. Pinned: the box fits (`overflow` 0) and the body is `room` tall.
+  // Scrolling together: the body is its full height and the box overflows.
+  function sheet({ bodyHeight, overflow, fields = CHANGE_PASSWORD }: { bodyHeight: number; overflow: number; fields?: typeof CHANGE_PASSWORD }) {
+    const scroll = document.createElement('div');
+    const body = document.createElement('div');
+    body.style.overflowY = 'auto';
+    scroll.appendChild(body);
+    document.body.appendChild(scroll);
+    Object.defineProperty(body, 'clientHeight', { value: bodyHeight, configurable: true });
+    Object.defineProperty(scroll, 'clientHeight', { value: 300, configurable: true });
+    Object.defineProperty(scroll, 'scrollHeight', { value: 300 + overflow, configurable: true });
+    // The password manager's hidden username comes first; the arrows skip it.
+    const username = document.createElement('input');
+    username.hidden = true;
+    body.appendChild(username);
+    for (const rect of fields) {
+      const field = document.createElement('input');
+      // Scrolled anywhere: only the distances between fields count.
+      vi.spyOn(field, 'getBoundingClientRect').mockReturnValue({ top: rect.top - 500, bottom: rect.bottom - 500 } as DOMRect);
+      body.appendChild(field);
+    }
+    return scroll;
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.replaceChildren();
+  });
+
+  it('is short on an iPhone SE in the Home Screen app: 84 px between the pinned header and buttons', () => {
+    expect(formRoomTooShort(sheet({ bodyHeight: 84, overflow: 0 }))).toBe(true);
+  });
+
+  it('has room on a bigger iPhone, which keeps its pinned buttons', () => {
+    expect(formRoomTooShort(sheet({ bodyHeight: 247, overflow: 0 }))).toBe(false);
+    // Exactly enough is enough.
+    expect(formRoomTooShort(sheet({ bodyHeight: 192, overflow: 0 }))).toBe(false);
+    expect(formRoomTooShort(sheet({ bodyHeight: 191, overflow: 0 }))).toBe(true);
+  });
+
+  it('gives the same answer once the header and buttons scroll with the fields, so it does not flip back', () => {
+    // SE: the body's full 244 px, of which pinning would take 160.
+    expect(formRoomTooShort(sheet({ bodyHeight: 244, overflow: 160 }))).toBe(true);
+    // A form that fits whole has nothing to scroll.
+    expect(formRoomTooShort(sheet({ bodyHeight: 244, overflow: 0 }))).toBe(false);
+  });
+
+  it('is never short for a step without fields to move between', () => {
+    expect(formRoomTooShort(sheet({ bodyHeight: 10, overflow: 0, fields: [] }))).toBe(false);
+  });
+
+  it('is never short for a form whose fields are not in a scrolling body', () => {
+    const scroll = sheet({ bodyHeight: 10, overflow: 0 });
+    (scroll.firstElementChild as HTMLElement).style.overflowY = 'visible';
+    expect(formRoomTooShort(scroll)).toBe(false);
   });
 });

@@ -128,7 +128,7 @@
 }
 
 :root {
-  --header-height: calc(env(safe-area-inset-top, 0px) + 3rem);
+  --header-height: calc(env(safe-area-inset-top, 0px) + var(--top-nav-drop, 0px) + 3rem);
   --radius: 0.625rem;
   --background: var(--hpr-inkSoft);
   --foreground: var(--hpr-fg);
@@ -246,7 +246,7 @@
   position: sticky;
   top: 0;
   border-bottom-width: 1px;
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: calc(env(safe-area-inset-top, 0px) + var(--top-nav-drop, 0px));
   /* Landscape: keep the tabs off the notch and the rounded corners. */
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
@@ -262,6 +262,21 @@
   border-bottom-width: 0;
   padding-top: 0;
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* iOS draws a progressive blur over the top of a Home Screen app's screen,
+   above the page: on an iPhone 18 Pro (iOS 27) from the edge down to about
+   88 pt, sharp again from 96 pt. The top nav's icons sat at 68.75–88.75 pt
+   there and came out soft, while the bottom bar's stayed crisp. 27px lower
+   they start at 96 pt. --header-height takes the same drop, so the page and
+   its sticky toolbars stay right under the bar. Only on a phone with the nav
+   at the top (the bar is the sidebar from md up) and not while the cinematic
+   skin hides the bar; a Safari tab starts below the status bar and has no
+   such band. data-ios-app is stamped pre-paint (THEME_BOOTSTRAP_SCRIPT). */
+@media (max-width: 767.98px) {
+  :root[data-ios-app]:not([data-nav-position="bottom"]):not([data-watch-skin='cinematic']:has(.hpr-watch)) {
+    --top-nav-drop: 27px;
+  }
 }
 
 /* With the nav at the top the tabs and Search share one row of equal slots,
@@ -1838,16 +1853,17 @@ html [data-sonner-toast][data-styled='true'] [data-close-button] {
 }
 
 /* A sheet holding a form (DrawerContent scrollTogether), lifted above the
-   keyboard in a Safari tab (see fitAboveKeyboard in ui/drawer.tsx), scrolls as
-   one column inside the sheet: header, fields and buttons together. Its own
-   body was too short to show the fields either side of the one being typed
-   in, and Safari's ⌄ / ⌃ arrows skip those. The boxes marked min-h-0 (the ones
-   that shrink, so the body scrolls) take their content's height instead.
+   keyboard in a Safari tab, or in the iOS Home Screen app on a short phone
+   (see fitAboveKeyboard in ui/drawer.tsx), scrolls as one column inside the
+   sheet: header, fields and buttons together. Its own body was too short to
+   show the fields either side of the one being typed in, and Safari's ⌄ / ⌃
+   arrows skip those. The boxes marked min-h-0 (the ones that shrink, so the
+   body scrolls) take their content's height instead.
    Pickers keep their search pinned over the list. */
-[data-slot='drawer-content'][data-keyboard-tab] > [data-slot='drawer-scroll'] {
+[data-slot='drawer-content'][data-scroll-together] > [data-slot='drawer-scroll'] {
   overflow-y: auto;
 }
-[data-slot='drawer-content'][data-keyboard-tab] > [data-slot='drawer-scroll'] .min-h-0 {
+[data-slot='drawer-content'][data-scroll-together] > [data-slot='drawer-scroll'] .min-h-0 {
   flex: none;
 }
 

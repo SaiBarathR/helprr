@@ -587,6 +587,12 @@ export type PersistedThemeVars =
  * (toolbars 3rem too low) that jumps after hydration. Runs before the theme
  * early-returns, in its own try so a corrupt prefs payload can't skip the
  * theme replay. With no saved prefs it stamps 'bottom', the store default.
+ *
+ * v7: stamps data-ios-app on <html> in the iOS Home Screen app (iOS, and
+ * standalone: the same test as keyboard-fit's inSafariTab). iOS blurs the top
+ * of a Home Screen app's screen, so globals.css lowers the top nav there; it
+ * never changes during a visit, so it is set once, before the theme's early
+ * returns and before localStorage, which can throw.
  */
 const DEFAULT_BOOT_PAYLOAD = JSON.stringify({
   __glass: {
@@ -598,7 +604,7 @@ const DEFAULT_BOOT_PAYLOAD = JSON.stringify({
   __dark: buildGlassThemeStyle('dark', DEFAULT_GLASS_INTENSITY),
 });
 
-export const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var e=document.documentElement,p=localStorage.getItem(${JSON.stringify(
+export const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var e=document.documentElement;try{var u=navigator;if((/iP(hone|ad|od)/.test(u.userAgent)||(u.platform==='MacIntel'&&u.maxTouchPoints>1))&&(u.standalone===true||matchMedia('(display-mode: standalone)').matches))e.setAttribute('data-ios-app','');}catch(i){}var p=localStorage.getItem(${JSON.stringify(
   UI_PREFS_STORAGE_KEY,
 )});try{var q=p?JSON.parse(p).state:null;if(!q||q.navPosition==='bottom')e.dataset.navPosition='bottom';if(q&&q.watchSkin==='cinematic')e.dataset.watchSkin='cinematic';}catch(n){}var r=localStorage.getItem(${JSON.stringify(
   THEME_VARS_STORAGE_KEY,
