@@ -464,9 +464,14 @@ function UpcomingRow({ ev }: { ev: UpcomingEvent }) {
         >
           {ev.title}
         </div>
-        {(ev.releaseTypes || ev.hasFile) && (
+        {(ev.releaseTypes?.length || ev.hasFile) && (
           // As the Today widget: badges wrap onto extra lines on narrow cells instead of clipping.
-          <div className="flex flex-wrap items-center gap-1" style={{ marginTop: 3 }}>
+          // A row holding only the narrow-cell "Downloaded" badge is hidden with it,
+          // or its margin would set that row 3px lower than its neighbours.
+          <div
+            className={`${ev.releaseTypes?.length ? 'flex' : 'hidden @max-[159px]/cell:flex'} flex-wrap items-center gap-1`}
+            style={{ marginTop: 3 }}
+          >
             {ev.releaseTypes?.map((t) => <ReleaseTypeBadge key={t} type={t} fitCell />)}
             {ev.hasFile && (
               // "Downloaded" is the poster's check; where the poster is hidden it
