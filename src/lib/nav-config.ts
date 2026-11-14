@@ -60,9 +60,10 @@ export interface NavItemDef {
   // scrolling list.
   sidebarFooter?: true;
   pinned?: boolean;
-  // When set, the item is hidden from users who lack this capability (UX only;
-  // the page + its API routes enforce server-side).
-  requiredCapability?: Capability;
+  // When set, the item is hidden from users who lack this capability, or any
+  // of these capabilities (UX only; the page + its API routes enforce
+  // server-side).
+  requiredCapability?: Capability | Capability[];
   // Alternative gate: visible when the user holds ANY of these capabilities.
   // Used by multi-mode pages (Recommendations hosts both the personalized
   // rails and the old Random Watch, gated independently server-side).
@@ -88,7 +89,8 @@ export const NAV_ITEMS: NavItemDef[] = [
   // capability: a random.view-only user still reaches the Random mode.
   { id: 'random', href: '/recommendations', icon: Popcorn, label: 'For You', shortLabel: 'For You', requiredAnyCapability: ['recommendations.view', 'random.view'] },
   { id: 'calendar', href: '/calendar', icon: CalendarDays, label: 'Calendar', shortLabel: 'Calendar', requiredCapability: 'calendar.view' },
-  { id: 'library-gaps', href: '/library-gaps', icon: LibraryBig, label: 'Library Gaps', shortLabel: 'Gaps' },
+  // /api/library-gaps reads both libraries, so it needs both capabilities.
+  { id: 'library-gaps', href: '/library-gaps', icon: LibraryBig, label: 'Library Gaps', shortLabel: 'Gaps', requiredCapability: ['series.view', 'movies.view'] },
   { id: 'torrents', href: '/torrents', icon: HardDrive, label: 'Torrents', shortLabel: 'Torrents', requiredCapability: 'torrents.view', badgeArea: 'downloads' },
   { id: 'cleanup', href: '/cleanup', icon: Sparkle, label: 'Cleanup', shortLabel: 'Cleanup', requiredCapability: 'cleanup.view' },
   { id: 'prowlarr', href: '/prowlarr', icon: Search, label: 'Prowlarr', shortLabel: 'Prowlarr', requiredCapability: 'prowlarr.view' },
@@ -111,7 +113,12 @@ export function navItemAllowed(
 ): boolean {
   if (item.requiresConfigured && !configured?.[item.requiresConfigured]) return false;
   if (item.requiredAnyCapability) return item.requiredAnyCapability.some(has);
-  return !item.requiredCapability || has(item.requiredCapability);
+  return navItemCapabilities(item).every(has);
+}
+
+/** The capabilities an item's `requiredCapability` names, as a list. */
+export function navItemCapabilities(item: NavItemDef): Capability[] {
+  return item.requiredCapability ? [item.requiredCapability].flat() : [];
 }
 
 // The first four enabled items become the phone tabs, so a new install opens

@@ -20,6 +20,7 @@ import { InstanceFilter, type InstanceOption, withAppName } from '@/components/i
 import { useCan } from '@/components/permission-provider';
 import { ActiveFilterBar, FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { HistoryEventDrawer, HistoryEventRow, type HistoryRecord } from '../_components/history-event';
+import { useSourceChipLabel } from '../_components/shared';
 
 // --- Event type config ---
 
@@ -111,6 +112,7 @@ export default function HistoryPage() {
   // filtered) history so the options never collapse to the current selection.
   // The server leaves Lidarr out without music.view, so its instances aren't offered.
   const canViewMusic = useCan('music.view');
+  const sourceChipLabel = useSourceChipLabel();
   const { data: instanceOptions = [], isSuccess: instancesLoaded } = useQuery({
     // Distinct from queryKeys.instances() (['instances','all'] → /api/services); this
     // is the /api/instances connection list for the filter. Shares with the activity
@@ -210,6 +212,7 @@ export default function HistoryPage() {
               <HistoryEventRow
                 key={`${item.source}-${item.instanceId ?? ''}-${item.id}-${i}`}
                 item={item}
+                sourceLabel={sourceChipLabel(item)}
                 onSelect={() => setSelectedItem(item)}
               />
             ))}

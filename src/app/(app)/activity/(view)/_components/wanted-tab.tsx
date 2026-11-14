@@ -29,7 +29,7 @@ import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { useCan } from '@/components/permission-provider';
 import { cn } from '@/lib/utils';
-import { TabErrorState } from './shared';
+import { TabErrorState, useSourceChipLabel } from './shared';
 import {
   isNotReleased,
   searchAllOutcome,
@@ -81,6 +81,7 @@ async function sendSearches(requests: SearchRequest[]): Promise<{ ok: number; fa
 export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cutoff'; filterBy: string[]; instanceFilter: string }) {
   const PAGE_SIZE = 20;
   const canManageActivity = useCan('activity.manage');
+  const sourceChipLabel = useSourceChipLabel();
   // Keyed per item: overlapping searches on two items must not clear each
   // other's spinner (a single string flag would).
   const [searching, setSearching] = useState<ReadonlySet<string>>(new Set());
@@ -259,7 +260,7 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
     const icon = isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : isAlbum ? <Disc3 className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />;
     const meta = (
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Badge variant="outline" className="text-[10px] px-1.5 py-0">{record.source}</Badge>
+        <Badge variant="outline" className="text-[10px] px-1.5 py-0">{sourceChipLabel(record)}</Badge>
         {dated && (
           <span>{`${dated.label} ${formatDistanceToNow(dated.date, { addSuffix: true })}`}</span>
         )}

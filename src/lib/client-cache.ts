@@ -298,4 +298,32 @@ async function clearUserScopedBrowserCachesImpl(): Promise<void> {
 export async function clearUserScopedBrowserCaches(): Promise<void> {
   if (typeof window === 'undefined') return;
   await withCacheClearTimeout(clearUserScopedBrowserCachesImpl());
+  try {
+    window.localStorage.removeItem(USER_CACHES_MARKER_KEY);
+  } catch {
+    // Unreadable storage already counts as "may be in use".
+  }
+}
+
+// Set while this browser may hold a signed-in user's cached pages and reads:
+// the signed-in app shell sets it, and a confirmed clear removes it. Login
+// asks the server whether a session ended only while it is set, so a browser
+// that never signed in here, or already cleared on signing out, sends no
+// request that can only 401. Storage that can't be read counts as set.
+const USER_CACHES_MARKER_KEY = 'helprr:user-caches';
+
+export function markUserScopedCachesInUse(): void {
+  try {
+    window.localStorage.setItem(USER_CACHES_MARKER_KEY, '1');
+  } catch {
+    // Login then asks the server, as it would anyway with unreadable storage.
+  }
+}
+
+export function userScopedCachesMayBeInUse(): boolean {
+  try {
+    return window.localStorage.getItem(USER_CACHES_MARKER_KEY) !== null;
+  } catch {
+    return true;
+  }
 }

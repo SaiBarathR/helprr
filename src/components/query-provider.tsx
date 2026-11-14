@@ -8,6 +8,7 @@ import { refreshAfterReconnect } from '@/lib/reconnect-queries';
 import { getQueryClient, holdLoginRedirect } from '@/lib/query-client';
 import {
   clearUserScopedBrowserCaches,
+  markUserScopedCachesInUse,
   subscribeToAuthenticationBoundaries,
   subscribeToSessionEnd,
 } from '@/lib/client-cache';
@@ -30,6 +31,11 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
   // Set once signing out or another tab's change begins: from then on that
   // clean-up decides where the page goes, not a reconnect refresh.
   const boundaryStarted = useRef(false);
+  // This shell renders only for a session, and from here on fills the
+  // user-scoped caches Login clears once that session has ended.
+  useEffect(() => {
+    markUserScopedCachesInUse();
+  }, []);
   useEffect(() => {
     let controller: AbortController | null = null;
     let pending = false;

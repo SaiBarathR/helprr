@@ -84,7 +84,18 @@ export interface ClientLogCaptureSettingsEvent {
 
 export const CLIENT_LOG_SETTINGS_EVENT = 'helprr:logging-settings-updated';
 
-export function ClientLogCapture() {
+/**
+ * `signedIn`: whether the request carried a session cookie. Signed out (the
+ * login, setup and invite pages) the settings read is a sure 401, which the
+ * browser logs as a console error, and capture stays off either way because
+ * uploading logs needs a session too. A stale cookie still reads and fails as
+ * before.
+ */
+export function ClientLogCapture({ signedIn = true }: { signedIn?: boolean }) {
+  const signedInRef = useRef(signedIn);
+  useEffect(() => {
+    signedInRef.current = signedIn;
+  }, [signedIn]);
   const originalsRef = useRef<ConsoleOriginals | null>(null);
   const stateRef = useRef<ClientCaptureState>({
     enabled: false,
@@ -188,6 +199,7 @@ export function ClientLogCapture() {
     }
 
     async function refreshFromServer() {
+      if (!signedInRef.current) return;
       try {
         const settings = (await fetchAppSettings()) as ClientLogCaptureSettingsEvent;
         if (cancelled) return;
