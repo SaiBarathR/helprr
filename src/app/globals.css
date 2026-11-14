@@ -807,8 +807,9 @@ html {
 }
 
 /* The widget offline cover (widget-renderer.tsx). A one-cell phone widget
-   (about 44×60 inside the card at 320, 62×60 at 390) fits the name and
-   "Can't reach Helprr", not the icon or "right now.". */
+   (about 44×60 inside the card at 320, 62×60 at 390, 74×60 at 440) fits the
+   name and "Can't reach Helprr", not the icon or "right now."; a one-row 2×1
+   fits only one message line, so it drops "right now." too. */
 .widget-cover-body {
   gap: 6px;
 }
@@ -817,10 +818,18 @@ html {
     display: none;
   }
 }
-/* A one-row 2×1 phone cell (120×60 at 320) has room for one message line
-   under the icon and name; "right now." would wrap to a cut second line. */
-@container widget-cover (max-width: 160px) and (max-height: 72px) {
+/* A one-row 2×1 phone cell (120×60 at 320, about 180×60 at 440) has room
+   for one message line under the icon and name; "right now." would wrap to a
+   cut second line. The narrowest one-row tablet cover (209 wide) fits it all. */
+@container widget-cover (max-width: 200px) and (max-height: 72px) {
   .widget-cover-tail {
+    display: none;
+  }
+}
+/* Up to 100 wide "Can't reach Helprr" takes two lines, so a one-row cover
+   has no room for the icon either (74×60 at 440 kept it and cut the text). */
+@container widget-cover (max-width: 100px) and (max-height: 72px) {
+  .widget-cover-body > svg {
     display: none;
   }
 }
