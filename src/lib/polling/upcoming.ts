@@ -1,11 +1,13 @@
 // Upcoming episodes, movie releases and albums, before they air or as a daily digest, each once.
 import { prisma } from '@/lib/db';
 import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
-import { startOfLocalDay, endOfLocalDay, toZonedDate, getLocalDateKey } from '@/lib/timezone';
+import { TZDate } from '@date-fns/tz';
+import { startOfLocalDay, endOfLocalDay, toZonedDate, getLocalDateKey, normalizeTimeZone } from '@/lib/timezone';
 import { releaseDayKey } from '@/lib/release-day';
 import { logger } from '@/lib/logger';
 import { noteJobFailure, noteJobSkipped } from '@/lib/polling-job-report';
 import { PollNotificationCollector } from '@/lib/notification-grouping';
+import { usersWhoCouldReceive } from '@/lib/notification-service';
 import { notifyAndLog, instanceTitle, type CycleContext } from './shared';
 
 // Tolerance (minutes) for the "before_air" firing window. Lets a sluggish poll
@@ -16,6 +18,14 @@ const BEFORE_AIR_GRACE_MIN = 5;
 // Extra calendar fetch padding past notifyBeforeMins so an item near the upper
 // edge isn't excluded by clock skew between us and Sonarr/Radarr.
 const FETCH_END_BUFFER_MS = 60_000;
+
+const HOUR_MS = 3_600_000;
+
+/** The moment a release day ("2026-11-20") starts in a time zone. */
+function localMidnightMs(dayKey: string, timeZone: string): number {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  return new TZDate(year, month - 1, day, 0, 0, 0, 0, timeZone).getTime();
+}
 
 export async function checkUpcoming(context: CycleContext) {
   const settings = await context.getSettings();
@@ -68,14 +78,13 @@ export async function checkUpcoming(context: CycleContext) {
 
   // A film or album release is a day, given as its UTC midnight (release-day.ts).
   // The digest takes the releases dated today: by instant, the local day west of
-  // UTC held tomorrow's. Radarr and Lidarr are asked for a day more on each side
-  // so today's come back wherever their midnight falls. Before-air mode still
-  // counts down to that UTC midnight.
+  // UTC held tomorrow's. Before-air counts down to that day's local midnight in
+  // each recipient zone (UTC midnight was 5:30 AM in India, 4 PM the day before
+  // in LA). Radarr and Lidarr are asked for a day more on each side so these
+  // come back wherever their UTC midnight falls.
   const digestDay = mode === 'daily_digest' ? getLocalDateKey(now, timeZone) : null;
-  const releaseStart = digestDay ? new Date(fetchStartMs - 86_400_000).toISOString() : start;
-  const releaseEnd = digestDay ? new Date(fetchEndMs + 86_400_000).toISOString() : end;
-  const releaseInWindow = (dateStr: string, releaseMs: number) =>
-    digestDay ? releaseDayKey(dateStr) === digestDay : releaseMs >= fetchStartMs && releaseMs <= fetchEndMs;
+  const releaseStart = new Date(fetchStartMs - 86_400_000).toISOString();
+  const releaseEnd = new Date(fetchEndMs + 86_400_000).toISOString();
 
   // Helpers ----------------------------------------------------------------
   // For each candidate item we ask: "have we ever notified for this exact
@@ -89,14 +98,18 @@ export async function checkUpcoming(context: CycleContext) {
   // row was written when its item was last inside the notify window — at most
   // (notifyBefore + grace) before its air time, and the furthest air time we
   // consider is fetchEndMs — so look back that far plus a day of slack; older
-  // rows can't match a key we build this cycle. The snapshot doesn't see rows
-  // written later in this same cycle, so we also record each key as we fire it
-  // (notifiedKeys.add below) — that suppresses a duplicate calendar entry that
-  // a malformed/proxied upstream might repeat within one response.
+  // rows can't match a key we build this cycle. Release keys need more: a
+  // before-air push leaves up to 14 h (UTC+14) plus the lead before its day's
+  // UTC midnight, and a digest for that day can run until 23:59 in UTC-12, 36 h
+  // after it, so about 50 h plus the lead; 2 days + 2 h covers it. The
+  // snapshot doesn't see rows written later in this same cycle, so we also
+  // record each key as we fire it (notifiedKeys.add below) — that suppresses a
+  // duplicate calendar entry that a malformed/proxied upstream might repeat
+  // within one response.
   const dedupeLookbackMs =
     (settings.upcomingNotifyBeforeMins + BEFORE_AIR_GRACE_MIN) * 60_000 +
     FETCH_END_BUFFER_MS +
-    86_400_000;
+    2 * 86_400_000 + 2 * HOUR_MS;
   const priorUpcoming = await prisma.notificationHistory.findMany({
     where: {
       eventType: 'upcomingPremiere',
@@ -106,18 +119,39 @@ export async function checkUpcoming(context: CycleContext) {
   });
   const notifiedKeys = new Set<string>();
   const notifiedBodies = new Set<string>();
+  // Who each film or album release (by its bare key) has already gone to:
+  // 'all' after a broadcast (the digest, the old UTC-midnight countdown, or a
+  // household whose midnight is one instant), else the users of its targeted
+  // sends ("<key>@<instant>", their ids in metadata.recipientUserIds). So a
+  // user who changes time zone after their send is not sent it again.
+  const releaseCoverage = new Map<string, 'all' | Set<string>>();
+  const cover = (key: string, recipients: unknown) => {
+    const at = key.lastIndexOf('@');
+    const base = at > 0 ? key.slice(0, at) : key;
+    const previous = releaseCoverage.get(base);
+    if (previous === 'all') return;
+    if (at <= 0 || !Array.isArray(recipients)) {
+      releaseCoverage.set(base, 'all');
+      return;
+    }
+    const ids = recipients.filter((id): id is string => typeof id === 'string');
+    releaseCoverage.set(base, new Set([...(previous ?? []), ...ids]));
+  };
   for (const row of priorUpcoming) {
+    const md = row.metadata as { grouped?: unknown; itemDedupeKeys?: unknown; recipientUserIds?: unknown } | null;
     if (row.dedupeKey) {
       notifiedKeys.add(row.dedupeKey);
+      cover(row.dedupeKey, md?.recipientUserIds);
       continue;
     }
     // A grouped row has no top-level dedupeKey; its per-item keys live in
     // metadata.itemDedupeKeys (see notification-grouping.ts). Harvest them so
     // items sent inside a digest are still suppressed on later cycles.
-    const md = row.metadata as { grouped?: unknown; itemDedupeKeys?: unknown } | null;
     if (md?.grouped && Array.isArray(md.itemDedupeKeys)) {
       for (const key of md.itemDedupeKeys) {
-        if (typeof key === 'string') notifiedKeys.add(key);
+        if (typeof key !== 'string') continue;
+        notifiedKeys.add(key);
+        cover(key, md.recipientUserIds);
       }
     } else {
       notifiedBodies.add(row.body);
@@ -138,6 +172,60 @@ export async function checkUpcoming(context: CycleContext) {
       minsUntilAir <= settings.upcomingNotifyBeforeMins &&
       minsUntilAir >= -BEFORE_AIR_GRACE_MIN
     );
+  };
+  /** Whether any moment between the two could fire now. */
+  const shouldFireBeforeAirBetween = (earliestMs: number, latestMs: number): boolean =>
+    latestMs >= now.getTime() - BEFORE_AIR_GRACE_MIN * 60_000 &&
+    earliestMs <= now.getTime() + settings.upcomingNotifyBeforeMins * 60_000;
+
+  // The sends a film or album release is due this cycle. The digest sends
+  // today's once, under the release's own key (`baseKey`), unless before-air
+  // already sent it. Before-air plans for the users who could receive it (the
+  // delivery's gates) and counts down to the day's midnight in each one's zone
+  // (their own, else the app's); users whose midnight is the same instant
+  // (Asia/Kolkata and Asia/Calcutta, or UTC and London in winter) share one send
+  // and one history row, keyed "<baseKey>@<instant>". A household on one instant
+  // gets one broadcast, as before. A release nobody could receive is still
+  // broadcast once at the app zone's midnight, so Notifications lists it.
+  const recipientsBySource = new Map<string, Promise<Array<{ id: string; timeZone: string }>>>();
+  const recipientsFor = (source: 'radarr' | 'lidarr') => {
+    let recipients = recipientsBySource.get(source);
+    if (!recipients) {
+      recipients = usersWhoCouldReceive('upcomingPremiere', { source }).then((users) =>
+        users.map((user) => ({ id: user.id, timeZone: normalizeTimeZone(user.timeZone, timeZone) })));
+      recipientsBySource.set(source, recipients);
+    }
+    return recipients;
+  };
+  const releaseSends = async (
+    dateStr: string,
+    baseKey: string,
+    source: 'radarr' | 'lidarr',
+  ): Promise<Array<{ dedupeKey: string; userIds?: string[] }>> => {
+    const day = releaseDayKey(dateStr);
+    if (!day) return [];
+    const covered = releaseCoverage.get(baseKey);
+    if (digestDay) return day === digestDay && !covered ? [{ dedupeKey: baseKey }] : [];
+    if (covered === 'all') return [];
+    // Local midnights fall from 14 h before the UTC midnight to 12 h after it:
+    // when none of them can be in the window, there is nobody to look up.
+    const utcMidnightMs = localMidnightMs(day, 'UTC');
+    if (!shouldFireBeforeAirBetween(utcMidnightMs - 14 * HOUR_MS, utcMidnightMs + 12 * HOUR_MS)) return [];
+    const byInstant = new Map<number, string[]>();
+    for (const { id, timeZone: zone } of await recipientsFor(source)) {
+      const at = localMidnightMs(day, zone);
+      byInstant.set(at, [...(byInstant.get(at) ?? []), id]);
+    }
+    if (byInstant.size === 0) byInstant.set(localMidnightMs(day, timeZone), []);
+    const broadcast = byInstant.size === 1 && !covered;
+    const sends: Array<{ dedupeKey: string; userIds?: string[] }> = [];
+    for (const [at, ids] of byInstant) {
+      if (!shouldFireBeforeAir(at)) continue;
+      const userIds = covered ? ids.filter((id) => !covered.has(id)) : ids;
+      if (broadcast) sends.push({ dedupeKey: `${baseKey}@${at}` });
+      else if (userIds.length > 0) sends.push({ dedupeKey: `${baseKey}@${at}`, userIds });
+    }
+    return sends;
   };
 
   // Sonarr calendar (every instance) ---------------------------------------
@@ -268,56 +356,49 @@ export async function checkUpcoming(context: CycleContext) {
         const releaseMs = new Date(dateStr).getTime();
         if (!Number.isFinite(releaseMs)) continue;
 
-        // Skip release dates outside the fetch window. Radarr returns a
-        // movie if ANY of its 3 release dates falls in the window, so the
-        // other two might be years away (e.g., cinema 2010, digital today).
-        if (!releaseInWindow(dateStr, releaseMs)) continue;
-
-        if (mode === 'before_air' && !shouldFireBeforeAir(releaseMs)) {
-          logger.debug('Skipping Radarr upcoming item outside before-air window', {
-            movieId: movie.id,
-            releaseType,
-            minsUntilAir: (releaseMs - now.getTime()) / 60_000,
-            notifyBeforeMins: settings.upcomingNotifyBeforeMins,
-          }, { scope: 'polling' });
-          continue;
-        }
-
         const body = `${movie.title} (${movie.year}) — ${releaseTypeLabels[releaseType]}`;
-        const dedupeKey = `radarr-${connection.id}-${movie.id}-${releaseType}-${releaseMs}`;
+        const baseKey = `radarr-${connection.id}-${movie.id}-${releaseType}-${releaseMs}`;
         const legacyKey = `radarr-${movie.id}-${releaseType}-${releaseMs}`;
 
-        if (alreadyNotified(connection.isDefault ? [dedupeKey, legacyKey] : [dedupeKey], body)) {
-          logger.debug('Skipping duplicate Radarr upcoming notification', {
+        // Radarr returns a movie if ANY of its 3 release dates falls in the
+        // window, so the other two might be years away (e.g., cinema 2010,
+        // digital today); those have no send.
+        for (const { dedupeKey, userIds } of await releaseSends(dateStr, baseKey, 'radarr')) {
+          if (alreadyNotified([dedupeKey, ...(connection.isDefault ? [legacyKey] : [])], body)) {
+            logger.debug('Skipping duplicate Radarr upcoming notification', {
+              movieId: movie.id,
+              releaseType,
+              dedupeKey,
+            }, { scope: 'polling' });
+            continue;
+          }
+
+          notifiedKeys.add(dedupeKey);
+          cover(dedupeKey, userIds);
+          collector.add({
+            eventType: 'upcomingPremiere',
+            title: instanceTitle('Upcoming Movie', connection.label, radarrClients.length),
+            body,
+            dedupeKey,
+            ...(userIds ? { userIds } : {}),
+            metadata: {
+              ...(userIds ? { recipientUserIds: userIds } : {}),
+              source: 'radarr',
+              instanceId: connection.id,
+              instanceLabel: connection.label,
+              movieId: movie.id,
+              releaseType,
+              redirect: `/movies/${movie.id}?instance=${connection.id}`,
+            },
+            url: `/movies/${movie.id}?instance=${connection.id}`,
+          }, {
+            service: 'radarr',
+            reason: 'upcoming-premiere',
             movieId: movie.id,
             releaseType,
             dedupeKey,
-          }, { scope: 'polling' });
-          continue;
+          });
         }
-
-        notifiedKeys.add(dedupeKey);
-        collector.add({
-          eventType: 'upcomingPremiere',
-          title: instanceTitle('Upcoming Movie', connection.label, radarrClients.length),
-          body,
-          dedupeKey,
-          metadata: {
-            source: 'radarr',
-            instanceId: connection.id,
-            instanceLabel: connection.label,
-            movieId: movie.id,
-            releaseType,
-            redirect: `/movies/${movie.id}?instance=${connection.id}`,
-          },
-          url: `/movies/${movie.id}?instance=${connection.id}`,
-        }, {
-          service: 'radarr',
-          reason: 'upcoming-premiere',
-          movieId: movie.id,
-          releaseType,
-          dedupeKey,
-        });
       }
     }
   } catch (error) {
@@ -348,36 +429,38 @@ export async function checkUpcoming(context: CycleContext) {
       if (!album.releaseDate) continue;
       const releaseMs = new Date(album.releaseDate).getTime();
       if (!Number.isFinite(releaseMs)) continue;
-      if (!releaseInWindow(album.releaseDate, releaseMs)) continue;
-      if (mode === 'before_air' && !shouldFireBeforeAir(releaseMs)) continue;
-
       const artistName = album.artist?.artistName ?? '';
       const body = `${artistName ? `${artistName} — ` : ''}${album.title}`;
-      const dedupeKey = `lidarr-${connection.id}-${album.id}-${releaseMs}`;
+      const baseKey = `lidarr-${connection.id}-${album.id}-${releaseMs}`;
       const legacyKey = `lidarr-${album.id}-${releaseMs}`;
-      if (alreadyNotified(connection.isDefault ? [dedupeKey, legacyKey] : [dedupeKey], body)) continue;
+      for (const { dedupeKey, userIds } of await releaseSends(album.releaseDate, baseKey, 'lidarr')) {
+        if (alreadyNotified([dedupeKey, ...(connection.isDefault ? [legacyKey] : [])], body)) continue;
 
-      notifiedKeys.add(dedupeKey);
-      collector.add({
-        eventType: 'upcomingPremiere',
-        title: instanceTitle('Upcoming Album', connection.label, lidarrClients.length),
-        body,
-        dedupeKey,
-        metadata: {
-          source: 'lidarr',
-          instanceId: connection.id,
-          instanceLabel: connection.label,
-          artistId: album.artistId,
+        notifiedKeys.add(dedupeKey);
+        cover(dedupeKey, userIds);
+        collector.add({
+          eventType: 'upcomingPremiere',
+          title: instanceTitle('Upcoming Album', connection.label, lidarrClients.length),
+          body,
+          dedupeKey,
+          ...(userIds ? { userIds } : {}),
+          metadata: {
+            ...(userIds ? { recipientUserIds: userIds } : {}),
+            source: 'lidarr',
+            instanceId: connection.id,
+            instanceLabel: connection.label,
+            artistId: album.artistId,
+            albumId: album.id,
+            redirect: `/music/album/${album.id}?instance=${connection.id}`,
+          },
+          url: `/music/album/${album.id}?instance=${connection.id}`,
+        }, {
+          service: 'lidarr',
+          reason: 'upcoming-premiere',
           albumId: album.id,
-          redirect: `/music/album/${album.id}?instance=${connection.id}`,
-        },
-        url: `/music/album/${album.id}?instance=${connection.id}`,
-      }, {
-        service: 'lidarr',
-        reason: 'upcoming-premiere',
-        albumId: album.id,
-        dedupeKey,
-      });
+          dedupeKey,
+        });
+      }
     }
   } catch (error) {
     noteJobFailure(error);

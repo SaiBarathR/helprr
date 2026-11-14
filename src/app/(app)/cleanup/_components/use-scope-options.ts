@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { jsonOk } from '@/lib/http';
+import { jsonFetcher } from '@/lib/query-fetch';
 
 interface ScopeOptionsResponse {
   qbitCategories: string[];
@@ -24,11 +24,11 @@ export function useScopeOptions(): {
 } {
   const query = useQuery({
     queryKey: ['cleanup', 'scope-options'],
-    queryFn: ({ signal }) =>
-      fetch('/api/cleanup/scope-options', { signal }).then(jsonOk<ScopeOptionsResponse>),
+    // An ApiError carries the status, so the app's retry rule (query-client.ts)
+    // retries an outage once and a refusal never.
+    queryFn: jsonFetcher<ScopeOptionsResponse>('/api/cleanup/scope-options'),
     staleTime: 60_000,
     refetchOnWindowFocus: false,
-    retry: 1,
   });
 
   return {

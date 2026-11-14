@@ -1,9 +1,13 @@
 'use client';
-import { useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
+import { usePathname } from 'next/navigation';
 import { getBrowseFreshness, subscribeBrowseFreshness } from '@/lib/browse-freshness';
 import { formatTime } from '@/lib/date-format';
 export function BrowseFreshnessNotice({ onRetry }: { onRetry: () => void }) {
-  const at = useSyncExternalStore(subscribeBrowseFreshness, getBrowseFreshness, () => 0);
+  // Only the open page's saved copies; the pathname re-reads them on navigation.
+  const pathname = usePathname();
+  const getSnapshot = useCallback(() => getBrowseFreshness(pathname ?? undefined), [pathname]);
+  const at = useSyncExternalStore(subscribeBrowseFreshness, getSnapshot, () => 0);
   if (!at) return null;
   return <BrowseFreshnessBanner at={at} onRetry={onRetry} />;
 }

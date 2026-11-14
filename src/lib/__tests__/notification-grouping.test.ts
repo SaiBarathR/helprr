@@ -33,3 +33,26 @@ describe('grouped push destinations', () => {
     expect(event.url).toBe('/series/7?instance=son-1');
   });
 });
+
+describe('grouping by recipients', () => {
+  it('keeps events for different recipients apart and sends a group to its own', async () => {
+    const collector = new PollNotificationCollector();
+    const add = (id: number, userIds?: string[]) => collector.add({
+      eventType: 'upcomingPremiere',
+      title: 'Upcoming Movie',
+      body: `Film ${id}`,
+      dedupeKey: `radarr-r1-${id}`,
+      metadata: { source: 'radarr', instanceId: 'r1', movieId: id },
+      ...(userIds ? { userIds } : {}),
+    }, { service: 'radarr', reason: 'test' });
+    for (const id of [1, 2, 3]) add(id, ['u2', 'u1']);
+    for (const id of [4, 5, 6]) add(id, ['u3']);
+    const notify = vi.fn<Notify>(async () => 1);
+    await collector.flush({ enabled: true, notify });
+    expect(notify).toHaveBeenCalledTimes(2);
+    expect(notify.mock.calls.map(([event]) => [event.userIds, event.metadata?.itemDedupeKeys])).toEqual([
+      [['u2', 'u1'], ['radarr-r1-1', 'radarr-r1-2', 'radarr-r1-3']],
+      [['u3'], ['radarr-r1-4', 'radarr-r1-5', 'radarr-r1-6']],
+    ]);
+  });
+});

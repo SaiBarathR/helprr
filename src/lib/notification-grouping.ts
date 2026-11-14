@@ -58,10 +58,13 @@ function metaString(md: Record<string, unknown> | undefined, key: string): strin
 
 // Same service instance + same event type in one cycle → one group. qBittorrent
 // events carry no instanceId, so all torrentAdded in a cycle share one key.
+// Events for different recipients (upcoming films sent per time zone) never
+// share a group: the grouped push goes to its entries' recipients.
 function deriveGroupKey(event: NotificationEventInput): string {
   const source = metaString(event.metadata, 'source') ?? 'unknown';
   const instanceId = metaString(event.metadata, 'instanceId') ?? '';
-  return `${source}:${instanceId}:${event.eventType}`;
+  const recipients = event.userIds ? `:${[...event.userIds].sort().join(',')}` : '';
+  return `${source}:${instanceId}:${event.eventType}${recipients}`;
 }
 
 // Plural nouns for the grouped title, keyed by `${source}:${eventType}` with a
@@ -179,6 +182,8 @@ function buildGroupedNotification(group: Entry[]): {
     .filter((k): k is string => typeof k === 'string');
   if (itemDedupeKeys.length > 0) metadata.itemDedupeKeys = itemDedupeKeys;
   if (source) metadata.source = source;
+  // Who a targeted group went to (upcoming films per time zone read it back).
+  if (first.metadata?.recipientUserIds) metadata.recipientUserIds = first.metadata.recipientUserIds;
   const instanceId = metaString(first.metadata, 'instanceId');
   if (instanceId) metadata.instanceId = instanceId;
   const instanceLabel = metaString(first.metadata, 'instanceLabel');
@@ -208,7 +213,7 @@ function buildGroupedNotification(group: Entry[]): {
     groupCount: count,
   };
 
-  return { event: { eventType, title, body, metadata, url: redirect }, context };
+  return { event: { eventType, title, body, metadata, url: redirect, ...(first.userIds ? { userIds: first.userIds } : {}) }, context };
 }
 
 /**

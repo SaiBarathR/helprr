@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   findMany: vi.fn(async () => [] as unknown[]),
   createHistory: vi.fn(async () => ({ id: 'h1' })),
   updateHistory: vi.fn(async () => ({})),
+  findUsers: vi.fn(async () => [] as unknown[]),
 }));
 
 vi.mock('web-push', () => ({
@@ -28,6 +29,7 @@ vi.mock('@/lib/db', () => ({
       findMany: mocks.findMany,
     },
     notificationHistory: { create: mocks.createHistory, update: mocks.updateHistory },
+    user: { findMany: mocks.findUsers },
   },
 }));
 vi.mock('@/lib/vapid', () => ({
@@ -38,7 +40,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import { Prisma } from '@prisma/client';
-import { notifyEvent, sendPushNotification } from '@/lib/notification-service';
+import { notifyEvent, sendPushNotification, usersWhoCouldReceive } from '@/lib/notification-service';
 import { PollNotificationCollector } from '@/lib/notification-grouping';
 import { jobReports, type JobReport } from '@/lib/polling-job-report';
 
@@ -179,7 +181,7 @@ describe('events that start off', () => {
     lastFailedAt: null,
     lastSucceededAt: null,
     preferences,
-    user: { id: `user-${name}`, role: 'admin', template: 'admin', permissions: {}, settings: null },
+    user: { id: `user-${name}`, status: 'active', role: 'admin', template: 'admin', permissions: {}, settings: null },
   });
   const sentTo = () => mocks.sendNotification.mock.calls.map(([target]) => (target as { endpoint: string }).endpoint);
 
@@ -198,7 +200,7 @@ describe('events that start off', () => {
     const sleepy = () => ({
       ...device('sleepy', []),
       user: {
-        id: 'user-sleepy', role: 'admin', template: 'admin', permissions: {},
+        id: 'user-sleepy', status: 'active', role: 'admin', template: 'admin', permissions: {},
         settings: { quietHoursEnabled: true, quietHoursStart: hour, quietHoursEnd: (hour + 1) % 24, timeZone: 'UTC' },
       },
     });
@@ -210,6 +212,35 @@ describe('events that start off', () => {
     mocks.findMany.mockResolvedValueOnce([sleepy()]);
     await notifyEvent({ eventType: 'grabbed', title: 'Grabbed', body: 'Body' });
     expect(sentTo()).toEqual([]);
+  });
+
+  it("holds an upcoming film's push in quiet hours but keeps its history row, which claims it (not sent later)", async () => {
+    // Before-air films now fire near 23:00 local, inside most overnight quiet
+    // hours. As for every other held push: no push, but the row is written
+    // with its key and recipients, so the next cycles don't send it again.
+    // 23:15 in India, inside 23:00–07:00 quiet hours (a fixed clock, so no hour rollover).
+    vi.useFakeTimers({ now: Date.parse('2026-10-19T17:45:00Z'), toFake: ['Date'] });
+    try {
+      mocks.findMany.mockResolvedValueOnce([{
+        ...device('sleepy', []),
+        user: {
+          id: 'user-sleepy', status: 'active', role: 'admin', template: 'admin', permissions: {},
+          settings: { quietHoursEnabled: true, quietHoursStart: 23, quietHoursEnd: 7, timeZone: 'Asia/Kolkata' },
+        },
+      }]);
+      await notifyEvent({
+        eventType: 'upcomingPremiere', title: 'Upcoming Movie', body: 'Film (2026) — In Cinemas',
+        dedupeKey: 'radarr-r1-50-cinema-1792454400000@1792434600000', userIds: ['user-sleepy'],
+        metadata: { recipientUserIds: ['user-sleepy'], source: 'radarr', movieId: 50 },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(sentTo()).toEqual([]);
+    expect(mocks.createHistory).toHaveBeenCalledWith({ data: expect.objectContaining({
+      dedupeKey: 'radarr-r1-50-cinema-1792454400000@1792434600000',
+      metadata: expect.objectContaining({ recipientUserIds: ['user-sleepy'] }),
+    }) });
   });
 
   it('still sends other events to a device with no saved choice', async () => {
@@ -230,7 +261,7 @@ describe('Lidarr-sourced pushes', () => {
     lastFailedAt: null,
     lastSucceededAt: null,
     preferences: [],
-    user: { id: `user-${name}`, settings: null, ...user },
+    user: { id: `user-${name}`, status: 'active', settings: null, ...user },
   });
   const devices = () => [
     device('admin', { role: 'admin', template: 'admin', permissions: {} }),
@@ -283,5 +314,86 @@ describe('Lidarr-sourced pushes', () => {
     mocks.findMany.mockResolvedValueOnce(devices());
     await notifyEvent({ eventType: 'grabbed', title: 'Download Started', body: 'Show', metadata: { source: 'sonarr', instanceId: 'son-1' } });
     expect(sentTo()).toEqual(['admin', 'member', 'no-music']);
+  });
+});
+
+// Disabling a user ends their sessions but keeps their devices subscribed, so
+// re-enabling them brings their pushes back; until then nothing reaches them.
+describe('accounts that are not active', () => {
+  const device = (name: string, status: string) => ({
+    ...subscription,
+    id: name,
+    endpoint: `${subscription.endpoint}-${name}`,
+    consecutiveFailures: 0,
+    lastFailedAt: null,
+    lastSucceededAt: null,
+    preferences: [],
+    user: { id: `user-${name}`, status, role: 'admin', template: 'admin', permissions: {}, settings: null },
+  });
+  const devices = () => [device('active', 'active'), device('disabled', 'disabled'), device('pending', 'pending')];
+  const sentTo = () => mocks.sendNotification.mock.calls
+    .map(([target]) => (target as { endpoint: string }).endpoint.replace(`${subscription.endpoint}-`, ''));
+
+  it('sends a broadcast only to an active account', async () => {
+    mocks.findMany.mockResolvedValueOnce(devices());
+    await notifyEvent({ eventType: 'upcomingPremiere', title: 'Upcoming Movie', body: 'Film', metadata: { source: 'radarr', movieId: 1 } });
+    expect(sentTo()).toEqual(['active']);
+  });
+
+  it('holds a targeted push to a disabled or pending account too', async () => {
+    mocks.findMany.mockResolvedValueOnce(devices());
+    await notifyEvent({ eventType: 'test', title: 'Test', body: 'Body', userIds: ['user-active', 'user-disabled', 'user-pending'] });
+    expect(sentTo()).toEqual(['active']);
+  });
+
+  it('plans upcoming films only for active accounts', async () => {
+    mocks.findUsers.mockResolvedValueOnce([
+      { id: 'active', status: 'active', role: 'admin', template: 'admin', permissions: {}, settings: null, pushSubscriptions: [{ preferences: [] }], notificationChannels: [] },
+      { id: 'disabled', status: 'disabled', role: 'admin', template: 'admin', permissions: {}, settings: null, pushSubscriptions: [{ preferences: [] }], notificationChannels: [] },
+    ]);
+    expect((await usersWhoCouldReceive('upcomingPremiere', { source: 'radarr' })).map((u) => u.id)).toEqual(['active']);
+  });
+});
+
+// Upcoming films are timed per recipient, so their sends are planned only for
+// the users the delivery could reach.
+describe('usersWhoCouldReceive', () => {
+  const user = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, status: 'active', role: 'member', template: 'member', permissions: {}, settings: { timeZone: `Zone/${id}` },
+    pushSubscriptions: [{ preferences: [] }], notificationChannels: [], ...extra,
+  });
+
+  it('keeps users allowed the event with a device or channel that takes it', async () => {
+    mocks.findUsers.mockResolvedValueOnce([
+      user('phone'),
+      user('admin', { role: 'admin', template: 'admin' }),
+      user('channel-only', { pushSubscriptions: [], notificationChannels: [{ id: 'c1' }] }),
+      user('turned-off', { pushSubscriptions: [{ preferences: [{ enabled: false }] }] }),
+      user('one-of-two-on', { pushSubscriptions: [{ preferences: [{ enabled: false }] }, { preferences: [{ enabled: true }] }] }),
+      user('no-media', { permissions: { 'notify.media': false } }),
+      user('no-zone', { settings: null }),
+    ]);
+    expect(await usersWhoCouldReceive('upcomingPremiere', { source: 'radarr' })).toEqual([
+      { id: 'phone', timeZone: 'Zone/phone' },
+      { id: 'admin', timeZone: 'Zone/admin' },
+      { id: 'channel-only', timeZone: 'Zone/channel-only' },
+      { id: 'one-of-two-on', timeZone: 'Zone/one-of-two-on' },
+      { id: 'no-zone', timeZone: null },
+    ]);
+    // Only active users with a live device or a channel set to the event are read.
+    expect(mocks.findUsers).toHaveBeenCalledWith(expect.objectContaining({ where: {
+      status: 'active',
+      OR: [
+        { pushSubscriptions: { some: { revokedAt: null } } },
+        { notificationChannels: { some: { enabled: true, events: { has: 'upcomingPremiere' } } } },
+      ],
+    } }));
+  });
+
+  it('needs music.view for an album', async () => {
+    mocks.findUsers.mockResolvedValue([user('member'), user('no-music', { permissions: { 'music.view': false } })]);
+    expect((await usersWhoCouldReceive('upcomingPremiere', { source: 'lidarr' })).map((u) => u.id)).toEqual(['member']);
+    expect((await usersWhoCouldReceive('upcomingPremiere', { source: 'radarr' })).map((u) => u.id)).toEqual(['member', 'no-music']);
+    mocks.findUsers.mockResolvedValue([]);
   });
 });
