@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_NAV_ORDER,
@@ -118,6 +119,72 @@ describe('pre-paint nav position stamp', () => {
   });
 });
 
+// globals.css lowers the top nav out of the band iOS blurs in a Home Screen app.
+describe('pre-paint iPhone Home Screen app stamp', () => {
+  const run = () => new Function(THEME_BOOTSTRAP_SCRIPT)();
+  const iPhone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)';
+  const stamped = () => document.documentElement.hasAttribute('data-iphone-app');
+
+  function device(userAgent: string, { standalone, displayStandalone }: { standalone?: boolean; displayStandalone: boolean }) {
+    vi.stubGlobal('navigator', { ...navigator, userAgent, standalone });
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(display-mode: standalone)' ? displayStandalone : false }));
+  }
+
+  beforeEach(() => localStorage.clear());
+  afterEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute('data-iphone-app');
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('marks the Home Screen app on an iPhone', () => {
+    device(iPhone, { standalone: true, displayStandalone: true });
+    run();
+    expect(stamped()).toBe(true);
+  });
+
+  it('marks it from display-mode alone too', () => {
+    device(iPhone, { displayStandalone: true });
+    run();
+    expect(stamped()).toBe(true);
+  });
+
+  it('leaves a Safari tab, an installed Android app and the desktop unmarked', () => {
+    device(iPhone, { standalone: false, displayStandalone: false });
+    run();
+    expect(stamped()).toBe(false);
+    device('Mozilla/5.0 (Linux; Android 16; Pixel 9) Chrome/145.0 Mobile', { displayStandalone: true });
+    run();
+    expect(stamped()).toBe(false);
+    device('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/605.1.15', { displayStandalone: true });
+    run();
+    expect(stamped()).toBe(false);
+  });
+
+  // The blur was measured on an iPhone; an iPad mini's 744 pt portrait window
+  // and narrow Split View or Stage Manager windows have the phone layout too.
+  it('leaves an iPad Home Screen app unmarked', () => {
+    device('Mozilla/5.0 (iPad; CPU OS 27_0 like Mac OS X)', { standalone: true, displayStandalone: true });
+    run();
+    expect(stamped()).toBe(false);
+    // iPadOS reports itself as a Mac with touch.
+    device('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', { standalone: true, displayStandalone: true });
+    vi.stubGlobal('navigator', { ...navigator, platform: 'MacIntel', maxTouchPoints: 5 });
+    run();
+    expect(stamped()).toBe(false);
+  });
+
+  it('marks it even where localStorage throws', () => {
+    device(iPhone, { standalone: true, displayStandalone: true });
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+    run();
+    expect(stamped()).toBe(true);
+  });
+});
+
 describe('nav names', () => {
   // A phone tab may shorten its sidebar name, never rename it (gap plan U11).
   it.each([
@@ -127,5 +194,30 @@ describe('nav names', () => {
   ] as const)('%s reads %s / %s', (id, label, shortLabel) => {
     const item = NAV_ITEMS.find((i) => i.id === id)!;
     expect([item.label, item.shortLabel]).toEqual([label, shortLabel]);
+  });
+});
+
+// The rule the stamp feeds (globals.css), read as text: jsdom applies no media queries.
+describe('top nav drop below the iOS blur', () => {
+  const css = readFileSync('src/app/globals.css', 'utf8');
+  const at = css.indexOf('--top-nav-drop: 27px');
+  const media = css.slice(css.lastIndexOf('@media', at), css.indexOf('{', css.lastIndexOf('@media', at)));
+  const selector = css.slice(css.indexOf('{', css.lastIndexOf('@media', at)) + 1, css.lastIndexOf('{', at)).trim();
+
+  it('applies only to a phone-width window in portrait', () => {
+    expect(at).toBeGreaterThan(0);
+    expect(media).toContain('(max-width: 767.98px)');
+    expect(media).toContain('(orientation: portrait)');
+  });
+
+  it('needs the iPhone app stamp, the nav at the top, and no cinematic skin', () => {
+    expect(selector).toContain('[data-iphone-app]');
+    expect(selector).toContain(':not([data-nav-position="bottom"])');
+    expect(selector).toContain(":not([data-watch-skin='cinematic']:has(.hpr-watch))");
+  });
+
+  it('moves the bar, the header offset sticky toolbars use, and nothing when unset', () => {
+    expect(css).toContain('padding-top: calc(env(safe-area-inset-top, 0px) + var(--top-nav-drop, 0px));');
+    expect(css).toContain('--header-height: calc(env(safe-area-inset-top, 0px) + var(--top-nav-drop, 0px) + 3rem);');
   });
 });
