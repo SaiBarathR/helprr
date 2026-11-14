@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireUserCapability } from '@/lib/auth';
+import { requireUserAnyCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
 
+// Settings → Downloads (settings.downloads) is this schedule's own page, so its
+// holder reads and saves it without the torrent list (torrents.view) or the
+// Torrents page's speed limits (torrents.bandwidth). The schedule names no torrent.
 async function getHandler(): Promise<NextResponse> {
-  const auth = await requireUserCapability('torrents.view');
+  const auth = await requireUserAnyCapability(['torrents.view', 'settings.downloads']);
   if (!auth.ok) return auth.response;
 
   const settings = await getOrCreateAppSettings();
@@ -22,7 +25,7 @@ async function getHandler(): Promise<NextResponse> {
 }
 
 async function putHandler(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireUserCapability('torrents.bandwidth');
+  const auth = await requireUserAnyCapability(['torrents.bandwidth', 'settings.downloads']);
   if (!auth.ok) return auth.response;
 
   let body: unknown;

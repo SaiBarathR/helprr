@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from '@/components/ui/app-link';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Check, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -12,6 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
+import { ResponsiveCombobox } from '@/components/ui/responsive-combobox';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { SubtitleAppearanceSection } from '@/components/settings/subtitle-appearance-section';
 import { PlayerSection } from '@/components/settings/player-section';
@@ -66,6 +68,7 @@ export default function PreferencesPage() {
   const displayedTz = draft ?? settings?.timeZone ?? '';
 
   const [regions, setRegions] = useState<RegionOption[] | null>(null);
+  const [regionOpen, setRegionOpen] = useState(false);
   useEffect(() => {
     // Only an admin sees (and may save) the region.
     if (!isAdmin) return;
@@ -92,6 +95,17 @@ export default function PreferencesPage() {
     if (!currentCode || base.some((r) => r.code === currentCode)) return base;
     return [{ code: currentCode, name: currentCode }, ...base];
   }, [regions, settings?.watchProviderRegion]);
+
+  const currentRegion = regionOptions.find((r) => r.code === (settings?.watchProviderRegion ?? 'US'));
+
+  function pickRegion(code: string) {
+    setRegionOpen(false);
+    if (code === settings?.watchProviderRegion) return;
+    void update(
+      { watchProviderRegion: code },
+      { successMessage: () => `Region set to ${code}` },
+    );
+  }
 
   // Debounced commit that flushes (instead of cancelling) on unmount, so a
   // quick back-nav can't silently drop the last edit.
@@ -215,29 +229,43 @@ export default function PreferencesPage() {
           title="Where to Watch"
           footer="Used by Discover, Movies, and Series detail pages to show streaming availability"
         >
+          {/* Searchable, current pick first: the same picker as Your time zone
+              and Discover's region and language (c733), not a ~250-row list. */}
           <div className="grouped-row">
-            <span className="text-sm">Region</span>
-            <Select
-              value={settings?.watchProviderRegion ?? 'US'}
-              onValueChange={(v) =>
-                void update(
-                  { watchProviderRegion: v },
-                  { successMessage: () => `Region set to ${v}` },
-                )
+            <span className="text-sm shrink-0">Region</span>
+            <ResponsiveCombobox
+              open={regionOpen}
+              onOpenChange={setRegionOpen}
+              title="Where to Watch region"
+              searchPlaceholder="Search regions"
+              align="end"
+              selectedValue={currentRegion ? `${currentRegion.name} ${currentRegion.code}` : undefined}
+              trigger={
+                <button
+                  type="button"
+                  aria-label="Region"
+                  disabled={loading}
+                  className="flex min-w-0 items-center gap-1 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors dark:bg-input/30 dark:hover:bg-input/50 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
+                  <span className="truncate">{currentRegion ? `${currentRegion.name} · ${currentRegion.code}` : ''}</span>
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                </button>
               }
-              disabled={loading}
             >
-              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="max-h-[min(20rem,var(--radix-select-content-available-height))]">
-                {regionOptions.map((r) => (
-                  <SelectItem key={r.code} value={r.code}>
-                    {r.name} · {r.code}
-                  </SelectItem>
+              <CommandEmpty>No matches.</CommandEmpty>
+              <CommandGroup>
+                {(currentRegion
+                  ? [currentRegion, ...regionOptions.filter((r) => r !== currentRegion)]
+                  : regionOptions
+                ).map((r) => (
+                  <CommandItem key={r.code} value={`${r.name} ${r.code}`} onSelect={() => pickRegion(r.code)}>
+                    <span className="flex-1 truncate">{r.name}</span>
+                    <span className="text-xs text-muted-foreground uppercase">{r.code}</span>
+                    {r === currentRegion && <Check className="h-3.5 w-3.5 ml-1" />}
+                  </CommandItem>
                 ))}
-              </SelectContent>
-            </Select>
+              </CommandGroup>
+            </ResponsiveCombobox>
           </div>
         </GroupedSection>
       )}
