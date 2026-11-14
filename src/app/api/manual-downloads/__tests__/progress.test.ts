@@ -109,6 +109,40 @@ describe('progress on the existing manual download reads', () => {
       expect(await readList()).toEqual({ fraction: 0.5, size: 3_500_000_000 });
     });
 
+    it('uses the files the detail route already loaded instead of asking the database again', async () => {
+      mocks.findUnique.mockResolvedValue({ ...reviewed, files: files.map((file, index) => ({ ...file, id: `f${index}`, path: `S01E0${index}.mkv`, arrPath: null, candidate: null, decision: 'PENDING', episodeIds: [] })) });
+      mocks.torrents.mockResolvedValue([{ hash: 'abc', progress: 0, size: 3_500_000_000 }]);
+      expect(await readDetail()).toEqual({ fraction: 0, size: 2_000_000_000 });
+      expect(mocks.groupBy).not.toHaveBeenCalled();
+    });
+
+    it("follows qBittorrent's smaller size when files are unticked after Start", async () => {
+      mocks.findMany.mockResolvedValue([reviewed]);
+      mocks.groupBy.mockImplementation(sumChosen(files));
+      mocks.torrents.mockResolvedValue([{ hash: 'abc', progress: 0.5, size: 1_000_000_000 }]);
+      expect(await readList()).toEqual({ fraction: 0.5, size: 1_000_000_000 });
+    });
+
+    it("falls back to qBittorrent's size when no chosen files are recorded or the lookup fails", async () => {
+      mocks.findMany.mockResolvedValue([reviewed]);
+      mocks.torrents.mockResolvedValue([{ hash: 'abc', progress: 0.5, size: 2_000_000_000 }]);
+      mocks.groupBy.mockResolvedValue([]);
+      expect(await readList()).toEqual({ fraction: 0.5, size: 2_000_000_000 });
+      mocks.groupBy.mockResolvedValue([{ downloadId: 'md1', _sum: { size: null } }]);
+      expect(await readList()).toEqual({ fraction: 0.5, size: 2_000_000_000 });
+      mocks.groupBy.mockRejectedValue(new Error('database unavailable'));
+      const response = await list(request());
+      expect(response.status).toBe(200);
+      expect((await response.json()).downloads[0].progress).toEqual({ fraction: 0.5, size: 2_000_000_000 });
+    });
+
+    it('shows no progress and skips the lookup while qBittorrent is unavailable', async () => {
+      mocks.findMany.mockResolvedValue([reviewed]);
+      mocks.torrents.mockRejectedValue(new Error('unavailable'));
+      expect(await readList()).toBeNull();
+      expect(mocks.groupBy).not.toHaveBeenCalled();
+    });
+
     it('asks the database only for active choose-files downloads', async () => {
       mocks.findMany.mockResolvedValue([row({ mode: 'ARR_MANAGED' }), reviewed, row({ id: 'md3', mode: 'QBIT_REVIEWED', status: 'IMPORTED' })]);
       mocks.groupBy.mockResolvedValue([]);
