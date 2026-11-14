@@ -192,6 +192,10 @@ describe('DataTable stored widths that no longer fit', () => {
   it('widens a column only into the room left, so the table keeps fitting', () => {
     HTMLElement.prototype.setPointerCapture = vi.fn();
     containerWidth = tableWidth = 500;
+    // Year shows its 80 px.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { width: this.tagName === 'TH' ? 80 : tableWidth } as DOMRect;
+    });
     render(<DataTable tableId="fit-test" columns={columns} rows={['Alien']} rowKey={String} stickyHeader />);
     const grip = screen.getAllByRole('separator')[1];
     act(() => {
@@ -202,5 +206,49 @@ describe('DataTable stored widths that no longer fit', () => {
     // 500 - 370 = 130 px of room: Year goes 80 -> 210, not 380.
     expect(cols()[1].style.width).toBe('210px');
     expect(JSON.parse(localStorage.getItem('helprr-table:fit-test') ?? '{}').widths).toEqual({ year: 210 });
+  });
+
+  describe('dragging while stored widths are fitted', () => {
+    // Title 600 and Year 180 stored at a wider window; 600 px shows 384/126/90.
+    const shown = () => cols().map((col) => col.style.minWidth || col.style.width);
+    const stored = () => JSON.parse(localStorage.getItem('helprr-table:fit-test') ?? '{}').widths;
+    const drag = (grip: Element, dx: number) => act(() => {
+      grip.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 300 }));
+      grip.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 300 + dx }));
+      grip.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 300 + dx }));
+    });
+    beforeEach(() => {
+      HTMLElement.prototype.setPointerCapture = vi.fn();
+      localStorage.setItem('helprr-table:fit-test', JSON.stringify({ widths: { title: 600, year: 180 } }));
+      containerWidth = tableWidth = 600;
+      // Each header cell is as wide as its column shows.
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        if (this.tagName !== 'TH') return { width: tableWidth } as DOMRect;
+        const col = cols()[[...this.parentElement!.children].indexOf(this)];
+        return { width: parseFloat(col.style.minWidth || col.style.width) } as DOMRect;
+      });
+      render(<DataTable tableId="fit-test" columns={columns} rows={['Alien']} rowKey={String} stickyHeader />);
+      expect(shown()).toEqual(['384px', '126px', '90px']);
+    });
+
+    it.each([[0, 'Title'], [1, 'Year']])('a widening drag on column %i (%s) with no room moves nothing and keeps the stored widths', (grip) => {
+      drag(screen.getAllByRole('separator')[grip], 100);
+      expect(shown()).toEqual(['384px', '126px', '90px']);
+      expect(stored()).toEqual({ title: 600, year: 180 });
+    });
+
+    // Fitted shares round down, so a neighbour can land a pixel short; on
+    // screen the grow column (Title) takes it, as the table fills its width.
+    it('narrowing Year by 20 px narrows it by 20 px; Title takes the room and keeps its stored width', () => {
+      drag(screen.getAllByRole('separator')[1], -20);
+      expect(shown()).toEqual(['403px', '106px', '90px']);
+      expect(stored().title).toBe(600);
+    });
+
+    it('narrowing Title by 30 px narrows it by 30 px; Year gets the room back toward its stored width', () => {
+      drag(screen.getAllByRole('separator')[0], -30);
+      expect(shown()).toEqual(['354px', '155px', '90px']);
+      expect(stored().year).toBe(180);
+    });
   });
 });

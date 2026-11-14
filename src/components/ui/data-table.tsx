@@ -73,6 +73,10 @@ export function fitColumnWidths(stored: number[], defaults: number[], available:
   return stored.map((width, i) => floors[i] + Math.floor(((width - floors[i]) * room) / extra));
 }
 
+function columnFloor(col: { minWidth?: number }) {
+  return col.minWidth ?? RESIZE_MIN_WIDTH;
+}
+
 function prefsKey(tableId: string) {
   return `helprr-table:${tableId}`;
 }
@@ -172,20 +176,23 @@ export function DataTable<T>({
   }, [pageState.resetSignature, resetSignature, setPage]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Live drag state kept in a ref; only the resulting width goes through setState.
-  const dragRef = useRef<{ columnId: string; startX: number; shownWidth: number; storedWidth: number; direction: 0 | 1 | -1 } | null>(null);
+  const dragRef = useRef<{ columnId: string; startX: number; shownWidth: number; storedWidth: number; appliedWidth: number; direction: 0 | 1 | -1 } | null>(null);
 
   // The scroll wrapper's width, measured below for a sticky header; 0 (no
   // cap) until then or without one.
   const [availableWidth, setAvailableWidth] = useState(0);
+  const storedWidths = useMemo(
+    () => columns.map((col) => Math.max(columnFloor(col), widthOverrides[col.id] ?? col.width)),
+    [columns, widthOverrides],
+  );
+  const defaultWidths = useMemo(
+    () => columns.map((col) => Math.max(columnFloor(col), col.width)),
+    [columns],
+  );
   const appliedWidths = useMemo(() => {
-    const floorOf = (col: DataTableColumn<T>) => col.minWidth ?? RESIZE_MIN_WIDTH;
-    const widths = fitColumnWidths(
-      columns.map((col) => Math.max(floorOf(col), widthOverrides[col.id] ?? col.width)),
-      columns.map((col) => Math.max(floorOf(col), col.width)),
-      availableWidth,
-    );
+    const widths = fitColumnWidths(storedWidths, defaultWidths, availableWidth);
     return new Map(columns.map((col, i) => [col.id, widths[i]]));
-  }, [columns, widthOverrides, availableWidth]);
+  }, [columns, storedWidths, defaultWidths, availableWidth]);
   const widthOf = useCallback(
     (col: DataTableColumn<T>) => appliedWidths.get(col.id) ?? col.width,
     [appliedWidths],
@@ -205,20 +212,37 @@ export function DataTable<T>({
     // than its stored minimum, and starting from that minimum snapped it
     // narrower by the leftover space. Narrowing lowers the stored width, so
     // for the grow column a narrower drag lowers its minimum rather than
-    // saving its (wide) on-screen width as one. Other columns show exactly
-    // their stored width, so both starts are the same for them.
+    // saving its (wide) on-screen width as one.
     // The way a drag goes is decided once, past a few pixels, so a wobble or
     // a drag that comes back past its start can't save the wide on-screen
     // width as the grow column's minimum. A widening drag never narrows.
     // A table that fits stays fitting: a column widens only into the room
-    // left (for the grow column, none: it already takes it all), so the
-    // stored width is never more than this window shows.
-    const storedWidth = widthOf(col);
-    const shownWidth = e.currentTarget.parentElement?.getBoundingClientRect().width || storedWidth;
+    // left (for the grow column, none: it already takes it all). A widening
+    // drag that the room stops saves nothing, so a width stored at a wider
+    // window survives a drag in a narrower one.
+    const index = columns.indexOf(col);
+    const storedWidth = storedWidths[index];
+    const appliedWidth = widthOf(col);
+    const shownWidth = e.currentTarget.parentElement?.getBoundingClientRect().width || appliedWidth;
     const maxWidth = availableWidth > 0 && totalWidth <= availableWidth
-      ? storedWidth + availableWidth - totalWidth
+      ? appliedWidth + availableWidth - totalWidth
       : Infinity;
-    dragRef.current = { columnId: col.id, startX: e.clientX, shownWidth, storedWidth, direction: 0 };
+    // The stored width that shows this column `width` wide, the others
+    // keeping theirs. While widths are fitted (see fitColumnWidths) the two
+    // differ, so a narrowing drag searches for it: what a column shows never
+    // shrinks as its stored width grows. The column then follows the pointer.
+    const storedFor = (width: number) => {
+      const trial = [...storedWidths];
+      let low = columnFloor(col);
+      let high = Math.max(low, storedWidth);
+      while (low < high) {
+        trial[index] = Math.floor((low + high) / 2);
+        if (fitColumnWidths(trial, defaultWidths, availableWidth)[index] >= width) high = trial[index];
+        else low = trial[index] + 1;
+      }
+      return low;
+    };
+    dragRef.current = { columnId: col.id, startX: e.clientX, shownWidth, storedWidth, appliedWidth, direction: 0 };
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
 
@@ -230,11 +254,16 @@ export function DataTable<T>({
         if (Math.abs(delta) < RESIZE_DEAD_ZONE) return;
         drag.direction = delta > 0 ? 1 : -1;
       }
-      const target = drag.direction > 0
-        ? (delta > 0 ? drag.shownWidth + delta : drag.storedWidth)
-        : drag.storedWidth + delta;
-      const next = Math.round(Math.max(col.minWidth ?? RESIZE_MIN_WIDTH, Math.min(maxWidth, target)));
-      setWidthOverrides((prev) => (prev[drag.columnId] === next ? prev : { ...prev, [drag.columnId]: next }));
+      let next: number;
+      if (drag.direction > 0) {
+        const widened = Math.round(Math.min(maxWidth, drag.shownWidth + delta));
+        next = widened > drag.shownWidth ? Math.max(drag.storedWidth, widened) : drag.storedWidth;
+      } else {
+        next = storedFor(Math.round(Math.max(columnFloor(col), drag.appliedWidth + delta)));
+      }
+      setWidthOverrides((prev) => (
+        Math.max(columnFloor(col), prev[drag.columnId] ?? col.width) === next ? prev : { ...prev, [drag.columnId]: next }
+      ));
     };
     const onUp = () => {
       dragRef.current = null;
@@ -251,7 +280,7 @@ export function DataTable<T>({
     handle.addEventListener('pointermove', onMove);
     handle.addEventListener('pointerup', onUp);
     handle.addEventListener('pointercancel', onUp);
-  }, [availableWidth, tableId, totalWidth, widthOf]);
+  }, [availableWidth, columns, defaultWidths, storedWidths, tableId, totalWidth, widthOf]);
 
   const handleResizeReset = useCallback((col: DataTableColumn<T>) => {
     setWidthOverrides((prev) => {

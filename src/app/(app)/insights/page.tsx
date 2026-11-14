@@ -159,13 +159,15 @@ export default function InsightsPage() {
       <div data-scroll-restoration-key="insights-content" className="page-bleed flex-1 pt-3 pb-6 space-y-4">
         {tabs.length > 1 && (
           // Radix Tabs: the same segmented track as the other pages' section
-          // switches, plus roving focus + arrow keys.
+          // switches, plus roving focus + arrow keys. Five tabs only just fit
+          // a 320px phone, so larger text scrolls the track (as Cleanup's)
+          // rather than clipping the last tab.
           <Tabs
             value={activeTab ?? undefined}
             onValueChange={(v) => setTab(v as (typeof tabs)[number])}
             className="gap-0"
           >
-            <TabsList aria-label="Insight sections" variant="segmented">
+            <TabsList aria-label="Insight sections" variant="segmented" className="no-scrollbar overflow-x-auto overflow-y-hidden">
               {tabs.map((id) => (
                 <TabsTrigger key={id} value={id}>
                   {TAB_LABELS[id]}
