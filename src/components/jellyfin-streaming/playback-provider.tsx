@@ -1469,7 +1469,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // for a restart of the title on the player — a seek, a track or quality
     // change, a fallback to a transcode: those keep what the stream has
     // learned, and must not wait on a test. Music needs no measuring, and an
-    // explicit choice is the viewer's.
+    // explicit choice is the viewer's. On Next the test can share the link with
+    // the outgoing stream still buffering and read it low; by design, as the
+    // new stream's own transfers raise the ceiling again (`observe`).
     const freshTitle = !releasedSession && streamRef.current?.item.Id !== nextItem.Id;
     if (choice === 0 && freshTitle && nextItem.MediaType !== 'Audio' && bandwidthRef.current.needsProbe()) {
       await measureLink();

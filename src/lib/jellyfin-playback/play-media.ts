@@ -18,11 +18,14 @@ export class PlaybackFailure extends Error {
  * get there on a paused element. `native`: metadata (readyState 1) is enough,
  * because Safari's own HLS — every iPhone — usually stops there until `play()`,
  * and waiting for a frame only ran the fallback. Either way, a stream that has
- * loaded nothing after `fallbackMs` is played after all (the caller pauses it).
+ * loaded nothing after `fallbackMs` is played to make the browser load it:
+ * muted, and paused the moment it plays. 4 s for both: on iOS cellular a fresh
+ * transcode's playlist alone can take 2–4 s, and metadata arriving any time
+ * before that is still taken at once.
  */
 export const PAUSED_START = {
   buffered: { readyState: 2, fallbackMs: 4_000 },
-  native: { readyState: 1, fallbackMs: 1_500 },
+  native: { readyState: 1, fallbackMs: 4_000 },
 } as const;
 type PausedStart = (typeof PAUSED_START)[keyof typeof PAUSED_START];
 
@@ -34,7 +37,8 @@ type PausedStart = (typeof PAUSED_START)[keyof typeof PAUSED_START];
  * the element read as playing for the seconds the new stream took to load.
  * Ready at the readiness `paused` names; with metadata alone if the browser
  * will not buffer further by its fallback; and only if it has loaded nothing
- * at all does it play after all, leaving the caller to pause it, as before.
+ * at all is it played, without sound and only until `play()` resolves, then
+ * waited on paused like the rest.
  */
 export function playMedia(
   el: HTMLMediaElement,
@@ -80,10 +84,26 @@ export function playMedia(
         void el.play().then(() => { playResolved = true; check(); }, failed);
       } catch (cause) { failed(cause); }
     };
+    // The element's own mute is borrowed and handed back; the viewer's mute
+    // setting lives in the provider and is not touched.
+    const nudge = () => {
+      const wasMuted = el.muted;
+      const restore = () => { el.muted = wasMuted; };
+      el.muted = true;
+      playing = true;
+      try {
+        void el.play().then(() => {
+          el.pause();
+          restore();
+          playing = false;
+          check();
+        }, (cause) => { restore(); failed(cause); });
+      } catch (cause) { restore(); failed(cause); }
+    };
     const fallback = paused ? setTimeout(() => {
       if (!isCurrent()) finish(false);
       else if (el.readyState >= 1) finish(true);
-      else play();
+      else nudge();
     }, paused.fallbackMs) : undefined;
     if (paused) check();
     else play();

@@ -5,9 +5,10 @@ import { PAUSED_START, playMedia } from '../play-media';
 function fakeElement(readyState: number) {
   return {
     readyState,
+    muted: false,
     play: vi.fn(() => Promise.resolve()),
     pause: vi.fn(),
-  } as unknown as HTMLMediaElement & { readyState: number; play: ReturnType<typeof vi.fn> };
+  } as unknown as HTMLMediaElement & { readyState: number; muted: boolean; play: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn> };
 }
 
 beforeEach(() => { vi.useFakeTimers(); });
@@ -35,13 +36,35 @@ describe('a paused start', () => {
     expect(el.play).not.toHaveBeenCalled();
   });
 
-  it('plays after all when native HLS has loaded nothing by its short fallback', async () => {
+  it('waits out a slow native transcode without playing, then nudges it muted and leaves it paused', async () => {
     const el = fakeElement(0);
-    void playMedia(el, () => true, 30_000, PAUSED_START.native);
-    await vi.advanceTimersByTimeAsync(PAUSED_START.native.fallbackMs - 1);
+    let mutedAtPlay: boolean | undefined;
+    el.play.mockImplementation(() => { mutedAtPlay = el.muted; return Promise.resolve(); });
+    let ready: boolean | undefined;
+    void playMedia(el, () => true, 30_000, PAUSED_START.native).then((value) => { ready = value; });
+
+    // A fresh transcode's playlist can take seconds on cellular: no play() yet.
+    await vi.advanceTimersByTimeAsync(1_500);
     expect(el.play).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(PAUSED_START.native.fallbackMs - 1_500);
+
     expect(el.play).toHaveBeenCalledTimes(1);
+    expect(mutedAtPlay).toBe(true);
+    expect(el.pause).toHaveBeenCalledTimes(1);
+    expect(el.muted).toBe(false);
+    expect(ready).toBeUndefined();
+    el.readyState = 1;
+    await vi.advanceTimersByTimeAsync(250);
+    expect(ready).toBe(true);
+  });
+
+  it('hands back a mute that was already on', async () => {
+    const el = fakeElement(0);
+    el.muted = true;
+    void playMedia(el, () => true, 30_000, PAUSED_START.native);
+    await vi.advanceTimersByTimeAsync(PAUSED_START.native.fallbackMs);
+    expect(el.play).toHaveBeenCalledTimes(1);
+    expect(el.muted).toBe(true);
   });
 
   it('a playing start still plays at once', async () => {

@@ -77,6 +77,8 @@ export interface Harness {
    * last, and is then released.
    */
   requestOnPlayer: () => StreamRequest | undefined;
+  /** Sessions Jellyfin granted that have not been released, oldest first. */
+  heldSessions: () => string[];
   /** Session reports the provider sent, oldest first. */
   reports: SessionReport[];
   encodingStops: string[];
@@ -138,6 +140,7 @@ export async function mountPlayback(options: { hls?: boolean; audioIds?: string[
   const requests: StreamRequest[] = [];
   const reports: SessionReport[] = [];
   const encodingStops: string[] = [];
+  const granted: string[] = [];
   const mediaSession: Record<string, () => void> = {};
 
   Object.defineProperty(navigator, 'mediaSession', {
@@ -219,6 +222,7 @@ export async function mountPlayback(options: { hls?: boolean; audioIds?: string[
         transcodingOffsetTicks: options.progressive ? body.startTimeTicks ?? 0 : 0,
         subtitleTracks: [],
       };
+      granted.push(stream.playSessionId);
       return ok(stream);
     }
     if (url.includes('/api/jellyfin/stream/session')) {
@@ -274,6 +278,7 @@ export async function mountPlayback(options: { hls?: boolean; audioIds?: string[
     },
     media: { paused: () => state.paused, currentTime: () => state.currentTime },
     requests,
+    heldSessions: () => granted.filter((session) => !encodingStops.includes(session)),
     requestOnPlayer: () => {
       const session = holder.current?.stream?.playSessionId?.match(/^session-(\d+)$/)?.[1];
       return session ? requests[Number(session) - 1] : undefined;
