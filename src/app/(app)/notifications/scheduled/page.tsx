@@ -221,7 +221,7 @@ export default function ScheduledAlertsPage() {
     setCancelling(true);
     try {
       const res = await fetch(`/api/scheduled-alerts/${alert.id}?permanent=true`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete alert');
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Failed to delete alert');
       toast.success('Alert deleted');
       invalidate();
     } catch (e) {

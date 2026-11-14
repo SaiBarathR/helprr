@@ -119,6 +119,17 @@ describe('PUT /api/settings for a member', () => {
     expect(mocks.upsert).not.toHaveBeenCalled();
   });
 
+  it('takes the logging switches only as real booleans', async () => {
+    mocks.user = member('settings.logging');
+    for (const field of ['logEnabled', 'logClientConsoleEnabled', 'logFailedRequestBodies', 'logFailedResponseBodies']) {
+      expect((await putSettings(request({ [field]: 'false' }))).status).toBe(400);
+      expect((await putSettings(request({ [field]: 1 }))).status).toBe(400);
+    }
+    expect(mocks.upsert).not.toHaveBeenCalled();
+    expect((await putSettings(request({ logFailedResponseBodies: false }))).status).toBe(200);
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { logFailedResponseBodies: false } }));
+  });
+
   it('lets an admin write any field', async () => {
     mocks.user = { id: 'a1', role: 'admin', template: 'admin', permissions: {} };
     expect((await putSettings(request({ pollingIntervalSecs: 60, logLevel: 'info' }))).status).toBe(200);

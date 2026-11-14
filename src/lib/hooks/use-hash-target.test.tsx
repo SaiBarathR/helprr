@@ -60,3 +60,20 @@ it('lets go after a few seconds', () => {
   resize?.();
   expect(scrollIntoView).toHaveBeenCalledTimes(1);
 });
+
+it('drops the hash once it lets go, so Back or Forward to this entry restores the saved position instead', () => {
+  window.history.replaceState(null, '', '/settings/notifications?tab=a#quiet-hours');
+  render(<Section />);
+  expect(window.location.hash).toBe('#quiet-hours');
+  window.dispatchEvent(new Event('wheel'));
+  expect(window.location.hash).toBe('');
+  expect(window.location.pathname + window.location.search).toBe('/settings/notifications?tab=a');
+});
+
+it('leaves the next page’s address alone when it unmounts before letting go', () => {
+  window.history.replaceState(null, '', '/settings/notifications#quiet-hours');
+  const view = render(<Section />);
+  window.history.replaceState(null, '', '/settings/devices#top');
+  view.unmount();
+  expect(window.location.pathname + window.location.hash).toBe('/settings/devices#top');
+});

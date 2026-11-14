@@ -202,7 +202,18 @@ async function putHandler(request: NextRequest) {
       }
       data.timeZone = nextTimeZone;
     }
-    if (logEnabled !== undefined) data.logEnabled = Boolean(logEnabled);
+    // Strict booleans, like the other switches: Boolean("false") would turn logging on.
+    const logSwitches = { logEnabled, logClientConsoleEnabled, logFailedRequestBodies, logFailedResponseBodies };
+    for (const [field, value] of Object.entries(logSwitches)) {
+      if (value === undefined) continue;
+      if (typeof value !== 'boolean') {
+        return NextResponse.json(
+          { error: `${field} must be a boolean` },
+          { status: 400 }
+        );
+      }
+      data[field] = value;
+    }
     if (logLevel !== undefined) {
       if (typeof logLevel !== 'string' || !LOG_LEVELS.has(logLevel)) {
         return NextResponse.json(
@@ -242,12 +253,6 @@ async function putHandler(request: NextRequest) {
       }
       data.notificationHistoryRetentionDays = parsed;
     }
-    if (logClientConsoleEnabled !== undefined)
-      data.logClientConsoleEnabled = Boolean(logClientConsoleEnabled);
-    if (logFailedRequestBodies !== undefined)
-      data.logFailedRequestBodies = Boolean(logFailedRequestBodies);
-    if (logFailedResponseBodies !== undefined)
-      data.logFailedResponseBodies = Boolean(logFailedResponseBodies);
     if (watchProviderRegion !== undefined) {
       const code = normalizeRegionCode(watchProviderRegion);
       if (!code) {

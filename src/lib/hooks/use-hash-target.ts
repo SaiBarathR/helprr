@@ -10,8 +10,10 @@ const SETTLE_MS = 3000;
  * view while the page around it is still loading. The browser (and Next's
  * Link) scroll to the hash once, on arrival, but sections above it that load
  * afterwards (push state, the event list) push it back out of view. It stops
- * at the first scroll, tap or key, or after a few seconds. The element needs a
- * scroll-margin-top for the sticky header.
+ * at the first scroll, tap or key, or after a few seconds, and then drops the
+ * hash so a later Back or Forward to this entry gets the app's own scroll
+ * restoration instead of this hold. The element needs a scroll-margin-top for
+ * the sticky header.
  */
 export function useHashTarget<T extends HTMLElement>(id: string) {
   const ref = useRef<T>(null);
@@ -27,15 +29,20 @@ export function useHashTarget<T extends HTMLElement>(id: string) {
       observer?.disconnect();
       window.clearTimeout(timer);
       document.removeEventListener('animationend', align, true);
-      for (const event of INTENT_EVENTS) window.removeEventListener(event, stop, true);
+      for (const event of INTENT_EVENTS) window.removeEventListener(event, release, true);
+    };
+    // Not on unmount: by then the location may already be the next page's.
+    const release = () => {
+      stop();
+      if (window.location.hash === `#${id}`) window.history.replaceState(null, '', window.location.pathname + window.location.search);
     };
 
     align();
     // The page's entry animation shifts it by a few pixels once it ends.
     document.addEventListener('animationend', align, true);
     observer?.observe(document.body);
-    for (const event of INTENT_EVENTS) window.addEventListener(event, stop, { capture: true, passive: true });
-    timer = window.setTimeout(stop, SETTLE_MS);
+    for (const event of INTENT_EVENTS) window.addEventListener(event, release, { capture: true, passive: true });
+    timer = window.setTimeout(release, SETTLE_MS);
     return stop;
   }, [id]);
 
