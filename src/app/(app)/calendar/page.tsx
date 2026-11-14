@@ -757,7 +757,7 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
   const scheduled = event.origin === 'scheduled' || Boolean(event.scheduleLabel);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} backCloses={false}>
       <CalendarEventContext event={event} onOpenChange={(menuOpen) => { if (menuOpen) hide(); }}>
         <PopoverTrigger asChild>
           <Link

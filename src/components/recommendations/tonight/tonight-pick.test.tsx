@@ -165,4 +165,38 @@ describe('TonightPick', () => {
     expect(await screen.findByText('You’re done')).toBeTruthy();
     await waitFor(() => expect(screen.getByText('Waiting for Sai.')).toBeTruthy());
   });
+
+  it('keeps names that start alike apart: the last word can take its own line', async () => {
+    fetchMock.mockResolvedValue(respond(200, view({
+      participants: [
+        { id: 'a', name: 'QA Member One', isStarter: true, joined: true, voted: 0 },
+        { id: 'b', name: 'QA Member Two', isStarter: false, joined: true, voted: 0 },
+        { id: 'c', name: 'Mum', isStarter: false, joined: true, voted: 0 },
+      ],
+    })));
+    renderPick();
+    const one = (await screen.findByTitle('QA Member One'));
+    expect([...one.querySelectorAll('.truncate')].map((part) => part.textContent)).toEqual(['QA Member', 'One']);
+    expect(screen.getByTitle('QA Member Two').textContent).toContain('Two');
+    expect([...screen.getByTitle('Mum').querySelectorAll('.truncate')].map((part) => part.textContent)).toEqual(['Mum']);
+  });
+
+  it('closes on the system Back', async () => {
+    fetchMock.mockImplementation(async () => respond(200, view()));
+    const onClose = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TonightPick id={ID} onClose={onClose} onOpenPick={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect((window.history.state as Record<string, unknown> | null)?.__helprrOverlay).toBeDefined());
+    await act(async () => {
+      const landed = new Promise<void>((resolve) => window.addEventListener('popstate', () => resolve(), { once: true }));
+      window.history.back();
+      await landed;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    });
+    expect(onClose).toHaveBeenCalled();
+  });
 });
