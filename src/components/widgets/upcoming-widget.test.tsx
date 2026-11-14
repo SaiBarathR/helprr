@@ -15,7 +15,7 @@ vi.mock('@/lib/widgets/use-list-fetch-size', () => ({ useListFetchSize: () => ({
 vi.mock('./dashboard-layout-context', () => ({ useDashboardLayout: () => ({ setWidgetLayoutOverride: vi.fn() }) }));
 vi.mock('@/components/ui/app-link', () => ({ default: ({ children, ...props }: { children: ReactNode }) => <a {...props}>{children}</a> }));
 
-import { UpcomingWidget } from './upcoming-widget';
+import { UpcomingWidget, mergeFilmReleaseDays } from './upcoming-widget';
 
 // A film's release day arrives as that day's UTC midnight (release-day.ts).
 const film = (id: string, day: string): CalendarEvent => ({
@@ -41,5 +41,51 @@ describe('Upcoming widget relative day', () => {
     expect(text).toContain('Nov 18 · Tomorrow');
     expect(text).toContain('Nov 27 · in 10 days');
     expect(text).not.toMatch(/hours/i);
+  });
+});
+
+describe('Upcoming widget, one row per film-day', () => {
+  const release = (releaseType: 'cinema' | 'physical' | 'digital', day: string, movieId = 511): CalendarEvent => ({
+    ...film('The Odyssey', day), id: `radarr-c1-${movieId}-${releaseType}`, movieId, releaseType, instanceId: 'c1',
+  });
+
+  it("merges a film's releases on the same day and keeps each type", () => {
+    const merged = mergeFilmReleaseDays([release('physical', '2026-11-17'), release('digital', '2026-11-17')]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].releaseTypes).toEqual(['physical', 'digital']);
+  });
+
+  it('keeps different days, films and instances apart', () => {
+    const other = { ...release('digital', '2026-11-17'), instanceId: 'c2' };
+    const merged = mergeFilmReleaseDays([
+      release('cinema', '2026-11-17'), release('digital', '2026-11-20'), release('digital', '2026-11-17', 9), other,
+    ]);
+    expect(merged.map((e) => e.releaseTypes)).toEqual([['cinema'], ['digital'], ['digital'], ['digital']]);
+  });
+
+  it('lists the film once and names both release types', () => {
+    vi.setSystemTime(new Date(2026, 10, 17, 12, 0));
+    mocks.data = mergeFilmReleaseDays([release('physical', '2026-11-17'), release('digital', '2026-11-17')]);
+    const { container, getAllByRole } = render(<UpcomingWidget refreshInterval={60_000} layoutVariant="list" />);
+    expect(getAllByRole('link').filter((a) => a.getAttribute('href') === '/movies/511?instance=c1')).toHaveLength(1);
+    expect(container.textContent).toContain('Physical');
+    expect(container.textContent).toContain('Digital');
+  });
+
+  it('shows the next release whole in a 2×1 phone cell', () => {
+    vi.setSystemTime(new Date(2026, 10, 17, 12, 0));
+    mocks.data = mergeFilmReleaseDays([release('physical', '2026-11-17'), release('digital', '2026-11-17')]);
+    const { getByRole } = render(<UpcomingWidget refreshInterval={60_000} narrow rowSpan={1} />);
+    expect(getByRole('link', { name: 'Upcoming, view all' }).getAttribute('href')).toBe('/calendar');
+    const row = getByRole('link', { name: /The Odyssey/ });
+    expect(row.getAttribute('href')).toBe('/movies/511?instance=c1');
+    expect(row.textContent).toContain('Nov 17 · PHY · DIG');
+  });
+
+  it('does not claim "nothing upcoming" in a 2×1 cell in edit mode, which loads nothing', () => {
+    mocks.data = [];
+    const { container } = render(<UpcomingWidget refreshInterval={60_000} narrow rowSpan={1} editMode />);
+    expect(container.textContent).not.toContain('Nothing upcoming');
+    expect(container.textContent).toContain('Next release');
   });
 });

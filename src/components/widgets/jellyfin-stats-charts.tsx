@@ -249,10 +249,12 @@ export function PlayActivityChart({ data, width = 0 }: { data: PlayActivityUser[
   const { realUsers, aggregated, totalPlays, maxVal, avgPerDay, periodLabel, labelInterval, userBars, isMonthly } =
     chartData;
 
-  // Fit axis labels to the measured width (~48px per "Jun 12" label) so they
-  // never overlap on narrow cells; falls back to the count-based interval.
+  // Fit axis labels to the bar row (the measured width less the card's 24px
+  // padding, ~48px per "Jun 12" label) so they never overlap; a one-column
+  // phone cell has room for the last label only. Falls back to the
+  // count-based interval before the first measure.
   const effectiveInterval = width > 0
-    ? Math.max(1, Math.ceil(aggregated.length / Math.max(2, Math.floor(width / 48))))
+    ? Math.max(1, Math.ceil(aggregated.length / Math.max(1, Math.floor((width - 24) / 48))))
     : labelInterval;
 
   return (
@@ -325,18 +327,32 @@ export function PlayActivityChart({ data, width = 0 }: { data: PlayActivityUser[
         })}
       </div>
 
-      <div className="flex gap-[2px] mt-1 shrink-0">
-        {aggregated.map(([label], i) => (
-          <div key={label} className="flex-1 text-center min-w-0 overflow-hidden">
-            {i % effectiveInterval === 0 || i === aggregated.length - 1 ? (
-              <span className="text-[8px] text-muted-foreground whitespace-nowrap">
-                {isMonthly
-                  ? new Date(label + '-15').toLocaleDateString(undefined, { month: 'short', year: '2-digit' })
-                  : new Date(label + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-              </span>
-            ) : null}
-          </div>
-        ))}
+      {/* Labels sit over their bar's centre, not inside a bar-wide column (that
+          cut "Oct 16" to "Oct"). Counted back from the last bar every
+          effectiveInterval bars, so they stay a slot apart and never collide;
+          the end labels align to the chart's edges instead of overflowing it. */}
+      <div className="relative h-3 mt-1 shrink-0">
+        {aggregated.map(([label], i) => {
+          if ((aggregated.length - 1 - i) % effectiveInterval !== 0) return null;
+          const edge = i === aggregated.length - 1 ? 'right' : i === 0 ? 'left' : null;
+          return (
+            <span
+              key={label}
+              className="absolute top-0 text-[8px] leading-3 text-muted-foreground whitespace-nowrap"
+              style={
+                edge === 'right'
+                  ? { right: 0 }
+                  : edge === 'left'
+                    ? { left: 0 }
+                    : { left: `${((i + 0.5) / aggregated.length) * 100}%`, transform: 'translateX(-50%)' }
+              }
+            >
+              {isMonthly
+                ? new Date(label + '-15').toLocaleDateString(undefined, { month: 'short', year: '2-digit' })
+                : new Date(label + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            </span>
+          );
+        })}
       </div>
 
       <p className="text-[10px] text-muted-foreground mt-1 text-center shrink-0">{periodLabel} view</p>

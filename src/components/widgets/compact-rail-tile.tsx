@@ -20,17 +20,20 @@ export interface CompactRailItem {
  * that cell leaves about 30px, which cut titles to their first word and clipped
  * the 72px posters, and at 320px the header wraps and leaves nothing. Like the
  * watchlist widget's count tile, it takes a small label instead, which links to
- * the full list, and shows the top title whole.
+ * the full list (when there is one), and shows the top title whole. With no
+ * title to show, `note` says why (loading, nothing yet, offline) on one line.
  */
 export function CompactRailTile({
   title,
   viewAllHref,
   item,
+  note,
   editMode = false,
 }: {
   title: string;
-  viewAllHref: string;
+  viewAllHref?: string;
   item: CompactRailItem | null;
+  note?: string;
   editMode?: boolean;
 }) {
   const row = item && (
@@ -64,14 +67,21 @@ export function CompactRailTile({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, height: '100%', minHeight: 0 }}>
-      <Link
-        href={viewAllHref}
-        aria-label={`${title}, view all`}
-        className="relative touch-target"
-        style={{ alignSelf: 'flex-start', maxWidth: '100%', textDecoration: 'none' }}
-      >
-        <Eyebrow style={ellipsis}>{title} →</Eyebrow>
-      </Link>
+      {viewAllHref ? (
+        <Link
+          href={viewAllHref}
+          aria-label={`${title}, view all`}
+          className="relative touch-target"
+          style={{ alignSelf: 'flex-start', maxWidth: '100%', textDecoration: 'none' }}
+        >
+          <Eyebrow style={ellipsis}>{title} →</Eyebrow>
+        </Link>
+      ) : (
+        <Eyebrow style={ellipsis}>{title}</Eyebrow>
+      )}
+      {!row && note && (
+        <div style={{ fontSize: 11, lineHeight: '15px', color: HPR.fgSubtle, ...ellipsis }}>{note}</div>
+      )}
       {row && (editMode ? row : (
         <Link href={item.href} style={{ display: 'block', minWidth: 0, color: 'inherit', textDecoration: 'none' }}>
           {row}

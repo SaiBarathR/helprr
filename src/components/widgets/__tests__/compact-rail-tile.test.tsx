@@ -27,4 +27,11 @@ describe('CompactRailTile', () => {
     expect(screen.getByText('The Apothecary Diaries Season 3')).toBeTruthy();
     expect(screen.queryByRole('img', { name: 'In library' })).toBeNull();
   });
+
+  it('shows a plain label without a full list to open, and says why with no title', () => {
+    render(<CompactRailTile title="For You" item={null} note="Loading…" />);
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByText('For You')).toBeTruthy();
+    expect(screen.getByText('Loading…')).toBeTruthy();
+  });
 });

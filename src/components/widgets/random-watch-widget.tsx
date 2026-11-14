@@ -270,13 +270,18 @@ function PickHero({
           >
             {pick.title}
           </div>
+          {/* Whole facts only, like the genre chips below: one that doesn't
+              fit wraps onto a hidden second line instead of being cut. */}
           <div
             style={{
               display: 'flex',
+              flexWrap: 'wrap',
               alignItems: 'center',
-              gap: 8,
+              gap: '8px 8px',
               marginTop: 2,
               fontSize: 10,
+              lineHeight: '14px',
+              height: 14,
               color: HPR.fgMute,
               fontFamily: FONT_MONO,
               whiteSpace: 'nowrap',
@@ -302,13 +307,16 @@ function PickHero({
             </span>
           </div>
           {!narrow && pick.genres.length > 0 && (
+            // One row of whole chips: a chip that doesn't fit wraps onto a
+            // second row the fixed height hides, instead of being cut mid-word.
+            // A lone chip wider than the row ends in an ellipsis.
             <div
               className="@max-[239px]/cell:hidden"
-              style={{ display: 'flex', gap: 4, marginTop: 6, overflow: 'hidden' }}
+              style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 4px', marginTop: 6, height: 20, overflow: 'hidden' }}
             >
               {pick.genres.slice(0, 3).map((g) => (
-                <Pill key={g} color={HPR.fgMute} ghost>
-                  {g}
+                <Pill key={g} color={HPR.fgMute} ghost style={{ lineHeight: '14px', maxWidth: '100%', minWidth: 0 }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{g}</span>
                 </Pill>
               ))}
             </div>
