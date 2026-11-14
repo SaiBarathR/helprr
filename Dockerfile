@@ -65,7 +65,11 @@ RUN apk upgrade --no-cache libcrypto3 libssl3
 # pg_dump and pg_restore for in-app database backups (Settings → Backup & Restore).
 # The major version matches the bundled database (postgres:16-alpine in the Compose
 # files): pg_dump refuses a newer server, and helprr-db's pg_restore must read the dump.
-RUN apk add --no-cache postgresql16-client
+# The minimums are Alpine's fix for the 2026-11 PostgreSQL client advisories
+# (CVE-2026-116304 and others in libpq 18.6 / postgresql16-client 16.15). A cached
+# layer otherwise kept the older client after the mirror had the fix, and the
+# image-scan gate blocks any fixable high; raise them with the next such fix.
+RUN apk add --no-cache 'postgresql16-client>=16.16' 'libpq>=18.7'
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
