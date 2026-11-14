@@ -1,9 +1,9 @@
 import type { EpisodeFinaleType, MovieReleaseType } from '@/types';
 
-const RELEASE_TYPE_CONFIG: Record<MovieReleaseType, { label: string; cls: string }> = {
-  cinema: { label: 'Cinema', cls: 'bg-rose-500/15 text-rose-400' },
-  physical: { label: 'Physical', cls: 'bg-amber-500/15 text-amber-400' },
-  digital: { label: 'Digital', cls: 'bg-cyan-500/15 text-cyan-400' },
+const RELEASE_TYPE_CONFIG: Record<MovieReleaseType, { label: string; short: string; cls: string }> = {
+  cinema: { label: 'Cinema', short: 'CIN', cls: 'bg-rose-500/15 text-rose-400' },
+  physical: { label: 'Physical', short: 'PHY', cls: 'bg-amber-500/15 text-amber-400' },
+  digital: { label: 'Digital', short: 'DIG', cls: 'bg-cyan-500/15 text-cyan-400' },
 };
 
 const FINALE_TYPE_CONFIG: Record<EpisodeFinaleType, { label: string; cls: string }> = {
@@ -12,13 +12,23 @@ const FINALE_TYPE_CONFIG: Record<EpisodeFinaleType, { label: string; cls: string
   midseason: { label: 'Midseason Finale', cls: 'bg-muted text-muted-foreground' },
 };
 
-export function ReleaseTypeBadge({ type, className = '' }: { type: MovieReleaseType; className?: string }) {
-  const { label, cls } = RELEASE_TYPE_CONFIG[type];
+/**
+ * `fitCell`: inside a dashboard cell (@container/cell), the short tag (PHY,
+ * DIG, CIN, as the widgets' cards use) where the full name doesn't fit the row
+ * beside it: under 100px, which only one-column phone cells are.
+ */
+export function ReleaseTypeBadge({ type, className = '', fitCell = false }: { type: MovieReleaseType; className?: string; fitCell?: boolean }) {
+  const { label, short, cls } = RELEASE_TYPE_CONFIG[type];
   return (
     <span
       className={`px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide shrink-0 ${cls} ${className}`}
     >
-      {label}
+      {fitCell ? (
+        <>
+          <span className="@max-[99px]/cell:hidden">{label}</span>
+          <span className="hidden @max-[99px]/cell:inline">{short}</span>
+        </>
+      ) : label}
     </span>
   );
 }

@@ -231,3 +231,44 @@ describe('top nav drop below the iOS blur', () => {
     expect(css).toContain('--header-height: calc(env(safe-area-inset-top, 0px) + var(--top-nav-drop, 0px) + 3rem);');
   });
 });
+
+describe('page-loading overlay under the top bar', () => {
+  const css = readFileSync('src/app/globals.css', 'utf8');
+  const at = css.indexOf('.app-loading-overlay {\n    top: var(--header-height);');
+
+  it('starts under the status bar (and the iPhone drop) by default', () => {
+    expect(css).toContain('.app-loading-overlay {\n  top: calc(env(safe-area-inset-top, 0px) + var(--top-nav-drop, 0px));');
+  });
+
+  it('starts under the bar on a phone with the nav at the top, except in cinematic, which hides the bar', () => {
+    expect(at).toBeGreaterThan(0);
+    const media = css.slice(css.lastIndexOf('@media', at), at);
+    expect(media).toContain('(max-width: 767.98px)');
+    expect(media).toContain(':not([data-nav-position="bottom"])');
+    expect(media).toContain(":not([data-watch-skin='cinematic']:has(.hpr-watch))");
+  });
+});
+
+// The widget offline cover's container rules (globals.css), read as text.
+describe('offline cover name lines', () => {
+  const css = readFileSync('src/app/globals.css', 'utf8');
+  const block = (query: string) => { const at = css.indexOf(`@container widget-cover ${query} {`); expect(at, query).toBeGreaterThan(-1); return css.slice(at, css.indexOf('\n}', at)); };
+
+  it('wraps the name onto two lines of whole words by default', () => {
+    expect(css).toMatch(/\.widget-cover-name \{[^}]*-webkit-line-clamp: 2;/);
+    expect(css).toMatch(/\.widget-cover-name > span \{[^}]*white-space: nowrap;[^}]*\}/);
+  });
+
+  it('keeps one line in one-row covers wider than 100px, which keep the icon (phone 60, desktop ~74 tall)', () => {
+    const rule = block('(min-width: 101px) and (max-height: 100px)');
+    expect(rule).toContain('white-space: nowrap;');
+    expect(rule).toContain('text-overflow: ellipsis;');
+  });
+
+  it('fits a two-line name and three message lines in a one-cell cover: no icon, 10px type, 2px gaps', () => {
+    const rule = block('(max-width: 100px) and (max-height: 80px)');
+    expect(rule).toContain('font-size: 10px !important;');
+    expect(rule).toContain('gap: 2px;');
+    expect(rule).toContain('display: none;');
+  });
+});

@@ -3,7 +3,7 @@ import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback, useState } from 'react';
 import Link from '@/components/ui/app-link';
-import { Disc3, Film, Tv, Calendar } from 'lucide-react';
+import { Check, Disc3, Film, Tv, Calendar } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { widgetFetch } from '@/lib/widgets/widget-fetch';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -30,7 +30,7 @@ import {
 import { useDashboardLayout } from './dashboard-layout-context';
 import { CompactRailTile } from './compact-rail-tile';
 import { ReleaseTypeBadge } from '@/components/calendar/release-badges';
-import { formatDate, formatDateTime } from '@/lib/date-format';
+import { formatDate, formatDateTime, formatTime } from '@/lib/date-format';
 import { calendarEventDate, calendarEventDayKey, compareCalendarEvents, isReleaseDayEvent } from '@/lib/release-day';
 
 /** A calendar event with every release type of its film on that day (see mergeFilmReleaseDays). */
@@ -64,6 +64,8 @@ export function mergeFilmReleaseDays(events: CalendarEvent[]): UpcomingEvent[] {
 
 // The Today widget's short tags, for the carousel card and the 2×1 tile.
 const RELEASE_TAG: Record<MovieReleaseType, string> = { cinema: 'CIN', physical: 'PHY', digital: 'DIG' };
+// The Today widget's tag colours, for the 2×1 tile's coloured tags.
+const RELEASE_TAG_COLOR: Record<MovieReleaseType, string> = { cinema: HPR.pink, physical: HPR.amber, digital: HPR.cyan };
 
 function withReleaseTags(text: string, ev: UpcomingEvent): string {
   return [text, ...(ev.releaseTypes ?? []).map((t) => RELEASE_TAG[t])].filter(Boolean).join(' · ');
@@ -83,6 +85,14 @@ function formatEventDate(ev: CalendarEvent): string {
   // isReleaseDayEvent, not isAllDayEvent: this request has no scheduled alerts (no includeScheduled).
   if (isReleaseDayEvent(ev) || (d.getHours() === 0 && d.getMinutes() === 0)) return formatDate(d, { month: 'short', day: 'numeric' });
   return formatDateTime(d, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+/** The list row's day and, for a timed event, its time apart, so each can show or hide whole. */
+function eventDateParts(ev: CalendarEvent): string[] {
+  const d = calendarEventDate(ev);
+  if (!Number.isFinite(d.getTime())) return [];
+  if (isReleaseDayEvent(ev) || (d.getHours() === 0 && d.getMinutes() === 0)) return [formatDate(d, { month: 'short', day: 'numeric' })];
+  return [formatDate(d, { month: 'short', day: 'numeric' }), formatTime(d)];
 }
 
 function eventDistance(ev: CalendarEvent): string {
@@ -226,7 +236,10 @@ export function UpcomingWidget({
         item={top ? {
           href: eventHref(top),
           title: top.title,
-          meta: withReleaseTags(formatEventDate(top), top),
+          meta: formatEventDate(top),
+          // Coloured tags after the date, without " · " between them, so "Nov 17
+          // PHY DIG" fits a 320px phone's tile whole instead of losing DIG to an ellipsis.
+          tags: top.releaseTypes?.map((t) => ({ label: RELEASE_TAG[t], color: RELEASE_TAG_COLOR[t] })),
           imageUrl: getPoster(top.images, posterHint(top.type)),
         } : null}
       />
@@ -410,28 +423,34 @@ export function UpcomingWidget({
   );
 }
 
+// Sized down as the Today widget's rows are, so a half-width phone cell keeps
+// whole words instead of a one-letter title and a subtitle and year wrapped
+// a few letters per line beside the poster.
 function UpcomingRow({ ev }: { ev: UpcomingEvent }) {
   const poster = getPoster(ev.images, posterHint(ev.type));
   return (
     <div
+      className="gap-3 @max-[219px]/cell:gap-2"
       style={{
         display: 'flex',
         alignItems: 'flex-start',
-        gap: 12,
         padding: 8,
         background: HPR.ink,
         borderRadius: 12,
       }}
     >
-      <Poster
-        width={48}
-        height={72}
-        label={ev.title}
-        tone={toneFromString(ev.title)}
-        fontSize={8}
-        imageUrl={poster ?? undefined}
-        check={ev.hasFile}
-      />
+      {/* Poster is decoration — dropped on tiny cells so the title keeps width. */}
+      <div className="shrink-0 @max-[159px]/cell:hidden">
+        <Poster
+          width={48}
+          height={72}
+          label={ev.title}
+          tone={toneFromString(ev.title)}
+          fontSize={8}
+          imageUrl={poster ?? undefined}
+          check={ev.hasFile}
+        />
+      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
@@ -445,10 +464,34 @@ function UpcomingRow({ ev }: { ev: UpcomingEvent }) {
         >
           {ev.title}
         </div>
-        {ev.releaseTypes && (
+        {(ev.releaseTypes?.length || ev.hasFile) && (
           // As the Today widget: badges wrap onto extra lines on narrow cells instead of clipping.
-          <div className="flex flex-wrap items-center gap-1" style={{ marginTop: 3 }}>
-            {ev.releaseTypes.map((t) => <ReleaseTypeBadge key={t} type={t} />)}
+          // A row holding only the narrow-cell "Downloaded" badge is hidden with it,
+          // or its margin would set that row 3px lower than its neighbours.
+          <div
+            className={`${ev.releaseTypes?.length ? 'flex' : 'hidden @max-[159px]/cell:flex'} flex-wrap items-center gap-1`}
+            style={{ marginTop: 3 }}
+          >
+            {ev.releaseTypes?.map((t) => <ReleaseTypeBadge key={t} type={t} fitCell />)}
+            {ev.hasFile && (
+              // "Downloaded" is the poster's check; where the poster is hidden it
+              // is a badge here, as the Today widget shows it.
+              <span
+                role="img"
+                aria-label="Downloaded"
+                className="hidden @max-[159px]/cell:inline-flex"
+                style={{
+                  alignItems: 'center',
+                  padding: '0 4px',
+                  height: 16,
+                  borderRadius: 4,
+                  background: HPR.green,
+                  color: HPR.ink,
+                }}
+              >
+                <Check size={10} strokeWidth={2.4} />
+              </span>
+            )}
           </div>
         )}
         <div
@@ -458,33 +501,42 @@ function UpcomingRow({ ev }: { ev: UpcomingEvent }) {
             marginTop: 2,
             wordBreak: 'break-word',
           }}
+          className="line-clamp-2 overflow-hidden text-ellipsis"
         >
           {ev.subtitle}
         </div>
+        {/* Whole parts on one line: the time or distance that doesn't fit wraps
+            onto a second line the fixed height hides, instead of ending in "…". */}
         <div
           style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            columnGap: '0.6em',
+            height: 16,
+            lineHeight: '16px',
+            overflow: 'hidden',
             fontSize: 12,
             color: HPR.fgMute,
             fontFamily: FONT_MONO,
             marginTop: 2,
             whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
           }}
         >
-          {formatEventDate(ev)} · {eventDistance(ev)}
+          {eventDateParts(ev).map((part, i) => (
+            <span key={i} style={i === 0 ? { maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' } : undefined}>{part}</span>
+          ))}
+          <span>· {eventDistance(ev)}</span>
         </div>
       </div>
+      {/* Media-type icon is decoration — hidden on compact cells. */}
       <div
+        className="flex items-center justify-center @max-[219px]/cell:hidden"
         style={{
           width: 20,
           height: 20,
           borderRadius: 6,
           background: typeColor(ev.type),
           color: 'var(--hpr-fg)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           flexShrink: 0,
           marginRight: 4,
           marginTop: 2,

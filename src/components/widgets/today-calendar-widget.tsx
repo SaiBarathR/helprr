@@ -237,7 +237,7 @@ export function TodayCalendarWidget({
                   {(ev.releaseType || ev.finaleType || ev.hasFile) && (
                     // Badges wrap onto extra lines on narrow cells instead of clipping.
                     <div className="flex flex-wrap items-center gap-1" style={{ marginTop: 3 }}>
-                      {ev.releaseType && <ReleaseTypeBadge type={ev.releaseType} />}
+                      {ev.releaseType && <ReleaseTypeBadge type={ev.releaseType} fitCell />}
                       {ev.finaleType && <FinaleBadge type={ev.finaleType} />}
                       {Boolean(ev.hasFile) && (
                         <span

@@ -22,6 +22,7 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useWidgetFilter } from './use-widget-filter';
+import { CompactRailTile } from './compact-rail-tile';
 import { fetchOrOffline } from '@/lib/network-error';
 
 interface RandomWatchResponse {
@@ -51,6 +52,7 @@ export function RandomWatchWidget({
   refreshInterval,
   editMode = false,
   narrow = false,
+  rowSpan,
 }: WidgetProps) {
   const me = useMe();
   const canFilterUnwatched = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
@@ -82,11 +84,47 @@ export function RandomWatchWidget({
 
   const pick = data?.pick ?? null;
 
+  // The one-row half-width phone cell (2×1): under the header the hero had no
+  // room left at all, so it takes the Discover rails' compact tile, as For You
+  // and Upcoming do there. The label opens the Random mode of For You; a new
+  // pick still lands with every poll.
+  if (narrow && (rowSpan ?? 1) <= 1) {
+    const hint = pick?.mediaType === 'movie' ? 'radarr' : 'sonarr';
+    return (
+      <CompactRailTile
+        title="Random Pick"
+        viewAllHref="/recommendations?mode=random"
+        editMode={editMode}
+        // Edit mode doesn't load, so "nothing" would be untrue there.
+        note={loading ? 'Rolling…' : editMode ? 'Random title' : 'Nothing matches'}
+        item={pick ? {
+          href: pick.href,
+          title: pick.title,
+          meta: [pick.year, pick.mediaType === 'movie' ? 'Movie' : 'Series'].filter(Boolean).join(' · '),
+          imageUrl: pick.posterUrl ? toCachedImageSrc(pick.posterUrl, hint) ?? pick.posterUrl : null,
+        } : null}
+      />
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <SectionHeader
-        title="Random Pick"
-        badge={data && data.poolSize > 0 ? <Pill color={HPR.cyan} ghost>Pool {data.poolSize}</Pill> : null}
+        // Whole words: a cell too narrow for the name beside the reroll button
+        // (a half-width phone cell at 320) reads "Random", not "Rando…".
+        title={(
+          <>
+            <span className="@max-[129px]/cell:hidden">Random Pick</span>
+            <span className="hidden @max-[129px]/cell:inline">Random</span>
+          </>
+        )}
+        // The pool size is a detail: below 240px it pushed the title into an
+        // ellipsis, or the header onto three rows that left the pick no room.
+        badge={data && data.poolSize > 0 ? (
+          <span className="@max-[239px]/cell:hidden">
+            <Pill color={HPR.cyan} ghost>Pool {data.poolSize}</Pill>
+          </span>
+        ) : null}
         right={
           <button
             type="button"
@@ -112,9 +150,12 @@ export function RandomWatchWidget({
       />
 
       {!narrow && (
+        // Hidden whole where the chips don't all fit (as on half-width phone
+        // cells), instead of the last one being cut at the edge ("S" for Series
+        // in a narrow tablet cell).
         <div
-          className="no-scrollbar"
-          style={{ display: 'flex', gap: 4, overflowX: 'auto', flexShrink: 0, paddingBottom: 6 }}
+          className="no-scrollbar flex @max-[229px]/cell:hidden"
+          style={{ gap: 4, overflowX: 'auto', flexShrink: 0, paddingBottom: 6 }}
           role="group"
           aria-label="Random pick filters"
         >
@@ -216,7 +257,8 @@ function PickHero({
         background: HPR.ink,
       }}
     >
-      {backdrop && !narrow && (
+      {/* At every size: without it a narrow cell's hero was an empty black block above the title. */}
+      {backdrop && (
         <>
           <HeroImage
             src={backdrop}
@@ -263,10 +305,13 @@ function PickHero({
               fontWeight: 700,
               letterSpacing: '-0.02em',
               color: HPR.fg,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
             }}
+            // Two lines of whole words before an ellipsis in a narrow cell (under
+            // 240px, where the genre row is hidden and leaves the room), so it
+            // doesn't cut the title to its first letters. Wider cells keep one
+            // line; a one-column phone cell, too narrow for most words, keeps
+            // one line ending in "…" rather than breaking words across lines.
+            className="line-clamp-2 @min-[240px]/cell:line-clamp-1 @max-[99px]/cell:line-clamp-1 @max-[99px]/cell:break-all"
           >
             {pick.title}
           </div>
@@ -311,8 +356,10 @@ function PickHero({
             // second row the fixed height hides, instead of being cut mid-word.
             // A lone chip wider than the row ends in an ellipsis.
             <div
-              className="@max-[239px]/cell:hidden"
-              style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 4px', marginTop: 6, height: 20, overflow: 'hidden' }}
+              // display in the class, not the style, which would override the
+              // container query that hides the row in cells under 240px.
+              className="flex @max-[239px]/cell:hidden"
+              style={{ flexWrap: 'wrap', gap: '8px 4px', marginTop: 6, height: 20, overflow: 'hidden' }}
             >
               {pick.genres.slice(0, 3).map((g) => (
                 <Pill key={g} color={HPR.fgMute} ghost style={{ lineHeight: '14px', maxWidth: '100%', minWidth: 0 }}>

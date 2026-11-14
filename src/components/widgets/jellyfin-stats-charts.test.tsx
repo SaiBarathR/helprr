@@ -41,3 +41,28 @@ describe('Play Activity date axis', () => {
     expect(labels[1].style.transform).toBe('translateX(-50%)');
   });
 });
+
+describe('Play Activity legend and stats in narrow cells', () => {
+  const two = [...data, { user_id: 'u2', user_name: 'guest', user_usage: usage }];
+
+  it('names each viewer where there is room, with bars split by viewer', () => {
+    const { container } = render(<PlayActivityChart data={two} width={400} />);
+    expect(container.textContent).toContain('guest');
+    expect(container.textContent).toContain('/day avg');
+  });
+
+  it('drops the legend in a narrow cell, where it pushed the bars out, and draws one-colour bars', () => {
+    // A two-column phone cell or a 3-column tablet cell beside the sidebar.
+    const { container } = render(<PlayActivityChart data={two} width={160} />);
+    expect(container.textContent).not.toContain('guest');
+    expect(container.querySelector('.flex-col-reverse')).toBeNull();
+    expect(container.textContent).toContain('total plays');
+    expect(container.textContent).toContain('/day avg');
+  });
+
+  it('keeps the total whole in a one-column cell and leaves out the average, which cannot fit', () => {
+    const { container } = render(<PlayActivityChart data={two} width={64} />);
+    expect(container.textContent).toContain('total plays');
+    expect(container.textContent).not.toContain('/day avg');
+  });
+});

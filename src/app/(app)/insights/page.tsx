@@ -17,6 +17,7 @@ import { ServiceHealthStrip } from '@/components/insights/service-health-strip';
 import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useActiveTabInView } from '@/lib/hooks/use-active-tab-in-view';
 import { LibraryGapsCard } from '@/components/insights/library-gaps-card';
 import { StorageInsightsCard } from '@/components/insights/storage-insights-card';
 import { SeedingEconomicsCard } from '@/components/insights/seeding-economics-card';
@@ -137,6 +138,7 @@ export default function InsightsPage() {
   // Permissions load async — fall back to the first offered tab until the
   // chosen one (or any) is available.
   const activeTab = tabs.includes(tab) ? tab : tabs[0];
+  const tabScrollerRef = useActiveTabInView(activeTab);
   const queryClient = useQueryClient();
 
   return (
@@ -169,8 +171,9 @@ export default function InsightsPage() {
           >
             {/* The scroller is a wrapper with 4px above and below (taken back by
                 the negative margin), so it doesn't clip the tabs' 44px hit areas
-                to the 36px track as a scrolling list did. */}
-            <div data-scroll-restoration-key="insights:tabs" className="no-scrollbar -my-1 overflow-x-auto overflow-y-hidden py-1">
+                to the 36px track as a scrolling list did. It keeps the selected
+                tab in view rather than restoring a saved offset. */}
+            <div ref={tabScrollerRef} data-scroll-restoration-ignore className="no-scrollbar -my-1 overflow-x-auto overflow-y-hidden py-1">
               <TabsList aria-label="Insight sections" variant="segmented" className="w-max min-w-full sm:min-w-0">
                 {tabs.map((id) => (
                   <TabsTrigger key={id} value={id}>

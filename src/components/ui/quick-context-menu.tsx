@@ -26,7 +26,6 @@ import {
 } from '@/components/ui/context-menu';
 import { closeOpenSwipeRow } from '@/components/ui/swipe-row';
 import { afterOverlayHistory } from '@/lib/overlay-history';
-import { cn } from '@/lib/utils';
 import { haptic } from '@/lib/haptics';
 
 export interface ContextAction {
@@ -85,8 +84,12 @@ const PRIMARY_OPEN_ACTION_IDS = new Set([
 const TRIGGER_GESTURE_CLASS =
   'select-none [-webkit-touch-callout:none] [-webkit-user-select:none]';
 
+// A 44px tap area on a 36px item (heights in globals.css): a transparent
+// ::after reaching 4px up into the separator's margin and 4px down into the
+// padding under the row, both inside the scrolling menu box, so it neither
+// clips nor adds a scroll, and the row stays an icon strip, not a 44px bar.
 const TOOLBAR_ITEM_CLASS =
-  'min-w-9 flex-1 justify-center px-1.5 py-1.5';
+  "min-w-9 flex-1 justify-center px-1.5 py-1.5 after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']";
 
 function clearTextSelection() {
   const selection = window.getSelection();
@@ -508,7 +511,7 @@ export function QuickContextMenu({
           </ContextMenuItem>
           {openInNewTabTarget && (
             <ContextMenuItem
-              className={cn(TOOLBAR_ITEM_CLASS)}
+              className={TOOLBAR_ITEM_CLASS}
               aria-label="Open in new tab"
               title="Open in new tab"
               onSelect={() => {

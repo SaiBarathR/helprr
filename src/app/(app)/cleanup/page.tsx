@@ -14,6 +14,7 @@ import { CleanupHistoryTab } from './_components/cleanup-history-tab';
 import { LibraryCleanupTab } from './_components/library-cleanup-tab';
 import { useCan, useMe } from '@/components/permission-provider';
 import { PageTitle } from '@/components/layout/page-title';
+import { useActiveTabInView } from '@/lib/hooks/use-active-tab-in-view';
 
 export default function CleanupPage() {
   const [tab, setTab] = useRouteViewState<'dashboard' | 'queue' | 'download' | 'library' | 'history'>('CleanupPage:tab', 'dashboard');
@@ -22,6 +23,7 @@ export default function CleanupPage() {
   // Library cleanup deletes whole titles: its rules and Delete now are admin-only (the API enforces it).
   const isAdmin = useMe()?.role === 'admin';
   const activeTab = (!canManage && (tab === 'queue' || tab === 'download')) || (!isAdmin && tab === 'library') ? 'dashboard' : tab;
+  const tabScrollerRef = useActiveTabInView(activeTab);
   const queryClient = useQueryClient();
   // A refetch can re-seed the cleaner forms, so a pull over unsaved edits asks first.
   const editingUnsaved = (activeTab === 'queue' && dirty.queue) || (activeTab === 'download' && dirty.download) || (activeTab === 'library' && dirty.library);
@@ -61,8 +63,9 @@ export default function CleanupPage() {
           className="page-toolbar page-toolbar-flush mb-4 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
         >
           {/* The scroller wraps the track with 4px above and below, so it doesn't
-              clip the tabs' 44px hit areas to the 36px track (as Insights). */}
-          <div data-scroll-restoration-key="cleanup:tabs" className="no-scrollbar -my-1 overflow-x-auto overflow-y-hidden py-1">
+              clip the tabs' 44px hit areas to the 36px track, and keeps the
+              selected tab in view (as Insights). */}
+          <div ref={tabScrollerRef} data-scroll-restoration-ignore className="no-scrollbar -my-1 overflow-x-auto overflow-y-hidden py-1">
           <TabsList variant="segmented" className="w-max min-w-full sm:min-w-0">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           {canManage && (
