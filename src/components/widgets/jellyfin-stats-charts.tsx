@@ -135,6 +135,10 @@ export function PlaybackMethodBar({
 
 // ─── Play activity chart ───
 
+// Body widths (the widget's measured content box) for PlayActivityChart.
+const LEGEND_MIN_WIDTH = 240;
+const TINY_WIDTH = 110;
+
 export function PlayActivityChart({ data, width = 0 }: { data: PlayActivityUser[]; width?: number }) {
   const chartData = useMemo(() => {
     const realUsers = data.filter((u) => u.user_id !== 'labels_user');
@@ -257,15 +261,25 @@ export function PlayActivityChart({ data, width = 0 }: { data: PlayActivityUser[
     ? Math.max(1, Math.ceil(aggregated.length / Math.max(1, Math.floor((width - 24) / 48))))
     : labelInterval;
 
+  // Narrow cells (one- and two-column phone cells, a 3-column tablet cell) had
+  // the legend, one name per line, fill the cell and push the bars and dates
+  // out of it. There the bars are one colour with no legend, as for one viewer;
+  // each bar's tooltip still has its count. Before the first measure: roomy.
+  const showLegend = realUsers.length > 1 && (width === 0 || width >= LEGEND_MIN_WIDTH);
+  // A one-column phone cell: tighter padding and a smaller total, so the count
+  // and its words fit; the average needs ~80px for its own line.
+  const tiny = width > 0 && width < TINY_WIDTH;
+
   return (
-    <div className="rounded-xl bg-card p-3 h-full flex flex-col overflow-hidden">
-      <div className="flex items-baseline gap-3 shrink-0">
-        <span className="text-lg font-bold tabular-nums">{totalPlays}</span>
+    <div className={`rounded-xl bg-card h-full flex flex-col overflow-hidden ${tiny ? 'p-2' : 'p-3'}`}>
+      {/* Wraps on narrow cells, each stat whole on its own line, instead of cutting them. */}
+      <div className="flex flex-wrap items-baseline gap-x-3 shrink-0">
+        <span className={`${tiny ? 'text-base' : 'text-lg'} font-bold tabular-nums`}>{totalPlays}</span>
         <span className="text-xs text-muted-foreground">total plays</span>
-        <span className="text-xs text-muted-foreground ml-auto">~{avgPerDay}/day avg</span>
+        {!tiny && <span className="text-xs text-muted-foreground ml-auto">~{avgPerDay}/day avg</span>}
       </div>
 
-      {realUsers.length > 1 && (
+      {showLegend && (
         <div className="flex items-center gap-3 mt-2 flex-wrap shrink-0">
           {realUsers.map((u, i) => (
             <div key={u.user_id} className="flex items-center gap-1 text-[10px]">
@@ -279,10 +293,11 @@ export function PlayActivityChart({ data, width = 0 }: { data: PlayActivityUser[
         </div>
       )}
 
-      <div className="flex items-end gap-[2px] flex-1 min-h-0 mt-3">
+      {/* Gapless in a one-column cell: 2px gaps took all of its ~40px and left no bars. */}
+      <div className={`flex items-end ${tiny ? 'gap-0' : 'gap-[2px]'} flex-1 min-h-0 mt-3`}>
         {aggregated.map(([label, count]) => {
           const pct = (count / maxVal) * 100;
-          if (userBars && userBars[label]) {
+          if (showLegend && userBars && userBars[label]) {
             const userValues = userBars[label];
             const userTotal = userValues.reduce((s, v) => s + v, 0) || 1;
             return (

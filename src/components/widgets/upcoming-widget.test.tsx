@@ -37,9 +37,10 @@ describe('Upcoming widget relative day', () => {
     mocks.data = [film('Odyssey', '2026-11-17'), film('Witch', '2026-11-18'), film('Later', '2026-11-27')];
     const { container } = render(<UpcomingWidget refreshInterval={60_000} layoutVariant="list" />);
     const text = container.textContent ?? '';
-    expect(text).toContain('Nov 17 · Today');
-    expect(text).toContain('Nov 18 · Tomorrow');
-    expect(text).toContain('Nov 27 · in 10 days');
+    // The date and the distance are separate whole parts (a narrow row hides the distance whole).
+    expect(text).toContain('Nov 17· Today');
+    expect(text).toContain('Nov 18· Tomorrow');
+    expect(text).toContain('Nov 27· in 10 days');
     expect(text).not.toMatch(/hours/i);
   });
 });
@@ -79,7 +80,16 @@ describe('Upcoming widget, one row per film-day', () => {
     expect(getByRole('link', { name: 'Upcoming, view all' }).getAttribute('href')).toBe('/calendar');
     const row = getByRole('link', { name: /The Odyssey/ });
     expect(row.getAttribute('href')).toBe('/movies/511?instance=c1');
-    expect(row.textContent).toContain('Nov 17 · PHY · DIG');
+    // Coloured tags after the date, each its own part, so a narrow tile hides one whole rather than cutting it.
+    expect([...row.querySelectorAll('span')].map((s) => s.textContent)).toEqual(['Nov 17', 'PHY', 'DIG']);
+  });
+
+  it('keeps a timed episode\'s day and time as separate whole parts in a list row', () => {
+    vi.setSystemTime(new Date(2026, 10, 17, 12, 0));
+    mocks.data = [{ ...film('Aoashi', '2026-11-18'), type: 'episode', seriesId: 4, subtitle: 'S02E07 - Notebook', date: new Date(2026, 10, 18, 20, 30).toISOString() }];
+    const { getByRole } = render(<UpcomingWidget refreshInterval={60_000} layoutVariant="list" />);
+    const parts = [...getByRole('link', { name: /Aoashi/ }).querySelectorAll('span')].map((s) => s.textContent);
+    expect(parts).toEqual(['Nov 18', '8:30 PM', '· in 1 day']);
   });
 
   it('does not claim "nothing upcoming" in a 2×1 cell in edit mode, which loads nothing', () => {

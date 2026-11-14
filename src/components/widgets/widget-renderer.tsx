@@ -174,7 +174,7 @@ function UnavailableCover({ name, children }: { name: string; children: ReactNod
         </div>
         {unavailable && (
           // EmptyState's look, sized for a one-cell phone widget too (about
-          // 44×60 inside the card at 320): the name stays on one line, and
+          // 44×60 inside the card at 320): the name takes up to two lines, and
           // globals.css drops the icon and "right now." where they don't fit.
           <div role="status" className="widget-cover" style={{ position: 'absolute', inset: 0, container: 'widget-cover / size' }}>
             <div
@@ -196,15 +196,15 @@ function UnavailableCover({ name, children }: { name: string; children: ReactNod
               }}
             >
               <WifiOff size={18} aria-hidden="true" style={{ flexShrink: 0 }} />
+              {/* Up to two lines of whole words: a one-cell cover read "Service Hea…". */}
               <span
+                className="line-clamp-2"
                 style={{
                   flexShrink: 0,
                   color: HPR.fgMute,
                   fontWeight: 600,
                   maxWidth: '100%',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
+                  overflowWrap: 'break-word',
                 }}
               >
                 {name}

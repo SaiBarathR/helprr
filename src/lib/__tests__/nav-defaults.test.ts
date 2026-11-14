@@ -221,3 +221,20 @@ describe('top nav drop below the iOS blur', () => {
     expect(css).toContain('--header-height: calc(env(safe-area-inset-top, 0px) + var(--top-nav-drop, 0px) + 3rem);');
   });
 });
+
+describe('page-loading overlay under the top bar', () => {
+  const css = readFileSync('src/app/globals.css', 'utf8');
+  const at = css.indexOf('.app-loading-overlay {\n    top: var(--header-height);');
+
+  it('starts under the status bar (and the iPhone drop) by default', () => {
+    expect(css).toContain('.app-loading-overlay {\n  top: calc(env(safe-area-inset-top, 0px) + var(--top-nav-drop, 0px));');
+  });
+
+  it('starts under the bar on a phone with the nav at the top, except in cinematic, which hides the bar', () => {
+    expect(at).toBeGreaterThan(0);
+    const media = css.slice(css.lastIndexOf('@media', at), at);
+    expect(media).toContain('(max-width: 767.98px)');
+    expect(media).toContain(':not([data-nav-position="bottom"])');
+    expect(media).toContain(":not([data-watch-skin='cinematic']:has(.hpr-watch))");
+  });
+});

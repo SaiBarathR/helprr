@@ -11,6 +11,8 @@ export interface CompactRailItem {
   href: string;
   title: string;
   meta: string;
+  /** Short coloured tags after the meta (an upcoming film's PHY / DIG / CIN). */
+  tags?: { label: string; color: string }[];
   imageUrl?: string | null;
   inLibrary?: boolean;
 }
@@ -41,7 +43,18 @@ export function CompactRailTile({
       <Poster width={24} height={36} tone={toneFromString(item.title)} imageUrl={item.imageUrl ?? undefined} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, lineHeight: '17px', fontWeight: 500, color: HPR.fg, ...ellipsis }}>{item.title}</div>
-        <div style={{ fontSize: 11, lineHeight: '15px', color: HPR.fgMute, ...ellipsis }}>{item.meta}</div>
+        {item.tags?.length ? (
+          // Whole parts on one line: a tag that doesn't fit wraps onto a second
+          // line the fixed height hides, rather than the line ending in "…".
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 4, height: 15, overflow: 'hidden', fontSize: 11, lineHeight: '15px', color: HPR.fgMute }}>
+            <span style={{ maxWidth: '100%', ...ellipsis }}>{item.meta}</span>
+            {item.tags.map((tag) => (
+              <span key={tag.label} style={{ color: tag.color, fontSize: 9, fontWeight: 700, letterSpacing: '0.05em' }}>{tag.label}</span>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 11, lineHeight: '15px', color: HPR.fgMute, ...ellipsis }}>{item.meta}</div>
+        )}
       </div>
       {item.inLibrary && (
         <div

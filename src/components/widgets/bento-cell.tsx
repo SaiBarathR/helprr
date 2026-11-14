@@ -123,10 +123,12 @@ export const BentoCell = React.forwardRef<HTMLDivElement, BentoCellProps>(functi
             transition: 'box-shadow 0.2s, transform 0.25s',
           }}
         >
-          {edit && !dragging && chrome}
           {children}
         </div>
       )}
+      {/* Outside the card, which clips its overflow, so the remove button can
+          sit on the card's corner instead of over the start of its label. */}
+      {!ghost && edit && !dragging && chrome}
     </div>
   );
 });
@@ -166,18 +168,20 @@ export function BentoEditChrome({ onRemove }: BentoEditChromeProps) {
           touchAction: 'none',
         }}
       />
-      {/* remove */}
+      {/* remove: centred on the card's top-left corner, as on a phone's home
+          screen, clear of the label the cell's padding starts at; a 44px tap area. */}
       <button
         type="button"
         aria-label="Remove widget"
+        className="touch-target"
         onClick={(e) => {
           e.stopPropagation();
           onRemove?.();
         }}
         style={{
           position: 'absolute',
-          top: 6,
-          left: 6,
+          top: -11,
+          left: -11,
           width: 22,
           height: 22,
           borderRadius: '50%',
