@@ -27,8 +27,8 @@ export function inSafariTab() {
   return isIOS() && !homeScreen;
 }
 
-/** How long after a field takes focus iOS's brief scroll towards it is ignored. */
-export const FOCUS_SETTLE_MS = 300;
+/** How long (about 4 frames) iOS's brief scroll of the visible part may last before it is followed. */
+export const PAN_HOLD_MS = 70;
 
 /**
  * Calls `place` with how much of the layout viewport the keyboard covers (0
@@ -38,13 +38,13 @@ export const FOCUS_SETTLE_MS = 300;
  * classes, whatever happened while it was open. When the keyboard opens or
  * changes size, the focused field inside `node` is scrolled into view.
  *
- * Right after focus moves to another field of `node` with the keyboard up,
- * iOS scrolls the visual viewport towards it for a frame or three and then
- * back (offsetTop 26 or 123 on an iPhone 18 Pro, height unchanged). Followed,
- * a pinned sheet dipped by that much and sprang back on every ⌄ / ⌃ or tap.
- * So within FOCUS_SETTLE_MS of a focus, a move of the visible part alone
- * keeps the last placement; one that is still there afterwards is followed
- * then, as a pan to a field always was.
+ * When focus moves to another field of `node` with the keyboard up, iOS
+ * scrolls the visual viewport towards it for a frame or three and then back
+ * (offsetTop 26 or 123 on an iPhone 18 Pro, height unchanged). Followed, a
+ * pinned sheet dipped by that much and sprang back on every ⌄ / ⌃ or tap. So
+ * on iOS a move of the visible part alone keeps the last placement until it
+ * goes back or has lasted PAN_HOLD_MS, timed from the move; one that lasts is
+ * followed then, as a pan to a field always was.
  */
 export function followKeyboard(node: HTMLElement, place: (covered: number, viewport: VisualViewport) => void): () => void {
   const viewport = window.visualViewport;
@@ -58,10 +58,12 @@ export function followKeyboard(node: HTMLElement, place: (covered: number, viewp
   document.body.appendChild(layout);
   let frame = 0;
   let visibleHeight = 0;
-  // The last placement while the keyboard is up, and when a field took focus.
+  // The last placement while the keyboard is up, and since when the visible
+  // part alone has been somewhere else (null: it hasn't).
   let placed: { covered: number; height: number } | null = null;
-  let focusedAt = -Infinity;
+  let movedAt: number | null = null;
   let recheck = 0;
+  const ios = isIOS();
   const measure = () => {
     frame = 0;
     // The part of the layout viewport the keyboard covers, under the visible
@@ -76,13 +78,19 @@ export function followKeyboard(node: HTMLElement, place: (covered: number, viewp
       place(0, viewport);
       return;
     }
-    const sinceFocus = performance.now() - focusedAt;
-    if (placed && placed.height === viewport.height && placed.covered !== covered && sinceFocus < FOCUS_SETTLE_MS) {
-      // Look again once the focus has settled, in case the move stays.
-      window.clearTimeout(recheck);
-      recheck = window.setTimeout(schedule, FOCUS_SETTLE_MS - sinceFocus + 1);
-      return;
+    if (ios && placed && placed.height === viewport.height && placed.covered !== covered) {
+      const now = performance.now();
+      movedAt ??= now;
+      if (now - movedAt < PAN_HOLD_MS) {
+        // Look again once it has lasted that long, in case it stays.
+        if (!recheck) recheck = window.setTimeout(() => {
+          recheck = 0;
+          schedule();
+        }, PAN_HOLD_MS - (now - movedAt) + 1);
+        return;
+      }
     }
+    movedAt = null;
     placed = { covered, height: viewport.height };
     place(covered, viewport);
     // Only when the keyboard opens or changes size, not on every iOS pan, so
@@ -93,10 +101,6 @@ export function followKeyboard(node: HTMLElement, place: (covered: number, viewp
   function schedule() {
     if (!frame) frame = requestAnimationFrame(measure);
   }
-  const onFocusIn = (event: FocusEvent) => {
-    if (isTextField(event.target)) focusedAt = performance.now();
-  };
-  node.addEventListener('focusin', onFocusIn, true);
   // iOS can still be mid-way through the keyboard's move when it reports a
   // size; look again once it has settled.
   let settle: number[] = [];
@@ -117,7 +121,6 @@ export function followKeyboard(node: HTMLElement, place: (covered: number, viewp
     viewport.removeEventListener('scroll', schedule);
     window.removeEventListener('resize', onResize);
     window.removeEventListener('scroll', schedule);
-    node.removeEventListener('focusin', onFocusIn, true);
     settle.forEach((timer) => window.clearTimeout(timer));
     window.clearTimeout(recheck);
     cancelAnimationFrame(frame);
@@ -204,8 +207,9 @@ export function keepIosFromScrolling(node: HTMLElement): () => void {
  * the way through the form, towards the button that sends it. On the form's
  * last field that button is the way on, so it is shown too when it fits in
  * the same box (a sheet scrolling as one column has it under the fields:
- * two-step's Turn on sat behind the keyboard until dragged), before the
- * field above.
+ * two-step's Turn on sat behind the keyboard until dragged), after the field
+ * above, which ⌃ needs. A read-only field is no neighbour here: iOS's arrows
+ * skip it.
  */
 export function revealFocusedField(node: HTMLElement) {
   const field = document.activeElement;
@@ -221,7 +225,7 @@ export function revealFocusedField(node: HTMLElement) {
     const fieldRect = field.getBoundingClientRect();
     let range = keep(fieldRect.top, fieldRect.bottom);
     const fields = [...node.querySelectorAll<HTMLElement>('input, textarea, select')].filter(
-      (el) => el === field || isArrowStop(el),
+      (el) => el === field || (isArrowStop(el) && !('readOnly' in el && el.readOnly)),
     );
     const at = fields.indexOf(field);
     // The nearest field each way with a box: one hidden by CSS has none, and
@@ -235,7 +239,7 @@ export function revealFocusedField(node: HTMLElement) {
     };
     const next = nearest(1);
     const send = at >= 0 && !next ? sendButton(field) : null;
-    for (const found of [next, send, nearest(-1)]) {
+    for (const found of [next, nearest(-1), send]) {
       // One in a part that doesn't scroll (a pinned search box or buttons) doesn't move.
       if (!found || !box.contains(found.el)) continue;
       const { rect } = found;
@@ -301,10 +305,17 @@ export function formRoomTooShort(scroll: HTMLElement): boolean | undefined {
   return room < arrowRoomNeeded(fields.filter(({ el }) => box.contains(el)).map(({ rect }) => rect));
 }
 
-/** The button that sends the focused field's form, if it has one on screen. */
+/**
+ * The focused field's form's default button (the first that submits it: a
+ * <button> with no type does, and one outside the form joined by form="…"
+ * counts), if it is on screen.
+ */
 function sendButton(field: HTMLElement) {
   const form = 'form' in field ? (field as HTMLInputElement).form : null;
-  const el = form?.querySelector<HTMLElement>('button[type="submit"], input[type="submit"]');
+  const el = form && [...form.elements].find(
+    (control): control is HTMLButtonElement | HTMLInputElement =>
+      (control instanceof HTMLButtonElement || control instanceof HTMLInputElement) && control.type === 'submit',
+  );
   if (!el) return null;
   const rect = el.getBoundingClientRect();
   return rect.bottom > rect.top ? { el, rect } : null;

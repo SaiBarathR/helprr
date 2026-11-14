@@ -5,7 +5,7 @@ import { Drawer as DrawerPrimitive } from "vaul"
 
 import { cn } from "@/lib/utils"
 import { useBackClosableOpen } from "@/lib/overlay-history"
-import { followKeyboard, formRoomTooShort, inSafariTab, isIOS, keepIosFromScrolling } from "@/lib/keyboard-fit"
+import { followKeyboard, formRoomTooShort, inSafariTab, isIOS, keepIosFromScrolling, revealFocusedField } from "@/lib/keyboard-fit"
 
 function Drawer({
   open: openProp,
@@ -69,7 +69,12 @@ function fitAboveKeyboard(node: HTMLElement): () => void {
     // buttons, less than a field and the centres of the fields either side.
     const scroll = node.querySelector<HTMLElement>(':scope > [data-slot="drawer-scroll"]')
     const short = isIOS() && scroll !== null && formRoomTooShort(scroll)
-    node.toggleAttribute("data-scroll-together", tab || (short ?? node.hasAttribute("data-scroll-together")))
+    const was = node.hasAttribute("data-scroll-together")
+    const together = node.toggleAttribute("data-scroll-together", tab || (short ?? was))
+    // A switch also changes which box scrolls; followKeyboard reveals the
+    // field only when the keyboard opens or changes size, and a switch made
+    // later (once a field's focus lift is over) would leave it where it was.
+    if (together !== was && node.contains(document.activeElement)) revealFocusedField(node)
   })
 }
 

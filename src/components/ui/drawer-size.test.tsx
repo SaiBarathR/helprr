@@ -2,15 +2,15 @@
 import { readFileSync } from 'node:fs';
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { formRoomTooShort } from '@/lib/keyboard-fit';
+import { formRoomTooShort, revealFocusedField } from '@/lib/keyboard-fit';
 import { Drawer, DrawerContent, DrawerTitle } from './drawer';
 
 // The room rule needs a real layout (keyboard-fit.test.ts covers it); here it is
-// only told what to answer.
-vi.mock('@/lib/keyboard-fit', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/lib/keyboard-fit')>()),
-  formRoomTooShort: vi.fn(() => false),
-}));
+// only told what to answer. The reveal does its real work, watched.
+vi.mock('@/lib/keyboard-fit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/keyboard-fit')>();
+  return { ...actual, formRoomTooShort: vi.fn(() => false), revealFocusedField: vi.fn(actual.revealFocusedField) };
+});
 
 function open(size?: 'full' | 'content') {
   render(
@@ -219,6 +219,26 @@ describe('DrawerContent above the keyboard', () => {
     fire();
     await waitFor(() => expect(panel.style.bottom).toBe('330px'));
     expect(panel.hasAttribute('data-scroll-together')).toBe(false);
+  });
+
+  // The flip can come from a later look (once a field's focus lift is over), with
+  // the keyboard's height unchanged, when followKeyboard itself reveals nothing.
+  it('shows the focused field again when the layout switches while it has focus', async () => {
+    const { fire } = stubViewport(window.innerHeight - 300);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)', standalone: true });
+    const panel = openFormSheet();
+    expect(panel.hasAttribute('data-scroll-together')).toBe(false);
+    screen.getByRole('textbox', { name: 'Current password' }).focus();
+    vi.mocked(revealFocusedField).mockClear();
+    vi.mocked(formRoomTooShort).mockReturnValue(true);
+    fire();
+    await waitFor(() => expect(panel.hasAttribute('data-scroll-together')).toBe(true));
+    expect(vi.mocked(revealFocusedField)).toHaveBeenCalledWith(panel);
+    // No switch, no extra reveal.
+    vi.mocked(revealFocusedField).mockClear();
+    fire();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(vi.mocked(revealFocusedField)).not.toHaveBeenCalled();
   });
 
   it('keeps the buttons pinned in the Home Screen app when the form has room', () => {

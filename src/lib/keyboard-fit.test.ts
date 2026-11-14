@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { arrowRoomNeeded, FOCUS_SETTLE_MS, followKeyboard, formRoomTooShort, revealFocusedField } from './keyboard-fit';
+import { arrowRoomNeeded, followKeyboard, formRoomTooShort, PAN_HOLD_MS, revealFocusedField } from './keyboard-fit';
 
 // A scroll box showing 100–300 px of a column of 36 px fields, 80 px apart,
 // laid out as if scrolled by `box.scrollTop`. iOS's ⌃ / ⌄ arrows skip a field
@@ -278,13 +278,52 @@ describe('revealFocusedField on the form\'s last field', () => {
     expect(fields[1].getBoundingClientRect().top).toBeGreaterThanOrEqual(100);
   });
 
-  it('puts the button before the field above when both do not fit', () => {
+  // ⌃ needs the field above (#677): Change password's Confirm in a tight box.
+  it('keeps the field above rather than the button when both do not fit', () => {
     // Field 2 (190–226), then the button at 326–370: the button needs 70 px of
-    // scroll, which leaves field 1's centre (128 - 70) above the box.
+    // scroll, which would leave field 1's centre (128 - 70) above the box.
     const { node, box, fields } = sheetForm(2, { buttonGap: 100 });
     fields[1].focus();
     revealFocusedField(node);
+    expect(box.scrollTop).toBe(0);
+    const centre = (fields[0].getBoundingClientRect().top + fields[0].getBoundingClientRect().bottom) / 2;
+    expect(centre).toBeGreaterThanOrEqual(104);
+  });
+
+  // Two-step's code step: the field above is the read-only key, which iOS's arrows skip.
+  it('does not count a read-only or disabled field above, so the button is shown', () => {
+    const { node, box, fields } = sheetForm(2, { buttonGap: 100 });
+    fields[0].readOnly = true;
+    fields[1].focus();
+    revealFocusedField(node);
     expect(box.scrollTop).toBe(70);
+    box.scrollTop = 0;
+    fields[0].readOnly = false;
+    fields[0].disabled = true;
+    revealFocusedField(node);
+    expect(box.scrollTop).toBe(70);
+  });
+
+  it('finds the form\'s default button: one with no type, or one joined by form="…"', () => {
+    const { node, box, fields, button } = sheetForm(2, { buttonGap: 50 });
+    button.removeAttribute('type');
+    fields[1].focus();
+    revealFocusedField(node);
+    expect(box.scrollTop).toBe(20);
+    // A button outside the <form>, joined to it by its id.
+    box.scrollTop = 0;
+    const form = node.querySelector('form')!;
+    form.id = 'tf-form';
+    form.after(box);
+    button.setAttribute('form', 'tf-form');
+    const typeButton = document.createElement('button');
+    typeButton.type = 'button';
+    box.prepend(typeButton);
+    for (const f of fields) f.setAttribute('form', 'tf-form');
+    // Moving it took the focus away.
+    fields[1].focus();
+    revealFocusedField(node);
+    expect(box.scrollTop).toBe(20);
   });
 
   it('keeps the field in view rather than a button that does not fit with it', () => {
@@ -308,11 +347,14 @@ describe('revealFocusedField on the form\'s last field', () => {
   });
 });
 
-describe('followKeyboard after focus moves with the keyboard up', () => {
+describe('followKeyboard when only the visible part moves', () => {
   // iOS scrolls the visual viewport towards a newly focused field for a frame
   // or three (offsetTop 26 or 123, height unchanged) and back.
-  function setUp() {
+  const iPhone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)';
+
+  function setUp(userAgent = iPhone) {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+    vi.stubGlobal('navigator', { ...navigator, userAgent });
     const listeners = new Map<string, Set<() => void>>();
     const viewport = {
       height: window.innerHeight - 300,
@@ -325,6 +367,7 @@ describe('followKeyboard after focus moves with the keyboard up', () => {
       removeEventListener: (type: string, listener: () => void) => listeners.get(type)?.delete(listener),
     };
     vi.stubGlobal('visualViewport', viewport);
+    // An event, and the frame it schedules.
     const fire = (type: 'scroll' | 'resize') => {
       listeners.get(type)?.forEach((listener) => listener());
       vi.advanceTimersToNextFrame();
@@ -345,38 +388,45 @@ describe('followKeyboard after focus moves with the keyboard up', () => {
     document.body.replaceChildren();
   });
 
-  it('keeps the sheet where it is while iOS scrolls towards the field and back', () => {
+  it('keeps the sheet where it is while iOS scrolls towards a focused field and back', () => {
     const { viewport, fire, fields, placedAt, stop } = setUp();
     expect(placedAt()).toEqual([300]);
     fields[1].focus();
     viewport.offsetTop = 123;
     fire('scroll');
+    fire('scroll');
     viewport.offsetTop = 0;
     fire('scroll');
-    vi.advanceTimersByTime(FOCUS_SETTLE_MS + 20);
+    vi.advanceTimersByTime(PAN_HOLD_MS * 2);
     // Never placed 123 px lower.
     expect(placedAt().every((covered) => covered === 300)).toBe(true);
     stop();
   });
 
-  it('follows a move that is still there once the focus has settled', () => {
+  it('follows a move that lasts within about four frames of it', () => {
     const { viewport, fire, fields, placedAt, stop } = setUp();
     fields[1].focus();
     viewport.offsetTop = 26;
     fire('scroll');
+    vi.advanceTimersByTime(PAN_HOLD_MS - 20);
     expect(placedAt()).not.toContain(274);
-    vi.advanceTimersByTime(FOCUS_SETTLE_MS);
+    vi.advanceTimersByTime(20);
     vi.advanceTimersToNextFrame();
     expect(placedAt().at(-1)).toBe(274);
     stop();
   });
 
-  it('follows a pan at once when no field has just taken focus (#677: autocorrect, iOS showing a field)', () => {
+  it('times the hold from the move, so focus moving on and on does not delay a pan that lasts', () => {
     const { viewport, fire, fields, placedAt, stop } = setUp();
-    fields[1].focus();
-    vi.advanceTimersByTime(FOCUS_SETTLE_MS + 1);
     viewport.offsetTop = 40;
     fire('scroll');
+    // Focus moves every 20 ms while the pan stays.
+    for (let i = 0; i < 4; i++) {
+      fields[i % 2].focus();
+      vi.advanceTimersByTime(20);
+    }
+    vi.advanceTimersToNextFrame();
+    // 80 ms of focus moves later, it is already followed.
     expect(placedAt().at(-1)).toBe(260);
     stop();
   });
@@ -390,6 +440,16 @@ describe('followKeyboard after focus moves with the keyboard up', () => {
     stop();
   });
 
+  // The jitter is iOS's: Android Chrome and desktop follow every move at once.
+  it('follows a move at once outside iOS', () => {
+    const { viewport, fire, fields, placedAt, stop } = setUp('Mozilla/5.0 (Linux; Android 16; Pixel 9) Chrome/145.0 Mobile');
+    fields[1].focus();
+    viewport.offsetTop = 26;
+    fire('scroll');
+    expect(placedAt().at(-1)).toBe(274);
+    stop();
+  });
+
   it('places nothing after it is stopped', () => {
     const { viewport, fire, fields, place, stop } = setUp();
     fields[1].focus();
@@ -397,7 +457,7 @@ describe('followKeyboard after focus moves with the keyboard up', () => {
     fire('scroll');
     stop();
     const calls = place.mock.calls.length;
-    vi.advanceTimersByTime(FOCUS_SETTLE_MS * 2);
+    vi.advanceTimersByTime(PAN_HOLD_MS * 4);
     expect(place.mock.calls.length).toBe(calls);
   });
 });
