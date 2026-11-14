@@ -13,6 +13,7 @@ import { EventIcon, getEventHprColor } from '@/components/notifications/event-vi
 import { NotificationDetailDrawer } from '@/components/notifications/notification-detail-drawer';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 import { FONT_MONO, HPR, SectionHeader, mix, EmptyState } from './bento-primitives';
+import { fetchOrOffline } from '@/lib/network-error';
 
 // Notification cards include 2 lines of body text + padding, so they're
 // taller than the dashboard's generic LIST_ROW_HEIGHT.
@@ -29,7 +30,7 @@ interface NotificationRecord {
 }
 
 async function fetchNotifications(pageSize: number, signal?: AbortSignal): Promise<NotificationRecord[]> {
-  const res = await fetch(`/api/notifications?pageSize=${pageSize}`, { signal });
+  const res = await fetchOrOffline(`/api/notifications?pageSize=${pageSize}`, { signal });
   if (!res.ok) throw new Error(`Failed (${res.status})`);
   const data = await res.json();
   return data.records || [];

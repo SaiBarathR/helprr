@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { HPR, SectionHeader, mix, FONT_MONO, EmptyState } from './bento-primitives';
 import type { SeerrPaginated, SeerrUserSummary } from '@/types/seerr';
+import { fetchOrOffline } from '@/lib/network-error';
 
 const ROW_HEIGHT = 48;
 const USERS_FETCH_SIZE = 50;
@@ -23,7 +24,7 @@ async function fetchUsers(signal?: AbortSignal): Promise<SeerrPaginated<SeerrUse
     skip: '0',
     sort: 'requests',
   });
-  const res = await fetch(`/api/seerr/users?${params.toString()}`, { signal });
+  const res = await fetchOrOffline(`/api/seerr/users?${params.toString()}`, { signal });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `Failed (${res.status})`);

@@ -47,6 +47,7 @@ import {
   type SeerrRequestSort,
   type SeerrSortDirection,
 } from '@/types/seerr';
+import { fetchOrOffline } from '@/lib/network-error';
 
 const ROW_HEIGHT = 64;
 const DEFAULT_FETCH_SIZE = 30;
@@ -133,7 +134,7 @@ async function fetchRequestsPage(
   if (mediaType) {
     params.set('mediaType', mediaType);
   }
-  const res = await fetch(`/api/seerr/requests?${params.toString()}`, { signal });
+  const res = await fetchOrOffline(`/api/seerr/requests?${params.toString()}`, { signal });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `Failed (${res.status})`);

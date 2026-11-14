@@ -25,6 +25,7 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
+import { fetchOrOffline } from '@/lib/network-error';
 import { CompactRailTile } from './compact-rail-tile';
 
 interface SeasonWindow {
@@ -95,7 +96,7 @@ async function fetchHomeDataCached(perPage: number, signal?: AbortSignal) {
   if (existing && !existing.signal?.aborted && now - existing.time < HOME_CACHE_TTL_MS) {
     return existing.promise;
   }
-  const promise = fetch(`/api/anime/home?perPage=${clamped}`, { signal })
+  const promise = fetchOrOffline(`/api/anime/home?perPage=${clamped}`, { signal })
     .then((res) => {
       if (!res.ok) throw new Error('Failed to fetch anime home data');
       return res.json() as Promise<HomeData>;
@@ -171,7 +172,7 @@ export function AnimeCarouselWidget({
   const { data: listData, loading: listLoading } = useWidgetData<AniListMediaListEntry[]>({
     fetchFn: async (signal) => {
       const status = carouselId === 'continueWatching' ? 'CURRENT' : 'PLANNING';
-      const res = await fetch(`/api/anilist/library?type=ANIME&status=${status}`, { signal });
+      const res = await fetchOrOffline(`/api/anilist/library?type=ANIME&status=${status}`, { signal });
       if (!res.ok) throw new Error(`Failed to fetch ${status} list`);
       const json = await res.json();
       return flattenEntries(json.collection);

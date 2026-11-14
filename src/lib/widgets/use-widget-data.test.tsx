@@ -5,7 +5,9 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WidgetVisibilityProvider } from './widget-visibility-context';
-import { useWidgetData, widgetErrorText } from './use-widget-data';
+import { useWidgetData, widgetErrorText, widgetUnavailable } from './use-widget-data';
+import { ApiError } from '@/lib/query-fetch';
+import { OfflineError } from '@/lib/network-error';
 
 let root: Root;
 
@@ -165,11 +167,15 @@ describe('useWidgetData visibility', () => {
 });
 
 describe('useWidgetData offline', () => {
-  it('says so when the first load is paused because the device is offline', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const fetchFn = vi.fn(async () => 'data');
+  it('asks once with no saved copy, then waits for the network instead of polling', async () => {
+    // The app retries a failed read once; offline, that retry waits for the network.
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, retryDelay: 0 } } });
+    const fetchFn = vi.fn(async () => {
+      if (!onlineManager.isOnline()) throw new TypeError('Failed to fetch');
+      return 'data';
+    });
     function Probe() {
-      const { offline, data } = useWidgetData({ fetchFn, refreshInterval: 60_000, cacheKey: 'offline-probe' });
+      const { offline, data } = useWidgetData({ fetchFn, refreshInterval: 15_000, cacheKey: 'offline-probe' });
       return `${offline}:${data}`;
     }
     onlineManager.setOnline(false);
@@ -179,23 +185,23 @@ describe('useWidgetData offline', () => {
           <WidgetVisibilityProvider active><Probe /></WidgetVisibilityProvider>
         </QueryClientProvider>,
       ));
-      expect(fetchFn).not.toHaveBeenCalled();
+      await act(async () => vi.advanceTimersByTimeAsync(5 * 60_000));
+      expect(fetchFn).toHaveBeenCalledOnce();
       expect(document.body.textContent).toBe('true:null');
     } finally {
       onlineManager.setOnline(true);
     }
     await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(fetchFn).toHaveBeenCalledTimes(2);
     expect(document.body.textContent).toBe('false:data');
     queryClient.clear();
   });
-});
 
-describe('useWidgetData offlineFirst', () => {
   it("still asks once while offline, so the worker's saved copy can answer", async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const fetchFn = vi.fn(async () => 'saved');
     function Probe() {
-      const { offline, data } = useWidgetData({ fetchFn, refreshInterval: 60_000, cacheKey: 'offline-first', networkMode: 'offlineFirst' });
+      const { offline, data } = useWidgetData({ fetchFn, refreshInterval: 60_000, cacheKey: 'offline-first' });
       return `${offline}:${data}`;
     }
     onlineManager.setOnline(false);
@@ -212,6 +218,32 @@ describe('useWidgetData offlineFirst', () => {
       onlineManager.setOnline(true);
     }
     queryClient.clear();
+  });
+});
+
+describe('widgetUnavailable', () => {
+  const base = { isError: false, error: null, fetchStatus: 'idle' as const, data: 'old' };
+  const noAnswer = { ...base, isError: true, error: new OfflineError(new TypeError('Failed to fetch')) };
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('covers at once with nothing on screen, and data on screen after two failed polls in a row', () => {
+    expect(widgetUnavailable({ ...noAnswer, data: undefined }, 1)).toBe('unreachable');
+    expect(widgetUnavailable(noAnswer, 1)).toBeNull();
+    expect(widgetUnavailable(noAnswer, 2)).toBe('unreachable');
+  });
+
+  it('waiting for the network says offline only when the browser is offline', () => {
+    expect(widgetUnavailable({ ...base, fetchStatus: 'paused' }, 0)).toBe('unreachable');
+    vi.stubGlobal('navigator', { onLine: false });
+    expect(widgetUnavailable({ ...base, fetchStatus: 'paused' }, 0)).toBe('offline');
+    expect(widgetUnavailable(noAnswer, 2)).toBe('offline');
+  });
+
+  it("leaves a server's error answer, a bug in the widget's own code and a working load to the widget", () => {
+    expect(widgetUnavailable({ ...base, isError: true, error: new ApiError(502, 'Bad gateway') }, 5)).toBeNull();
+    expect(widgetUnavailable({ ...base, isError: true, error: new TypeError("Cannot read properties of undefined (reading 'map')") }, 5)).toBeNull();
+    expect(widgetUnavailable(base, 0)).toBeNull();
+    expect(widgetUnavailable({ ...base, fetchStatus: 'fetching' }, 0)).toBeNull();
   });
 });
 

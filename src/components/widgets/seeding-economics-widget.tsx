@@ -8,6 +8,7 @@ import { HPR } from './bento-primitives';
 import { InsightsWidgetFrame } from './insights-widget-frame';
 import { Stat } from '@/components/insights/insights-shared';
 import { SeedingUploadRow } from '@/components/insights/seeding-economics-card';
+import { fetchOrOffline } from '@/lib/network-error';
 
 const EMPTY: InsightsTorrentsResponse = {
   count: 0,
@@ -20,7 +21,7 @@ const EMPTY: InsightsTorrentsResponse = {
 };
 
 async function fetchTorrents(signal?: AbortSignal): Promise<InsightsTorrentsResponse> {
-  const res = await fetch('/api/insights/torrents', { signal });
+  const res = await fetchOrOffline('/api/insights/torrents', { signal });
   // 403 = missing insights.view at the data layer → empty state, not the error boundary.
   if (res.status === 403) return EMPTY;
   if (!res.ok) throw new ApiError(res.status, 'Request failed');

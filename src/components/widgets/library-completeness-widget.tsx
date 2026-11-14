@@ -1,5 +1,6 @@
 'use client';
 
+import { widgetFetch } from '@/lib/widgets/widget-fetch';
 import * as React from 'react';
 import { ApiError } from '@/lib/query-fetch';
 import type { WidgetProps } from '@/lib/widgets/types';
@@ -14,7 +15,7 @@ import {
 } from '@/components/insights/library-gaps-card';
 
 async function fetchGaps(signal?: AbortSignal): Promise<LibraryGapsResponse> {
-  const res = await fetch('/api/library-gaps', { signal });
+  const res = await widgetFetch('/api/library-gaps', { signal });
   // Needs both Movies + Series access at the data layer; treat a 403 as an
   // empty payload (permission gap) rather than the error boundary.
   if (res.status === 403) return { sections: [] };

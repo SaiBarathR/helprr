@@ -8,6 +8,7 @@ import { useElementSize } from '@/lib/widgets/use-element-size';
 import { getProwlarrIndexerStatusId, isProwlarrIndexerBlocked, type ProwlarrIndexerStatus } from '@/lib/prowlarr-client';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { Dot, Eyebrow, FONT_DISPLAY, FONT_MONO, HPR, ICON_HIDE_HEIGHT_THRESHOLD, ICON_HIDE_THRESHOLD, mix } from './bento-primitives';
+import { fetchOrOffline } from '@/lib/network-error';
 
 interface ProwlarrSummary {
   total: number;
@@ -18,13 +19,13 @@ interface ProwlarrSummary {
 
 async function fetchProwlarr(signal?: AbortSignal): Promise<ProwlarrSummary | null> {
   const [indexersRes, statusRes] = await Promise.allSettled([
-    fetch('/api/prowlarr/indexers', { signal }),
-    fetch('/api/prowlarr/status', { signal }),
+    fetchOrOffline('/api/prowlarr/indexers', { signal }),
+    fetchOrOffline('/api/prowlarr/status', { signal }),
   ]);
   signal?.throwIfAborted();
-  // Network failure → graceful empty (matches the allSettled intent); a non-ok
-  // response throws so a 401 redirects via the global handler.
-  if (indexersRes.status !== 'fulfilled') return null;
+  // A network failure throws, so the widget says it is offline instead of
+  // "0 indexers"; a non-ok response throws so a 401 redirects via the global handler.
+  if (indexersRes.status !== 'fulfilled') throw indexersRes.reason;
   if (!indexersRes.value.ok) throw new ApiError(indexersRes.value.status, 'Request failed');
   const indexers: { id: number; enable: boolean }[] = await indexersRes.value.json();
   if (!Array.isArray(indexers)) return null;

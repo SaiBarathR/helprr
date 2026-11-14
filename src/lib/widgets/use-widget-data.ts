@@ -1,9 +1,13 @@
 'use client';
 
-import { useId } from 'react';
-import { useQuery, type NetworkMode } from '@tanstack/react-query';
+import { useEffect, useId, useRef, useState } from 'react';
+import { useQuery, useQueryClient, type FetchStatus } from '@tanstack/react-query';
 import { useWidgetVisibility } from './widget-visibility-context';
-import { isQueryOffline } from '@/lib/network-error';
+import { useReportWidgetUnavailable, type WidgetUnavailable } from './widget-unavailable-context';
+import { watchSavedCopy, type SavedCopy } from './widget-fetch';
+import { forgetBrowseFreshness } from '@/lib/browse-freshness';
+import { isQueryOffline, OfflineError } from '@/lib/network-error';
+import { SNAPSHOT_MAX_AGE_MS } from '@/lib/offline-snapshot';
 
 interface UseWidgetDataOptions<T> {
   /** Receives TanStack Query's AbortSignal so fetchers that forward it to
@@ -28,12 +32,6 @@ interface UseWidgetDataOptions<T> {
    * (calendar, upcoming, stats, …) leave it off and wait for the next interval.
    */
   refetchOnFocus?: boolean;
-  /**
-   * 'offlineFirst' still asks once while the device is offline, so the service
-   * worker can answer with its labelled saved copy (the calendar widgets, as
-   * the Calendar page does); the default pauses until back online.
-   */
-  networkMode?: NetworkMode;
 }
 
 interface UseWidgetDataResult<T> {
@@ -44,6 +42,12 @@ interface UseWidgetDataResult<T> {
   offline: boolean;
   refresh: () => Promise<void>;
 }
+
+// The saved copy each widget query last loaded, by query key: kept beside the
+// TanStack cache rather than in it, so cached data keeps the fetcher's shape.
+const savedCopies = new Map<string, SavedCopy>();
+// The query's error count at its last success, by query key: the polls failed since.
+const errorsAtSuccess = new Map<string, number>();
 
 /**
  * Widget data hook, backed by TanStack Query. Behavior:
@@ -66,19 +70,27 @@ export function useWidgetData<T>({
   cacheKey,
   staleTime,
   refetchOnFocus = false,
-  networkMode,
 }: UseWidgetDataOptions<T>): UseWidgetDataResult<T> {
   // No cacheKey → a stable per-instance key so instances don't share (matches the
   // old behavior where keyless callers each fetched independently).
   const fallbackKey = useId();
   const widgetVisible = useWidgetVisibility();
   const queryEnabled = enabled && widgetVisible;
+  const key = cacheKey ?? fallbackKey;
+  const queryClient = useQueryClient();
 
   const query = useQuery<T>({
-    queryKey: ['widget-data', cacheKey ?? fallbackKey],
+    queryKey: ['widget-data', key],
     // useQuery always invokes the latest queryFn from the most recent render,
     // so this picks up an updated fetchFn without a ref.
-    queryFn: ({ signal }) => fetchFn(signal),
+    queryFn: async ({ signal }) => {
+      const copy = watchSavedCopy(signal);
+      const data = await fetchFn(signal);
+      if (copy.at) savedCopies.set(key, copy);
+      else savedCopies.delete(key);
+      errorsAtSuccess.set(key, queryClient.getQueryState(['widget-data', key])?.errorUpdateCount ?? 0);
+      return data;
+    },
     enabled: queryEnabled,
     refetchInterval: queryEnabled ? refreshInterval : false,
     refetchIntervalInBackground: false,
@@ -87,8 +99,50 @@ export function useWidgetData<T>({
     // Live widgets retain immediate focus refresh; explicit freshness wins.
     staleTime: staleTime ?? (refetchOnFocus ? 0 : Math.min(refreshInterval, 30_000)),
     gcTime: 5 * 60_000,
-    ...(networkMode ? { networkMode } : {}),
+    // Offline, still ask once: the service worker answers a saved-copy route
+    // with its labelled copy, and fails any other at once. Its retry then
+    // waits for the device to be back online, so polling sends no more.
+    networkMode: 'offlineFirst',
   });
+
+  // A saved copy shows for five minutes after it was saved, then "You're offline"
+  // (the owner's rule, and the worker's own limit), even between two polls.
+  const copy = query.data !== undefined ? savedCopies.get(key) : undefined;
+  const savedAt = copy?.at ?? 0;
+  const [expiredAt, setExpiredAt] = useState(0);
+  const { refetch } = query;
+  // Keyed on the copy's time, not the object: each poll answered with the same
+  // copy makes a new object, which must not restart the timer.
+  useEffect(() => {
+    if (!savedAt) return;
+    let cancelled = false;
+    const forget = () => savedCopies.get(key)?.paths.forEach(forgetBrowseFreshness);
+    const timer = setTimeout(() => {
+      // Offline the refetch waits for the network, so the notice goes now.
+      forget();
+      // Online, a route slower than the worker's 2 s timeout is answered from
+      // the copy too: ask once more, and cover only if no newer answer came.
+      // Not cancelling a fetch another widget on this key already started.
+      void refetch({ cancelRefetch: false }).then(() => {
+        if (cancelled || savedCopies.get(key)?.at !== savedAt) return;
+        forget();
+        setExpiredAt(savedAt);
+      });
+    }, Math.max(0, savedAt + SNAPSHOT_MAX_AGE_MS - Date.now()));
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [savedAt, key, refetch]);
+  // Leaving the dashboard takes this widget's saved copy out of the notice.
+  const copyRef = useRef(copy);
+  useEffect(() => {
+    copyRef.current = copy;
+  }, [copy]);
+  useEffect(() => () => copyRef.current?.paths.forEach(forgetBrowseFreshness), []);
+  const unavailable = widgetUnavailable(query, query.errorUpdateCount - (errorsAtSuccess.get(key) ?? 0))
+    ?? (savedAt && expiredAt === savedAt ? (navigator.onLine ? 'unreachable' : 'offline') : null);
+  useReportWidgetUnavailable(unavailable);
 
   return {
     data: query.data ?? null,
@@ -102,12 +156,38 @@ export function useWidgetData<T>({
 }
 
 /**
+ * Whether a widget query has nothing it can truthfully show because Helprr
+ * could not be reached: data from before the failure would look live, and no
+ * data would show as zeros or "Queue is empty". Only a request that got no
+ * answer counts (fetchOrOffline's OfflineError): a server's error answer, or a
+ * bug in a widget's own code, is left to the widget's own message.
+ *
+ * `failedPolls` is how many polls in a row have failed since the last success.
+ * Data still on screen survives one, so on a patchy connection a live widget
+ * doesn't blink between its data and the cover.
+ */
+export function widgetUnavailable(query: {
+  isError: boolean;
+  error: unknown;
+  fetchStatus: FetchStatus;
+  data: unknown;
+}, failedPolls: number): WidgetUnavailable | null {
+  // TanStack's online state can lag after an iOS resume; the browser's decides the wording.
+  const reason = typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'unreachable';
+  // Waiting to retry until the device is back online: no poll goes out until then.
+  if (query.fetchStatus === 'paused') return reason;
+  if (!query.isError || !(query.error instanceof OfflineError)) return null;
+  if (query.data !== undefined && failedPolls < 2) return null;
+  return reason;
+}
+
+/**
  * What a widget says when its fetch fails. A network failure (fetch throws a
  * TypeError) carries the browser's own words, on iOS offline the service
  * worker's "FetchEvent.respondWith received an error: no-response …" with the
  * request URL, shown in red on the Dashboard. A server's answer keeps its message.
  */
 export function widgetErrorText(error: unknown): string {
-  if (error instanceof TypeError) return 'Can’t reach Helprr right now.';
+  if (error instanceof TypeError || error instanceof OfflineError) return 'Can’t reach Helprr right now.';
   return error instanceof Error ? error.message : 'Failed to fetch';
 }

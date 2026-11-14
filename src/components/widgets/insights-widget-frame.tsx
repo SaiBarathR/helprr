@@ -12,6 +12,7 @@ import { EmptyChartState } from './prowlarr-stats-shared';
 import type { DaysOption } from './widget-filter-controls';
 import { kindQuery, type MediaAnalysisKindFilter } from '@/components/insights/technical-breakdown-card';
 import type { MediaAnalysisResponse } from '@/types/insights';
+import { fetchOrOffline } from '@/lib/network-error';
 
 // Day windows offered by the range widgets (library growth, download
 // reliability, pipeline). No "all time": the insights routes clamp the window
@@ -49,7 +50,7 @@ export async function fetchMediaAnalysis(
   kind: MediaAnalysisKindFilter,
   signal?: AbortSignal,
 ): Promise<MediaAnalysisResponse> {
-  const res = await fetch(`/api/insights/media-analysis${kindQuery(kind)}`, { signal });
+  const res = await fetchOrOffline(`/api/insights/media-analysis${kindQuery(kind)}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }

@@ -10,6 +10,7 @@ import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowShort } from '@/lib/format';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { FONT_MONO, HPR, Hairline, SectionHeader, mix, EmptyState } from './bento-primitives';
+import { fetchOrOffline } from '@/lib/network-error';
 
 const ROW_HEIGHT = 46;
 
@@ -24,7 +25,7 @@ interface CleanupHistoryRecord {
 }
 
 async function fetchCleanupHistory(pageSize: number, signal?: AbortSignal): Promise<CleanupHistoryRecord[]> {
-  const res = await fetch(`/api/cleanup/history?pageSize=${pageSize}`, { signal });
+  const res = await fetchOrOffline(`/api/cleanup/history?pageSize=${pageSize}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return (data?.records ?? []) as CleanupHistoryRecord[];

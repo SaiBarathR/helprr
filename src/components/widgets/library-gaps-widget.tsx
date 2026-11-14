@@ -1,5 +1,6 @@
 'use client';
 
+import { widgetFetch } from '@/lib/widgets/widget-fetch';
 import Link from '@/components/ui/app-link';
 import { ApiError } from '@/lib/query-fetch';
 import { toCachedImageSrc } from '@/lib/image';
@@ -21,7 +22,7 @@ import {
 type SectionFilter = 'all' | LibraryGapSectionId;
 
 async function fetchLibraryGaps(signal?: AbortSignal): Promise<LibraryGapsResponse> {
-  const res = await fetch('/api/library-gaps', { signal });
+  const res = await widgetFetch('/api/library-gaps', { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }

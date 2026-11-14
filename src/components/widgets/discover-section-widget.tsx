@@ -3,6 +3,7 @@
 import Link from '@/components/ui/app-link';
 import { useCallback, useMemo } from 'react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { adoptSavedCopy, savedCopyOf, widgetFetch, type SavedCopy } from '@/lib/widgets/widget-fetch';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { toCachedImageSrc } from '@/lib/image';
@@ -54,22 +55,35 @@ const CLIENT_CACHE_MS = 5 * 60 * 1000;
 // Cache the sections fetch per perSectionLimit. Widgets at the same size
 // share a single in-flight request via this map; differently-sized widgets
 // each get the bundle they need without colliding.
-const sectionsPromises = new Map<number, { promise: Promise<DiscoverResponse>; time: number; signal?: AbortSignal }>();
+// `copy` is the worker's saved copy the response turned out to be (if any): a
+// load reusing the promise takes it along, so it keeps its five-minute limit.
+const sectionsPromises = new Map<number, { promise: Promise<DiscoverResponse>; time: number; signal?: AbortSignal; copy?: SavedCopy }>();
 
-function fetchSectionsCached(perSectionLimit: number, signal?: AbortSignal): Promise<DiscoverResponse> {
+export function fetchSectionsCached(perSectionLimit: number, signal?: AbortSignal): Promise<DiscoverResponse> {
   const now = Date.now();
   const existing = sectionsPromises.get(perSectionLimit);
-  if (existing && !existing.signal?.aborted && now - existing.time < CLIENT_CACHE_MS) return existing.promise;
-  const promise = fetch(`/api/discover?mode=sections&perSectionLimit=${perSectionLimit}`, { signal })
+  if (existing && !existing.signal?.aborted && now - existing.time < CLIENT_CACHE_MS) {
+    return existing.promise.then((data) => {
+      adoptSavedCopy(signal, existing.copy);
+      return data;
+    });
+  }
+  const promise = widgetFetch(`/api/discover?mode=sections&perSectionLimit=${perSectionLimit}`, { signal })
     .then((res) => {
       if (!res.ok) throw new Error('Failed to fetch Discover sections');
       return res.json() as Promise<DiscoverResponse>;
+    })
+    .then((data) => {
+      // A saved copy is shared with loads already waiting, but not kept: the
+      // next load (a poll, the five-minute re-check) must ask the network.
+      if (savedCopyOf(signal)?.at && sectionsPromises.get(perSectionLimit)?.promise === promise) sectionsPromises.delete(perSectionLimit);
+      return data;
     })
     .catch((err) => {
       if (sectionsPromises.get(perSectionLimit)?.promise === promise) sectionsPromises.delete(perSectionLimit);
       throw err;
     });
-  sectionsPromises.set(perSectionLimit, { promise, time: now, signal });
+  sectionsPromises.set(perSectionLimit, { promise, time: now, signal, copy: savedCopyOf(signal) });
   return promise;
 }
 
@@ -77,6 +91,7 @@ interface CustomCache {
   promise: Promise<DiscoverItem[]>;
   time: number;
   signal?: AbortSignal;
+  copy?: SavedCopy;
 }
 
 // LRU-evicted cache for custom Discover carousel queries. Insertion order ==
@@ -128,19 +143,26 @@ function fetchCustomCached(filters: DiscoverLayoutCustomFilters, limit: number, 
   if (cached && !cached.signal?.aborted && now - cached.time < CLIENT_CACHE_MS) {
     // Bump recency without re-fetching.
     customCacheSet(query, cached);
-    return cached.promise;
+    return cached.promise.then((items) => {
+      adoptSavedCopy(signal, cached.copy);
+      return items;
+    });
   }
-  const promise = fetch(`/api/discover?${query}`, { signal })
+  const promise = widgetFetch(`/api/discover?${query}`, { signal })
     .then((res) => {
       if (!res.ok) throw new Error('Failed to fetch Discover carousel');
       return res.json() as Promise<DiscoverResponse>;
     })
-    .then((data) => (data.items ?? []).slice(0, limit))
+    .then((data) => {
+      // As for the sections: a saved copy is not kept for later loads.
+      if (savedCopyOf(signal)?.at && customCache.get(query)?.promise === promise) customCache.delete(query);
+      return (data.items ?? []).slice(0, limit);
+    })
     .catch((err) => {
       if (customCache.get(query)?.promise === promise) customCache.delete(query);
       throw err;
     });
-  customCacheSet(query, { promise, time: now, signal });
+  customCacheSet(query, { promise, time: now, signal, copy: savedCopyOf(signal) });
   return promise;
 }
 

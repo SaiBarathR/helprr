@@ -14,3 +14,9 @@ export function recordBrowseFreshness(path: string, response: Response): void {
 }
 export const subscribeBrowseFreshness = (notify: () => void) => { subscribers.add(notify); return () => { subscribers.delete(notify); }; };
 export const getBrowseFreshness = () => oldest;
+/** A saved copy no longer on screen (it expired, or its next request failed) drops out of the notice. */
+export function forgetBrowseFreshness(path: string): void {
+  if (!snapshots.delete(path)) return;
+  oldest = snapshots.size ? Math.min(...snapshots.values()) : 0;
+  subscribers.forEach((notify) => notify());
+}

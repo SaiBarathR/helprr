@@ -11,13 +11,14 @@ import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { SectionHeader, HPR, ViewModeToggle, EmptyState } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { ActivityItem, ActivitySeeAllDrawer } from '@/components/jellyfin/activity-item';
+import { fetchOrOffline } from '@/lib/network-error';
 
 const ROW_HEIGHT = 52;
 const CAROUSEL_MAX = 20;
 
 function makeFetcher(hasUserId: boolean) {
   return async function fetchActivity(signal?: AbortSignal): Promise<JellyfinActivityEntry[]> {
-    const res = await fetch(`/api/jellyfin/activity?hasUserId=${hasUserId}&limit=50`, { signal });
+    const res = await fetchOrOffline(`/api/jellyfin/activity?hasUserId=${hasUserId}&limit=50`, { signal });
     if (!res.ok) throw new ApiError(res.status, 'Request failed');
     const data = await res.json();
     return Array.isArray(data.entries) ? data.entries : [];
