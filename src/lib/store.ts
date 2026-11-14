@@ -184,11 +184,6 @@ export type MediaWatchFilterPreference = 'all' | 'watched' | 'unwatched';
 const WATCH_SKINS = ['classic', 'cinematic'] as const;
 export type WatchSkinPreference = (typeof WATCH_SKINS)[number];
 
-const WATCH_FILTER_PERSISTED_KEYS: ReadonlySet<string> = new Set([
-  'moviesWatchFilter',
-  'seriesWatchFilter',
-]);
-
 function isMediaWatchFilterPreference(value: unknown): value is MediaWatchFilterPreference {
   return value === 'all' || value === 'watched' || value === 'unwatched';
 }
@@ -871,24 +866,8 @@ const PERSISTED_KEYS = [
 
 const PERSISTED_KEY_SET: ReadonlySet<string> = new Set(PERSISTED_KEYS);
 
-// Keys whose persisted shape is an array. applyImportedUiPrefs drops values for
-// these keys that aren't arrays — a string slipping in (e.g. an older "monitored"
-// export) would break consumers that call .filter / .some / .includes on it.
-const ARRAY_PERSISTED_KEYS: ReadonlySet<string> = new Set([
-  'moviesFilter',
-  'seriesFilter',
-  'musicFilter',
-  'activityFilterBy',
-  'torrentsFilter',
-  'navOrder',
-  'disabledNavItems',
-  'animeCarouselOrder',
-  'disabledAnimeCarousels',
-]);
-
 // Keys whose persisted shape is a VisibleFieldsByMode object ({ posters, overview,
-// table } of string arrays). These are NOT plain arrays, so applyImportedUiPrefs
-// validates the object shape instead of treating them as array-only.
+// table } of string arrays), checked for that shape, not just for being an object.
 const VISIBLE_FIELDS_KEYS: ReadonlySet<string> = new Set([
   'moviesVisibleFields',
   'seriesVisibleFields',
@@ -954,6 +933,9 @@ const PERSISTED_CHOICES: Partial<Record<PersistedKey, readonly unknown[]>> = {
   calendarTypeFilter: ['all', 'episode', 'movie', 'album'],
   watchSkin: WATCH_SKINS,
   navPosition: ['top', 'bottom'],
+  discoverContentType: ['all', 'movie', 'show'],
+  // An unknown one has no glass palette: the theme threw on every page.
+  glassMode: ['light', 'dark', 'system'] satisfies readonly GlassMode[],
 };
 
 // Persisted lists of choices (filters): an unknown entry is dropped, the rest kept.
@@ -965,6 +947,10 @@ const PERSISTED_CHOICE_LISTS: Partial<Record<PersistedKey, readonly unknown[]>> 
   requestsTypeFilter: ['movie', 'tv'],
 };
 
+// Percentages: a number in 0–100, rounded. One outside it is not a value the
+// sliders make, so the default stays rather than a clamped guess.
+const PERCENT_KEYS: ReadonlySet<string> = new Set(['glassIntensity', 'calendarImageOpacity']);
+
 const UNUSABLE = Symbol('unusable');
 
 function valueKind(value: unknown): string {
@@ -973,8 +959,10 @@ function valueKind(value: unknown): string {
 
 /**
  * A stored or imported value for `key`, made safe to read, or UNUSABLE (the
- * default stays). Choices must be known ones; anything else must at least
- * have the default's kind (a string where a list is read crashes the page).
+ * default stays). The one rule for loading from storage and for a settings
+ * import. Choices must be known ones, ranges and shapes are held to, and
+ * anything else must at least have the default's kind (a string where a list
+ * is read crashes the page).
  */
 function usablePersistedValue(key: PersistedKey, value: unknown, fallback: unknown): unknown {
   const choices = PERSISTED_CHOICES[key];
@@ -983,6 +971,20 @@ function usablePersistedValue(key: PersistedKey, value: unknown, fallback: unkno
   if (listChoices) return Array.isArray(value) ? value.filter((entry) => listChoices.includes(entry)) : UNUSABLE;
   if (VISIBLE_FIELDS_KEYS.has(key)) return isVisibleFieldsByMode(value) ? value : UNUSABLE;
   if (key === 'searchHistory') return isSearchHistoryMap(value) ? value : UNUSABLE;
+  if (PERCENT_KEYS.has(key)) {
+    return typeof value === 'number' && value >= 0 && value <= 100 ? Math.round(value) : UNUSABLE;
+  }
+  if (key === 'playerSkipBackSeconds' || key === 'playerSkipForwardSeconds') return isSkipLength(value) ? value : UNUSABLE;
+  // Items removed since are dropped and new ones appended, as the setter does.
+  if (key === 'navOrder') return Array.isArray(value) ? reconcileNavOrder(value as NavItemId[]) : UNUSABLE;
+  if (key === 'discoverLayout') {
+    if (value === null) return null;
+    const sections = (value as { sections?: unknown } | undefined)?.sections;
+    if (!Array.isArray(sections)) return UNUSABLE;
+    return reconcileDiscoverLayout({
+      sections: sections.filter((entry) => entry && typeof entry === 'object' && typeof entry.id === 'string'),
+    });
+  }
   // A null or unset default (a date, a cached layout) has no kind to hold to.
   if (fallback === null || fallback === undefined) return value;
   return valueKind(value) === valueKind(fallback) ? value : UNUSABLE;
@@ -1318,63 +1320,10 @@ export const useUIStore = create<UIState>()(
           const next: Record<string, unknown> = {};
           for (const [key, raw] of Object.entries(partial)) {
             if (!PERSISTED_KEY_SET.has(key)) continue;
-            // The same rule as loading from storage, against the defaults: an
-            // unknown view or sort crashes its page.
+            // The same rule as loading from storage, against the defaults:
+            // imported files can be hand-edited or come from an older export.
             const value = usablePersistedValue(key as PersistedKey, raw, useUIStore.getInitialState()[key as PersistedKey]);
-            if (value === UNUSABLE) continue;
-            // Imported files can be hand-edited or come from an older export
-            // where a string field has since become an array (e.g. moviesFilter).
-            // Drop values whose shape would break call sites.
-            if (VISIBLE_FIELDS_KEYS.has(key)) {
-              if (!isVisibleFieldsByMode(value)) continue;
-              next[key] = value;
-              continue;
-            }
-            if (key === 'searchHistory') {
-              if (!isSearchHistoryMap(value)) continue;
-              next[key] = value;
-              continue;
-            }
-            if (WATCH_FILTER_PERSISTED_KEYS.has(key)) {
-              if (!isMediaWatchFilterPreference(value)) continue;
-              next[key] = value;
-              continue;
-            }
-            if (key === 'liquidGlass' || key === 'hapticsEnabled') {
-              if (typeof value !== 'boolean') continue;
-              next[key] = value;
-              continue;
-            }
-            if (key === 'glassMode') {
-              if (value !== 'light' && value !== 'dark' && value !== 'system') continue;
-              next[key] = value;
-              continue;
-            }
-            if (key === 'glassIntensity' || key === 'calendarImageOpacity') {
-              if (typeof value !== 'number' || !Number.isFinite(value)) continue;
-              next[key] = Math.min(100, Math.max(0, Math.round(value)));
-              continue;
-            }
-            if (key === 'playerSkipBackSeconds' || key === 'playerSkipForwardSeconds') {
-              if (!isSkipLength(value)) continue;
-              next[key] = value;
-              continue;
-            }
-            if (ARRAY_PERSISTED_KEYS.has(key) && !Array.isArray(value)) continue;
-            next[key] = value;
-          }
-          const rawIncomingDiscoverLayout =
-            'discoverLayout' in next && next.discoverLayout && typeof next.discoverLayout === 'object'
-              ? (next.discoverLayout as DiscoverLayoutConfig)
-              : null;
-          const incomingDiscoverLayout = rawIncomingDiscoverLayout
-            ? reconcileDiscoverLayout(rawIncomingDiscoverLayout)
-            : state.discoverLayout;
-          if (rawIncomingDiscoverLayout) {
-            next.discoverLayout = incomingDiscoverLayout;
-          }
-          if ('navOrder' in next && Array.isArray(next.navOrder)) {
-            next.navOrder = reconcileNavOrder(next.navOrder as NavItemId[]);
+            if (value !== UNUSABLE) next[key] = value;
           }
           return { ...state, ...(next as Partial<UIState>) };
         }),

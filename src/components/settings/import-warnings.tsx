@@ -8,6 +8,9 @@ import { isImportFollowUp, type ImportWarning } from '@/lib/settings-import/foll
 
 const STORAGE_KEY = 'helprr:import-warnings';
 const NOTICE_KEY = 'helprr:import-notice';
+// The reload follows within a second. One left behind by leaving the page
+// first must not show on a later visit to it.
+const NOTICE_MAX_AGE_MS = 10_000;
 const TITLE = 'Imported, but not all of it is in effect yet';
 
 /** Re-run the steps behind these warnings; resolves with what is still not done. */
@@ -57,7 +60,7 @@ export function showImportNotice(notice: ImportNotice) {
  */
 export function rememberImportNotice(notice: ImportNotice): void {
   try {
-    sessionStorage.setItem(NOTICE_KEY, JSON.stringify(notice));
+    sessionStorage.setItem(NOTICE_KEY, JSON.stringify({ ...notice, at: Date.now() }));
   } catch { }
 }
 
@@ -67,8 +70,11 @@ function takeRememberedImportNotice(): ImportNotice | null {
     sessionStorage.removeItem(NOTICE_KEY);
     const stored: unknown = raw ? JSON.parse(raw) : null;
     if (!stored || typeof stored !== 'object') return null;
-    const { type, message } = stored as Partial<ImportNotice>;
+    const { type, message, at } = stored as Partial<ImportNotice> & { at?: unknown };
     if ((type !== 'success' && type !== 'warning' && type !== 'info') || typeof message !== 'string') return null;
+    if (typeof at !== 'number') return null;
+    const age = Date.now() - at;
+    if (age < 0 || age > NOTICE_MAX_AGE_MS) return null;
     return { type, message };
   } catch {
     return null;

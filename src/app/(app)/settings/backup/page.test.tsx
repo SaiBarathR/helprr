@@ -62,7 +62,7 @@ describe('backup page after an import', () => {
     expect(reloadsScheduled(setTimeoutSpy)).toBe(1);
     expect(JSON.parse(sessionStorage.getItem('helprr:import-warnings') ?? '[]')).toEqual(warnings);
     // The success toast goes with the reload; it is shown again after it.
-    expect(JSON.parse(sessionStorage.getItem('helprr:import-notice') ?? 'null')).toEqual(notice);
+    expect(JSON.parse(sessionStorage.getItem('helprr:import-notice') ?? 'null')).toMatchObject(notice);
   });
 
   it('stays on the page and shows the warnings when they cannot be kept', async () => {

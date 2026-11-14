@@ -76,6 +76,39 @@ describe('stored view, sort and filter preferences', () => {
     expect(typeof state.setMoviesView).toBe('function');
   });
 
+  // An unknown glass mode has no palette: with Liquid Glass on, the theme threw on every page.
+  it('falls back to the default for a bad glass mode, out-of-range numbers and bad skip lengths', async () => {
+    const state = await loadStored({
+      liquidGlass: true, glassMode: 'bogus', glassIntensity: 'max', calendarImageOpacity: 900,
+      playerSkipBackSeconds: 7, playerSkipForwardSeconds: '30', discoverContentType: 'anime',
+    });
+    expect(state.liquidGlass).toBe(true);
+    expect(state.glassMode).toBe(initial.glassMode);
+    expect(state.glassIntensity).toBe(initial.glassIntensity);
+    expect(state.calendarImageOpacity).toBe(initial.calendarImageOpacity);
+    expect(state.playerSkipBackSeconds).toBe(initial.playerSkipBackSeconds);
+    expect(state.playerSkipForwardSeconds).toBe(initial.playerSkipForwardSeconds);
+    expect(state.discoverContentType).toBe('all');
+  });
+
+  it('keeps a known glass mode and in-range numbers, rounded', async () => {
+    const state = await loadStored({ glassMode: 'dark', glassIntensity: 42.6, calendarImageOpacity: 0, playerSkipBackSeconds: 30 });
+    expect(state).toMatchObject({ glassMode: 'dark', glassIntensity: 43, calendarImageOpacity: 0, playerSkipBackSeconds: 30 });
+  });
+
+  it('reconciles a stored nav order and Discover layout, and drops ones of the wrong shape', async () => {
+    let state = await loadStored({ navOrder: ['settings', 'gone-page', 'movies'], discoverLayout: { sections: 'abc' } });
+    expect(state.navOrder.slice(0, 2)).toEqual(['settings', 'movies']);
+    expect(state.navOrder).not.toContain('gone-page');
+    expect(state.navOrder).toHaveLength(initial.navOrder.length);
+    expect(state.discoverLayout).toBeNull();
+
+    useUIStore.setState(initial, true);
+    state = await loadStored({ discoverLayout: { sections: [null, 'x', { id: 'trending', type: 'builtin', enabled: false }] } });
+    expect(state.discoverLayout?.sections[0]).toMatchObject({ id: 'trending', enabled: false });
+    expect(state.discoverLayout?.sections.every((section) => typeof section === 'object' && section !== null)).toBe(true);
+  });
+
   it('checks values that came through a version migration too', async () => {
     const state = await loadStored({ moviesView: 'grid', moviesSort: 'year' }, STORE_VERSION - 1);
     expect(state.moviesView).toBe('posters');
@@ -93,6 +126,15 @@ describe('stored view, sort and filter preferences', () => {
     expect(state.moviesView).toBe('posters');
     expect(state.moviesSort).toBe('year');
     expect(state.seriesView).toBe('table');
+  });
+
+  it('a settings import drops a bad glass mode, an out-of-range number and a bad skip length', () => {
+    useUIStore.getState().applyImportedUiPrefs({ glassMode: 'bogus', calendarImageOpacity: -5, glassIntensity: 70, playerSkipBackSeconds: 7 });
+    const state = useUIStore.getState();
+    expect(state.glassMode).toBe(initial.glassMode);
+    expect(state.calendarImageOpacity).toBe(initial.calendarImageOpacity);
+    expect(state.glassIntensity).toBe(70);
+    expect(state.playerSkipBackSeconds).toBe(initial.playerSkipBackSeconds);
   });
 
   it('a settings import may clear a pref whose default is empty', () => {

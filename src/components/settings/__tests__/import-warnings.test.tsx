@@ -184,6 +184,29 @@ describe('the import result kept across the reload', () => {
     }
   });
 
+  it('is dropped when it was left behind: the page was left before the reload', async () => {
+    vi.useFakeTimers();
+    try {
+      rememberImportNotice({ type: 'success', message: 'Settings imported.' });
+      // Back on the Backup page later in the same tab.
+      vi.setSystemTime(Date.now() + 11_000);
+      await renderNotice();
+      await act(async () => { vi.runAllTimers(); });
+      expect(mocks.success).not.toHaveBeenCalled();
+      expect(sessionStorage.getItem('helprr:import-notice')).toBeNull();
+
+      // Within the reload's window it still shows.
+      act(() => root!.unmount());
+      rememberImportNotice({ type: 'success', message: 'Settings imported.' });
+      vi.setSystemTime(Date.now() + 2_000);
+      await renderNotice();
+      await act(async () => { vi.runAllTimers(); });
+      expect(mocks.success).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not stop the reload when it cannot be kept', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
     expect(() => rememberImportNotice({ type: 'success', message: 'Settings imported.' })).not.toThrow();
