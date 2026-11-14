@@ -523,7 +523,9 @@ describe('choosing how user accounts are imported', () => {
   const warnings = () => [...document.querySelectorAll('[role="radiogroup"] + div p')].map((el) => el.textContent);
   const choose = (title: string) => act(async () => { radio(title).click(); });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // A redirect or hold from an earlier case would hide this one's.
+    (await import('@/lib/query-client')).resetLoginRedirect();
     localUsers = () => new Response(JSON.stringify([{ id: FIRST_ADMIN, username: 'admin' }, { id: 'boss-id', username: 'boss' }]));
     const base = vi.mocked(fetch).getMockImplementation()!;
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
@@ -583,7 +585,7 @@ describe('choosing how user accounts are imported', () => {
     signedIn.me = { role: 'admin', id: FIRST_ADMIN, username: 'admin' };
     await openRead({ ...exportFile(off, off), users: { accounts: [{ id: FIRST_ADMIN, username: 'owner', role: 'admin', status: 'active', template: 'admin', permissions: {} }] } });
     await choose('Restore');
-    expect(warnings()[0]).toContain('its username becomes “owner”, and your password stays. A sign-in proxy must then send “owner”: until it does, you are signed out.');
+    expect(warnings()[0]).toContain('its username becomes “owner”, and your password stays. If you sign in through a proxy, it must then send “owner”: until it does, you are signed out.');
     expect(warnings()[0]).not.toContain('from now on');
   });
 
@@ -625,6 +627,15 @@ describe('choosing how user accounts are imported', () => {
     expect(warnings()).toEqual([expect.stringContaining("If the file has an account with this install's first admin's username")]);
   });
 
+  it("cautions another admin choosing Restore of a file without a first admin when this install's accounts cannot be read", async () => {
+    localUsers = () => new Response(null, { status: 500 });
+    signedIn.me = { role: 'admin', id: 'boss-id', username: 'boss' };
+    // Hand-made: no first-admin entry, but one named like this install's first admin.
+    await openRead({ ...exportFile(off, off), users: { accounts: [{ id: 'other-1', username: 'admin', role: 'member', status: 'active', template: 'member', permissions: {} }] } });
+    await choose('Restore');
+    expect(warnings()).toEqual([expect.stringContaining("If the file has an account with this install's first admin's username")]);
+  });
+
   it('keeps the signed-out message up with the new username and the notes, and a 401 meanwhile does not load Sign in', async () => {
     const { toast } = await import('sonner');
     const { handleAuthError } = await import('@/lib/query-client');
@@ -662,6 +673,74 @@ describe('choosing how user accounts are imported', () => {
       vi.stubGlobal('window', realWindow);
     }
     expect(assign).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Runs `during` while the import request is still unanswered, then answers
+   * it with `answer`, all with a stand-in location whose assign is returned.
+   * Window methods stay bound to the real window, so the dialog keeps working.
+   */
+  async function importWithPendingAnswer(answer: Response, during: () => void) {
+    const { default: userEvent } = await import('@testing-library/user-event');
+    let respond!: (res: Response) => void;
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => url === '/api/settings/import'
+      ? new Promise<Response>((resolve) => { respond = resolve; })
+      : base(url, init)));
+    await click('Replace everything');
+    await vi.waitFor(() => expect(document.querySelector('input[aria-label="Your current password"]')).not.toBeNull());
+    await userEvent.type(document.querySelector<HTMLInputElement>('input[aria-label="Your current password"]')!, 'pw');
+    await click('Continue');
+    await vi.waitFor(() => expect(respond).toBeTypeOf('function'));
+
+    const assign = vi.fn();
+    const realWindow = window;
+    vi.stubGlobal('window', new Proxy(realWindow, {
+      get: (target, key) => {
+        if (key === 'location') return { pathname: '/settings/backup', search: '', hash: '', assign };
+        const value = Reflect.get(target, key, target);
+        return typeof value === 'function' && /^[a-z]/.test(String(key)) ? value.bind(target) : value;
+      },
+    }));
+    try {
+      during();
+      const atAnswer = assign.mock.calls.length;
+      await act(async () => { respond(answer); });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+      return { assign, atAnswer };
+    } finally {
+      vi.stubGlobal('window', realWindow);
+    }
+  }
+
+  it('holds Sign in while the import runs, and keeps holding after it signs you out', async () => {
+    const { toast } = await import('sonner');
+    const { handleAuthError } = await import('@/lib/query-client');
+    const { ApiError } = await import('@/lib/query-fetch');
+    signedIn.me = { role: 'admin', id: FIRST_ADMIN, username: 'admin' };
+    await openRead(withUsers());
+    await choose('Restore');
+    const { assign, atAnswer } = await importWithPendingAnswer(
+      new Response(JSON.stringify({ skipped: [], warnings: [], importerSignedOut: { username: 'owner', renamedBehindProxy: false } })),
+      // The session ended at commit; the follow-ups still run and the badge poll gets a 401.
+      () => handleAuthError(new ApiError(401, 'GET /api/badges → 401')),
+    );
+    expect(atAnswer).toBe(0);
+    expect(assign).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(expect.stringContaining('Sign in as “owner”'), expect.anything());
+  });
+
+  it.each([
+    ['a successful import that did not sign you out', () => new Response(JSON.stringify({ skipped: [], warnings: [] }))],
+    ['a failed import', () => new Response(JSON.stringify({ error: 'Failed to import settings' }), { status: 500 })],
+  ])('goes to Sign in after %s when a 401 came during it', async (_label, answer) => {
+    const { handleAuthError } = await import('@/lib/query-client');
+    const { ApiError } = await import('@/lib/query-fetch');
+    signedIn.me = { role: 'admin', id: FIRST_ADMIN, username: 'admin' };
+    await openRead(withUsers());
+    const { assign, atAnswer } = await importWithPendingAnswer(answer(), () => handleAuthError(new ApiError(401, 'GET /api/badges → 401')));
+    expect(atAnswer).toBe(0);
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/login?next=%2Fsettings%2Fbackup');
   });
 
   it('says the proxy must send the new username when a rename ended a proxy session', async () => {

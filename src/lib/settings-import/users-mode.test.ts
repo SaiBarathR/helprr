@@ -43,8 +43,15 @@ describe('accountInFile', () => {
   });
 
   it("Restore: when the file's first-admin name belongs to another account here, the same-named entry reaches the first admin instead", () => {
-    expect(accountInFile('restore', file, firstAdmin, new Set(['owner', 'bob']))).toEqual({ username: 'admin', hasPassword: true });
-    expect(accountInFile('restore', [file[0]], firstAdmin, new Set(['owner']))).toBeNull();
+    expect(accountInFile('restore', file, firstAdmin, { usernames: new Set(['owner', 'bob']), ids: new Set() })).toEqual({ username: 'admin', hasPassword: true });
+    expect(accountInFile('restore', [file[0]], firstAdmin, { usernames: new Set(['owner']), ids: new Set() })).toBeNull();
+  });
+
+  it("Restore: an entry carrying another account's id goes to that account, not to a same-named one (names swapped since the export)", () => {
+    // Here: x is "a", y is "b". In the file: x is "b", y is "a". The server skips both.
+    const swapped = [{ id: 'x', username: 'b', passwordHash: 'scrypt$1' }, { id: 'y', username: 'a', passwordHash: 'scrypt$2' }];
+    expect(accountInFile('restore', swapped, { id: 'x', username: 'a' }, { usernames: new Set(['b']), ids: new Set(['y']) })).toBeNull();
+    expect(accountInFile('restore', swapped, { id: 'y', username: 'b' }, { usernames: new Set(['a']), ids: new Set(['x']) })).toBeNull();
   });
 
   it('Match by username: the first admin changes only through its own username', () => {

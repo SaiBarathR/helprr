@@ -44,6 +44,10 @@ export function isFinalClientError(error: unknown): boolean {
 }
 
 let redirectingToLogin = false;
+// Requests that may end this session (deferLoginRedirect) and whether a 401
+// came while one ran.
+let loginRedirectDeferrals = 0;
+let deferredLoginRedirect = false;
 
 // Exported so imperative fetches that don't flow through useQuery/useMutation
 // (e.g. infinite-scroll "load more" paginators) can honor the same 401→/login
@@ -51,6 +55,14 @@ let redirectingToLogin = false;
 export function handleAuthError(error: unknown) {
   if (!(error instanceof ApiError) || error.status !== 401) return;
   if (typeof window === 'undefined') return;
+  if (loginRedirectDeferrals > 0) {
+    deferredLoginRedirect = true;
+    return;
+  }
+  redirectToLogin();
+}
+
+function redirectToLogin() {
   // Already on /login (or mid-redirect) — don't loop.
   if (redirectingToLogin || window.location.pathname.startsWith('/login')) return;
   redirectingToLogin = true;
@@ -71,6 +83,33 @@ export function handleAuthError(error: unknown) {
  */
 export function holdLoginRedirect(): void {
   redirectingToLogin = true;
+}
+
+/** For tests that run several cases in one module: forget redirects, holds and deferrals. */
+export function resetLoginRedirect(): void {
+  redirectingToLogin = false;
+  loginRedirectDeferrals = 0;
+  deferredLoginRedirect = false;
+}
+
+/**
+ * For a request that may end this browser's session (a settings import that
+ * changes the importer's account): a 401 that arrives while it runs waits,
+ * so it cannot load Login and abort the request before its answer is shown.
+ * The returned release (safe to call twice) goes to Login then for a 401 that
+ * came meanwhile, unless holdLoginRedirect was called first.
+ */
+export function deferLoginRedirect(): () => void {
+  loginRedirectDeferrals += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    loginRedirectDeferrals -= 1;
+    if (loginRedirectDeferrals > 0 || !deferredLoginRedirect) return;
+    deferredLoginRedirect = false;
+    if (typeof window !== 'undefined') redirectToLogin();
+  };
 }
 
 let browserQueryClient: QueryClient | undefined;

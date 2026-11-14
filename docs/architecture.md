@@ -1389,8 +1389,12 @@ bootstrap admin, it stays admin, active and on the admin template. The importer'
 own role and status are kept. A new password for them ends their sessions, and so
 does a rename while they are signed in through the trusted proxy header (that
 session names its account by username); the response says so
-(`importerSignedOut`, with the username to sign in with). The dialog then holds
-the 401 redirect to Sign in, so its message stays until the importer goes there.
+(`importerSignedOut`, with the username to sign in with). The session can end at
+commit, seconds before the answer (the follow-ups run first), so the dialog defers
+the 401 redirect to Sign in for the whole request (`deferLoginRedirect` in
+`src/lib/query-client.ts`). A signed-out answer turns that into a hold, so the
+message stays until the importer goes to Sign in; any other answer or an error
+releases it, and a 401 that came meanwhile then goes to Sign in.
 It preselects `keep-first-admin`, and reads this install's users to warn about
 both the importer's account and the bootstrap admin.
 

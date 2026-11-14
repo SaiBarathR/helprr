@@ -37,18 +37,24 @@ export interface AccountInFileMatch {
   hasPassword: boolean;
 }
 
+/** This install's other accounts, when known. */
+export interface OtherAccounts {
+  /** Restore skips an entry whose username one of them has. */
+  usernames: ReadonlySet<string>;
+  /** Restore matches an entry with one of their ids to that account first. */
+  ids: ReadonlySet<string>;
+}
+
 /**
  * The file entry that would update `account` (an account on this install) in
  * `mode`, following the server's matching (users.ts), or null when the import
- * leaves it alone. `takenByOthers` holds the usernames of this install's other
- * accounts, when known: Restore skips an entry whose username one of them has.
- * A clash the file cannot show is otherwise assumed away.
+ * leaves it alone. Without `others`, a clash the file cannot show is assumed away.
  */
 export function accountInFile(
   mode: UsersImportMode,
   accounts: readonly unknown[],
   account: { id: string; username?: string },
-  takenByOthers: ReadonlySet<string> = new Set(),
+  others: OtherAccounts = { usernames: new Set(), ids: new Set() },
 ): AccountInFileMatch | null {
   const entries = accounts
     .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
@@ -64,11 +70,12 @@ export function accountInFile(
   if (mode === 'restore') {
     // Its own entry by id (the first admin's fixed id, or this install's own
     // id in a same-install backup) first. Skipped for a username another
-    // account has, it can still be reached by its current username.
+    // account has, it can still be reached by its current username, by an
+    // entry whose id is not another account's here (that one goes there).
     const own = entries.find((a) => a.id === account.id);
-    match = own && !takenByOthers.has(own.username)
+    match = own && !others.usernames.has(own.username)
       ? own
-      : entries.find((a) => a !== own && a.id !== BOOTSTRAP_ADMIN_ID && sameName(a));
+      : entries.find((a) => a !== own && a.id !== BOOTSTRAP_ADMIN_ID && !(a.id && others.ids.has(a.id)) && sameName(a));
   } else if (!(mode === 'keep-first-admin' && account.id === BOOTSTRAP_ADMIN_ID)) {
     match = entries.find(sameName);
   }

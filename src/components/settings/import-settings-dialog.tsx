@@ -55,7 +55,7 @@ import {
   type AccountInFileMatch,
   type UsersImportMode,
 } from '@/lib/settings-import/users-mode';
-import { holdLoginRedirect } from '@/lib/query-client';
+import { deferLoginRedirect, holdLoginRedirect } from '@/lib/query-client';
 
 interface ImportSettingsDialogProps {
   open: boolean;
@@ -147,8 +147,9 @@ const USERS_MODE_OPTIONS: { mode: UsersImportMode; title: string; description: s
 /** What the import does to the importer's own account, in plain words. */
 function importerWarning(match: AccountInFileMatch, myUsername: string | undefined): string {
   const renamed = myUsername !== undefined && match.username !== myUsername;
-  // A sign-in proxy names the account by username, so a rename ends its session.
-  const proxy = ` A sign-in proxy must then send “${match.username}”: until it does, you are signed out.`;
+  // A sign-in proxy names the account by username, so a rename ends its
+  // session. Whether this session came from one is not known here.
+  const proxy = ` If you sign in through a proxy, it must then send “${match.username}”: until it does, you are signed out.`;
   if (match.hasPassword) {
     return renamed
       ? `This changes your own account: you become “${match.username}” with the file's password, and are signed out now if it differs from yours.${proxy}`
@@ -422,20 +423,25 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const here = localUsers.data;
   const usersModeWarnings = useMemo(() => {
     if (!me || !Array.isArray(fileAccounts)) return [];
-    const takenByOthers = (id: string) => new Set((here ?? []).filter((u) => u.id !== id).map((u) => u.username));
+    const othersThan = (id: string) => {
+      const others = (here ?? []).filter((u) => u.id !== id);
+      return { usernames: new Set(others.map((u) => u.username)), ids: new Set(others.map((u) => u.id)) };
+    };
     const warnings: string[] = [];
-    const mine = accountInFile(usersMode, fileAccounts, me, takenByOthers(me.id));
+    const mine = accountInFile(usersMode, fileAccounts, me, othersThan(me.id));
     if (mine) warnings.push(importerWarning(mine, me.username));
     if (me.id !== BOOTSTRAP_ADMIN_ID) {
       const firstAdmin = here?.find((u) => u.id === BOOTSTRAP_ADMIN_ID);
       if (firstAdmin) {
-        const match = accountInFile(usersMode, fileAccounts, firstAdmin, takenByOthers(firstAdmin.id));
+        const match = accountInFile(usersMode, fileAccounts, firstAdmin, othersThan(firstAdmin.id));
         if (match) warnings.push(firstAdminWarning(match, firstAdmin.username));
       } else if (!here) {
-        // This install's accounts could not be read: say what the file alone shows.
+        // This install's accounts could not be read: say what the file alone
+        // shows. Without the first admin's own entry, Restore too reaches it
+        // through an entry with its username.
         const match = usersMode === 'restore' ? accountInFile('restore', fileAccounts, { id: BOOTSTRAP_ADMIN_ID }) : null;
         if (match) warnings.push(firstAdminWarning(match));
-        if (usersMode === 'match-username') {
+        if (usersMode === 'match-username' || (usersMode === 'restore' && !match)) {
           warnings.push("If the file has an account with this install's first admin's username, that admin takes its details and any password in it.");
         }
       }
@@ -544,6 +550,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     }
 
     setImporting(true);
+    let releaseLoginRedirect: (() => void) | null = null;
     try {
       // 1. Pre-compute UI prefs merge; defer the local mutation until after the server import succeeds
       //    so a server failure can't leave UI state half-applied.
@@ -615,6 +622,10 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
 
       const needsServerCall = body.appSettings || body.serviceConnections || body.notificationDevice || body.cleanup || body.twitch || body.youtube || body.discoverLayout || body.dashboardLayouts || body.watchlist || body.scheduledAlerts || body.animeMappings || body.users;
       if (needsServerCall) {
+        // Importing users can end this session as soon as the import commits,
+        // before the answer arrives (the follow-ups run first). A 401 from a
+        // query meanwhile must not load Sign in and abort this request.
+        if (body.users) releaseLoginRedirect = deferLoginRedirect();
         const res = await fetch('/api/settings/import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -637,7 +648,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         const signedOutAs: { username: string; renamedBehindProxy: boolean } | null =
           json?.importerSignedOut && typeof json.importerSignedOut === 'object' ? json.importerSignedOut : null;
         // This session has ended. Any request now gets a 401, which would load
-        // Sign in at once and take the message below with it.
+        // Sign in at once and take the message below with it. Held before the
+        // release below, so a 401 that waited during the request stays waiting.
         if (signedOutAs) holdLoginRedirect();
         if (json?.discoverLayoutApplied && parsed.payload.discoverLayout) {
           const validatedLayout = validateDiscoverLayout(parsed.payload.discoverLayout);
@@ -695,6 +707,9 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     } catch (err) {
       if (!isStepUpRefusal(err)) toast.error((err as Error)?.message || 'Import failed');
     } finally {
+      // Not signed out (or it failed): a 401 that came during the request is
+      // a real sign-out and goes to Sign in now.
+      releaseLoginRedirect?.();
       // Even on a failed request: the server may have saved part of it.
       forgetAppSettingsFetch();
       setImporting(false);
