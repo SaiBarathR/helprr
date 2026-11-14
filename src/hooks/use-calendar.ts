@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { recordBrowseFreshness } from '@/lib/browse-freshness';
+import { getDeviceTimeZone } from '@/lib/timezone';
 import type { CalendarEvent } from '@/types';
 
 interface UseCalendarParams {
@@ -42,7 +43,7 @@ export function useCalendar({ start, end, type, includeScheduled }: UseCalendarP
         start: startISO,
         end: endISO,
         // The days shown are this device's, so the server matches film and album release days on them.
-        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        tz: getDeviceTimeZone(),
       });
 
       if (type && type !== 'all') {

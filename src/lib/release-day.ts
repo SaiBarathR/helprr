@@ -40,3 +40,31 @@ export function calendarEventDayKey(event: Pick<CalendarEvent, 'type' | 'origin'
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
+
+/**
+ * Shown as "All day": a film or album release, or a scheduled alert sitting on
+ * its release day. An episode, or an alert placed at the time it notifies,
+ * shows its time.
+ */
+export function isAllDayEvent(event: Pick<CalendarEvent, 'type' | 'origin' | 'date' | 'notifyAt'>): boolean {
+  if (event.type === 'episode') return false;
+  return !(event.origin === 'scheduled' && event.notifyAt === event.date);
+}
+
+/**
+ * The order events are listed in on this device: by the day they show on; on
+ * a day, its all-day items first, then timed ones by their moment. Upstream's
+ * order is by raw instant, which put a film (its UTC midnight) among the
+ * evening before's episodes west of UTC and between a morning's episodes east.
+ */
+export function compareCalendarEvents(
+  a: Pick<CalendarEvent, 'type' | 'origin' | 'date' | 'notifyAt'>,
+  b: Pick<CalendarEvent, 'type' | 'origin' | 'date' | 'notifyAt'>,
+): number {
+  const dayA = calendarEventDayKey(a);
+  const dayB = calendarEventDayKey(b);
+  if (dayA !== dayB) return dayA < dayB ? -1 : 1;
+  const allDayA = isAllDayEvent(a);
+  if (allDayA !== isAllDayEvent(b)) return allDayA ? -1 : 1;
+  return new Date(a.date).getTime() - new Date(b.date).getTime();
+}

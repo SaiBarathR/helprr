@@ -10,7 +10,8 @@ import { useCan } from '@/components/permission-provider';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import type { CalendarEvent } from '@/types';
-import { calendarEventDate } from '@/lib/release-day';
+import { calendarEventDate, compareCalendarEvents } from '@/lib/release-day';
+import { getDeviceTimeZone } from '@/lib/timezone';
 import { cn } from '@/lib/utils';
 
 const MONTHS_AHEAD = 3;
@@ -70,7 +71,8 @@ export function NewAndHot({ railsFallback }: { railsFallback: React.ReactNode })
 
   const query = useQuery({
     queryKey: ['jellyfin', 'catalog', 'upcoming-calendar', range.start, range.end],
-    queryFn: jsonFetcher<CalendarEvent[]>(`/api/calendar?start=${range.start}&end=${range.end}`),
+    // Release days matched on this device's days, as Calendar does (same URL as the rails', which share this key).
+    queryFn: jsonFetcher<CalendarEvent[]>(`/api/calendar?start=${range.start}&end=${range.end}&tz=${encodeURIComponent(getDeviceTimeZone())}`),
     enabled: canSeeCalendar && tab === 'coming',
     staleTime: 5 * 60_000,
   });
@@ -78,7 +80,7 @@ export function NewAndHot({ railsFallback }: { railsFallback: React.ReactNode })
   const events = useMemo(
     () => (query.data ?? [])
       .filter((event) => calendarEventDate(event).getTime() >= range.startMs)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .sort(compareCalendarEvents)
       .slice(0, 40),
     [query.data, range.startMs],
   );

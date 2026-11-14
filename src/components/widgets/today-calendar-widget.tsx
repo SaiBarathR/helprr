@@ -28,7 +28,7 @@ import {
 import { useDashboardLayout } from './dashboard-layout-context';
 import { formatTime as formatDisplayTime } from '@/lib/date-format';
 import { recordBrowseFreshness } from '@/lib/browse-freshness';
-import { isReleaseDayEvent } from '@/lib/release-day';
+import { compareCalendarEvents, isReleaseDayEvent } from '@/lib/release-day';
 
 // The header plus a carousel card's poster (with its badges and air time) and
 // title line. A shorter cell, such as a phone's two-row default, cut the
@@ -88,7 +88,8 @@ async function fetchToday(signal?: AbortSignal): Promise<CalendarEvent[]> {
   // An offline snapshot from the worker shows the shared "saved data" notice, as Calendar does.
   recordBrowseFreshness(path, res);
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
-  return res.json();
+  // Listed as Calendar lists them (all-day first, then by time), not upstream's instant order.
+  return ((await res.json()) as CalendarEvent[]).sort(compareCalendarEvents);
 }
 
 function shortTagFor(ev: CalendarEvent): { label: string; color: string } | null {

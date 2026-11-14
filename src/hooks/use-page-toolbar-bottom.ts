@@ -9,8 +9,11 @@ const PROPERTY = '--page-toolbar-bottom';
  * toolbars: Calendar's ‹ › Today row, the Movies/Series/Music search row.
  * Unset when the page has no toolbar, so the caller's fallback applies.
  *
- * Cheap while a toolbar is up: DOM changes are ignored until it leaves the
- * page, and its size is watched by a ResizeObserver.
+ * The last visible one counts: a flow opened in a page (Interactive Search,
+ * Manage Files) pins its own bar under the page header's.
+ *
+ * Cheap while a toolbar is up: DOM changes are ignored unless it leaves the
+ * page or another toolbar arrives, and its size is watched by a ResizeObserver.
  */
 export function usePageToolbarBottom(enabled: boolean): void {
   useEffect(() => {
@@ -22,13 +25,15 @@ export function usePageToolbarBottom(enabled: boolean): void {
     const resizeObserver = new ResizeObserver(() => schedule());
     const measure = () => {
       frameId = null;
-      const next = document.querySelector<HTMLElement>('main .page-toolbar');
+      const next = [...document.querySelectorAll<HTMLElement>('main .page-toolbar')]
+        .filter((el) => el.offsetHeight > 0)
+        .at(-1) ?? null;
       if (next !== toolbar) {
         if (toolbar) resizeObserver.unobserve(toolbar);
         toolbar = next;
         if (toolbar) resizeObserver.observe(toolbar);
       }
-      if (!toolbar || toolbar.offsetHeight === 0) {
+      if (!toolbar) {
         root.style.removeProperty(PROPERTY);
         return;
       }
@@ -39,9 +44,11 @@ export function usePageToolbarBottom(enabled: boolean): void {
       if (frameId === null) frameId = requestAnimationFrame(measure);
     }
 
-    // A new page brings a new toolbar (or none).
-    const mutationObserver = new MutationObserver(() => {
-      if (!toolbar?.isConnected) schedule();
+    // A new page brings a new toolbar (or none); a flow adds one under it.
+    const addsToolbar = (node: Node) =>
+      node instanceof HTMLElement && (node.matches('.page-toolbar') || node.querySelector('.page-toolbar') !== null);
+    const mutationObserver = new MutationObserver((mutations) => {
+      if (!toolbar?.isConnected || mutations.some((m) => [...m.addedNodes].some(addsToolbar))) schedule();
     });
     mutationObserver.observe(document.body, { childList: true, subtree: true });
     // Moving the nav to the top or bottom moves where the toolbar pins.

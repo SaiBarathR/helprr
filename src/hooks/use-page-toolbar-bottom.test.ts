@@ -55,3 +55,19 @@ it('does nothing off a phone, where toasts come from the bottom', () => {
   renderHook(() => usePageToolbarBottom(false));
   expect(value()).toBe('');
 });
+
+it("follows a flow's own bar pinned under the page header's, and skips a hidden one", async () => {
+  main.append(toolbar(52));
+  renderHook(() => usePageToolbarBottom(true));
+  expect(value()).toBe('52px');
+
+  // Interactive Search's filters, pinned below the header (its own top).
+  const flowBar = toolbar(96, '52px');
+  main.append(flowBar);
+  await waitFor(() => expect(value()).toBe('148px'));
+
+  // A bar laid out but hidden (display: none) does not count.
+  main.append(toolbar(0, '200px'));
+  flowBar.remove();
+  await waitFor(() => expect(value()).toBe('52px'));
+});

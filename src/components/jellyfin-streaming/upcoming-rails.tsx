@@ -12,7 +12,8 @@ import { MediaTile } from '@/components/jellyfin-streaming/media-tile';
 import { toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import type { CalendarEvent } from '@/types';
 import { formatDateTime } from '@/lib/date-format';
-import { calendarEventDate } from '@/lib/release-day';
+import { calendarEventDate, isReleaseDayEvent } from '@/lib/release-day';
+import { getDeviceTimeZone } from '@/lib/timezone';
 
 const DAY_MS = 86_400_000;
 const EPISODE_WINDOW_DAYS = 7;
@@ -49,14 +50,16 @@ function backdropFor(event: CalendarEvent): string | null {
  * usually means "date only" upstream rather than an actual 00:00 broadcast; a
  * film's release is its day (release-day.ts), at local midnight here.
  */
-function airsAt(event: CalendarEvent): string | null {
+export function airsAt(event: CalendarEvent): string | null {
   const date = calendarEventDate(event);
   if (Number.isNaN(date.getTime())) return null;
-  const midnight = date.getHours() === 0 && date.getMinutes() === 0;
+  // A release is dated by its kind, not a midnight hour: where that midnight
+  // does not exist (a DST start, as in Santiago) local midnight reads 01:00.
+  const dateOnly = isReleaseDayEvent(event) || (date.getHours() === 0 && date.getMinutes() === 0);
   return formatDateTime(date, {
     day: 'numeric',
     month: 'short',
-    ...(midnight ? {} : { hour: 'numeric', minute: '2-digit' }),
+    ...(dateOnly ? {} : { hour: 'numeric', minute: '2-digit' }),
   });
 }
 
@@ -99,7 +102,8 @@ export function UpcomingRails({ only }: {
 
   const query = useQuery({
     queryKey: ['jellyfin', 'catalog', 'upcoming-calendar', range.start, range.end],
-    queryFn: jsonFetcher<CalendarEvent[]>(`/api/calendar?start=${range.start}&end=${range.end}`),
+    // Release days matched on this device's days, as Calendar does (same URL as New & Hot's, which shares this key).
+    queryFn: jsonFetcher<CalendarEvent[]>(`/api/calendar?start=${range.start}&end=${range.end}&tz=${encodeURIComponent(getDeviceTimeZone())}`),
     enabled: canSeeCalendar,
     staleTime: 5 * 60_000,
   });

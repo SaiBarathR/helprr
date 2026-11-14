@@ -78,7 +78,7 @@ import { HeroImage } from '@/components/media/hero-image';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import { PageTitle } from '@/components/layout/page-title';
 import { formatDate, formatTime } from '@/lib/date-format';
-import { calendarEventDate, calendarEventDayKey } from '@/lib/release-day';
+import { calendarEventDate, calendarEventDayKey, compareCalendarEvents, isAllDayEvent } from '@/lib/release-day';
 import { CalendarFeedDialog } from '@/components/calendar/calendar-feed-dialog';
 import { useCan } from '@/components/permission-provider';
 
@@ -92,11 +92,10 @@ const EVENT_APP = { episode: 'sonarr', movie: 'radarr', album: 'lidarr' } as con
  * Radarr and Lidarr give a release day as an instant (often UTC midnight), not
  * a time: "5:30 AM" in India was that midnight. All day, as the calendar feed has it.
  */
-function eventTimeLabel(event: { type: string; origin?: string; date: string; notifyAt?: string }, date: Date): string {
+function eventTimeLabel(event: CalendarEvent, date: Date): string {
   // A scheduled alert sits on its release day when it has one (all day too),
   // else at the time it notifies.
-  const atNotifyTime = event.origin === 'scheduled' && event.notifyAt === event.date;
-  return event.type === 'episode' || atNotifyTime ? formatTime(date) : 'All day';
+  return isAllDayEvent(event) ? 'All day' : formatTime(date);
 }
 function eventHref(event: CalendarEvent): string {
   if (event.href) return event.href;
@@ -1502,7 +1501,8 @@ export default function CalendarPage() {
     if (monitoredOnly) list = list.filter((e) => e.monitored);
     if (instanceFilter !== 'all') list = list.filter((e) => e.instanceId === instanceFilter);
     if (!showScheduled) list = list.filter((e) => e.origin !== 'scheduled' && !e.scheduleLabel);
-    return list;
+    // Every view lists a day's events in this order (all-day first, then by time).
+    return [...list].sort(compareCalendarEvents);
   }, [events, monitoredOnly, instanceFilter, showScheduled]);
 
   const agendaTargetDateKey = useMemo(() => {

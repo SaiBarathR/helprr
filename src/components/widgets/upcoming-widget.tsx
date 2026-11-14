@@ -28,7 +28,7 @@ import {
 import { useDashboardLayout } from './dashboard-layout-context';
 import { formatDate, formatDateTime } from '@/lib/date-format';
 import { recordBrowseFreshness } from '@/lib/browse-freshness';
-import { calendarEventDate } from '@/lib/release-day';
+import { calendarEventDate, compareCalendarEvents, isReleaseDayEvent } from '@/lib/release-day';
 
 const DAYS_OPTIONS = [7, 14, 30] as const;
 const STORAGE_KEY = 'helprr-upcoming-days';
@@ -39,7 +39,9 @@ const STORAGE_KEY = 'helprr-upcoming-days';
 function formatEventDate(ev: CalendarEvent): string {
   const d = calendarEventDate(ev);
   if (!Number.isFinite(d.getTime())) return '';
-  if (d.getHours() === 0 && d.getMinutes() === 0) return formatDate(d, { month: 'short', day: 'numeric' });
+  // By its kind, not by a midnight hour: where that midnight does not exist
+  // (a DST start, as in Santiago) local midnight of the day reads 01:00.
+  if (isReleaseDayEvent(ev) || (d.getHours() === 0 && d.getMinutes() === 0)) return formatDate(d, { month: 'short', day: 'numeric' });
   return formatDateTime(d, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
@@ -114,7 +116,8 @@ export function UpcomingWidget({
     // An offline snapshot from the worker shows the shared "saved data" notice, as Calendar does.
     recordBrowseFreshness(path, res);
     if (!res.ok) throw new ApiError(res.status, 'Request failed');
-    return res.json();
+    // Listed as Calendar lists them (by day here, all-day first), not upstream's instant order.
+    return ((await res.json()) as CalendarEvent[]).sort(compareCalendarEvents);
   }, [days]);
 
   const { data, loading, error, offline } = useWidgetData({
