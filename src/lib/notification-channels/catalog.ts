@@ -75,7 +75,10 @@ export const CHANNEL_CATALOG: Record<ChannelType, ChannelTypeMeta> = {
     description: 'Send through an Apprise API server to any of the services it supports.',
     fields: [
       { key: 'apiUrl', label: 'Apprise API', kind: 'url', required: true, placeholder: 'http://apprise:8000' },
-      { key: 'key', label: 'Configuration key', kind: 'text', required: true, defaultValue: 'apprise', help: 'The key your Apprise URLs are saved under.' },
+      {
+        key: 'key', label: 'Configuration key', kind: 'text', secret: true, required: true, defaultValue: 'apprise', placeholder: 'apprise',
+        help: 'The key your Apprise URLs are saved under (apprise unless you changed it). Kept like a password: on an Apprise server without a config lock it opens your saved URLs.',
+      },
       { key: 'tags', label: 'Tags', kind: 'text', placeholder: 'family, phone', help: 'Only the saved URLs with one of these tags. Leave empty for all.' },
     ],
   },

@@ -132,6 +132,13 @@ export function validateChannelInput(
         keptSecret = true;
         continue;
       }
+      // A field made secret after a channel was saved (the Apprise key, on edge
+      // builds before 1.15.0) is still in its config: moved into the secrets here.
+      if (!value && existing?.config[field.key]) {
+        value = existing.config[field.key];
+        keptSecret = true;
+      }
+      if (!value && !existing) value = field.defaultValue;
     } else {
       value = asText(configIn[field.key]) || field.defaultValue;
     }
@@ -183,7 +190,7 @@ function checkTypeRules(type: ChannelType, config: FieldMap, secrets: FieldMap, 
       if (secrets.headerValue && !config.headerName) return 'Enter a name for the secret header.';
       return null;
     case 'apprise': {
-      if (!APPRISE_KEY.test(config.key ?? '')) return 'Configuration key may use letters, digits, - and _ only.';
+      if (!APPRISE_KEY.test(secrets.key ?? '')) return 'Configuration key may use letters, digits, - and _ only.';
       const tags = (config.tags ?? '').split(',').map((tag) => tag.trim()).filter(Boolean);
       if (tags.some((tag) => !APPRISE_TAG.test(tag))) return 'Tags may use letters, digits, - and _ only, separated by commas.';
       if (tags.length > 0) config.tags = tags.join(', ');

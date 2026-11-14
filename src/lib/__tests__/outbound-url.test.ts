@@ -2,6 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dns = vi.hoisted(() => ({ answers: {} as Record<string, { address: string; family: number }[]> }));
 
+// This server's own interfaces: loopback, a LAN address, and a VPS-style public one.
+vi.mock('node:os', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:os')>()),
+  networkInterfaces: () => ({
+    lo: [{ address: '127.0.0.1', family: 'IPv4' }, { address: '::1', family: 'IPv6' }],
+    eth0: [{ address: '203.0.113.7', family: 'IPv4' }, { address: '2001:db8::7', family: 'IPv6' }],
+  }),
+}));
+
 vi.mock('node:dns', () => ({
   lookup: (hostname: string, _options: unknown, cb: (e: Error | null, a: unknown) => void) => {
     const answer = dns.answers[hostname];
@@ -92,6 +101,16 @@ describe('checkOutboundUrl', () => {
 });
 
 describe('isBlockedAddress', () => {
+  it("keeps a member off this server's own addresses, its public one included", () => {
+    const member = { allowPrivate: false };
+    expect(isBlockedAddress('203.0.113.7', member)).toBe(true);
+    expect(isBlockedAddress('2001:db8::7', member)).toBe(true);
+    expect(isBlockedAddress('::ffff:203.0.113.7', member)).toBe(true);
+    expect(isBlockedAddress('203.0.113.8', member)).toBe(false);
+    // An admin may reach anything on the server's own network.
+    expect(isBlockedAddress('203.0.113.7')).toBe(false);
+  });
+
   it('blocks link-local in both families and v4-mapped v6', () => {
     expect(isBlockedAddress('169.254.10.10')).toBe(true);
     expect(isBlockedAddress('::ffff:169.254.169.254')).toBe(true);

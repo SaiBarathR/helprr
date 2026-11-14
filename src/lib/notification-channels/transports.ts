@@ -142,9 +142,11 @@ async function sendWebhook(rules: OutboundRules, config: FieldMap, secrets: Fiel
   }, headers);
 }
 
-async function sendApprise(rules: OutboundRules, config: FieldMap, _secrets: FieldMap, message: ChannelMessage): Promise<void> {
+async function sendApprise(rules: OutboundRules, config: FieldMap, secrets: FieldMap, message: ChannelMessage): Promise<void> {
   const tags = (config.tags ?? '').split(',').map((tag) => tag.trim()).filter(Boolean);
-  await postJson(rules, `${base(config.apiUrl)}/notify/${encodeURIComponent(config.key ?? 'apprise')}`, {
+  // The key is a secret; a channel saved before it was one still has it in its config.
+  const key = secrets.key ?? config.key ?? 'apprise';
+  await postJson(rules, `${base(config.apiUrl)}/notify/${encodeURIComponent(key)}`, {
     title: clip(message.title, MAX_TITLE),
     body: clip(message.link ? `${message.body}\n\n${message.link}` : message.body, MAX_BODY),
     type: 'info',
