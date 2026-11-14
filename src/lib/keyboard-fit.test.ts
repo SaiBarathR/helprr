@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { arrowRoomNeeded, formRoomTooShort, revealFocusedField } from './keyboard-fit';
+import { arrowRoomNeeded, followKeyboard, formRoomTooShort, PAN_HOLD_MS, PAN_STILL_MS, revealFocusedField } from './keyboard-fit';
 
 // A scroll box showing 100–300 px of a column of 36 px fields, 80 px apart,
 // laid out as if scrolled by `box.scrollTop`. iOS's ⌃ / ⌄ arrows skip a field
@@ -224,5 +224,274 @@ describe('formRoomTooShort', () => {
     const scroll = sheet({ bodyHeight: 10, overflow: 0 });
     (scroll.firstElementChild as HTMLElement).style.overflowY = 'visible';
     expect(formRoomTooShort(scroll)).toBe(false);
+  });
+});
+
+describe('revealFocusedField on the form\'s last field', () => {
+  // A form scrolling as one column: fields 80 px apart from 110, then its
+  // Turn on button 60 px under the last one, all in a box showing 100–300.
+  function sheetForm(count: number, { buttonGap = 60, pinnedButton = false } = {}) {
+    const node = document.createElement('div');
+    const form = document.createElement('form');
+    const box = document.createElement('div');
+    box.style.overflowY = 'auto';
+    form.appendChild(box);
+    node.appendChild(form);
+    document.body.appendChild(node);
+    Object.defineProperty(box, 'clientHeight', { value: 200, configurable: true });
+    Object.defineProperty(box, 'scrollHeight', { value: 1000, configurable: true });
+    vi.spyOn(box, 'getBoundingClientRect').mockReturnValue({ top: 100, bottom: 300 } as DOMRect);
+    const at = (el: HTMLElement, top: number, height: number) =>
+      vi.spyOn(el, 'getBoundingClientRect').mockImplementation(() => {
+        const t = top - box.scrollTop;
+        return { top: t, bottom: t + height } as DOMRect;
+      });
+    const fields = Array.from({ length: count }, (_, i) => {
+      const field = document.createElement('input');
+      box.appendChild(field);
+      at(field, 110 + i * 80, 36);
+      return field;
+    });
+    const button = document.createElement('button');
+    button.type = 'submit';
+    (pinnedButton ? form : box).appendChild(button);
+    const buttonTop = 110 + (count - 1) * 80 + 36 + buttonGap;
+    if (pinnedButton) vi.spyOn(button, 'getBoundingClientRect').mockReturnValue({ top: 320, bottom: 364 } as DOMRect);
+    else at(button, buttonTop, 44);
+    return { node, box, fields, button };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.replaceChildren();
+  });
+
+  it('also shows the button that sends the form, whole, when it fits', () => {
+    // Two-step's code step: key, code (190–226), then Turn on at 276–320, under the box.
+    const { node, box, fields, button } = sheetForm(2, { buttonGap: 50 });
+    fields[1].focus();
+    revealFocusedField(node);
+    expect(box.scrollTop).toBe(20);
+    // The key field's centre stays in view too.
+    expect(fields[0].getBoundingClientRect().top + 18).toBeGreaterThanOrEqual(104);
+    expect(button.getBoundingClientRect().bottom).toBeLessThanOrEqual(300);
+    expect(fields[1].getBoundingClientRect().top).toBeGreaterThanOrEqual(100);
+  });
+
+  // ⌃ needs the field above (#677): Change password's Confirm in a tight box.
+  it('keeps the field above rather than the button when both do not fit', () => {
+    // Field 2 (190–226), then the button at 326–370: the button needs 70 px of
+    // scroll, which would leave field 1's centre (128 - 70) above the box.
+    const { node, box, fields } = sheetForm(2, { buttonGap: 100 });
+    fields[1].focus();
+    revealFocusedField(node);
+    expect(box.scrollTop).toBe(0);
+    const centre = (fields[0].getBoundingClientRect().top + fields[0].getBoundingClientRect().bottom) / 2;
+    expect(centre).toBeGreaterThanOrEqual(104);
+  });
+
+  // Two-step's code step: the field above is the read-only key, which iOS's arrows skip.
+  it('does not count a read-only field above, so the button is shown', () => {
+    const { node, box, fields } = sheetForm(2, { buttonGap: 100 });
+    fields[0].readOnly = true;
+    fields[1].focus();
+    revealFocusedField(node);
+    expect(box.scrollTop).toBe(70);
+  });
+
+  it('finds the form\'s default button: one with no type, or one joined by form="…"', () => {
+    const { node, box, fields, button } = sheetForm(2, { buttonGap: 50 });
+    button.removeAttribute('type');
+    fields[1].focus();
+    revealFocusedField(node);
+    expect(box.scrollTop).toBe(20);
+    // A button outside the <form>, joined to it by its id.
+    box.scrollTop = 0;
+    const form = node.querySelector('form')!;
+    form.id = 'tf-form';
+    form.after(box);
+    button.setAttribute('form', 'tf-form');
+    const typeButton = document.createElement('button');
+    typeButton.type = 'button';
+    box.prepend(typeButton);
+    for (const f of fields) f.setAttribute('form', 'tf-form');
+    // Moving it took the focus away.
+    fields[1].focus();
+    revealFocusedField(node);
+    expect(box.scrollTop).toBe(20);
+  });
+
+  it('keeps the field in view rather than a button that does not fit with it', () => {
+    // The button 400 px under the field: the field wins, nothing moves.
+    const { node, box, fields } = sheetForm(2, { buttonGap: 400 });
+    fields[1].focus();
+    revealFocusedField(node);
+    expect(box.scrollTop).toBe(0);
+  });
+
+  it('leaves a pinned button (outside the box) and fields that are not last alone', () => {
+    const pinned = sheetForm(2, { buttonGap: 140, pinnedButton: true });
+    pinned.fields[1].focus();
+    revealFocusedField(pinned.node);
+    expect(pinned.box.scrollTop).toBe(0);
+    document.body.replaceChildren();
+    const { node, box, fields } = sheetForm(3, { buttonGap: 140 });
+    fields[0].focus();
+    revealFocusedField(node);
+    expect(box.scrollTop).toBe(0);
+  });
+});
+
+describe('followKeyboard when only the visible part moves', () => {
+  // iOS scrolls the visual viewport towards a newly focused field for a frame
+  // or three (offsetTop 26 or 123, height unchanged) and back.
+  const iPhone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)';
+
+  function setUp(userAgent = iPhone) {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+    vi.stubGlobal('navigator', { ...navigator, userAgent });
+    const listeners = new Map<string, Set<() => void>>();
+    const viewport = {
+      height: window.innerHeight - 300,
+      offsetTop: 0,
+      scale: 1,
+      addEventListener: (type: string, listener: () => void) => {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type)!.add(listener);
+      },
+      removeEventListener: (type: string, listener: () => void) => listeners.get(type)?.delete(listener),
+    };
+    vi.stubGlobal('visualViewport', viewport);
+    // An event, and the frame it schedules.
+    const fire = (type: 'scroll' | 'resize') => {
+      listeners.get(type)?.forEach((listener) => listener());
+      vi.advanceTimersToNextFrame();
+    };
+    const node = document.createElement('div');
+    const fields = [document.createElement('input'), document.createElement('input')];
+    node.append(...fields);
+    document.body.appendChild(node);
+    const place = vi.fn();
+    const stop = followKeyboard(node, place);
+    const placedAt = () => place.mock.calls.map(([covered]) => covered);
+    return { viewport, fire, fields, place, placedAt, stop };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    document.body.replaceChildren();
+  });
+
+  it('keeps the sheet where it is while iOS scrolls towards a focused field and back', () => {
+    const { viewport, fire, fields, placedAt, stop } = setUp();
+    expect(placedAt()).toEqual([300]);
+    fields[1].focus();
+    viewport.offsetTop = 123;
+    fire('scroll');
+    fire('scroll');
+    viewport.offsetTop = 0;
+    fire('scroll');
+    vi.advanceTimersByTime(PAN_HOLD_MS * 2);
+    // Never placed 123 px lower.
+    expect(placedAt().every((covered) => covered === 300)).toBe(true);
+    stop();
+  });
+
+  it('follows a move that lasts within about four frames of it', () => {
+    const { viewport, fire, fields, placedAt, stop } = setUp();
+    fields[1].focus();
+    viewport.offsetTop = 26;
+    fire('scroll');
+    vi.advanceTimersByTime(PAN_HOLD_MS - 20);
+    expect(placedAt()).not.toContain(274);
+    vi.advanceTimersByTime(20);
+    vi.advanceTimersToNextFrame();
+    expect(placedAt().at(-1)).toBe(274);
+    stop();
+  });
+
+  it('times the hold from the move, so focus moving on and on does not delay a pan that lasts', () => {
+    const { viewport, fire, fields, placedAt, stop } = setUp();
+    // A field takes focus, then a pan starts and stays while focus keeps moving.
+    fields[0].focus();
+    vi.advanceTimersByTime(10);
+    viewport.offsetTop = 40;
+    fire('scroll');
+    for (let i = 1; i <= 4; i++) {
+      fields[i % 2].focus();
+      vi.advanceTimersByTime(20);
+    }
+    vi.advanceTimersToNextFrame();
+    // About 80 ms after the move, it is already followed.
+    expect(placedAt().at(-1)).toBe(260);
+    stop();
+  });
+
+  // A drag under the keyboard, or iOS's animated scroll to a hidden field.
+  it('follows a pan that keeps going on every frame once it has lasted, and settles where it stops', () => {
+    const { viewport, fire, placedAt, stop } = setUp();
+    for (let i = 1; i <= 30; i++) {
+      viewport.offsetTop = i * 4;
+      fire('scroll');
+    }
+    const placements = placedAt().slice(1);
+    // Held for its first ~70 ms (about 4 frames), then every frame.
+    expect(placements.length).toBeGreaterThanOrEqual(25);
+    const steps = placements.slice(1).map((covered, i) => placements[i] - covered);
+    expect(Math.max(...steps)).toBeLessThanOrEqual(4);
+    // Where it stopped, exactly, and nothing more once it is still.
+    expect(placedAt().at(-1)).toBe(300 - 120);
+    const calls = placedAt().length;
+    vi.advanceTimersByTime(PAN_STILL_MS * 3);
+    expect(placedAt().length).toBe(calls);
+    stop();
+  });
+
+  it('holds the next brief scroll again once a pan has been still for a while', () => {
+    const { viewport, fire, fields, placedAt, stop } = setUp();
+    for (let i = 1; i <= 10; i++) {
+      viewport.offsetTop = i * 4;
+      fire('scroll');
+    }
+    expect(placedAt().at(-1)).toBe(260);
+    vi.advanceTimersByTime(PAN_STILL_MS + 20);
+    fields[1].focus();
+    viewport.offsetTop = 40 + 123;
+    fire('scroll');
+    viewport.offsetTop = 40;
+    fire('scroll');
+    expect(placedAt()).not.toContain(260 - 123);
+    stop();
+  });
+
+  it('follows the keyboard changing size at once, even right after a focus', () => {
+    const { viewport, fire, fields, placedAt, stop } = setUp();
+    fields[1].focus();
+    viewport.height -= 44;
+    fire('resize');
+    expect(placedAt().at(-1)).toBe(344);
+    stop();
+  });
+
+  // The jitter is iOS's: Android Chrome and desktop follow every move at once.
+  it('follows a move at once outside iOS', () => {
+    const { viewport, fire, fields, placedAt, stop } = setUp('Mozilla/5.0 (Linux; Android 16; Pixel 9) Chrome/145.0 Mobile');
+    fields[1].focus();
+    viewport.offsetTop = 26;
+    fire('scroll');
+    expect(placedAt().at(-1)).toBe(274);
+    stop();
+  });
+
+  it('places nothing after it is stopped', () => {
+    const { viewport, fire, fields, place, stop } = setUp();
+    fields[1].focus();
+    viewport.offsetTop = 26;
+    fire('scroll');
+    stop();
+    const calls = place.mock.calls.length;
+    vi.advanceTimersByTime(PAN_HOLD_MS * 4);
+    expect(place.mock.calls.length).toBe(calls);
   });
 });

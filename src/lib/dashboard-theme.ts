@@ -588,12 +588,12 @@ export type PersistedThemeVars =
  * early-returns, in its own try so a corrupt prefs payload can't skip the
  * theme replay. With no saved prefs it stamps 'bottom', the store default.
  *
- * v7: stamps data-iphone-app on <html> in the Home Screen app on an iPhone
- * (or iPod touch), standalone as in keyboard-fit's inSafariTab. iOS blurs the
- * top of a Home Screen app's screen, so globals.css lowers the top nav there.
- * Not on an iPad: the blur was measured on an iPhone only. It never changes
- * during a visit, so it is set once, before the theme's early returns and
- * before localStorage, which can throw.
+ * v7: stamps data-ios-app on <html> in the Home Screen app on an iPhone,
+ * iPod touch or iPad (iPadOS asks for desktop sites as a Mac with touch),
+ * standalone as in keyboard-fit's inSafariTab. iOS blurs the top of a Home
+ * Screen app's screen, so globals.css lowers the top nav there. It never
+ * changes during a visit, so it is set once, before the theme's early returns
+ * and before localStorage, which can throw.
  */
 const DEFAULT_BOOT_PAYLOAD = JSON.stringify({
   __glass: {
@@ -605,7 +605,7 @@ const DEFAULT_BOOT_PAYLOAD = JSON.stringify({
   __dark: buildGlassThemeStyle('dark', DEFAULT_GLASS_INTENSITY),
 });
 
-export const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var e=document.documentElement;try{var u=navigator;if(/iP(hone|od)/.test(u.userAgent)&&(u.standalone===true||matchMedia('(display-mode: standalone)').matches))e.setAttribute('data-iphone-app','');}catch(i){}var p=localStorage.getItem(${JSON.stringify(
+export const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var e=document.documentElement;try{var u=navigator;if((/iP(hone|ad|od)/.test(u.userAgent)||(u.platform==='MacIntel'&&u.maxTouchPoints>1))&&(u.standalone===true||matchMedia('(display-mode: standalone)').matches))e.setAttribute('data-ios-app','');}catch(i){}var p=localStorage.getItem(${JSON.stringify(
   UI_PREFS_STORAGE_KEY,
 )});try{var q=p?JSON.parse(p).state:null;if(!q||q.navPosition==='bottom')e.dataset.navPosition='bottom';if(q&&q.watchSkin==='cinematic')e.dataset.watchSkin='cinematic';}catch(n){}var r=localStorage.getItem(${JSON.stringify(
   THEME_VARS_STORAGE_KEY,

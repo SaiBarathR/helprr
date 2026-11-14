@@ -27,6 +27,11 @@ export function inSafariTab() {
   return isIOS() && !homeScreen;
 }
 
+/** How long (about 4 frames) iOS's brief scroll of the visible part may last before it is followed. */
+export const PAN_HOLD_MS = 70;
+/** How long the visible part must stay put before a new move of it is held again. */
+export const PAN_STILL_MS = 100;
+
 /**
  * Calls `place` with how much of the layout viewport the keyboard covers (0
  * once it has closed) and the visual viewport, now and on every change, until
@@ -34,6 +39,16 @@ export function inSafariTab() {
  * as it is now, so once the keyboard closes the overlay can go back to its own
  * classes, whatever happened while it was open. When the keyboard opens or
  * changes size, the focused field inside `node` is scrolled into view.
+ *
+ * When focus moves to another field of `node` with the keyboard up, iOS
+ * scrolls the visual viewport towards it for a frame or three and then back
+ * (offsetTop 26 or 123 on an iPhone 18 Pro, height unchanged). Followed, a
+ * pinned sheet dipped by that much and sprang back on every ⌄ / ⌃ or tap. So
+ * on iOS the first move of the visible part alone, away from a steady
+ * placement, keeps that placement until it goes back or has lasted
+ * PAN_HOLD_MS. One that lasts is a real pan (a drag, or iOS's animated scroll
+ * to a hidden field): it is followed then, and so is every later frame of it
+ * at once, until the visible part has stayed put for PAN_STILL_MS.
  */
 export function followKeyboard(node: HTMLElement, place: (covered: number, viewport: VisualViewport) => void): () => void {
   const viewport = window.visualViewport;
@@ -47,6 +62,13 @@ export function followKeyboard(node: HTMLElement, place: (covered: number, viewp
   document.body.appendChild(layout);
   let frame = 0;
   let visibleHeight = 0;
+  // The last placement while the keyboard is up; since when a move away from
+  // it has been held (null: none is); when a move was last followed.
+  let placed: { covered: number; height: number } | null = null;
+  let movedAt: number | null = null;
+  let followedAt = -Infinity;
+  let recheck = 0;
+  const ios = isIOS();
   const measure = () => {
     frame = 0;
     // The part of the layout viewport the keyboard covers, under the visible
@@ -57,18 +79,39 @@ export function followKeyboard(node: HTMLElement, place: (covered: number, viewp
     const covered = viewport.scale > 1.01 ? 0 : Math.round(layoutBottom - viewport.height - viewport.offsetTop);
     if (covered < 1) {
       visibleHeight = 0;
+      placed = null;
+      movedAt = null;
+      followedAt = -Infinity;
       place(0, viewport);
       return;
     }
+    if (ios && placed && placed.height === viewport.height && placed.covered !== covered) {
+      const now = performance.now();
+      // Still panning: follow this frame too.
+      if (now - followedAt >= PAN_STILL_MS) {
+        movedAt ??= now;
+        if (now - movedAt < PAN_HOLD_MS) {
+          // Look again once it has lasted that long, in case it stays.
+          if (!recheck) recheck = window.setTimeout(() => {
+            recheck = 0;
+            schedule();
+          }, PAN_HOLD_MS - (now - movedAt) + 1);
+          return;
+        }
+      }
+      followedAt = now;
+    }
+    movedAt = null;
+    placed = { covered, height: viewport.height };
     place(covered, viewport);
     // Only when the keyboard opens or changes size, not on every iOS pan, so
     // a body scrolled away from the field while typing stays where it is.
     if (viewport.height !== visibleHeight) revealFocusedField(node);
     visibleHeight = viewport.height;
   };
-  const schedule = () => {
+  function schedule() {
     if (!frame) frame = requestAnimationFrame(measure);
-  };
+  }
   // iOS can still be mid-way through the keyboard's move when it reports a
   // size; look again once it has settled.
   let settle: number[] = [];
@@ -90,6 +133,7 @@ export function followKeyboard(node: HTMLElement, place: (covered: number, viewp
     window.removeEventListener('resize', onResize);
     window.removeEventListener('scroll', schedule);
     settle.forEach((timer) => window.clearTimeout(timer));
+    window.clearTimeout(recheck);
     cancelAnimationFrame(frame);
     layout.remove();
   };
@@ -171,7 +215,12 @@ export function keepIosFromScrolling(node: HTMLElement): () => void {
  * out of the box, above or below, could no longer be reached with them; an
  * earlier rule that put the focused field near the box's top did that to the
  * field before it. When both neighbours don't fit, the next one wins: it is
- * the way through the form, towards the button that sends it.
+ * the way through the form, towards the button that sends it. On the form's
+ * last field that button is the way on, so it is shown too when it fits in
+ * the same box (a sheet scrolling as one column has it under the fields:
+ * two-step's Turn on sat behind the keyboard until dragged), after the field
+ * above, which ⌃ needs. A read-only field is no neighbour here: iOS's arrows
+ * skip it.
  */
 export function revealFocusedField(node: HTMLElement) {
   const field = document.activeElement;
@@ -186,8 +235,11 @@ export function revealFocusedField(node: HTMLElement) {
     const keep = (top: number, bottom: number) => ({ min: bottom - viewBottom, max: top - viewTop });
     const fieldRect = field.getBoundingClientRect();
     let range = keep(fieldRect.top, fieldRect.bottom);
+    // iOS's arrows skip a read-only field: on two-step's code step ⌃ is
+    // disabled, the key field above being read-only (iOS 27 Simulator, SE).
+    // arrowRoomNeeded still counts it, so the scroll-together switch is unchanged.
     const fields = [...node.querySelectorAll<HTMLElement>('input, textarea, select')].filter(
-      (el) => el === field || isArrowStop(el),
+      (el) => el === field || (isArrowStop(el) && !('readOnly' in el && el.readOnly)),
     );
     const at = fields.indexOf(field);
     // The nearest field each way with a box: one hidden by CSS has none, and
@@ -199,12 +251,16 @@ export function revealFocusedField(node: HTMLElement) {
       }
       return null;
     };
-    for (const found of [nearest(1), nearest(-1)]) {
-      // One in a part that doesn't scroll (a pinned search box) doesn't move.
+    const next = nearest(1);
+    const send = at >= 0 && !next ? sendButton(field) : null;
+    for (const found of [next, nearest(-1), send]) {
+      // One in a part that doesn't scroll (a pinned search box or buttons) doesn't move.
       if (!found || !box.contains(found.el)) continue;
       const { rect } = found;
       const centre = (rect.top + rect.bottom) / 2;
-      const both = { min: Math.max(range.min, centre + 4 - viewBottom), max: Math.min(range.max, centre - 4 - viewTop) };
+      // A field needs its centre in view for the arrows; the button, all of it for a tap.
+      const [top, bottom] = found === send ? [rect.top, rect.bottom] : [centre - 4, centre + 4];
+      const both = { min: Math.max(range.min, bottom - viewBottom), max: Math.min(range.max, top - viewTop) };
       if (both.min <= both.max) range = both;
     }
     // Taller than the box (a long text area): show its top.
@@ -261,6 +317,22 @@ export function formRoomTooShort(scroll: HTMLElement): boolean | undefined {
   const box = body;
   const room = box.clientHeight - Math.max(0, scroll.scrollHeight - scroll.clientHeight);
   return room < arrowRoomNeeded(fields.filter(({ el }) => box.contains(el)).map(({ rect }) => rect));
+}
+
+/**
+ * The focused field's form's default button (the first that submits it: a
+ * <button> with no type does, and one outside the form joined by form="…"
+ * counts), if it is on screen.
+ */
+function sendButton(field: HTMLElement) {
+  const form = 'form' in field ? (field as HTMLInputElement).form : null;
+  const el = form && [...form.elements].find(
+    (control): control is HTMLButtonElement | HTMLInputElement =>
+      (control instanceof HTMLButtonElement || control instanceof HTMLInputElement) && control.type === 'submit',
+  );
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  return rect.bottom > rect.top ? { el, rect } : null;
 }
 
 /** A field the keyboard's ⌃ / ⌄ arrows go to: shown, enabled, typed into or picked from. */
