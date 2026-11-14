@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ findMany: vi.fn(), findUnique: vi.fn(), torrents: vi.fn() }));
+const mocks = vi.hoisted(() => ({ findMany: vi.fn(), findUnique: vi.fn(), torrents: vi.fn(), groupBy: vi.fn() }));
 vi.mock('@/lib/auth', () => ({ requireUserAllCapabilities: async () => ({ ok: true }) }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
-vi.mock('@/lib/db', () => ({ prisma: { manualDownload: { findMany: mocks.findMany, findUnique: mocks.findUnique } } }));
+vi.mock('@/lib/db', () => ({ prisma: { manualDownload: { findMany: mocks.findMany, findUnique: mocks.findUnique }, manualDownloadFile: { groupBy: mocks.groupBy } } }));
 vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: async () => ({ getTorrents: mocks.torrents }) }));
 vi.mock('@/lib/manual-downloads/send', () => ({ sendManualDownload: vi.fn(), ManualDownloadRefusedError: class extends Error {} }));
 
@@ -64,5 +64,57 @@ describe('progress on the existing manual download reads', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe('a choose-files download', () => {
+    // qBittorrent's indexes 1 and 3 were set to priority 0 (not chosen); 2 GB of the 3.5 GB torrent was.
+    const files = [
+      { downloadId: 'md1', fileIndex: 0, size: BigInt(1_000_000_000), selected: true },
+      { downloadId: 'md1', fileIndex: 1, size: BigInt(500_000_000), selected: false },
+      { downloadId: 'md1', fileIndex: 2, size: BigInt(1_000_000_000), selected: true },
+      { downloadId: 'md1', fileIndex: 3, size: BigInt(1_000_000_000), selected: false },
+    ];
+    // Sums the fixture rows the way the query asks, so a lost `selected` filter would count skipped files.
+    const sumChosen = (rows: typeof files) => async ({ where }: { where: { downloadId: { in: string[] }; selected?: boolean } }) => {
+      const sums = new Map<string, bigint>();
+      for (const file of rows) {
+        if (!where.downloadId.in.includes(file.downloadId) || (where.selected !== undefined && file.selected !== where.selected)) continue;
+        sums.set(file.downloadId, (sums.get(file.downloadId) ?? BigInt(0)) + file.size);
+      }
+      return [...sums].map(([downloadId, size]) => ({ downloadId, _sum: { size } }));
+    };
+    const reviewed = row({ mode: 'QBIT_REVIEWED' });
+    const readDetail = async () => (await (await detail(new Request('http://localhost'), { params: Promise.resolve({ id: 'md1' }) })).json()).download.progress;
+    const readList = async () => (await (await list(request())).json()).downloads[0].progress;
+
+    it('shows only the chosen files on the list and the detail page, even while qBittorrent still reports the whole torrent', async () => {
+      mocks.findMany.mockResolvedValue([reviewed]);
+      mocks.findUnique.mockResolvedValue({ ...reviewed, files: files.map((file, index) => ({ ...file, id: `f${index}`, path: `S01E0${index}.mkv`, arrPath: null, candidate: null, decision: 'PENDING', episodeIds: [] })) });
+      mocks.groupBy.mockImplementation(sumChosen(files));
+      // The read right after Start: the priorities are set but qBittorrent has not refreshed its size yet.
+      mocks.torrents.mockResolvedValue([{ hash: 'abc', progress: 0, size: 3_500_000_000 }]);
+      expect(await readDetail()).toEqual({ fraction: 0, size: 2_000_000_000 });
+      expect(await readList()).toEqual({ fraction: 0, size: 2_000_000_000 });
+
+      mocks.torrents.mockResolvedValue([{ hash: 'abc', progress: 0.25, size: 2_000_000_000 }]);
+      expect(await readDetail()).toEqual({ fraction: 0.25, size: 2_000_000_000 });
+      expect(await readList()).toEqual({ fraction: 0.25, size: 2_000_000_000 });
+    });
+
+    it('counts every file when all of them were chosen', async () => {
+      const all = files.map((file) => ({ ...file, selected: true }));
+      mocks.findMany.mockResolvedValue([reviewed]);
+      mocks.groupBy.mockImplementation(sumChosen(all));
+      mocks.torrents.mockResolvedValue([{ hash: 'abc', progress: 0.5, size: 3_500_000_000 }]);
+      expect(await readList()).toEqual({ fraction: 0.5, size: 3_500_000_000 });
+    });
+
+    it('asks the database only for active choose-files downloads', async () => {
+      mocks.findMany.mockResolvedValue([row({ mode: 'ARR_MANAGED' }), reviewed, row({ id: 'md3', mode: 'QBIT_REVIEWED', status: 'IMPORTED' })]);
+      mocks.groupBy.mockResolvedValue([]);
+      mocks.torrents.mockResolvedValue([{ hash: 'abc', progress: 0.5, size: 1024 }]);
+      await list(request());
+      expect(mocks.groupBy).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ where: { downloadId: { in: ['md1'] }, selected: true } }));
+    });
   });
 });

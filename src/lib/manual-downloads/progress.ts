@@ -1,3 +1,4 @@
+import { prisma } from '@/lib/db';
 import { getQBittorrentClient } from '@/lib/service-helpers';
 import type { SerializedManualDownload } from './serialize';
 
@@ -6,6 +7,18 @@ const PROGRESS_TIMEOUT_MS = 2_000;
 export interface DownloadProgress {
   fraction: number;
   size: number | null;
+}
+
+/**
+ * Bytes of the files chosen for each "choose files" download. qBittorrent refreshes a torrent's
+ * selected size a moment after its file priorities change, so the read right after Start still
+ * reports the whole torrent; Helprr's record of the choice is right from the first read.
+ */
+async function chosenSizes(downloads: SerializedManualDownload[]): Promise<Map<string, number>> {
+  const ids = downloads.filter((download) => download.mode === 'QBIT_REVIEWED').map((download) => download.id);
+  if (ids.length === 0) return new Map();
+  const sums = await prisma.manualDownloadFile.groupBy({ by: ['downloadId'], where: { downloadId: { in: ids }, selected: true }, _sum: { size: true } });
+  return new Map(sums.map((sum) => [sum.downloadId, Number(sum._sum.size ?? 0)]));
 }
 
 /**
@@ -35,5 +48,9 @@ export async function withDownloadProgress(downloads: SerializedManualDownload[]
       // Arr may use a different client, or qBittorrent may be unavailable; keep the workflow visible.
     }
   }
-  return downloads.map((download) => ({ ...download, progress: active.includes(download) ? progress.get(download.infoHash.toUpperCase()) ?? null : null }));
+  const chosen = await chosenSizes(active);
+  return downloads.map((download) => {
+    const reading = active.includes(download) ? progress.get(download.infoHash.toUpperCase()) : undefined;
+    return { ...download, progress: reading ? { ...reading, size: chosen.get(download.id) || reading.size } : null };
+  });
 }
