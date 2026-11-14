@@ -97,7 +97,9 @@ export function WantedItemsWidget({
           {/* Font sizes live in classes so tiny cells (~82px) can step the type
               down. Where even that can't fit "22 missing" on a line (a 44px
               1×1 cell on a 320 phone) the label wraps under its number; it
-              truncates only as a last resort — the number never does. */}
+              truncates only as a last resort — the number never does. The
+              labels keep a 1.25 line box: truncate clips to it, and at 1 it
+              cut the descender of "missing". */}
           <span className="min-w-0 max-w-full" style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 4, whiteSpace: 'nowrap' }}>
             <span
               className={`${compact ? 'text-[15px]' : 'text-[22px]'} @max-[159px]/cell:text-[13px]`}
@@ -111,7 +113,7 @@ export function WantedItemsWidget({
             >
               {missing}
             </span>
-            <span className={`min-w-0 max-w-full truncate leading-none ${compact ? 'text-[10px]' : 'text-[11px]'} @max-[159px]/cell:text-[9px]`} style={{ color: HPR.fgMute }}>
+            <span className={`min-w-0 max-w-full truncate leading-tight ${compact ? 'text-[10px]' : 'text-[11px]'} @max-[159px]/cell:text-[9px]`} style={{ color: HPR.fgMute }}>
               missing
             </span>
           </span>
@@ -128,7 +130,7 @@ export function WantedItemsWidget({
               >
                 {cutoff}
               </span>
-              <span className={`min-w-0 max-w-full truncate leading-none ${compact ? 'text-[10px]' : 'text-[11px]'} @max-[159px]/cell:text-[9px]`} style={{ color: HPR.fgMute }}>
+              <span className={`min-w-0 max-w-full truncate leading-tight ${compact ? 'text-[10px]' : 'text-[11px]'} @max-[159px]/cell:text-[9px]`} style={{ color: HPR.fgMute }}>
                 cutoff
               </span>
             </span>

@@ -115,6 +115,9 @@ export function StatsGridWidget({
               style={{
                 display: 'flex',
                 alignItems: 'center',
+                // Every tile fills its grid cell, so a tile with an extra line
+                // (TV's episode count at 320) doesn't stand taller than the rest.
+                height: '100%',
                 gap: isSingleRow ? 1 : compact ? 8 : 10,
                 padding: isTight ? '6px 5px' : compact ? '8px 9px' : '10px 12px',
                 background: HPR.ink,
