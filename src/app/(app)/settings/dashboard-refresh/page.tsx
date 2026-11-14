@@ -5,7 +5,6 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
-import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronDown, RotateCcw, AlertTriangle, Loader2,
@@ -20,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
-import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
+import { useLeaveConfirm, useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
 import {
   WIDGET_REFRESH_MIN_SECS,
@@ -56,11 +55,9 @@ function getIcon(name: string): LucideIcon {
 }
 
 export default function DashboardRefreshSettingsPage() {
-  const router = useRouter();
   const [overrides, setOverrides] = useState<OverrideMap>({});
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
   const [expanded, setExpanded] = useRouteViewState<Record<string, boolean>>('DashboardRefreshSettingsPage:expanded', {});
-  const [confirmLeave, setConfirmLeave] = useState(false);
   const discoverLayout = useUIStore((s) => s.discoverLayout);
   const queryClient = useQueryClient();
 
@@ -113,6 +110,7 @@ export default function DashboardRefreshSettingsPage() {
     return false;
   }, [data, overrides]);
   useUnsavedChangesGuard(dirty);
+  const leave = useLeaveConfirm(dirty, '/settings/preferences');
 
   const dirtyLayoutIds = useMemo(() => {
     if (!data) return new Set<string>();
@@ -268,7 +266,7 @@ export default function DashboardRefreshSettingsPage() {
         <button
           type="button"
           className="inline-flex items-center gap-1 text-sm text-primary -ml-1 min-h-[44px] px-1"
-          onClick={() => (dirty ? setConfirmLeave(true) : router.push('/settings/preferences'))}
+          onClick={leave.leave}
         >
           <ChevronLeft className="h-5 w-5" />
           Preferences
@@ -459,14 +457,12 @@ export default function DashboardRefreshSettingsPage() {
       )}
 
       <ConfirmDialog
-        open={confirmLeave}
-        onOpenChange={setConfirmLeave}
+        {...leave.dialog}
         title="Discard unsaved changes?"
         description="Your refresh interval edits haven't been saved. Leaving now will discard them."
         confirmLabel="Discard changes"
         cancelLabel="Keep editing"
         destructive
-        onConfirm={() => router.push('/settings/preferences')}
       />
     </div>
   );

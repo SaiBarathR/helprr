@@ -6,6 +6,7 @@ import { handleAuthError } from '@/lib/query-client';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { PageHeader } from '@/components/layout/page-header';
+import { NotFoundState } from '@/components/ui/not-found-state';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -123,7 +124,7 @@ export default function SeriesEditPage() {
     return (
       <div>
         <PageHeader title="Edit Series" />
-        <div className="text-center py-12 text-muted-foreground">Series not found</div>
+        <NotFoundState message="Series not found" />
       </div>
     );
   }

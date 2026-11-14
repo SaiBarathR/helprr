@@ -2,18 +2,17 @@
 
 import { use, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { PageHeader } from '@/components/layout/page-header';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useLeaveConfirm } from '@/lib/hooks/use-unsaved-changes-guard';
 import { CreatorRules } from '@/components/creators/creator-rules';
 import type { RuleLayerValue } from '@/components/creators/policy-editor';
 
 export default function YoutubeChannelRulesPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const router = useRouter();
   const [draft, setDraft] = useState<RuleLayerValue | null>(null);
-  const [confirmLeave, setConfirmLeave] = useState(false);
   const back = `/youtube/channels/${id}`;
+  const leave = useLeaveConfirm(draft !== null, back);
 
   const channel = useQuery({
     queryKey: ['youtube', 'streamer', id],
@@ -30,20 +29,18 @@ export default function YoutubeChannelRulesPage({ params }: { params: Promise<{ 
         title="Download rules"
         subtitle={channel.data?.displayName}
         backHref={back}
-        onBack={draft ? () => setConfirmLeave(true) : undefined}
+        onBack={draft ? leave.leave : undefined}
       />
       <div className="pt-3">
         <CreatorRules platform="youtube" creatorId={id} draft={draft} setDraft={setDraft} />
       </div>
       <ConfirmDialog
-        open={confirmLeave}
-        onOpenChange={setConfirmLeave}
+        {...leave.dialog}
         title="Discard unsaved changes?"
         description="Your rule edits haven't been saved. Leaving now will discard them."
         confirmLabel="Discard changes"
         cancelLabel="Keep editing"
         destructive
-        onConfirm={() => router.push(back)}
       />
     </div>
   );

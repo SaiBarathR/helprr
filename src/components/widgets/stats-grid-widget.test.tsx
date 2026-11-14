@@ -4,7 +4,10 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ me: null as null | { role: string; capabilities: Record<string, boolean> } }));
+const mocks = vi.hoisted(() => ({
+  me: null as null | { role: string; capabilities: Record<string, boolean> },
+  size: { width: 600, height: 300 },
+}));
 vi.mock('@/components/permission-provider', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/components/permission-provider')>()),
   useMe: () => mocks.me,
@@ -12,7 +15,7 @@ vi.mock('@/components/permission-provider', async (importOriginal) => ({
 vi.mock('@/lib/widgets/use-widget-data', () => ({
   useWidgetData: () => ({ data: { totalMovies: 10, totalSeries: 5, activeDownloads: 0 }, loading: false }),
 }));
-vi.mock('@/lib/widgets/use-element-size', () => ({ useElementSize: () => ({ ref: { current: null }, width: 600, height: 300 }) }));
+vi.mock('@/lib/widgets/use-element-size', () => ({ useElementSize: () => ({ ref: { current: null }, ...mocks.size }) }));
 vi.mock('@/components/ui/app-link', () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
 }));
@@ -40,6 +43,18 @@ describe('StatsGridWidget', () => {
     act(() => root.render(<StatsGridWidget refreshInterval={30_000} />));
     expect(links()).toEqual(['/movies', '/series']);
     expect(container.textContent).toContain('Downloading');
+  });
+
+  it('stacks the tiles as one-line rows when a 2×2 tile would be too narrow', () => {
+    mocks.me = { role: 'admin', capabilities: {} };
+    const grid = () => container.querySelector<HTMLElement>('[style*="grid-template-columns"]')!;
+    act(() => root.render(<StatsGridWidget refreshInterval={30_000} />));
+    expect(grid().style.gridTemplateColumns).toBe('repeat(2, minmax(0, 1fr))');
+    // A colSpan-4 cell beside an expanded sidebar at 820px.
+    mocks.size = { width: 155, height: 174 };
+    act(() => root.render(<StatsGridWidget refreshInterval={30_000} />));
+    expect(grid().style.gridTemplateColumns).toBe('minmax(0, 1fr)');
+    mocks.size = { width: 600, height: 300 };
   });
 
   it('links every tile for an admin', () => {

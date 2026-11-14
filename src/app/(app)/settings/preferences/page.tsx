@@ -109,11 +109,12 @@ export default function PreferencesPage() {
 
   // Debounced commit that flushes (instead of cancelling) on unmount, so a
   // quick back-nav can't silently drop the last edit.
-  const tzCommit = useDebouncedCommit<string>((value) => {
+  const tzCommit = useDebouncedCommit<string>((value, reason) => {
     void update(
       { timeZone: value },
       {
         successMessage: (state) => `Server time zone set to ${state.timeZone}`,
+        keepalive: reason === 'pagehide',
       },
     ).then(() => setDraft(null));
   }, 600);

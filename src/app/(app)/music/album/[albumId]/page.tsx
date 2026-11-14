@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { PageHeader } from '@/components/layout/page-header';
+import { NotFoundState } from '@/components/ui/not-found-state';
 import {
   ResponsiveMenu,
   ResponsiveMenuActionItem,
@@ -274,7 +275,7 @@ export default function AlbumDetailPage() {
   }
 
   if (!album) {
-    return <div className="text-center py-12 text-muted-foreground">Album not found</div>;
+    return <><PageHeader title="Album" /><NotFoundState message="Album not found" /></>;
   }
 
   const cover = getImageUrl(album.images, 'cover', 'lidarr');

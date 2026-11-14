@@ -97,8 +97,9 @@ export function CleanupStatusWidget({ refreshInterval, editMode = false }: Widge
           </Link>
         }
       />
-      {/* 2×2 below 220px so labels and values stay fully readable. */}
-      <div className="mb-2 grid grid-cols-4 gap-1.5 @max-[219px]/cell:grid-cols-2">
+      {/* 2×2 below 320px so labels and values stay fully readable: a quarter
+          of a ~280px cell (colSpan 4 at 1023px) cut "Re-search" short. */}
+      <div className="mb-2 grid grid-cols-4 gap-1.5 @max-[319px]/cell:grid-cols-2">
         <CleanupTile label="Today" value={stats?.removedToday} color={HPR.fgMute} />
         <CleanupTile label="Past 7d" value={stats?.removedThisWeek} color={HPR.green} />
         <CleanupTile label="Strikes" value={stats?.totalStrikes} color={HPR.amber} />

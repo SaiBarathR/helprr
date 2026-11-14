@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { PageHeader } from '@/components/layout/page-header';
+import { NotFoundState } from '@/components/ui/not-found-state';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import {
   Drawer,
@@ -326,7 +327,7 @@ export default function ArtistDetailPage() {
   }
 
   if (!artist) {
-    return <div className="text-center py-12 text-muted-foreground">Artist not found</div>;
+    return <><PageHeader title="Artist" /><NotFoundState message="Artist not found" /></>;
   }
 
   const poster = getImageUrl(artist.images, 'poster', 'lidarr');

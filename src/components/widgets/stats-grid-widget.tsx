@@ -38,7 +38,11 @@ export function StatsGridWidget({
   const isSingleRow = tileDivisor === 4;
   const gap = isSingleRow ? 3 : 8;
   const tileWidth = width > 0 ? (width - gap * (tileDivisor - 1)) / tileDivisor : 0;
-  const hideIcon = tileWidth > 0 && height > 0 && (tileWidth < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
+  // Under ~92px a 2×2 tile cuts "13.9 TB" and "Downloading" short (colSpan 4
+  // beside an expanded sidebar at 820px), so the four become one-line rows,
+  // value then label, in a single column.
+  const isStacked = !isSingleRow && tileWidth > 0 && tileWidth < 92;
+  const hideIcon = isStacked || (tileWidth > 0 && height > 0 && (tileWidth < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD));
   const { data, loading } = useWidgetData({
     fetchFn: fetchServicesStats,
     refreshInterval,
@@ -94,8 +98,8 @@ export function StatsGridWidget({
         style={{
           //grid should fill all available space, but gap should be consistent regardless of size
           display: 'grid',
-          gridTemplateColumns: `repeat(${isVertical ? 4 : 2}, minmax(0, 1fr))`,
-          gap: isSingleRow ? 3 : 8,
+          gridTemplateColumns: isStacked ? 'minmax(0, 1fr)' : `repeat(${isVertical ? 4 : 2}, minmax(0, 1fr))`,
+          gap: isSingleRow ? 3 : isStacked ? 4 : 8,
           marginTop: isSingleRow ? 3 : 0,
           height: `calc(100% - ${!hideIcon ? 28 : 0}px)`,
         }}
@@ -132,9 +136,10 @@ export function StatsGridWidget({
                   {t.icon}
                 </div>
               )}
-              <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={isStacked ? { minWidth: 0, flex: 1, display: 'flex', alignItems: 'baseline', gap: 6 } : { minWidth: 0, flex: 1 }}>
                 <div
                   style={{
+                    flexShrink: 0,
                     fontFamily: FONT_DISPLAY,
                     fontSize: compact ? 16 : 18,
                     color: HPR.fg,
@@ -152,7 +157,8 @@ export function StatsGridWidget({
                   style={{
                     fontSize: 10,
                     color: HPR.fgMute,
-                    marginTop: 2,
+                    marginTop: isStacked ? 0 : 2,
+                    minWidth: 0,
                     display: 'flex',
                     gap: 4,
                     alignItems: 'baseline',
