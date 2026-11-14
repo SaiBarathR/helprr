@@ -10,7 +10,7 @@ import { useLeaveConfirm } from '../use-unsaved-changes-guard';
 
 // NavigationProvider's router: push and back wait for overlay entries to be
 // off history, as the real one does.
-const nav = vi.hoisted(() => ({ canGoBack: true, push: vi.fn(), back: vi.fn() }));
+const nav = vi.hoisted(() => ({ canGoBack: true, push: vi.fn(), replace: vi.fn(), back: vi.fn() }));
 vi.mock('@/components/layout/navigation-provider', () => ({
   canGoBackInApp: () => nav.canGoBack,
   useAppRouter: () => nav,
@@ -52,6 +52,7 @@ beforeEach(() => {
   resetOverlayHistoryForTests();
   nav.canGoBack = true;
   nav.push.mockReset();
+  nav.replace.mockReset();
   nav.back.mockReset().mockImplementation(() => afterOverlayHistory(() => window.history.back()));
   // Settings, then the page with the edits on top of it.
   window.history.pushState(ROUTER_STATE, '', '/settings');
@@ -147,7 +148,7 @@ it('the confirm Back opened holds no entry, so a second Back leaves the page', a
   expect(window.location.pathname).toBe('/settings');
 });
 
-it('a confirmed Back at the start of history goes to the parent page instead', async () => {
+it('a confirmed Back at the start of history replaces the page with its parent, so the next Back leaves', async () => {
   render(<Page />);
   await waitFor(() => expect(marker()).toBeDefined());
   nav.canGoBack = false;
@@ -159,7 +160,8 @@ it('a confirmed Back at the start of history goes to the parent page instead', a
   expect(marker()).toBeUndefined();
   expect(window.history.length).toBe(pageLength + 1);
   await userEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
-  await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/settings'));
+  await waitFor(() => expect(nav.replace).toHaveBeenCalledWith('/settings'));
+  expect(nav.push).not.toHaveBeenCalled();
   expect(nav.back).not.toHaveBeenCalled();
 });
 
@@ -171,6 +173,7 @@ it('the page link asks while dirty and leaves to its href, without the guard ask
   await userEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
   expect(nav.push).toHaveBeenCalledWith('/settings');
   expect(nav.back).not.toHaveBeenCalled();
+  expect(nav.replace).not.toHaveBeenCalled();
 });
 
 it('the page link leaves at once when nothing is unsaved', async () => {

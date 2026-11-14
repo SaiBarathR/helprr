@@ -4,7 +4,6 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import * as React from 'react';
 import type { DateRange } from 'react-day-picker';
-import { Library, Download, HardDrive, MonitorPlay, ScanSearch, type LucideIcon } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '@/lib/store';
 import { queryKeys } from '@/lib/query-keys';
@@ -62,12 +61,12 @@ function daysBetween(fromKey: string, toKey: string): number {
 
 type InsightsTabId = 'library' | 'downloads' | 'storage' | 'analysis' | 'watching';
 
-const TAB_META: Record<InsightsTabId, { label: string; icon: LucideIcon }> = {
-  library: { label: 'Library', icon: Library },
-  downloads: { label: 'Downloads', icon: Download },
-  storage: { label: 'Storage', icon: HardDrive },
-  analysis: { label: 'Analysis', icon: ScanSearch },
-  watching: { label: 'Watching', icon: MonitorPlay },
+const TAB_LABELS: Record<InsightsTabId, string> = {
+  library: 'Library',
+  downloads: 'Downloads',
+  storage: 'Storage',
+  analysis: 'Analysis',
+  watching: 'Watching',
 };
 
 export default function InsightsPage() {
@@ -159,31 +158,27 @@ export default function InsightsPage() {
 
       <div data-scroll-restoration-key="insights-content" className="page-bleed flex-1 pt-3 pb-6 space-y-4">
         {tabs.length > 1 && (
-          // Radix Tabs: keeps the pill styling, adds roving focus + arrow keys.
+          // Radix Tabs: the same segmented track as the other pages' section
+          // switches, plus roving focus + arrow keys. Five tabs only just fit
+          // a 320px phone, so larger text scrolls the track (as Cleanup's)
+          // rather than clipping the last tab.
           <Tabs
             value={activeTab ?? undefined}
             onValueChange={(v) => setTab(v as (typeof tabs)[number])}
             className="gap-0"
           >
-            <TabsList
-              aria-label="Insight sections"
-              className="rail-bleed flex h-auto w-[calc(100%+2*var(--main-pad-x))] justify-start gap-2 bg-transparent py-0 overflow-x-auto overflow-y-hidden scrollbar-hide"
-            >
-              {tabs.map((id) => {
-                const meta = TAB_META[id];
-                const Icon = meta.icon;
-                return (
-                  <TabsTrigger
-                    key={id}
-                    value={id}
-                    className="flex-none rounded-full border border-transparent bg-accent/40 px-3 py-1.5 text-xs font-semibold whitespace-nowrap gap-1.5 text-muted-foreground hover:text-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/20 data-[state=active]:text-primary data-[state=active]:shadow-none"
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {meta.label}
+            {/* The scroller is a wrapper with 4px above and below (taken back by
+                the negative margin), so it doesn't clip the tabs' 44px hit areas
+                to the 36px track as a scrolling list did. */}
+            <div data-scroll-restoration-key="insights:tabs" className="no-scrollbar -my-1 overflow-x-auto overflow-y-hidden py-1">
+              <TabsList aria-label="Insight sections" variant="segmented" className="w-max min-w-full sm:min-w-0">
+                {tabs.map((id) => (
+                  <TabsTrigger key={id} value={id}>
+                    {TAB_LABELS[id]}
                   </TabsTrigger>
-                );
-              })}
-            </TabsList>
+                ))}
+              </TabsList>
+            </div>
           </Tabs>
         )}
 

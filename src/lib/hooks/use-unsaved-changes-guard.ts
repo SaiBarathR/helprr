@@ -32,7 +32,9 @@ export function useUnsavedChangesGuard(dirty: boolean) {
  *
  * Confirming goes where the press was going: `href` for the link, one step
  * back for the system Back (so the user presses Back once). Cancelling keeps
- * the edits and the history as they were.
+ * the edits and the history as they were. A Back at the start of history
+ * (the page opened directly) has no step back to take, so Discard replaces
+ * the page with `href`: the next Back leaves rather than revisiting it.
  *
  * The confirm that Back opens holds no history entry of its own, so a second
  * Back while it is up leaves the page. Chrome's Back button skips an entry
@@ -66,6 +68,7 @@ export function useLeaveConfirm(dirty: boolean, href: string) {
       onConfirm: () => {
         setLeaving(true);
         if (asking?.stepBack) router.back();
+        else if (asking?.byBack) router.replace(href);
         else router.push(href);
       },
     },

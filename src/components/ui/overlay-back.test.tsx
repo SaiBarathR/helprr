@@ -253,6 +253,11 @@ describe('the shared overlay roots and the system Back', () => {
     );
     fireEvent.contextMenu(screen.getByText('Dune poster'));
     expect(screen.getByRole('menu', { name: 'Dune' })).toBeTruthy();
+    // No Forward: the menu's own Back entry drops forward history, so it
+    // could only ever be disabled.
+    const controls = screen.getByRole('group', { name: 'Browser controls' });
+    expect([...controls.querySelectorAll('[role="menuitem"]')].map((item) => item.getAttribute('aria-label')))
+      .toEqual(['Back', 'Reload']);
     await waitFor(() => expect((window.history.state as Record<string, unknown>).__helprrOverlay).toBeDefined());
     await back();
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());

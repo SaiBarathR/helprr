@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Drawer,
@@ -107,6 +107,8 @@ export function AnilistStatusDrawer({
   const isManga = mediaType === 'MANGA';
   const labels = isManga ? STATUS_LABELS_MANGA : STATUS_LABELS_ANIME;
   const scoreConfig = getScoreConfig(scoreFormat);
+  // Ties each field to its label, so it has an accessible name.
+  const fieldId = useId();
 
   const [form, setForm] = useState<FormState>(() => ({
     status: entry?.status || 'PLANNING',
@@ -215,13 +217,13 @@ export function AnilistStatusDrawer({
         ) : <>
         <div className="flex-1 min-h-0 px-4 pb-2 space-y-4 overflow-y-auto">
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Status</Label>
+            <Label htmlFor={`${fieldId}-status`} className="text-xs text-muted-foreground">Status</Label>
             <Select value={form.status} onValueChange={(v) => setForm((prev) => ({
               ...prev,
               status: v as AniListMediaListStatus,
               progress: (v as AniListMediaListStatus === "COMPLETED" && totalEpisodes != null) ? String(totalEpisodes) : prev.progress
             }))}>
-              <SelectTrigger className="h-10">
+              <SelectTrigger id={`${fieldId}-status`} className="h-10">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -235,8 +237,9 @@ export function AnilistStatusDrawer({
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">{scoreConfig.label}</Label>
+            <Label htmlFor={`${fieldId}-score`} className="text-xs text-muted-foreground">{scoreConfig.label}</Label>
             <Input
+              id={`${fieldId}-score`}
               type="number"
               min={String(scoreConfig.min)}
               max={String(scoreConfig.max)}
@@ -249,10 +252,11 @@ export function AnilistStatusDrawer({
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">
+            <Label htmlFor={`${fieldId}-progress`} className="text-xs text-muted-foreground">
               {isManga ? 'Chapter Progress' : 'Episode Progress'} {formatProgressTotal(isManga ? totalChapters : totalEpisodes)}
             </Label>
             <Input
+              id={`${fieldId}-progress`}
               type="number"
               min="0"
               placeholder="0"
@@ -264,10 +268,11 @@ export function AnilistStatusDrawer({
 
           {isManga && (
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">
+              <Label htmlFor={`${fieldId}-volumes`} className="text-xs text-muted-foreground">
                 Volume Progress {formatProgressTotal(totalVolumes)}
               </Label>
               <Input
+                id={`${fieldId}-volumes`}
                 type="number"
                 min="0"
                 placeholder="0"
@@ -279,8 +284,9 @@ export function AnilistStatusDrawer({
           )}
 
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Notes</Label>
+            <Label htmlFor={`${fieldId}-notes`} className="text-xs text-muted-foreground">Notes</Label>
             <textarea
+              id={`${fieldId}-notes`}
               rows={3}
               placeholder="Optional"
               value={form.notes}
@@ -297,6 +303,8 @@ export function AnilistStatusDrawer({
                 className="text-red-400 hover:text-red-500"
                 onClick={handleDelete}
                 disabled={deleting || saving}
+                aria-label="Remove from AniList"
+                title="Remove from AniList"
               >
                 {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
               </Button>

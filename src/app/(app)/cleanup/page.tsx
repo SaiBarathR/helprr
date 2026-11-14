@@ -60,7 +60,10 @@ export default function CleanupPage() {
         <div
           className="page-toolbar page-toolbar-flush mb-4 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
         >
-          <TabsList variant="segmented" data-scroll-restoration-key="cleanup:tabs" className="no-scrollbar overflow-x-auto overflow-y-hidden">
+          {/* The scroller wraps the track with 4px above and below, so it doesn't
+              clip the tabs' 44px hit areas to the 36px track (as Insights). */}
+          <div data-scroll-restoration-key="cleanup:tabs" className="no-scrollbar -my-1 overflow-x-auto overflow-y-hidden py-1">
+          <TabsList variant="segmented" className="w-max min-w-full sm:min-w-0">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           {canManage && (
             <TabsTrigger value="queue">
@@ -97,6 +100,7 @@ export default function CleanupPage() {
           )}
           <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
+          </div>
         </div>
 
         <TabsContent value="dashboard" className="readable-column-wide">

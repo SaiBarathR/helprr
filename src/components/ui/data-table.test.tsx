@@ -157,3 +157,126 @@ describe('DataTable column resize', () => {
     expect(cols()[0].style.minWidth).toBe('200px');
   });
 });
+
+describe('DataTable stored widths that no longer fit', () => {
+  const columns = [
+    { id: 'title', label: 'Title', width: 200, grow: true, cell: (row: string) => row },
+    { id: 'year', label: 'Year', width: 80, cell: () => '1979' },
+    { id: 'size', label: 'Size', width: 90, cell: () => '4 GB' },
+  ];
+  const cols = () => [...document.querySelectorAll('col')] as HTMLTableColElement[];
+
+  it('fits widths widened at a wider window, keeps the stored ones, and keeps the sticky header', () => {
+    // Title widened to 600 and Year to 180 at 1440: 870 px in all.
+    localStorage.setItem('helprr-table:fit-test', JSON.stringify({ widths: { title: 600, year: 180 } }));
+    containerWidth = tableWidth = 600;
+    render(<DataTable tableId="fit-test" columns={columns} rows={['Alien']} rowKey={String} stickyHeader />);
+    // 230 px of room over the 370 px of defaults, shared 400:100.
+    expect(cols().map((col) => col.style.minWidth || col.style.width)).toEqual(['384px', '126px', '90px']);
+    expect(screen.getByRole('table').style.minWidth).toBe('600px');
+    expect(screen.getAllByRole('columnheader')[0].classList.contains('sticky')).toBe(true);
+    expect(JSON.parse(localStorage.getItem('helprr-table:fit-test') ?? '{}').widths).toEqual({ title: 600, year: 180 });
+    // A wider window shows them as stored again.
+    containerWidth = tableWidth = 1000;
+    act(() => notifyResize());
+    expect(cols().map((col) => col.style.minWidth || col.style.width)).toEqual(['600px', '180px', '90px']);
+  });
+
+  it('applies them as stored where even the defaults need sideways scrolling', () => {
+    localStorage.setItem('helprr-table:fit-test', JSON.stringify({ widths: { title: 600 } }));
+    containerWidth = 320;
+    render(<DataTable tableId="fit-test" columns={columns} rows={['Alien']} rowKey={String} stickyHeader />);
+    expect(cols()[0].style.minWidth).toBe('600px');
+  });
+
+  it('widens a column only into the room left, so the table keeps fitting', () => {
+    HTMLElement.prototype.setPointerCapture = vi.fn();
+    containerWidth = tableWidth = 500;
+    // Year shows its 80 px.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { width: this.tagName === 'TH' ? 80 : tableWidth } as DOMRect;
+    });
+    render(<DataTable tableId="fit-test" columns={columns} rows={['Alien']} rowKey={String} stickyHeader />);
+    const grip = screen.getAllByRole('separator')[1];
+    act(() => {
+      grip.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 100 }));
+      grip.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 400 }));
+      grip.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 400 }));
+    });
+    // 500 - 370 = 130 px of room: Year goes 80 -> 210, not 380.
+    expect(cols()[1].style.width).toBe('210px');
+    expect(JSON.parse(localStorage.getItem('helprr-table:fit-test') ?? '{}').widths).toEqual({ year: 210 });
+  });
+
+  describe('dragging while stored widths are fitted', () => {
+    // Title 600 and Year 180 stored at a wider window; 600 px shows 384/126/90.
+    const shown = () => cols().map((col) => col.style.minWidth || col.style.width);
+    const stored = () => JSON.parse(localStorage.getItem('helprr-table:fit-test') ?? '{}').widths;
+    const drag = (grip: Element, dx: number) => act(() => {
+      grip.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 300 }));
+      grip.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 300 + dx }));
+      grip.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 300 + dx }));
+    });
+    beforeEach(() => {
+      HTMLElement.prototype.setPointerCapture = vi.fn();
+      localStorage.setItem('helprr-table:fit-test', JSON.stringify({ widths: { title: 600, year: 180 } }));
+      containerWidth = tableWidth = 600;
+      // Each header cell is as wide as its column shows.
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        if (this.tagName !== 'TH') return { width: tableWidth } as DOMRect;
+        const col = cols()[[...this.parentElement!.children].indexOf(this)];
+        return { width: parseFloat(col.style.minWidth || col.style.width) } as DOMRect;
+      });
+      render(<DataTable tableId="fit-test" columns={columns} rows={['Alien']} rowKey={String} stickyHeader />);
+      expect(shown()).toEqual(['384px', '126px', '90px']);
+    });
+
+    it.each([[0, 'Title'], [1, 'Year']])('a widening drag on column %i (%s) with no room moves nothing and keeps the stored widths', (grip) => {
+      drag(screen.getAllByRole('separator')[grip], 100);
+      expect(shown()).toEqual(['384px', '126px', '90px']);
+      expect(stored()).toEqual({ title: 600, year: 180 });
+    });
+
+    // Fitted shares round down, so a neighbour can land a pixel short; on
+    // screen the grow column (Title) takes it, as the table fills its width.
+    it('narrowing Year by 20 px narrows it by 20 px; Title takes the room and keeps its stored width', () => {
+      drag(screen.getAllByRole('separator')[1], -20);
+      expect(shown()).toEqual(['403px', '106px', '90px']);
+      expect(stored().title).toBe(600);
+    });
+
+    it('narrowing Title by 30 px narrows it by 30 px; Year gets the room back toward its stored width', () => {
+      drag(screen.getAllByRole('separator')[0], -30);
+      expect(shown()).toEqual(['354px', '155px', '90px']);
+      expect(stored().year).toBe(180);
+    });
+
+    it.each([
+      [0, 'Title', { title: 2000, year: 180 }, 600],
+      [1, 'Year', { title: 600, year: 800 }, 500],
+    ])('a narrowing drag on column %i (%s) that comes back to its start keeps the stored widths', (grip, _name, widths, width) => {
+      // Squeezed hard, one shown pixel stands for several stored ones: the
+      // search alone returned less than what was stored (2000 -> 1870, 800 -> 787).
+      cleanup();
+      localStorage.setItem('helprr-table:fit-test', JSON.stringify({ widths }));
+      containerWidth = tableWidth = width;
+      render(<DataTable tableId="fit-test" columns={columns} rows={['Alien']} rowKey={String} stickyHeader />);
+      const before = shown();
+      const handle = screen.getAllByRole('separator')[grip];
+      act(() => {
+        handle.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 300 }));
+        handle.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 280 }));
+        handle.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 300 }));
+        handle.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 300 }));
+      });
+      expect(shown()).toEqual(before);
+      expect(stored()).toEqual(widths);
+    });
+
+    it('a press that never leaves the dead zone saves nothing', () => {
+      const write = vi.spyOn(Storage.prototype, 'setItem');
+      drag(screen.getAllByRole('separator')[1], 2);
+      expect(write).not.toHaveBeenCalled();
+    });
+  });
+});
