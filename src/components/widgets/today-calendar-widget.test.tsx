@@ -19,6 +19,17 @@ vi.mock('@/lib/widgets/use-widget-data', () => ({
       monitored: true,
       seriesId: 1,
       images: [],
+    }, {
+      id: 'radarr-1-7-digital',
+      type: 'movie',
+      title: 'The Odyssey',
+      subtitle: '2026 - Universal Pictures',
+      date: '2026-11-13T00:00:00Z',
+      hasFile: false,
+      monitored: true,
+      movieId: 7,
+      releaseType: 'digital',
+      images: [],
     }] satisfies CalendarEvent[],
     loading: false,
   }),
@@ -80,5 +91,18 @@ describe('Today widget presets', () => {
         if (mobile === 'carousel' && (w.mobileColSpan ?? 4) > 2) expect(w.mobileRowSpan ?? 1, w.id).toBeGreaterThanOrEqual(3);
       }
     }
+  });
+});
+
+describe('Today widget times', () => {
+  it("gives an episode its air time and a film's release day no time (All day)", () => {
+    mocks.height = 160;
+    renderCarousel();
+    const rows = [...document.querySelectorAll('a')].map((a) => a.textContent ?? '');
+    const film = rows.find((text) => text.includes('The Odyssey'))!;
+    expect(film).toContain('All day');
+    // Upstream's UTC midnight is not a time: 5:30 AM in India, the evening before in Los Angeles.
+    expect(film).not.toMatch(/\d:\d\d/);
+    expect(rows.find((text) => text.includes('Classroom of the Elite'))).toMatch(/\d:\d\d/);
   });
 });

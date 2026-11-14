@@ -10,6 +10,8 @@ import { useCan } from '@/components/permission-provider';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import type { CalendarEvent } from '@/types';
+import { calendarEventDate, compareCalendarEvents } from '@/lib/release-day';
+import { getDeviceTimeZone } from '@/lib/timezone';
 import { cn } from '@/lib/utils';
 
 const MONTHS_AHEAD = 3;
@@ -38,7 +40,7 @@ function artFor(event: CalendarEvent): string | null {
  * Saturday" — rather than a bare countdown chip.
  */
 function headline(event: CalendarEvent): string {
-  const date = new Date(event.date);
+  const date = calendarEventDate(event);
   const days = Math.ceil((date.getTime() - Date.now()) / 86_400_000);
   const noun = event.type === 'movie' ? 'Coming' : 'New episode coming';
   if (days <= 0) return `${noun} today`;
@@ -68,16 +70,18 @@ export function NewAndHot({ railsFallback }: { railsFallback: React.ReactNode })
   }, []);
 
   const query = useQuery({
-    queryKey: ['jellyfin', 'catalog', 'upcoming-calendar', range.start, range.end],
-    queryFn: jsonFetcher<CalendarEvent[]>(`/api/calendar?start=${range.start}&end=${range.end}`),
+    // The zone in the key too: a device that changed zones must not reuse days matched in the old one.
+    queryKey: ['jellyfin', 'catalog', 'upcoming-calendar', range.start, range.end, getDeviceTimeZone()],
+    // Release days matched on this device's days, as Calendar does (same URL as the rails', which share this key).
+    queryFn: jsonFetcher<CalendarEvent[]>(`/api/calendar?start=${range.start}&end=${range.end}&tz=${encodeURIComponent(getDeviceTimeZone())}`),
     enabled: canSeeCalendar && tab === 'coming',
     staleTime: 5 * 60_000,
   });
 
   const events = useMemo(
     () => (query.data ?? [])
-      .filter((event) => new Date(event.date).getTime() >= range.startMs)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .filter((event) => calendarEventDate(event).getTime() >= range.startMs)
+      .sort(compareCalendarEvents)
       .slice(0, 40),
     [query.data, range.startMs],
   );
@@ -123,7 +127,8 @@ export function NewAndHot({ railsFallback }: { railsFallback: React.ReactNode })
 
 function FeedCard({ event }: { event: CalendarEvent }) {
   const art = artFor(event);
-  const date = new Date(event.date);
+  // A film's release day is its own, not upstream's UTC midnight (release-day.ts).
+  const date = calendarEventDate(event);
   const href = event.type === 'movie' && event.movieId
     ? `/movies/${event.movieId}`
     : event.seriesId ? `/series/${event.seriesId}` : null;

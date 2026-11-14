@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -160,6 +160,57 @@ describe('useWidgetData visibility', () => {
 
     expect(fetchFn).toHaveBeenCalledOnce();
     expect(document.body.textContent).toBe('sharedshared');
+    queryClient.clear();
+  });
+});
+
+describe('useWidgetData offline', () => {
+  it('says so when the first load is paused because the device is offline', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const fetchFn = vi.fn(async () => 'data');
+    function Probe() {
+      const { offline, data } = useWidgetData({ fetchFn, refreshInterval: 60_000, cacheKey: 'offline-probe' });
+      return `${offline}:${data}`;
+    }
+    onlineManager.setOnline(false);
+    try {
+      await act(async () => root.render(
+        <QueryClientProvider client={queryClient}>
+          <WidgetVisibilityProvider active><Probe /></WidgetVisibilityProvider>
+        </QueryClientProvider>,
+      ));
+      expect(fetchFn).not.toHaveBeenCalled();
+      expect(document.body.textContent).toBe('true:null');
+    } finally {
+      onlineManager.setOnline(true);
+    }
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(document.body.textContent).toBe('false:data');
+    queryClient.clear();
+  });
+});
+
+describe('useWidgetData offlineFirst', () => {
+  it("still asks once while offline, so the worker's saved copy can answer", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const fetchFn = vi.fn(async () => 'saved');
+    function Probe() {
+      const { offline, data } = useWidgetData({ fetchFn, refreshInterval: 60_000, cacheKey: 'offline-first', networkMode: 'offlineFirst' });
+      return `${offline}:${data}`;
+    }
+    onlineManager.setOnline(false);
+    try {
+      await act(async () => root.render(
+        <QueryClientProvider client={queryClient}>
+          <WidgetVisibilityProvider active><Probe /></WidgetVisibilityProvider>
+        </QueryClientProvider>,
+      ));
+      await act(async () => vi.advanceTimersByTimeAsync(1000));
+      expect(fetchFn).toHaveBeenCalledOnce();
+      expect(document.body.textContent).toBe('false:saved');
+    } finally {
+      onlineManager.setOnline(true);
+    }
     queryClient.clear();
   });
 });
