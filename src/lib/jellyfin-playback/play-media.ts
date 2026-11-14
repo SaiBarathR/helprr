@@ -1,3 +1,16 @@
+/**
+ * A playback failure whose message was written for the viewer: Helprr's own
+ * wording, or the server's answer. Anything else a start throws is the
+ * browser's (a DOMException from `play()`, a network TypeError), whose message
+ * is the engine's and is not shown; see `startFailureMessage`.
+ */
+export class PlaybackFailure extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PlaybackFailure';
+  }
+}
+
 /** Bound silent startup stalls even when the browser emits no media events. */
 export function playMedia(
   el: HTMLMediaElement,
@@ -23,7 +36,7 @@ export function playMedia(
     const timeout = setTimeout(() => {
       if (!isCurrent()) { finish(false); return; }
       el.pause();
-      finish(false, new Error('Playback did not start. Try again or choose another quality.'));
+      finish(false, new PlaybackFailure('Playback did not start. Try again or choose another quality.'));
     }, timeoutMs);
     const failed = (cause: unknown) => {
       // DOMExceptions can come from another realm and fail instanceof Error.

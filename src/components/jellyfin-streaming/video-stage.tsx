@@ -13,6 +13,7 @@ import {
   Lock,
   LockOpen,
   Maximize,
+  Minimize,
   Pause,
   PictureInPicture2,
   Play,
@@ -43,7 +44,7 @@ const QueuePanel = dynamic(() => import('@/components/jellyfin-streaming/queue-p
 import { LiveBadge } from '@/components/jellyfin-streaming/live-badge';
 import { usePlayerSheet } from '@/components/jellyfin-streaming/use-player-sheet';
 import { isOverlayPopState } from '@/lib/overlay-history';
-import { toggleFullscreen } from '@/lib/jellyfin-playback/browser';
+import { isDocumentFullscreen, toggleFullscreen } from '@/lib/jellyfin-playback/browser';
 import { bitrateOptions } from '@/lib/jellyfin-playback/device-profile';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
@@ -124,6 +125,24 @@ function useCoarsePointer(): boolean {
   );
 }
 
+function subscribeFullscreen(onChange: () => void) {
+  document.addEventListener('fullscreenchange', onChange);
+  document.addEventListener('webkitfullscreenchange', onChange);
+  return () => {
+    document.removeEventListener('fullscreenchange', onChange);
+    document.removeEventListener('webkitfullscreenchange', onChange);
+  };
+}
+
+/**
+ * Whether the page is fullscreen, however it got there: the button, the `f`
+ * key, or the browser's own control or Escape. iPhone's video-only fullscreen
+ * covers the page, button included, so it has nothing to show.
+ */
+function useDocumentFullscreen(): boolean {
+  return useSyncExternalStore(subscribeFullscreen, () => isDocumentFullscreen(document), () => false);
+}
+
 type TapSide = 'left' | 'middle' | 'right';
 
 /**
@@ -150,6 +169,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
   const [controlsVisible, setControlsVisible] = useState(true);
   const [panel, setPanel] = useState<'none' | 'subs' | 'quality' | 'speed' | 'chapters' | 'stats' | 'more'>('none');
   const coarse = useCoarsePointer();
+  const fullscreen = useDocumentFullscreen();
   const skipBack = useUIStore((state) => state.playerSkipBackSeconds);
   const skipForward = useUIStore((state) => state.playerSkipForwardSeconds);
   const setSkipBack = useUIStore((state) => state.setPlayerSkipBackSeconds);
@@ -1069,10 +1089,11 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                         variant="ghost"
                         size="icon"
                         className="text-white"
-                        aria-label="Fullscreen"
+                        // Named for what it does next, as Play/Pause and Mute are.
+                        aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
                         onClick={() => toggleFullscreen(document.documentElement, mediaRef.current)}
                       >
-                        <Maximize />
+                        {fullscreen ? <Minimize /> : <Maximize />}
                       </Button>
                       {/* Everything low-frequency lives behind one gear, on every
                           breakpoint — twelve inline controls was a debug toolbar. */}

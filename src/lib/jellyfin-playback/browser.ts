@@ -97,6 +97,11 @@ interface WebkitFullscreenVideo {
   webkitEnterFullscreen?: () => void;
 }
 
+/** Whether the page is fullscreen, by either API `toggleFullscreen` uses to leave it. */
+export function isDocumentFullscreen(doc: Document): boolean {
+  return Boolean(doc.fullscreenElement || (doc as Document & WebkitFullscreenDocument).webkitIsFullScreen);
+}
+
 /**
  * Enter or leave fullscreen, falling back to the video's own surface.
  *
