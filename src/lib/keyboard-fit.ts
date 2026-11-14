@@ -190,11 +190,19 @@ export function revealFocusedField(node: HTMLElement) {
       (el) => el === field || isArrowStop(el),
     );
     const at = fields.indexOf(field);
-    for (const neighbour of [fields[at + 1], fields[at - 1]]) {
+    // The nearest field each way with a box: one hidden by CSS has none, and
+    // the arrows go on to the one after it. None when focus isn't on a field.
+    const nearest = (step: 1 | -1) => {
+      for (let i = at + step; at >= 0 && i >= 0 && i < fields.length; i += step) {
+        const rect = fields[i].getBoundingClientRect();
+        if (rect.bottom > rect.top) return { el: fields[i], rect };
+      }
+      return null;
+    };
+    for (const found of [nearest(1), nearest(-1)]) {
       // One in a part that doesn't scroll (a pinned search box) doesn't move.
-      if (!neighbour || !box.contains(neighbour)) continue;
-      const rect = neighbour.getBoundingClientRect();
-      if (rect.bottom <= rect.top) continue;
+      if (!found || !box.contains(found.el)) continue;
+      const { rect } = found;
       const centre = (rect.top + rect.bottom) / 2;
       const both = { min: Math.max(range.min, centre + 4 - viewBottom), max: Math.min(range.max, centre - 4 - viewTop) };
       if (both.min <= both.max) range = both;
@@ -208,7 +216,7 @@ export function revealFocusedField(node: HTMLElement) {
 
 /** A field the keyboard's ⌃ / ⌄ arrows go to: shown, enabled, typed into or picked from. */
 function isArrowStop(el: HTMLElement) {
-  if (!(isTextField(el) || el instanceof HTMLSelectElement) || el.disabled || el.closest('[hidden]')) return false;
+  if (!(isTextField(el) || el instanceof HTMLSelectElement) || el.disabled || el.closest('[hidden], [inert]')) return false;
   return !(el instanceof HTMLInputElement && el.type === 'hidden');
 }
 

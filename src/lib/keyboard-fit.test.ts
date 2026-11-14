@@ -93,6 +93,29 @@ describe('revealFocusedField', () => {
     expect(box.scrollTop).toBe(300);
   });
 
+  it('looks past a field hidden by CSS to the one the arrows go to next', () => {
+    // Field 3's centre starts at 304, just below the box; field 2 is display:none (a
+    // collapsed part), so ⌄ from field 1 goes to field 3 and it must come into view.
+    const { node, box, fields, inView, shown } = form(4, { pitch: 88 });
+    vi.spyOn(fields[1], 'getBoundingClientRect').mockReturnValue({ top: 0, bottom: 0 } as DOMRect);
+    focus(node, fields[0]);
+    expect(box.scrollTop).toBe(8);
+    expect(shown(fields[0])).toBe(true);
+    expect(inView(fields[2])).toBe(true);
+  });
+
+  it('moves nothing for a neighbour when focus is not on a field', () => {
+    // The first field's centre sits at 310, just below the box: a focus on a
+    // button must not pull the box towards it.
+    const { node, box, fields } = form(4, { firstTop: 292 });
+    const button = document.createElement('button');
+    fields[3].after(button);
+    vi.spyOn(button, 'getBoundingClientRect').mockReturnValue({ top: 150, bottom: 180 } as DOMRect);
+    button.focus();
+    revealFocusedField(node);
+    expect(box.scrollTop).toBe(0);
+  });
+
   it('skips fields the arrows do not go to: hidden or disabled', () => {
     const { node, box, fields } = form(3, { pitch: 100 });
     // Field 3 would need a scroll; hidden (the password manager's username) or disabled, it is no stop.
