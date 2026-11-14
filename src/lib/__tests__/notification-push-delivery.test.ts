@@ -218,19 +218,24 @@ describe('events that start off', () => {
     // Before-air films now fire near 23:00 local, inside most overnight quiet
     // hours. As for every other held push: no push, but the row is written
     // with its key and recipients, so the next cycles don't send it again.
-    const hour = new Date().getUTCHours();
-    mocks.findMany.mockResolvedValueOnce([{
-      ...device('sleepy', []),
-      user: {
-        id: 'user-sleepy', status: 'active', role: 'admin', template: 'admin', permissions: {},
-        settings: { quietHoursEnabled: true, quietHoursStart: hour, quietHoursEnd: (hour + 1) % 24, timeZone: 'UTC' },
-      },
-    }]);
-    await notifyEvent({
-      eventType: 'upcomingPremiere', title: 'Upcoming Movie', body: 'Film (2026) — In Cinemas',
-      dedupeKey: 'radarr-r1-50-cinema-1792454400000@1792434600000', userIds: ['user-sleepy'],
-      metadata: { recipientUserIds: ['user-sleepy'], source: 'radarr', movieId: 50 },
-    });
+    // 23:15 in India, inside 23:00–07:00 quiet hours (a fixed clock, so no hour rollover).
+    vi.useFakeTimers({ now: Date.parse('2026-10-19T17:45:00Z'), toFake: ['Date'] });
+    try {
+      mocks.findMany.mockResolvedValueOnce([{
+        ...device('sleepy', []),
+        user: {
+          id: 'user-sleepy', status: 'active', role: 'admin', template: 'admin', permissions: {},
+          settings: { quietHoursEnabled: true, quietHoursStart: 23, quietHoursEnd: 7, timeZone: 'Asia/Kolkata' },
+        },
+      }]);
+      await notifyEvent({
+        eventType: 'upcomingPremiere', title: 'Upcoming Movie', body: 'Film (2026) — In Cinemas',
+        dedupeKey: 'radarr-r1-50-cinema-1792454400000@1792434600000', userIds: ['user-sleepy'],
+        metadata: { recipientUserIds: ['user-sleepy'], source: 'radarr', movieId: 50 },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
     expect(sentTo()).toEqual([]);
     expect(mocks.createHistory).toHaveBeenCalledWith({ data: expect.objectContaining({
       dedupeKey: 'radarr-r1-50-cinema-1792454400000@1792434600000',

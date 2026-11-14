@@ -626,6 +626,27 @@ describe('pollers on fixed fixtures (golden)', () => {
       expect(keys(await run('checkUpcoming', LA, LA_23_15))).toEqual([album(LA_MIDNIGHT)]);
     });
 
+    it("still sends Los Angeles its films after India's went out as one grouped push", async () => {
+      // Three films from one Radarr for the same recipients group into one row;
+      // that row must say who it went to, or it reads back as sent to everyone.
+      const grouping = { ...LA, notificationGroupingEnabled: true };
+      radarrCalendar.mockResolvedValue([50, 51, 52].map((id) => ({ id, title: `Film ${id}`, year: 2026, inCinemas: '2026-10-20T00:00:00Z' })));
+      mocks.lidarr = [];
+      mocks.recipients = [{ id: 'u1', timeZone: 'Asia/Kolkata' }, { id: 'u2', timeZone: 'America/Los_Angeles' }];
+      const india = (await run('checkUpcoming', grouping, KOLKATA_23_15)).flatMap((entry) =>
+        ('notify' in (entry as object) ? [(entry as { notify: { dedupeKey?: string; body: string; userIds?: string[]; metadata: Record<string, unknown> } }).notify] : []));
+      expect(india).toHaveLength(1);
+      expect(india[0]).toMatchObject({ title: '3 Upcoming Movies', userIds: ['u1'] });
+      // notifyEvent stores the grouped event as its history row.
+      mocks.history = india.map((event) => ({ dedupeKey: event.dedupeKey ?? null, body: event.body, metadata: event.metadata }));
+      mocks.out = [];
+      const la = (await run('checkUpcoming', grouping, LA_23_15)).flatMap((entry) =>
+        ('notify' in (entry as object) ? [(entry as { notify: { userIds?: string[]; metadata: { itemDedupeKeys?: string[] } } }).notify] : []));
+      expect(la).toHaveLength(1);
+      expect(la[0].userIds).toEqual(['u2']);
+      expect(la[0].metadata.itemDedupeKeys).toEqual([50, 51, 52].map((id) => `radarr-r1-${id}-cinema-${releaseMs}@${LA_MIDNIGHT}`));
+    });
+
     it("doesn't send again what quiet hours held: the held push's row claims it for its users", async () => {
       // notifyEvent writes the row even when the recipient's quiet hours hold the push.
       mocks.recipients = [{ id: 'u1', timeZone: 'Asia/Kolkata' }, { id: 'u2', timeZone: 'America/Los_Angeles' }];
@@ -654,6 +675,20 @@ describe('pollers on fixed fixtures (golden)', () => {
       }];
       const out = await run('checkUpcoming', { ...LA, upcomingNotifyMode: 'daily_digest', upcomingDailyNotifyHour: 23 }, Date.parse('2026-11-21T07:00:00Z'));
       expect(sends(out)).toEqual([]);
+    });
+
+    it('the digest does not send again what before-air sent at the extremes: UTC+14 send, UTC-12 digest at 23:59', async () => {
+      // Kiritimati's push for Nov 20 left at 09:00Z on Nov 19; the digest in
+      // UTC-12 at 23:59 on Nov 20 is 11:59Z on Nov 21, 50 h 59 min later.
+      const day = Date.parse('2026-11-20T00:00:00Z');
+      radarrCalendar.mockResolvedValue([{ id: 50, title: 'Film', year: 2026, inCinemas: '2026-11-20T00:00:00Z' }]);
+      mocks.lidarr = [];
+      mocks.history = [{
+        dedupeKey: `radarr-r1-50-cinema-${day}@${Date.parse('2026-11-19T10:00:00Z')}`, body: 'x',
+        metadata: { recipientUserIds: ['k1'] }, createdAt: new Date('2026-11-19T09:00:00Z'),
+      }];
+      const settings = { ...SETTINGS, timeZone: 'Etc/GMT+12', upcomingNotifyMode: 'daily_digest', upcomingDailyNotifyHour: 23 };
+      expect(sends(await run('checkUpcoming', settings, Date.parse('2026-11-21T11:59:00Z')))).toEqual([]);
     });
 
     it('the digest does not send again what before-air sent', async () => {

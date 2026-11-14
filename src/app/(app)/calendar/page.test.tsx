@@ -27,7 +27,8 @@ vi.mock('@/hooks/use-calendar', () => ({
   useCalendar: () => ({
     events: calendar.events ?? [{
       id: 'movie-1', type: 'movie', title: 'Selected day movie', movieId: 1,
-      date: '2026-10-15T12:00:00', monitored: true, hasFile: false,
+      // As Radarr sends a release day: its UTC midnight (local noon fell on Oct 14 at UTC+12 and beyond).
+      date: '2026-10-15T00:00:00Z', monitored: true, hasFile: false,
     }],
     loading: calendar.loading,
     error: null,
@@ -381,8 +382,8 @@ it('keeps a saved instance pick until the configured list has loaded', () => {
 it('shows an album cover in the day panel, through the image proxy', () => {
   calendar.events = [{
     id: 'lidarr-1-7', type: 'album', title: 'LiSA', subtitle: 'Album', artistId: 3, albumId: 7,
-    // Local noon, like the other fixtures: this test is about the cover, not the day.
-    date: '2026-10-15T12:00:00', monitored: true, hasFile: false,
+    // As Lidarr sends a release day; this test is about the cover, not the day.
+    date: '2026-10-15T00:00:00Z', monitored: true, hasFile: false,
     images: [{ coverType: 'cover', url: '/MediaCover/Albums/7/cover.jpg', remoteUrl: 'https://imagecache.example/release/7/466' }],
   }];
   useUIStore.setState({ calendarShowImages: true });

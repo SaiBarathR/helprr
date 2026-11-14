@@ -98,17 +98,18 @@ export async function checkUpcoming(context: CycleContext) {
   // row was written when its item was last inside the notify window — at most
   // (notifyBefore + grace) before its air time, and the furthest air time we
   // consider is fetchEndMs — so look back that far plus a day of slack; older
-  // rows can't match a key we build this cycle. A film's local midnight can be
-  // up to 14 h before its UTC midnight (UTC+14), and the digest for that day can
-  // run up to a day after it, so release keys need a second day of slack. The
-  // snapshot doesn't see rows
-  // written later in this same cycle, so we also record each key as we fire it
-  // (notifiedKeys.add below) — that suppresses a duplicate calendar entry that
-  // a malformed/proxied upstream might repeat within one response.
+  // rows can't match a key we build this cycle. Release keys need more: a
+  // before-air push leaves up to 14 h (UTC+14) plus the lead before its day's
+  // UTC midnight, and a digest for that day can run until 23:59 in UTC-12, 36 h
+  // after it, so about 50 h plus the lead; 2 days + 2 h covers it. The
+  // snapshot doesn't see rows written later in this same cycle, so we also
+  // record each key as we fire it (notifiedKeys.add below) — that suppresses a
+  // duplicate calendar entry that a malformed/proxied upstream might repeat
+  // within one response.
   const dedupeLookbackMs =
     (settings.upcomingNotifyBeforeMins + BEFORE_AIR_GRACE_MIN) * 60_000 +
     FETCH_END_BUFFER_MS +
-    2 * 86_400_000;
+    2 * 86_400_000 + 2 * HOUR_MS;
   const priorUpcoming = await prisma.notificationHistory.findMany({
     where: {
       eventType: 'upcomingPremiere',
