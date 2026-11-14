@@ -107,6 +107,31 @@ describe('the player keyboard shortcuts', () => {
     expect(spy('setVideoExpanded')).toHaveBeenCalledWith(false);
     expect(spy('setQueueOpen')).toHaveBeenCalledTimes(1);
   });
+
+  it('hands focus to the mini player once Escape minimizes, not to <body>', async () => {
+    const miniExpand = document.createElement('button');
+    miniExpand.dataset.nowPlayingExpand = '';
+    document.body.append(miniExpand);
+    await render(true);
+    const minimize = document.querySelector('button[aria-label="Minimize player"]') as HTMLButtonElement;
+    minimize.focus();
+    await press('Escape');
+    expect(spy('setVideoExpanded')).toHaveBeenCalledWith(false);
+
+    await render(false);
+    expect(document.activeElement).toBe(miniExpand);
+  });
+
+  it('leaves focus alone when something took it on purpose', async () => {
+    const miniExpand = document.createElement('button');
+    miniExpand.dataset.nowPlayingExpand = '';
+    const elsewhere = document.createElement('input');
+    document.body.append(miniExpand, elsewhere);
+    await render(true);
+    elsewhere.focus();
+    await render(false);
+    expect(document.activeElement).toBe(elsewhere);
+  });
 });
 
 describe('the audio and subtitles panel', () => {
@@ -153,5 +178,57 @@ describe('the audio and subtitles panel', () => {
     expect(document.querySelector('[data-player-panel]')).toBeNull();
     expect(spy('setVideoExpanded')).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(opener);
+  });
+
+  it('moves between rows with the arrow keys, Home and End, without picking, the tab stop following focus', async () => {
+    state.video = document.createElement('video');
+    const MediaStreams = [
+      { Type: 'Audio', Index: 1, DisplayTitle: 'English' },
+      { Type: 'Audio', Index: 2, DisplayTitle: 'Japanese' },
+      { Type: 'Audio', Index: 3, DisplayTitle: 'Commentary' },
+    ];
+    await render(true, { stream: { mediaSource: { MediaStreams }, item: { Id: 'item1' }, subtitleTracks: [] }, audioStreamIndex: 3 });
+    await act(async () => (document.querySelector('button[aria-label="Audio and subtitles"]') as HTMLButtonElement).click());
+    const rows = [...document.querySelectorAll<HTMLElement>('[role="radiogroup"][aria-label="Audio"] [role="radio"]')];
+    const stops = () => rows.map((row) => row.tabIndex);
+    expect(stops()).toEqual([-1, -1, 0]); // Commentary, picked
+    const subtitleRows = [...document.querySelectorAll<HTMLElement>('[role="radiogroup"][aria-label="Subtitles"] [role="radio"]')];
+    expect(subtitleRows.map((row) => row.tabIndex)).toEqual([0]); // Off, picked
+
+    const key = (target: HTMLElement, name: string) => act(async () => {
+      target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+    });
+    await act(async () => rows[2].focus());
+    await key(rows[2], 'ArrowUp');
+    expect(document.activeElement).toBe(rows[1]);
+    // Tab leaves from here: no later row of the group is still a tab stop.
+    expect(stops()).toEqual([-1, 0, -1]);
+    await key(rows[1], 'ArrowDown');
+    await key(rows[2], 'ArrowDown'); // wraps
+    expect(document.activeElement).toBe(rows[0]);
+    await key(rows[0], 'ArrowUp'); // wraps back
+    expect(document.activeElement).toBe(rows[2]);
+    await key(rows[2], 'Home');
+    expect(document.activeElement).toBe(rows[0]);
+    await key(rows[0], 'End');
+    expect(document.activeElement).toBe(rows[2]);
+    await key(rows[2], 'ArrowLeft');
+    expect(document.activeElement).toBe(rows[1]);
+    expect(spy('setAudioStream')).not.toHaveBeenCalled();
+    expect(spy('skip')).not.toHaveBeenCalled();
+    // A re-render while focus is in the group keeps the stop on the focused row.
+    await render(true, { stream: { mediaSource: { MediaStreams }, item: { Id: 'item1' }, subtitleTracks: [] }, audioStreamIndex: 3 });
+    expect(stops()).toEqual([-1, 0, -1]);
+
+    // Leaving the group puts the stop back on the picked row, for the next Tab in.
+    await act(async () => subtitleRows[0].focus());
+    expect(stops()).toEqual([-1, -1, 0]);
+
+    // A pick moves the stop with it.
+    await act(async () => rows[0].click());
+    expect(spy('setAudioStream')).toHaveBeenCalledWith(1);
+    await act(async () => subtitleRows[0].focus());
+    await render(true, { stream: { mediaSource: { MediaStreams }, item: { Id: 'item1' }, subtitleTracks: [] }, audioStreamIndex: 1 });
+    expect(stops()).toEqual([0, -1, -1]);
   });
 });

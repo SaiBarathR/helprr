@@ -10,6 +10,8 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** The response's own `error` code where it sent one, from `jsonFetcher`. */
+    public code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -80,7 +82,11 @@ export function jsonFetcher<T>(path: string, instanceId?: string) {
   return async ({ signal }: { signal?: AbortSignal } = {}): Promise<T> => {
     const res = await fetchOrOffline(withInstanceQuery(path, instanceId), { signal });
     recordBrowseFreshness(withInstanceQuery(path, instanceId), res);
-    if (!res.ok) throw new ApiError(res.status, `GET ${path} → ${res.status}`);
+    if (!res.ok) {
+      // A page can then tell one refusal from another (see ApiError.code).
+      const body = await res.json().catch(() => null) as { error?: unknown } | null;
+      throw new ApiError(res.status, `GET ${path} → ${res.status}`, typeof body?.error === 'string' ? body.error : undefined);
+    }
     return (await res.json()) as T;
   };
 }

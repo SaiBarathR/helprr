@@ -115,11 +115,18 @@ export function generate(answers, releaseCompose) {
   // .env: only what these answers need; everything else has a default.
   const env = [];
   if (origin) env.push(`APP_ORIGIN=${origin}`);
-  if (answers.access === 'tailscale' || answers.access === 'caddy') env.push('TRUST_FORWARDED_PROTO=true');
+  // Proxies that put the visitor's real address last in X-Forwarded-For (https.md):
+  // Tailscale Serve and Caddy replace it, Cloudflare Tunnel adds to it.
+  const tunnel = answers.access === 'cloudflare';
+  if (answers.access === 'tailscale' || answers.access === 'caddy' || tunnel) env.push('TRUST_FORWARDED_PROTO=true');
+  // Behind the tunnel the port answers cloudflared only, at home too: with trust on,
+  // anyone reaching it directly could send a made-up address.
+  if (tunnel) env.push('HELPRR_PORT=127.0.0.1:3050');
   // Sonarr and Radarr fetch .torrent files from Helprr: give them an address they reach.
+  // Behind the tunnel, apps on other machines reach it only at the tunnel's address.
   const callback = answers.where === 'stack' ? 'http://helprr:3050'
     : answers.where === 'host' ? 'http://127.0.0.1:3050'
-      : `http://${answers.serverAddress}:3050`;
+      : tunnel ? origin : `http://${answers.serverAddress}:3050`;
   env.push(`ARR_CALLBACK_ORIGIN=${callback}`);
 
   // One block that stops at the first failure, in a subshell so a failed step never
@@ -140,7 +147,9 @@ export function generate(answers, releaseCompose) {
   const addPort = answers.system === 'portainer'
     ? "add the variable HELPRR_PORT with the value 127.0.0.1:3050 to the stack's Environment variables and select Update the stack"
     : 'add HELPRR_PORT=127.0.0.1:3050 to .env and restart Helprr (cd helprr && docker compose up -d --no-build --no-deps helprr)';
-  const vps = `On a machine with a public IP address (a VPS), ${addPort}, so no one can go around the proxy.${answers.where === 'remote' ? ' Sonarr and Radarr on other machines then add torrents by magnet link only.' : ''}${answers.access === 'npm' ? " Nginx Proxy Manager, in Docker, then cannot reach that port: add the network helprr_helprr-net to its Compose file as an external network (keep its other networks), recreate it, and change the proxy host's Forward Hostname to helprr (see Helprr's Docker network in the HTTPS guide)." : ''}${answers.access === 'cloudflare' ? ' Install cloudflared on the machine itself (not the Docker option), so localhost:3050 still reaches Helprr.' : ''}`;
+  const vps = `On a machine with a public IP address (a VPS), ${addPort}, so no one can go around the proxy.${answers.where === 'remote' ? ' Sonarr and Radarr on other machines then add torrents by magnet link only.' : ''}${answers.access === 'npm' ? " Nginx Proxy Manager, in Docker, then cannot reach that port: add the network helprr_helprr-net to its Compose file as an external network (keep its other networks), recreate it, and change the proxy host's Forward Hostname to helprr (see Helprr's Docker network in the HTTPS guide)." : ''}`;
+  // What the tunnel's port binding (HELPRR_PORT above) costs.
+  const tunnelPort = `Helprr's port now answers this machine only, so open Helprr at https://${answers.domain}, at home too: http://${answers.serverAddress}:3050 no longer works from other devices.${answers.where === 'remote' ? ' Sonarr and Radarr on other machines fetch .torrent files through the tunnel\'s address; with Cloudflare Access in front, add torrents by magnet link instead.' : ''}`;
   const https = {
     home: {
       title: 'No HTTPS',
@@ -162,10 +171,10 @@ export function generate(answers, releaseCompose) {
     cloudflare: {
       title: 'Cloudflare Tunnel',
       steps: [
-        'In Cloudflare: Networking → Tunnels → Create a tunnel, and run its install command here.',
+        'In Cloudflare: Networking → Tunnels → Create a tunnel, and run its install command here, on the machine itself (not the Docker option), so localhost:3050 reaches Helprr.',
         `Routes → Add route → Published application: ${answers.domain}, Service URL http://localhost:3050.`,
         'Consider Cloudflare Access in front of it: the address is public.',
-        vps,
+        tunnelPort,
       ],
       link: `${GUIDES}https/#cloudflare-tunnel`,
     },

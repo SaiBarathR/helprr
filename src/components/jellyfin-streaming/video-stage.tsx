@@ -43,7 +43,7 @@ import {
 const QueuePanel = dynamic(() => import('@/components/jellyfin-streaming/queue-panel').then((module) => module.QueuePanel));
 import { LiveBadge } from '@/components/jellyfin-streaming/live-badge';
 import { usePlayerSheet } from '@/components/jellyfin-streaming/use-player-sheet';
-import { isOverlayPopState } from '@/lib/overlay-history';
+import { isOverlayPopState, useCloseOnBack } from '@/lib/overlay-history';
 import { isDocumentFullscreen, toggleFullscreen } from '@/lib/jellyfin-playback/browser';
 import { bitrateOptions } from '@/lib/jellyfin-playback/device-profile';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
@@ -308,6 +308,31 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
     return () => window.removeEventListener('popstate', collapse);
   }, []);
 
+  // The system Back closes the player's own layers before it minimizes the
+  // player, one Back each, as Escape does: the queue (drawn over the player)
+  // and an open panel each hold an overlay history entry while they are up.
+  // The panel's goes once the player minimizes or closes, since it is hidden
+  // then.
+  const closePanel = useCallback(() => {
+    setPanel('none');
+    // Back to the button that opened it, rather than lost to <body>.
+    panelOpenerRef.current?.focus();
+  }, []);
+  useCloseOnBack(expanded && panel !== 'none', closePanel);
+  useCloseOnBack(playback.queueOpen && playback.queue.length > 0, () => playback.setQueueOpen(false));
+
+  // Minimizing unmounts the control that had focus (Escape's, or Minimize
+  // itself), which left focus on <body>; the mini player's way back in takes
+  // it instead. Only when focus was lost: anything that took it on purpose
+  // keeps it.
+  const wasExpandedRef = useRef(expanded);
+  useEffect(() => {
+    const minimized = wasExpandedRef.current && !expanded && isActive;
+    wasExpandedRef.current = expanded;
+    if (!minimized || (document.activeElement && document.activeElement !== document.body)) return;
+    document.querySelector<HTMLElement>('[data-now-playing-expand]')?.focus({ preventScroll: true });
+  }, [expanded, isActive]);
+
   useEffect(() => {
     if (!expanded) return undefined;
     // Arm the first hide without touching state — controlsVisible is reset to
@@ -349,11 +374,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
       // only then the player itself.
       if (event.key === 'Escape') {
         if (p.queueOpen && p.queue.length > 0) p.setQueueOpen(false);
-        else if (panel !== 'none') {
-          setPanel('none');
-          // Back to the button that opened it, rather than lost to <body>.
-          panelOpenerRef.current?.focus();
-        }
+        else if (panel !== 'none') closePanel();
         else p.setVideoExpanded(false);
       }
       if (event.key === 'm') p.setMuted(!p.muted);
@@ -366,7 +387,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [expanded, mediaRef, panel]);
+  }, [closePanel, expanded, mediaRef, panel]);
 
   // Buffered range for the seek bar. Read from the element rather than the
   // context because the provider does not track it.
@@ -1577,9 +1598,53 @@ function Panel({ children }: { children: React.ReactNode }) {
 
 /** A panel's pick-one list (audio, subtitles, quality, speed), as the app's
  *  other pickers mark theirs: a radio group whose picked row says so, not
- *  only by its colour. */
+ *  only by its colour.
+ *
+ *  Keyboard as the ARIA radio group pattern has it: Tab enters the group once,
+ *  on the picked row (the first when none is), and the next Tab leaves it;
+ *  the arrow keys, Home and End move between rows, taking the tab stop with
+ *  them so Tab leaves from where focus is. They move focus without picking,
+ *  and Space or Enter picks: a pick of audio or quality restarts the stream,
+ *  which arrowing past three tracks would do three times. */
 function PanelChoices({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div role="radiogroup" aria-label={label} className="flex flex-col gap-1">{children}</div>;
+  const groupRef = useRef<HTMLDivElement>(null);
+  const radios = () => Array.from(groupRef.current?.querySelectorAll<HTMLElement>('[role="radio"]') ?? []);
+  const setStop = (stop: HTMLElement | undefined) => {
+    for (const row of radios()) row.tabIndex = row === stop ? 0 : -1;
+  };
+  const stopOnPicked = () => {
+    const rows = radios();
+    setStop(rows.find((row) => row.getAttribute('aria-checked') === 'true') ?? rows[0]);
+  };
+  // Every render, since a pick moves the tab stop; not while focus is in the
+  // group, where the stop follows focus.
+  useLayoutEffect(() => {
+    if (!groupRef.current?.contains(document.activeElement)) stopOnPicked();
+  });
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const rows = radios();
+    const at = rows.indexOf(document.activeElement as HTMLElement);
+    if (at < 0) return;
+    const next = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? (at + 1) % rows.length
+      : event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? (at - 1 + rows.length) % rows.length
+        : event.key === 'Home' ? 0
+          : event.key === 'End' ? rows.length - 1
+            : null;
+    if (next === null) return;
+    // Handled here, so the player's own arrow keys (seek, volume) stay out of it.
+    event.preventDefault();
+    setStop(rows[next]);
+    rows[next].focus();
+  };
+  // Focus that lands on a row any other way (a click) takes the stop too.
+  const onFocus = (event: React.FocusEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).getAttribute('role') === 'radio') setStop(event.target as HTMLElement);
+  };
+  // Leaving the group puts the stop back on the picked row, for the next Tab in.
+  const onBlur = (event: React.FocusEvent<HTMLDivElement>) => {
+    if (!groupRef.current?.contains(event.relatedTarget as Node | null)) stopOnPicked();
+  };
+  return <div ref={groupRef} role="radiogroup" aria-label={label} onKeyDown={onKeyDown} onFocus={onFocus} onBlur={onBlur} className="flex flex-col gap-1">{children}</div>;
 }
 
 /** A row in a panel: a radio in a PanelChoices list (`active` given), else a

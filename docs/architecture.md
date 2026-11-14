@@ -730,6 +730,33 @@ replaces the stream must release the outgoing `playSessionId`: Jellyfin holds a
 transcode for its idle timeout after the client stops reading it, and a
 superseded start attempt has to hand back the session it was granted.
 
+### Jellyfin's Internet streaming limits
+
+Jellyfin caps a remote client at the user's policy `RemoteClientBitrateLimit`,
+or the server's when the user has none (`MediaInfoHelper.GetMaxBitrate`), and it
+decides "remote" from the request's address. Every playback request reaches
+Jellyfin from Helprr's own address, on Jellyfin's LAN, so Jellyfin counts every
+viewer as local and never applies either limit (verified against 12.4.0).
+`stream/info` applies it instead (`remoteBitrateCap`): it reads both limits and
+`LocalNetworkSubnets` (cached 60 s) with the admin key, classifies the viewer's
+address by Jellyfin's rules (its LAN subnets minus `!` exclusions, or loopback and
+RFC 1918 when none parse, plus `fe80::/10` and `fc00::/7` only with `EnableIPv6`;
+loopback is always local; an address is matched only against its own family),
+and caps a remote viewer's request, Automatic and picked qualities alike, at that
+limit. The player shows the cap as its ceiling.
+
+The viewer's address comes from `getClientIp`, so Helprr only knows it behind a
+trusted reverse proxy with `TRUST_FORWARDED_PROTO=true`. Without that, every
+viewer counts as remote whenever such a limit is set, viewers at home included:
+fail-safe, since an address Helprr cannot see cannot be shown to be on the LAN. A
+Tailscale address (`100.64.0.0/10`, or `fd7a:115c:a1e0::/48`) is remote unless
+that range is added to Jellyfin's LAN networks. A limit that cannot be read never means "unlimited": a
+remote viewer then gets 20 Mbps, or a lower server limit that was read. Like
+sign-in rate limiting, this trusts `X-Forwarded-For`, which any host that reaches
+the app port directly can forge, so the port should answer the proxy only.
+Jellyfin itself enforces the limit only in PlaybackInfo, so a hand-edited stream
+URL through the media proxy is not capped, as it is not against Jellyfin.
+
 ## Destructive Operations and Audit
 
 Destructive actions require capability checks and, for file operations,

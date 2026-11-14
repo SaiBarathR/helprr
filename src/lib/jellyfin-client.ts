@@ -244,6 +244,16 @@ export class JellyfinClient {
     return this.get<JellyfinSystemInfo>('/System/Info');
   }
 
+  /** The server's configuration (admin key): `RemoteClientBitrateLimit` is read from it. */
+  async getServerConfiguration(): Promise<{ RemoteClientBitrateLimit?: number }> {
+    return this.get('/System/Configuration');
+  }
+
+  /** The network configuration (admin key): which subnets Jellyfin counts as its LAN. */
+  async getNetworkConfiguration(): Promise<{ LocalNetworkSubnets?: string[]; EnableIPv4?: boolean; EnableIPv6?: boolean }> {
+    return this.get('/System/Configuration/network');
+  }
+
   async getCurrentUser(): Promise<JellyfinUser> {
     return this.get<JellyfinUser>('/Users/Me');
   }

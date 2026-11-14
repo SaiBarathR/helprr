@@ -1,0 +1,223 @@
+import { BlockList, isIP } from 'net';
+import type { JellyfinClient } from '@/lib/jellyfin-client';
+
+/**
+ * Jellyfin's "Internet streaming bitrate limit", applied by Helprr.
+ *
+ * Jellyfin caps a remote client at the user's policy `RemoteClientBitrateLimit`,
+ * or the server's when the user has none (MediaInfoHelper `GetMaxBitrate`), and
+ * it decides "remote" from the address the request comes from. Every playback
+ * request reaches Jellyfin from Helprr's own address, which is on Jellyfin's
+ * LAN, so Jellyfin treats every viewer as local and never applies either limit
+ * (verified against 12.4.0). Helprr knows the viewer's address (behind a
+ * trusted proxy, see `getClientIp`), so it makes the same decision, by the same
+ * rules (NetworkManager `InitializeLan`, `IsInLocalNetwork`), and caps the
+ * request itself.
+ */
+
+/** A remote viewer's cap when Jellyfin's limits cannot be read: Automatic's
+ *  old ceiling, so a failed read never means "unlimited". */
+export const REMOTE_FALLBACK_BITRATE = 20_000_000;
+const CACHE_MS = 60_000;
+
+/** Jellyfin's LAN when `LocalNetworkSubnets` gives none (InitializeLan,
+ *  NetworkConstants): loopback and the RFC 1918 ranges while IPv4 is enabled,
+ *  loopback, link-local and unique local while IPv6 is (off by default). */
+const DEFAULT_LAN_V4 = ['127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'];
+const DEFAULT_LAN_V6 = ['::1/128', 'fe80::/10', 'fc00::/7'];
+
+type Family = 'ipv4' | 'ipv6';
+/** One list per address family: .NET's `IPNetwork.Contains` never matches
+ *  across families, while one Node `BlockList` would match an IPv4 address
+ *  against an IPv6 rule through its mapped form (`::/0` would cover all of
+ *  IPv4). */
+type Lan = Record<Family, { include: BlockList; exclude: BlockList }>;
+const LOOPBACK = new BlockList();
+LOOPBACK.addSubnet('127.0.0.0', 8, 'ipv4');
+LOOPBACK.addAddress('::1', 'ipv6');
+type ServerLimits = { limit: number; lan: Lan };
+/** Jellyfin's `EnableIPv4` / `EnableIPv6` (defaults: on, off). */
+type Families = { ipv4: boolean; ipv6: boolean };
+const serverCache = new Map<string, { at: number; value: Promise<ServerLimits> }>();
+const userCache = new Map<string, { at: number; value: Promise<number> }>();
+
+type Subnet = { address: string; prefix: number; type: Family };
+/**
+ * One `LocalNetworkSubnets` entry as .NET's `IPNetwork.TryParse` reads it: an
+ * address, or an address and a prefix within its size with no bits set past
+ * it. `'refused'` for an entry .NET refuses too (Jellyfin skips it): no
+ * address, an empty, signed or otherwise non-digit prefix, a prefix past the
+ * address size, bits set past the prefix. `'unknown'` when Node cannot read
+ * what .NET may: .NET also takes IPv4 in short, hex and octal forms (`10.0`,
+ * `0x0a.0.0.5`, `192.168.1.010`), bracketed IPv6 (`[fe80::5]`) and scoped IPv6
+ * (`fe80::1%eth0`, which a Node rule would match without its scope), so Helprr
+ * cannot tell what Jellyfin made of it.
+ */
+function parseSubnet(entry: string): Subnet | 'refused' | 'unknown' {
+  const [address, prefixText, extra] = entry.split('/');
+  if (address === '') return 'refused';
+  if (prefixText !== undefined && !/^\d+$/.test(prefixText)) return 'refused';
+  const family = isIP(address);
+  if (!family || address.includes('%')) return 'unknown';
+  if (extra !== undefined) return 'refused';
+  const size = family === 6 ? 128 : 32;
+  // A bare 0.0.0.0 or :: is "any" to Jellyfin (IPv4Any, IPv6Any), not one address.
+  const any = prefixText === undefined && expandIPv6Bytes(address, family).every((byte) => byte === 0);
+  const prefix = any ? 0 : prefixText === undefined ? size : Number(prefixText);
+  if (prefix > size) return 'refused';
+  const type = family === 6 ? 'ipv6' : 'ipv4';
+  // Bits set past the prefix: .NET refuses the network, so Jellyfin skips it.
+  if (prefix < size && !hostBitsClear(address, prefix, type)) return 'refused';
+  return { address, prefix, type };
+}
+
+function hostBitsClear(address: string, prefix: number, type: Family): boolean {
+  const bytes = expandIPv6Bytes(address, type === 'ipv6' ? 6 : 4);
+  for (let bit = prefix; bit < bytes.length * 8; bit++) {
+    if (bytes[bit >> 3] & (0x80 >> (bit & 7))) return false;
+  }
+  return true;
+}
+
+/** An address's bytes: 4 for IPv4, 16 for IPv6. */
+function expandIPv6Bytes(address: string, family: number): number[] {
+  return family === 6 ? expandIPv6(address) : address.split('.').map(Number);
+}
+
+function expandIPv6(address: string): number[] {
+  // An embedded IPv4 tail (::ffff:1.2.3.4) becomes its two groups.
+  const tail = address.match(/(\d+\.\d+\.\d+\.\d+)$/);
+  let text = address;
+  if (tail) {
+    const [a, b, c, d] = tail[1].split('.').map(Number);
+    text = address.slice(0, -tail[1].length) + `${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const [head, rest = ''] = text.split('::');
+  const left = head ? head.split(':') : [];
+  const right = text.includes('::') && rest ? rest.split(':') : [];
+  const groups = text.includes('::') ? [...left, ...Array(8 - left.length - right.length).fill('0'), ...right] : left;
+  return groups.flatMap((group) => { const value = parseInt(group || '0', 16); return [value >> 8, value & 0xff]; });
+}
+
+function emptyLan(): Lan {
+  return {
+    ipv4: { include: new BlockList(), exclude: new BlockList() },
+    ipv6: { include: new BlockList(), exclude: new BlockList() },
+  };
+}
+
+/**
+ * Jellyfin's LAN from `LocalNetworkSubnets`: its entries, or the defaults for
+ * the enabled families when none of them is a usable subnet, minus the `!`
+ * exclusions.
+ *
+ * Where Helprr cannot tell what Jellyfin read (see `parseSubnet`), it errs to
+ * capping: an exclusion it cannot read leaves only loopback local, since
+ * skipping it would make the excluded host local; and a list whose includes
+ * are all unreadable does too, rather than widening to the defaults Jellyfin
+ * may not be using. An unreadable include beside readable ones is skipped,
+ * which only narrows the LAN.
+ */
+export function lanFromSubnets(subnets: readonly unknown[], families: Families = { ipv4: true, ipv6: false }): Lan {
+  const lan = emptyLan();
+  let included = 0;
+  let unknownInclude = false;
+  for (const raw of subnets) {
+    if (typeof raw !== 'string') continue;
+    const entry = raw.trim();
+    const negated = entry.startsWith('!');
+    // Not trimmed again after the '!': Jellyfin parses the rest as it stands.
+    const subnet = parseSubnet(negated ? entry.slice(1) : entry);
+    if (subnet === 'refused') continue;
+    if (subnet === 'unknown') {
+      if (negated) return emptyLan();
+      unknownInclude = true;
+      continue;
+    }
+    lan[subnet.type][negated ? 'exclude' : 'include'].addSubnet(subnet.address, subnet.prefix, subnet.type);
+    if (!negated) included++;
+  }
+  if (!included) {
+    if (unknownInclude) return emptyLan();
+    const defaults = [...(families.ipv6 ? DEFAULT_LAN_V6 : []), ...(families.ipv4 ? DEFAULT_LAN_V4 : [])];
+    for (const entry of defaults) {
+      const subnet = parseSubnet(entry) as Subnet;
+      lan[subnet.type].include.addSubnet(subnet.address, subnet.prefix, subnet.type);
+    }
+  }
+  return lan;
+}
+
+/** An address in the form .NET compares it: an IPv4-mapped IPv6 address
+ *  (`::ffff:192.168.1.5`, `::ffff:c0a8:105`) as its IPv4 one. */
+function normalizeAddress(ip: string): { address: string; type: Family } | null {
+  const family = isIP(ip);
+  if (family === 4) return { address: ip, type: 'ipv4' };
+  if (family !== 6) return null;
+  const bytes = expandIPv6Bytes(ip, 6);
+  const mapped = bytes.slice(0, 10).every((byte) => byte === 0) && bytes[10] === 0xff && bytes[11] === 0xff;
+  return mapped ? { address: bytes.slice(12).join('.'), type: 'ipv4' } : { address: ip, type: 'ipv6' };
+}
+
+/** Whether `ip` is on Jellyfin's LAN: loopback always is; otherwise in a LAN
+ *  subnet of its own family and in no excluded one. */
+export function isLanAddress(ip: string, lan: Lan): boolean {
+  const normalized = normalizeAddress(ip);
+  if (!normalized) return false;
+  const { address, type } = normalized;
+  if (LOOPBACK.check(address, type)) return true;
+  return lan[type].include.check(address, type) && !lan[type].exclude.check(address, type);
+}
+
+function cached<T>(cache: Map<string, { at: number; value: Promise<T> }>, key: string, load: () => Promise<T>): Promise<T> {
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+  const value = load();
+  cache.set(key, { at: Date.now(), value });
+  // A failed read is not kept: the next request asks again.
+  value.catch(() => { if (cache.get(key)?.value === value) cache.delete(key); });
+  return value;
+}
+
+/**
+ * The highest bitrate this viewer may be served, or undefined for no cap.
+ * `serverKey` identifies the Jellyfin connection for the cache. `clientIp`
+ * undefined (no trusted proxy tells Helprr the address) counts as remote,
+ * since Helprr cannot show the viewer is on the LAN.
+ */
+export async function remoteBitrateCap(
+  client: JellyfinClient,
+  serverKey: string,
+  jellyfinUserId: string,
+  clientIp: string | undefined,
+): Promise<number | undefined> {
+  const [server, user] = await Promise.allSettled([
+    cached(serverCache, serverKey, async () => {
+      const [config, network] = await Promise.all([client.getServerConfiguration(), client.getNetworkConfiguration()]);
+      const families = { ipv4: network.EnableIPv4 ?? true, ipv6: network.EnableIPv6 ?? false };
+      return { limit: config.RemoteClientBitrateLimit ?? 0, lan: lanFromSubnets(network.LocalNetworkSubnets ?? [], families) };
+    }),
+    cached(userCache, `${serverKey}|${jellyfinUserId}`, async () => (await client.getUser(jellyfinUserId)).Policy?.RemoteClientBitrateLimit ?? 0),
+  ]);
+  // The server's own LAN where it could be read. Without it, only loopback is
+  // local: the defaults could be wider than a LAN the admin narrowed.
+  const lan = server.status === 'fulfilled' ? server.value.lan : emptyLan();
+  if (clientIp && isLanAddress(clientIp, lan)) return undefined;
+  // The user's limit, else the server's, as Jellyfin's GetMaxBitrate has it:
+  // a user limit that was read decides alone, whatever the server read did.
+  if (user.status === 'fulfilled' && user.value > 0 && Number.isFinite(user.value)) return user.value;
+  if (server.status === 'fulfilled' && user.status === 'fulfilled') {
+    const limit = server.value.limit;
+    return Number.isFinite(limit) && limit > 0 ? limit : undefined;
+  }
+  // A limit that could not be read is never "unlimited": the fallback, or a
+  // server limit that was read and is lower (the unread user limit might be
+  // higher, but a failed read only ever errs low).
+  const serverLimit = server.status === 'fulfilled' ? server.value.limit : 0;
+  return serverLimit > 0 ? Math.min(serverLimit, REMOTE_FALLBACK_BITRATE) : REMOTE_FALLBACK_BITRATE;
+}
+
+export function resetRemoteLimitCacheForTests() {
+  serverCache.clear();
+  userCache.clear();
+}

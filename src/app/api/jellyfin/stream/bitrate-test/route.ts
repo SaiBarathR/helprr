@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
-const MAX_BYTES = 1_000_000;
+const MAX_BYTES = 3_000_000;
 const MIN_BYTES = 64_000;
 const DEFAULT_BYTES = 500_000;
 
@@ -14,8 +14,8 @@ let payload: Uint8Array<ArrayBuffer> | null = null;
  * A timed download for the player's Automatic quality: what jellyfin-web asks
  * Jellyfin's `/Playback/BitrateTest` for (bitrateTest.ts), served here because
  * every byte of media reaches the viewer through Helprr, so this link is the
- * one that limits it. Bounded in size and behind the same capability as
- * playback.
+ * one that limits it. Bounded at jellyfin-web's largest test (3 MB) and
+ * behind the same capability as playback.
  */
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('jellyfin.view');

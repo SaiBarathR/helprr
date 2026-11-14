@@ -24,12 +24,18 @@ Each recipe uses Helprr's default port, 3050; use yours if you changed it. After
 - **`APP_ORIGIN`** set to the HTTPS address, such as `https://helprr.example.com`, when
   you create the first admin through the proxy, or connect an AniList account. It is a
   scheme, host and optional port, with no path.
-- **`TRUST_FORWARDED_PROTO=true`** only behind a proxy that replaces the
-  `X-Forwarded-For` and `X-Forwarded-Proto` headers a visitor sends. Helprr then marks
-  its sign-in cookie secure and limits sign-in attempts by each visitor's real address.
-  Behind a proxy that passes a visitor's headers on, a visitor could choose the address
-  Helprr sees, so leave it off there: Helprr still works, and still limits sign-in
-  attempts per username. Each recipe below says which kind it is.
+- **`TRUST_FORWARDED_PROTO=true`** only behind a proxy that sets `X-Forwarded-Proto`
+  itself and puts the visitor's real address last in `X-Forwarded-For`, either by
+  replacing the header (Tailscale Serve, Caddy) or by adding it after whatever the visitor
+  sent (Cloudflare Tunnel). Helprr reads the address from the end, so an address a visitor
+  sends is never used. It then marks its sign-in cookie secure and limits sign-in attempts
+  by each visitor's real address. Behind a proxy that passes a visitor's headers on
+  unchanged, a visitor could choose the address Helprr sees, so leave it off there: Helprr
+  still works, and still limits sign-in attempts per username. Each recipe below says
+  which kind it is.
+
+  It is also how Helprr sees a viewer's address for Jellyfin's Internet streaming
+  limits: see [below](#jellyfins-internet-streaming-limits).
 - **The proxy as the only way in from the internet.** At home, behind your router, only
   devices on your network reach Helprr's port directly, which is fine for most homes. On
   a machine with a public IP address (a VPS), whichever proxy you use, make the port
@@ -109,6 +115,27 @@ which removes everything Serve was serving).
 *Tested 2026-11-05 with Tailscale 1.104.5: Helprr behind Serve, a sent `X-Forwarded-For`
 replaced.*
 
+## Jellyfin's Internet streaming limits
+
+Jellyfin's *Internet streaming bitrate limit* (Dashboard → Playback → Streaming, or per
+user under the user's settings) caps viewers who are not on your network. Every stream
+reaches Jellyfin from Helprr's machine, which is on your network, so Jellyfin never
+applies the limit itself; Helprr applies it, by the viewer's address:
+
+- Helprr can only see that address behind a trusted proxy with
+  `TRUST_FORWARDED_PROTO=true` (Tailscale Serve, Caddy, Cloudflare Tunnel). Otherwise (no
+  proxy, or one that passes a visitor's headers on unchanged), **every viewer counts as
+  remote whenever such a limit is set**, including viewers at home. With no limit set,
+  nothing changes. Where Helprr's port is still open on your network (the Tailscale Serve
+  and Caddy recipes leave it open at home), a viewer who opens it directly, not through the
+  proxy, sends no forwarded address and counts as remote too.
+- Local means on Jellyfin's LAN networks (Dashboard → Networking → LAN networks; your
+  private ranges when that list is empty, plus IPv6's link-local and unique-local ranges
+  only if IPv6 is enabled there). A Tailscale address (`100.64.0.0/10`, or
+  `fd7a:115c:a1e0::/48` over IPv6) counts as remote unless you add that range there.
+- Make Helprr's port answer the proxy only (see above): anyone who reaches the port
+  directly can send a made-up address.
+
 ## Cloudflare Tunnel
 
 `cloudflared` on Helprr's machine connects out to Cloudflare, and Cloudflare serves
@@ -121,10 +148,12 @@ You need a domain whose DNS is on Cloudflare.
    name it, and run the installation command it shows on Helprr's machine.
 2. In the tunnel, open **Routes → Add route → Published application**: enter a subdomain
    (such as `helprr`), choose your domain, and set **Service URL** to
-   `http://localhost:3050`.
+   `http://localhost:3050` with `cloudflared` installed on the machine itself, or to
+   `http://helprr:3050` with `cloudflared` in a container on Helprr's Docker network (see
+   [above](#what-helprr-needs-from-it)).
 
    If you run `cloudflared` with a config file instead, the same thing is one ingress
-   rule:
+   rule (`service: http://helprr:3050` for the container):
 
    ```yaml
    ingress:
@@ -133,9 +162,27 @@ You need a domain whose DNS is on Cloudflare.
      - service: http_status:404
    ```
 
-3. In `.env`, set `APP_ORIGIN=https://helprr.example.com`, and leave
-   `TRUST_FORWARDED_PROTO` off: Cloudflare keeps the `X-Forwarded-For` a visitor sends.
-   Restart Helprr.
+3. In `.env`, set `APP_ORIGIN=https://helprr.example.com`,
+   `TRUST_FORWARDED_PROTO=true` and `HELPRR_PORT=127.0.0.1:3050`, in both cases (for the
+   container, on top of joining Helprr's network). Cloudflare keeps an `X-Forwarded-For`
+   a visitor sends but adds the visitor's real address after it, and Helprr reads it from
+   the end, so leave `TRUSTED_PROXY_HOPS` at its default of 1. The port setting makes
+   Helprr answer `cloudflared` only: otherwise anyone who reaches the port directly can
+   send a made-up address. Restart Helprr.
+
+   What that costs: Helprr no longer answers at its address on your network, so open it at
+   `https://helprr.example.com`, at home too. Sonarr and Radarr fetch `.torrent` files at
+   the tunnel's address (`APP_ORIGIN`), or at `http://127.0.0.1:3050` on the machine itself
+   and `http://helprr:3050` on Helprr's network (`ARR_CALLBACK_ORIGIN`). With Cloudflare
+   Access in front, apps on other machines cannot pass it: add torrents by magnet link.
+
+   Keep the tunnel pointing at Helprr itself. A second proxy behind it that replaces
+   `X-Forwarded-For` with the address it received the request from (Caddy by default)
+   makes every visitor look like `cloudflared`: everyone then counts as local, with one
+   shared sign-in limit. If you need one, make it keep the header and add to it for
+   `cloudflared`'s address (in Caddy, the global `servers` option
+   `trusted_proxies static 127.0.0.1/32`, with `cloudflared`'s address), and set
+   `TRUSTED_PROXY_HOPS=2`.
 
 To keep strangers away from the sign-in page, put
 [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) in
@@ -143,8 +190,11 @@ front of the address, so Cloudflare asks for its own sign-in first. Watching vid
 Helprr streams it through Cloudflare; check that your Cloudflare plan's terms allow that.
 
 *Tested 2026-11-05 with cloudflared 2026.10.7 and a config-file tunnel: Helprr serves
-through it daily, and a sent `X-Forwarded-For` arrives first in the header. The dashboard
-steps follow Cloudflare's documentation of that date and were not part of the test.*
+through it daily, and a sent `X-Forwarded-For` arrives first in the header, followed by
+the visitor's real address. A development install runs behind it with
+`TRUST_FORWARDED_PROTO=true` and the default hop count, and its sessions record visitors'
+real public addresses (checked 2026-11-15). The dashboard steps follow Cloudflare's
+documentation of that date and were not part of the test.*
 
 ## Caddy
 

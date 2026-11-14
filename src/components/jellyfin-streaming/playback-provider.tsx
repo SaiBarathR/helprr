@@ -12,7 +12,7 @@ import {
 } from 'react';
 import type { JellyfinItem, JellyfinMediaStream } from '@/types/jellyfin';
 import type { HelprrStreamInfo, JellyfinPlayMethod, MediaSegment } from '@/types/jellyfin-streaming';
-import { effectiveBitrate, normalizeBitrateChoice, PlaybackBandwidthEstimate, PLAYBACK_POLICY_KEY } from '@/lib/jellyfin-playback/data-policy';
+import { effectiveBitrate, LONG_HIDDEN_MS, normalizeBitrateChoice, PlaybackBandwidthEstimate, PLAYBACK_POLICY_KEY } from '@/lib/jellyfin-playback/data-policy';
 import { getDeviceProfile } from '@/lib/jellyfin-playback/device-profile';
 import { getJellyfinPlaybackDeviceId, getJellyfinPlaybackDeviceName, secondsToTicks, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { canPlayHlsWithMse, canPlayNativeHls, detectBrowser } from '@/lib/jellyfin-playback/browser';
@@ -21,6 +21,7 @@ import { useUIStore } from '@/lib/store';
 import { useCan } from '@/components/permission-provider';
 import { cueBottomPercent, subtitleCueLine } from '@/lib/jellyfin-playback/subtitle-appearance';
 import { PAUSED_START, PlaybackFailure, playMedia } from '@/lib/jellyfin-playback/play-media';
+import { holdFrame, whenFramePresented, type FrameHold } from '@/lib/jellyfin-playback/frame-hold';
 import { isLiveStream } from '@/lib/jellyfin-playback/live-stream';
 import { getQueryClient } from '@/lib/query-client';
 
@@ -316,32 +317,60 @@ async function stopEncodings(playSessionId: string, signal?: AbortSignal) {
   }).then((res) => res.arrayBuffer()).catch(() => undefined);
 }
 
-const BANDWIDTH_PROBE_BYTES = 500_000;
+/**
+ * jellyfin-web's speed tests (bitrateTest.ts `detectBitrateWithEndpointInfo`):
+ * a bigger download only when the smaller one came back at least this fast,
+ * since a small download on a fast link is over before the connection reaches
+ * its speed and reads it slow.
+ */
+const BANDWIDTH_TESTS = [
+  { bytes: 500_000, threshold: 500_000 },
+  { bytes: 1_000_000, threshold: 20_000_000 },
+  { bytes: 3_000_000, threshold: 50_000_000 },
+] as const;
 const BANDWIDTH_PROBE_MS = 4_000;
 
 /**
  * Measure the link before Automatic picks its first ceiling, as jellyfin-web
- * does (bitrateTest.ts: a timed 500 KB download, 5 s timeout).
+ * does: the tests above in turn, the result the last one that ran.
  *
  * Without it Automatic started every title at a fixed 6 Mbps, which direct-
  * played a 5 Mbps file over a 1.5 Mbps cellular link: about 20 s before the
- * first frame. The Network Information API is no substitute: iOS Safari has
- * none, and Chrome's estimate ignores private-network hosts, which a
- * self-hosted Helprr usually is. Timed from the response headers, so the round
- * trip is not counted as slowness; a slow link that runs out of time is
- * measured on what arrived. 0 when it cannot tell; null when it did not
- * measure at all (cancelled, or the member has no Jellyfin account linked
- * yet), which leaves the next start free to try again.
+ * first frame. The Network Information API's estimate is no substitute: iOS
+ * Safari has none, and Chrome's ignores private-network hosts, which a
+ * self-hosted Helprr usually is (only its top speed caps the result, as
+ * jellyfin-web's does). Each test is timed from the response headers, so the round trip
+ * is not counted as slowness, and one that runs out of time is measured on
+ * what arrived. A test the last result says cannot finish in time is not
+ * started: jellyfin-web would wait for its timeout and keep that result
+ * anyway. 0 when it cannot tell; null when it did not measure at all
+ * (cancelled, or the member has no Jellyfin account linked yet), which leaves
+ * the next start free to try again.
  */
 async function probeBandwidth(signal: AbortSignal): Promise<number | null> {
+  let measured = 0;
+  for (const test of BANDWIDTH_TESTS) {
+    if (measured && test.bytes * 8_000 / measured >= BANDWIDTH_PROBE_MS) break;
+    const result = await timedDownload(test.bytes, signal);
+    if (result === null) return signal.aborted || !measured ? null : measured;
+    // A failed bigger test keeps the smaller one's result, as jellyfin-web's does.
+    if (!result) break;
+    measured = result;
+    if (result < test.threshold) break;
+  }
+  return measured;
+}
+
+/** One timed download of `bytes` from Helprr; see `probeBandwidth`. */
+async function timedDownload(bytes: number, signal: AbortSignal): Promise<number | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), BANDWIDTH_PROBE_MS);
   const cancel = () => controller.abort();
   signal.addEventListener('abort', cancel, { once: true });
-  let bytes = 0;
+  let received = 0;
   let started = 0;
   try {
-    const res = await fetch(`/api/jellyfin/stream/bitrate-test?size=${BANDWIDTH_PROBE_BYTES}`, {
+    const res = await fetch(`/api/jellyfin/stream/bitrate-test?size=${bytes}`, {
       cache: 'no-store',
       signal: controller.signal,
     });
@@ -352,7 +381,7 @@ async function probeBandwidth(signal: AbortSignal): Promise<number | null> {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      bytes += value.byteLength;
+      received += value.byteLength;
     }
   } catch {
     // Out of time (or offline): what arrived is still a measurement.
@@ -362,7 +391,12 @@ async function probeBandwidth(signal: AbortSignal): Promise<number | null> {
   }
   if (signal.aborted) return null;
   const elapsed = performance.now() - started;
-  return started && bytes >= 32_000 && elapsed > 0 ? bytes * 8_000 / elapsed : 0;
+  return started && received >= 32_000 && elapsed > 0 ? received * 8_000 / elapsed : 0;
+}
+
+/** The connection's top speed in Mbps, where the browser reports one (Chrome on Android). */
+function downlinkMaxMbps(): number | undefined {
+  return (navigator as Navigator & { connection?: { downlinkMax?: number } }).connection?.downlinkMax;
 }
 
 async function fetchCatalogItems(params: Record<string, string>, signal?: AbortSignal): Promise<JellyfinItem[]> {
@@ -817,7 +851,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const canUseJellyfin = useCan('jellyfin.view');
   const cueLineRef = useRef(subtitleCueLine(subtitleAppearance.verticalPosition));
   const obstructionRef = useRef(0);
-  const hlsRef = useRef<{ destroy: () => void } | null>(null);
+  const hlsRef = useRef<{ destroy: () => void; stopLoad: () => void } | null>(null);
   const assRef = useRef<{ dispose?: () => void; resize?: () => void } | null>(null);
   /**
    * Whether libass has already failed on this device.
@@ -976,12 +1010,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    * it slow. Stop cancels it.
    */
   const probeRef = useRef<{ done: Promise<void>; controller: AbortController } | null>(null);
-  const measureLink = useCallback(() => {
+  const measureLink = useCallback((mayLower = true) => {
     if (!probeRef.current) {
       const controller = new AbortController();
       const done = probeBandwidth(controller.signal)
         .then((bitsPerSecond) => {
-          if (bitsPerSecond !== null && !controller.signal.aborted) bandwidthRef.current.seed(bitsPerSecond);
+          if (bitsPerSecond !== null && !controller.signal.aborted) bandwidthRef.current.seed(bitsPerSecond, Date.now(), downlinkMaxMbps(), mayLower);
         })
         .finally(() => {
           if (probeRef.current?.controller === controller) probeRef.current = null;
@@ -989,6 +1023,41 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       probeRef.current = { done, controller };
     }
     return probeRef.current.done;
+  }, []);
+  // A measurement belongs to the network it was made on. Chrome reports a
+  // connection change; going offline and back is a change everywhere; iOS
+  // reports neither, so a page hidden for a long while (the phone in a pocket,
+  // the home-screen app in the background) counts as one too. Chrome also
+  // fires `change` whenever its speed and latency estimates move, so only a
+  // new connection type or estimate class counts: each drop starts the next
+  // restart of the title at 6 Mbps. The price: desktop Chrome reports no
+  // `type` and its class sits at 4g, so a move from Wi-Fi to a phone hotspot
+  // goes unnoticed there, and so does Wi-Fi to another Wi-Fi on Android. The
+  // fast-link TTL (10 min above 20 Mbps) still bounds how long it is trusted.
+  useEffect(() => {
+    const changed = () => bandwidthRef.current.networkChanged();
+    const connection = (navigator as Navigator & { connection?: EventTarget & { type?: string; effectiveType?: string } }).connection;
+    const kind = () => `${connection?.type ?? ''}|${connection?.effectiveType ?? ''}`;
+    let lastKind = kind();
+    const onConnectionChange = () => {
+      const next = kind();
+      if (next === lastKind) return;
+      lastKind = next;
+      changed();
+    };
+    let hiddenAt = 0;
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') hiddenAt = Date.now();
+      else if (hiddenAt && Date.now() - hiddenAt > LONG_HIDDEN_MS) changed();
+    };
+    connection?.addEventListener?.('change', onConnectionChange);
+    window.addEventListener('online', changed);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      connection?.removeEventListener?.('change', onConnectionChange);
+      window.removeEventListener('online', changed);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
   /**
    * Sessions whose encoder this player has already asked Jellyfin to stop.
@@ -1060,11 +1129,24 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     }
   }, []);
 
-  const destroyPlayers = useCallback(() => {
+  /**
+   * The title's last frame, kept over the element while a restart of it loads
+   * (see `holdFrame`), and the wait for the new stream's first frame that
+   * takes it down.
+   */
+  const frameHoldRef = useRef<{ hold: FrameHold; cancel?: () => void } | null>(null);
+  const releaseFrameHold = useCallback(() => {
+    frameHoldRef.current?.cancel?.();
+    frameHoldRef.current?.hold.release();
+    frameHoldRef.current = null;
+  }, []);
+  /** `keepFrame`: a restart of the title on screen is attaching (attachMedia). */
+  const destroyPlayers = useCallback((keepFrame = false) => {
     hlsRef.current?.destroy();
     hlsRef.current = null;
     destroySubtitles();
-  }, [destroySubtitles]);
+    if (!keepFrame) releaseFrameHold();
+  }, [destroySubtitles, releaseFrameHold]);
 
   /**
    * Render one subtitle track onto the element that is already playing.
@@ -1307,7 +1389,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     if (!isCurrent()) return;
     const el = mediaRef.current;
     if (!el) throw new Error('Player is not ready');
-    destroyPlayers();
+    destroyPlayers(true);
     // A progressive transcode already begins at the requested position, so its
     // element starts at zero; seeking it there again ran it to its own end.
     const start = ticksToSeconds(next.startTimeTicks - next.transcodingOffsetTicks);
@@ -1433,13 +1515,19 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // Stop or a newer start can retire this attachment while HLS, layout, or
     // the subtitle engine is loading. It must not resume the shared element.
     if (!isCurrent()) return;
+    // The new source is on the element: its first frame replaces the one held.
+    const held = frameHoldRef.current;
+    if (held) {
+      held.cancel?.();
+      held.cancel = whenFramePresented(el, () => { if (frameHoldRef.current === held) releaseFrameHold(); });
+    }
     await applySubtitleTrack(next, requestedSubtitleIndex ?? next.mediaSource.DefaultSubtitleStreamIndex ?? null, isCurrent);
     if (!isCurrent()) return;
 
     // Read now, not at the start: a pause or play pressed while this attached
     // is what the viewer wants.
     return playMedia(el, isCurrent, undefined, pausedIntentRef.current ? (useNative ? PAUSED_START.native : PAUSED_START.buffered) : null);
-  }, [applySubtitleTrack, destroyPlayers, failPlayback, maxBitrate, muted, playbackRate, volume]);
+  }, [applySubtitleTrack, destroyPlayers, failPlayback, maxBitrate, muted, playbackRate, releaseFrameHold, volume]);
 
   const startItem = useCallback(async (nextItem: JellyfinItem, options: PlayOptions = {}, owner?: () => boolean, releasedSession?: string) => {
     if (!owner) expansionRef.current?.abort();
@@ -1533,6 +1621,22 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         }
         if (releaseOutgoing && outgoingSession) await releaseEncodings(outgoingSession);
       })();
+      // A restart of the title on screen at the same moment (a track or
+      // quality change) keeps its picture up until the new stream has one; a
+      // hold already up from a restart still loading stays. A seek's frame
+      // would show the old moment under the new time, and another title
+      // starts from black.
+      const outgoingEl = mediaRef.current;
+      const samePlace = streamRef.current?.item.Id === nextItem.Id && outgoingEl
+        && Math.abs(ticksToSeconds(resumeTicks - streamRef.current.transcodingOffsetTicks) - outgoingEl.currentTime) < 2;
+      if (samePlace && outgoingEl) {
+        if (!frameHoldRef.current) {
+          const hold = holdFrame(outgoingEl);
+          if (hold) frameHoldRef.current = { hold };
+        }
+      } else {
+        releaseFrameHold();
+      }
       streamRef.current = nextStream;
       attempt.attached = true;
       // The replacement element starts at zero until it seeks itself into place.
@@ -1541,6 +1645,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       // element holds a real position.
       reachedStartRef.current = false;
       setStream(nextStream);
+      // A remote viewer's stream is capped by Jellyfin's Internet limit.
+      if (nextStream.bitrateCap && nextStream.bitrateCap < ceiling) setEffectiveMaxBitrate(nextStream.bitrateCap);
       // What the viewer asked for wins over what came back. Jellyfin returns
       // the *file's* defaults in DefaultAudioStreamIndex/DefaultSubtitleStreamIndex
       // rather than echoing the request, so reading the response back here was
@@ -1684,7 +1790,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       setStatus('error');
       setError(unreachable ? "The stream couldn't be reached. Check the connection and try again." : message);
     }
-  }, [attachMedia, cancelPendingSkip, destroyPlayers, maxBitrate, measureLink, muted, noteRetryPosition, playbackRate, releaseEncodings, retireFailedStream, setPositionSeconds, stoppedReportFor, volume]);
+  }, [attachMedia, cancelPendingSkip, destroyPlayers, maxBitrate, measureLink, muted, noteRetryPosition, playbackRate, releaseEncodings, releaseFrameHold, retireFailedStream, setPositionSeconds, stoppedReportFor, volume]);
 
   const playItems = useCallback(async (items: JellyfinItem[], startIndex = 0, options?: PlayOptions) => {
     // Starting a title, even the same one again, ends a gathering run of skips.
@@ -2167,13 +2273,29 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     await applySubtitleTrack(current, streamIndex);
   }, [applySubtitleTrack, restartWith]);
 
+  // Which quality pick is the newest, for one still waiting on its speed test.
+  const bitratePickRef = useRef(0);
   const setMaxBitrate = useCallback(async (bitrate: number) => {
     const choice = normalizeBitrateChoice(bitrate);
+    const pick = ++bitratePickRef.current;
     setMaxBitrateState(choice);
     setEffectiveMaxBitrate(effectiveBitrate(choice, bandwidthRef.current.ceiling));
     try { localStorage.setItem(PLAYBACK_POLICY_KEY, String(choice)); } catch { /* best effort */ }
+    // Picking Automatic measures the link again first, however recent the last
+    // test, as jellyfin-web's does (playbackmanager.js `setMaxStreamingBitrate`).
+    // The stream on screen would share the link with the test and make it
+    // read slow, so hls.js stops loading for it; a stream Helprr cannot pause
+    // (Safari's own HLS, a file) lets this test raise the ceiling only. The
+    // stopped stream is never resumed: this restart replaces it, or a newer
+    // pick's does.
+    if (choice === 0 && streamRef.current && streamRef.current.item.MediaType !== 'Audio') {
+      const hls = hlsRef.current;
+      hls?.stopLoad();
+      await measureLink(Boolean(hls));
+      if (pick !== bitratePickRef.current) return;
+    }
     await restartWith({ maxStreamingBitrate: choice });
-  }, [restartWith]);
+  }, [measureLink, restartWith]);
 
   const skipSegment = useCallback((segment: MediaSegment) => {
     if (segment.EndTicks) seek(ticksToSeconds(segment.EndTicks));
@@ -2230,6 +2352,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       if (el.currentTime > 0) reachedStartRef.current = true;
       // A progressive transcode's element counts from where it was started.
       const offset = ticksToSeconds(streamRef.current?.transcodingOffsetTicks);
+      // A new source puts the element at zero (with a timeupdate) until it has
+      // seeked itself to its start: not where the viewer is, which the start
+      // already put on the clock. On an iPhone the readout said 0:00 for the
+      // whole reload of a track change.
+      const start = ticksToSeconds(streamRef.current?.startTimeTicks) - offset;
+      if (!reachedStartRef.current && el.currentTime === 0 && start > 0) return;
       // A run of skips is still gathering: keep showing where it will land.
       if (!pendingSkipRef.current) setPositionSeconds(offset + el.currentTime);
       if (el.duration && Number.isFinite(el.duration)) setDurationSeconds(offset + el.duration);

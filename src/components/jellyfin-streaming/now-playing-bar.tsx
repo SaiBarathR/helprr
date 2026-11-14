@@ -33,7 +33,8 @@ export function NowPlayingBar() {
         >
           {poster && <FadeInImage src={poster} alt="" fill sizes="44px" unoptimized className="object-cover" />}
         </button>
-        <button type="button" className="min-w-0 flex-1 text-left" onClick={() => playback.setVideoExpanded(true)}>
+        {/* data-now-playing-expand: where focus goes when the player minimizes (video-stage). */}
+        <button type="button" data-now-playing-expand className="min-w-0 flex-1 text-left" onClick={() => playback.setVideoExpanded(true)}>
           <p className="truncate text-sm font-medium">{playback.item.Name}</p>
           {/* A broadcast has no clock to show and no progress to fill. */}
           {live && !playback.error ? (

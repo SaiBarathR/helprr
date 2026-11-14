@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   linked: false,
   catalogStatus: 200,
+  catalogError: 'nope',
+  role: 'member',
 }));
 vi.mock('@/components/layout/navigation-provider', () => ({
   useAppRouter: () => ({ push: vi.fn(), replace: mocks.replace, back: vi.fn(), refresh: mocks.refresh }),
@@ -24,6 +26,7 @@ vi.mock('@/components/jellyfin-streaming/watch-top-bar', () => ({
   WatchTopBar: () => <button type="button" aria-label="Go back" />,
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/components/permission-provider', () => ({ useMe: () => ({ role: mocks.role }) }));
 
 import WatchPage from './page';
 
@@ -33,6 +36,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.linked = false;
   mocks.catalogStatus = 200;
+  mocks.catalogError = 'nope';
+  mocks.role = 'member';
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(String(input), 'http://helprr.test');
     if (url.pathname === '/api/account/jellyfin/link' && init?.method === 'POST') {
@@ -40,7 +45,7 @@ beforeEach(() => {
       return Response.json({ connected: true, jellyfinUsername: 'sam' });
     }
     if (url.pathname === '/api/jellyfin/catalog/items/abc123') {
-      if (mocks.catalogStatus !== 200) return Response.json({ error: 'nope' }, { status: mocks.catalogStatus });
+      if (mocks.catalogStatus !== 200) return Response.json({ error: mocks.catalogError }, { status: mocks.catalogStatus });
       return Response.json(mocks.linked ? { linked: true, item } : { linked: false, item: null });
     }
     return Response.json({});
@@ -94,6 +99,27 @@ describe('watch page', () => {
     mocks.catalogStatus = 403;
     await renderPage();
     expect(await screen.findByText("Couldn't start playback.")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull();
+  });
+
+  // Jellyfin refused the server's own API key: no retry helps, an admin's new key does.
+  it('sends an admin to the Jellyfin settings when Jellyfin rejects the API key', async () => {
+    mocks.catalogStatus = 409;
+    mocks.catalogError = 'jellyfin_api_key_rejected';
+    mocks.role = 'admin';
+    await renderPage();
+    expect(await screen.findByText("Jellyfin no longer accepts Helprr's API key.")).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Enter a new API key' }).getAttribute('href')).toBe('/settings/instances/jellyfin');
+    expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Go back' })).toBeTruthy();
+  });
+
+  it('tells a member to ask an admin when Jellyfin rejects the API key', async () => {
+    mocks.catalogStatus = 409;
+    mocks.catalogError = 'jellyfin_api_key_rejected';
+    await renderPage();
+    expect(await screen.findByText(/Ask an admin to enter a new one in Settings/)).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Enter a new API key' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull();
   });
 });

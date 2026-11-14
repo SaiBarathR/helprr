@@ -67,3 +67,23 @@ export async function jellyfinConnectGateResponse(
     { status: 409 },
   );
 }
+
+/**
+ * Jellyfin answered 401 to the server connection's own API key, which every
+ * catalog read uses: an admin deleted or replaced the key Helprr was set up
+ * with. Nothing works again until an admin enters a new one in Settings, so
+ * this says so (409, which nothing retries) instead of a 500 whose Retry can
+ * never help. A member's own token is not involved; that one is
+ * `jellyfinConnectGateResponse`'s. Null for anything else.
+ */
+export function jellyfinApiKeyRejectedResponse(error: unknown): NextResponse | null {
+  if (!isAxiosError(error) || error.response?.status !== 401) return null;
+  console.error('[api] Jellyfin rejected the server API key');
+  return NextResponse.json(
+    {
+      error: 'jellyfin_api_key_rejected',
+      message: 'Jellyfin no longer accepts Helprr\'s API key.',
+    },
+    { status: 409 },
+  );
+}

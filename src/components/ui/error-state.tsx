@@ -15,6 +15,7 @@ export function ErrorState({
   retrying = false,
   compact = false,
   className,
+  children,
 }: {
   message: string;
   onRetry?: () => void;
@@ -22,6 +23,8 @@ export function ErrorState({
   /** Tighter spacing for section-level (non-page) placements. */
   compact?: boolean;
   className?: string;
+  /** Another way out, under the message, when Retry is not the one. */
+  children?: React.ReactNode;
 }) {
   return (
     <div
@@ -37,6 +40,7 @@ export function ErrorState({
           <RefreshCw className={cn('mr-1.5 h-3.5 w-3.5', retrying && 'animate-spin')} /> Retry
         </Button>
       )}
+      {children}
     </div>
   );
 }

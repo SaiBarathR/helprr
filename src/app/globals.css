@@ -1202,6 +1202,15 @@ video[data-fill] {
   object-fit: cover;
 }
 
+/* The last frame held over the player while a restart loads (frame-hold.ts):
+   fitted as the video next to it is, Fill included. */
+[data-frame-hold] {
+  object-fit: contain;
+}
+video[data-fill] + [data-frame-hold] {
+  object-fit: cover;
+}
+
 .hpr-watch-player-enter[data-closing='true'] {
   animation: watch-player-out 160ms ease-in forwards;
   pointer-events: none;

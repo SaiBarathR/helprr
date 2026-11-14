@@ -369,7 +369,7 @@ export interface JellyfinUser {
   PrimaryImageTag?: string;
   LastLoginDate?: string;
   LastActivityDate?: string;
-  Policy?: { IsAdministrator?: boolean; IsHidden?: boolean; IsDisabled?: boolean; EnableLiveTvAccess?: boolean };
+  Policy?: { IsAdministrator?: boolean; IsHidden?: boolean; IsDisabled?: boolean; EnableLiveTvAccess?: boolean; RemoteClientBitrateLimit?: number };
 }
 
 export interface JellyfinTaskTrigger {

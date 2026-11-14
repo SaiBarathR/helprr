@@ -85,10 +85,16 @@ for (const answers of all) {
         must(joined === (answers.where === 'stack' && name === 'helprr'), `${name} ${joined ? 'joined' : 'did not join'} the apps' network`);
       }
       if (answers.where === 'stack') must(networks.apps.name === answers.network && networks.apps.external, 'the apps network is wrong');
-      // Every .env line reaches Helprr.
+      // Every .env line reaches Helprr; HELPRR_PORT reaches its published port instead.
       for (const line of out.env) {
         const [key, value] = [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)];
+        if (key === 'HELPRR_PORT') continue;
         must(helprr.environment[key] === value, `${key} did not reach helprr`);
+      }
+      // Behind Cloudflare Tunnel (https.md): trust on, and the port on this machine only.
+      if (answers.access === 'cloudflare') {
+        must(helprr.environment.TRUST_FORWARDED_PROTO === 'true', 'the tunnel left TRUST_FORWARDED_PROTO off');
+        must(helprr.ports?.length === 1 && helprr.ports[0].host_ip === '127.0.0.1', `the port is published on ${helprr.ports?.[0]?.host_ip ?? 'every address'}`);
       }
       // The first admin: Helprr accepts it at APP_ORIGIN when set, else at a home address.
       const origin = helprr.environment.APP_ORIGIN || null;
