@@ -29,7 +29,8 @@ vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => 
 vi.mock('@/components/permission-provider', () => ({
   useCan: (cap: string) => mocks.caps.has(cap),
   useMe: () => ({ seerrConfigured: false }),
-  hasCapability: () => false,
+  // Only the library-view checks behind "Open in library" read the caps here.
+  hasCapability: (_me: unknown, cap: string) => (cap.endsWith('.view') ? mocks.caps.has(cap) : false),
 }));
 vi.mock('@/components/seerr/requested-media-provider', () => ({ useRequestedMedia: () => ({ isRequested: () => false, markRequested: vi.fn() }) }));
 vi.mock('@/components/seerr/seerr-request-modal', () => ({ SeerrRequestModal: () => null }));
@@ -149,7 +150,7 @@ class IntersectionObserverStub {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.search = new URLSearchParams();
-  mocks.caps = new Set(['movies.add']);
+  mocks.caps = new Set(['movies.add', 'movies.view', 'series.view']);
   mocks.urls = [];
   mocks.intersect = null;
   mocks.sections = () => ({ sections: SECTIONS });
@@ -212,6 +213,13 @@ describe('Discover home (characterization)', () => {
     expect(within(screen.getByRole('group', { name: 'Charlie actions' })).getByRole('link', { name: 'Open in library' }).getAttribute('href')).toBe('/movies/5?instance=rad-1');
     expect(within(screen.getAllByRole('group', { name: 'Alpha actions' })[0]).getByRole('link', { name: 'Add to library' }).getAttribute('href')).toBe('/movies/add?term=Alpha&tmdbId=1');
     expect(within(screen.getAllByRole('group', { name: 'Bravo Show actions' })[0]).queryByRole('link', { name: /Add to/ })).toBeNull();
+  });
+
+  it('offers no library link to a user who cannot open the Movies library', async () => {
+    mocks.caps = new Set(['movies.add']);
+    renderHome();
+    const charlie = await screen.findByRole('group', { name: 'Charlie actions' });
+    expect(within(charlie).queryByRole('link', { name: 'Open in library' })).toBeNull();
   });
 
   it("browses a carousel's section from See all, then clears the section and goes back home", async () => {

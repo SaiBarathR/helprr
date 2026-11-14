@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PosterQuickActions } from '@/components/media/poster-quick-actions';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { useCan, useMe, hasCapability } from '@/components/permission-provider';
+import { canOpenLibrary } from '@/components/discover/open-in-instances';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { DiscoverItem, DiscoverSection } from '@/types';
 import type { DiscoverLayoutSection } from '@/lib/discover-layout-config';
@@ -130,7 +131,7 @@ export function MediaPoster({
       instanceId: item.library.instanceId ?? '',
       instanceLabel: '',
     } : null);
-  const libraryHref = libraryInstance
+  const libraryHref = libraryInstance && canOpenLibrary(me, item.mediaType === 'movie' ? 'movie' : 'series')
     ? `/${item.mediaType === 'movie' ? 'movies' : 'series'}/${libraryInstance.id}${libraryInstance.instanceId ? `?instance=${libraryInstance.instanceId}` : ''}`
     : null;
   const addHref = (() => {

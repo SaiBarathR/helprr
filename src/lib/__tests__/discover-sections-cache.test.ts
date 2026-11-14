@@ -222,6 +222,33 @@ describe('GET /api/discover sections cache', () => {
     });
   });
 
+  it('names the sections a failed TMDB source left empty, without upstream detail, and keeps nothing cached', async () => {
+    const broken = tmdbClient();
+    broken.discoverMovie = vi.fn(async () => { throw new Error('TMDB down at https://api.themoviedb.org/3?api_key=secret'); });
+    broken.movieWatchProviders = vi.fn(async () => { throw new Error('boom'); });
+    mocks.getTMDBClient.mockResolvedValue(broken);
+    const { GET } = await loadRoute();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await GET(sectionsRequest());
+    const text = await res.text();
+    const body: DiscoverResponse = JSON.parse(text);
+
+    expect(res.status).toBe(200);
+    // discoverMovie feeds Popular Movies, Popular and Upcoming Movies; the providers feed one section.
+    expect(body.failedSections?.sort()).toEqual(['popular_all', 'popular_movies', 'providers', 'upcoming_movies']);
+    expect(text).not.toMatch(/themoviedb|api_key|TMDB down|boom/);
+    expect(body.sections!.find((s) => s.key === 'trending')!.items).not.toHaveLength(0);
+
+    // The partial catalog was not kept: the next request asks TMDB again.
+    const healthy = tmdbClient();
+    mocks.getTMDBClient.mockResolvedValue(healthy);
+    const again: DiscoverResponse = await (await GET(sectionsRequest())).json();
+    warn.mockRestore();
+    expect(healthy.discoverMovie).toHaveBeenCalled();
+    expect(again.failedSections).toBeUndefined();
+  });
+
   it('keeps perSectionLimit between 1 and 60', async () => {
     const many = Array.from({ length: 20 }, (_, i) => ({ ...MOVIE, id: 1000 + i, title: `Movie ${i}` }));
     const tmdb = tmdbClient();

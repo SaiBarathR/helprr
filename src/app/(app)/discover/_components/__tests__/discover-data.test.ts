@@ -7,6 +7,7 @@ import {
   computeCarouselItemLimit,
   countActiveAdvancedFilters,
   discoverFetch,
+  formatUnavailable,
   formatWait,
   isDefaultFilters,
   normalizeFilterValues,
@@ -111,5 +112,14 @@ describe('carousel size', () => {
     vi.unstubAllGlobals();
     expect(typeof window).toBe('undefined');
     expect(computeCarouselItemLimit()).toBe(24);
+  });
+});
+
+describe('formatUnavailable', () => {
+  it('lists up to three names, then the first two and a count', () => {
+    expect(formatUnavailable(['Trending'])).toBe('Missing: Trending.');
+    expect(formatUnavailable(['Trending', 'Popular'])).toBe('Missing: Trending and Popular.');
+    expect(formatUnavailable(['A', 'B', 'C'])).toBe('Missing: A, B and C.');
+    expect(formatUnavailable(['A', 'B', 'C', 'D', 'E'])).toBe('Missing: A, B and 3 more.');
   });
 });

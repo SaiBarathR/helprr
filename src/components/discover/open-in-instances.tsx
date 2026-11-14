@@ -1,13 +1,23 @@
 'use client';
 
 import Link from '@/components/ui/app-link';
-import { ChevronDown, Sparkles } from 'lucide-react';
+import { Check, ChevronDown, Sparkles } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { hasCapability, useMe, type MePayload } from '@/components/permission-provider';
+
+/**
+ * Whether this user may open the Movies or Series library page. Discover and
+ * Anime show library state to users who cannot, and a link there would only end
+ * on that page's refusal, so the "Open in library" links check this first.
+ */
+export function canOpenLibrary(me: MePayload | null, type: 'movie' | 'series'): boolean {
+  return hasCapability(me, type === 'movie' ? 'movies.view' : 'series.view');
+}
 
 export interface OpenInInstance {
   instanceId: string;
@@ -31,7 +41,19 @@ interface OpenInInstancesProps {
  * or more it becomes a dropdown listing each instance so the user can open any copy.
  */
 export function OpenInInstances({ type, instances, label, className }: OpenInInstancesProps) {
+  const me = useMe();
   if (instances.length === 0) return null;
+
+  // Without access to that library the pill only states that the title is held.
+  if (!canOpenLibrary(me, type)) {
+    const reason = `You don't have access to ${type === 'movie' ? 'Movies' : 'Series'}`;
+    return (
+      <span className={className} title={reason} aria-label={`In library. ${reason}.`}>
+        <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+        <span className="tracking-widest uppercase">In library</span>
+      </span>
+    );
+  }
 
   const base = type === 'movie' ? '/movies' : '/series';
   // A series/movie id is only unique within an instance, so carry ?instance= so the

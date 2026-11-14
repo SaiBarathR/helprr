@@ -235,6 +235,15 @@ async function getLibraries() {
   return loadTaggedLibrary();
 }
 
+// The sections a TMDB source feeds when that is not just the section of the same
+// key, so a failed source names every rail it left empty or short.
+const SECTIONS_FED_BY: Record<string, string[]> = {
+  popular_movies: ['popular_movies', 'popular_all'],
+  popular_series: ['popular_series', 'popular_all'],
+  movie_providers: ['providers'],
+  tv_providers: ['providers'],
+};
+
 async function buildCatalogSections() {
   const tmdb = await getTMDBClient();
   const partialFailures = new Set<string>();
@@ -410,7 +419,7 @@ async function buildCatalogSections() {
 
   return {
     sections,
-    partialFailures: [...partialFailures],
+    failedSections: [...new Set([...partialFailures].flatMap((source) => SECTIONS_FED_BY[source] ?? [source]))],
   };
 }
 
@@ -609,10 +618,12 @@ async function getHandler(request: NextRequest) {
                 ? { ...section, items: (section.items as DiscoverItem[]).slice(0, perSectionLimit) }
                 : section,
             );
-      const respond = async (catalog: DiscoverSections) => {
+      const respond = async (catalog: DiscoverSections, failedSections: string[] = []) => {
         const body: DiscoverResponse = {
           mode: 'sections',
           sections: await annotateSectionsForCurrentLibrary(applySectionLimit(catalog)),
+          // Section keys only, never the upstream error, so the page can say what is missing.
+          ...(failedSections.length > 0 ? { failedSections } : {}),
         };
         return NextResponse.json(body, { headers: sectionsHeaders });
       };
@@ -621,23 +632,27 @@ async function getHandler(request: NextRequest) {
         return respond(sectionsCache.data);
       }
 
-      const { sections, partialFailures } = await buildCatalogSections();
+      const { sections, failedSections } = await buildCatalogSections();
       const freshHasMedia = hasMediaItems(sections);
 
-      if (freshHasMedia) {
+      // A catalog with failed sections is not kept, so the next visit or a Retry
+      // asks TMDB again for just those (the rest comes from the TMDB response cache).
+      if (freshHasMedia && failedSections.length === 0) {
         sectionsCache = {
           data: sections,
           expiresAt: now + SECTIONS_CACHE_TTL_MS,
         };
       }
 
-      if (partialFailures.length > 0) {
+      if (failedSections.length > 0) {
         console.warn(
-          `[Discover] TMDB partial failures (${partialFailures.length}): ${partialFailures.join(', ')}`
+          `[Discover] TMDB partial failures (${failedSections.length}): ${failedSections.join(', ')}`
         );
       }
 
-      return respond((!freshHasMedia && sectionsCache?.data) ? sectionsCache.data : sections);
+      // With nothing fresh to show, the last full catalog is served instead, and nothing is missing from it.
+      if (!freshHasMedia && sectionsCache?.data) return respond(sectionsCache.data);
+      return respond(sections, failedSections);
     }
 
     // TMDB serves pages 1 to 500 only.

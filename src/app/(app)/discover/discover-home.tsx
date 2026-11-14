@@ -155,6 +155,9 @@ export default function DiscoverPage() {
     heroItems,
     customCarouselItems,
     customCarouselLoading,
+    unavailable,
+    retryUnavailable,
+    retryingUnavailable,
   } = useDiscoverHome(discoverContentType, carouselItemLimit);
 
   const { gridQuery, items } = useDiscoverGrid({
@@ -446,6 +449,10 @@ export default function DiscoverPage() {
         handleSelectSort={handleSelectSort}
         rateLimitInfo={rateLimitInfo}
         rateLimitCountdown={rateLimitCountdown}
+        // The home's carousels only; the rate-limit banner already explains a 429.
+        unavailable={!gridMode && !rateLimitInfo && unavailable.length > 0
+          ? { names: unavailable, onRetry: retryUnavailable, retrying: retryingUnavailable }
+          : null}
       />
 
       <ActiveFilterBar filters={activeFilters} onClearAll={clearAllFilters} />
