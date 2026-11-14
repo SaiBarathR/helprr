@@ -48,6 +48,8 @@ export interface ImportRequestBody {
   scheduledAlerts?: ExportedScheduledAlerts;
   animeMappings?: ExportedAnimeMappings;
   users?: ExportedUsers;
+  /** How `users` match this install's accounts (users-mode.ts); not part of the export file. */
+  usersMode?: unknown;
   /** The step-up for users or a Jellyfin change (the route checks and drops them). */
   currentPassword?: unknown;
   code?: unknown;

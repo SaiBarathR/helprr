@@ -1381,6 +1381,30 @@ both against a disposable PostgreSQL (`SETTINGS_IMPORT_TEST_DATABASE_URL`, a
 database named `helprr_import_test`) and checks that a failure in each section
 rolls back the others.
 
+The `users` section matches accounts by the request's `usersMode`
+(`src/lib/settings-import/users-mode.ts`), which is not part of the file:
+`restore` matches the bootstrap admin by its fixed id and other accounts by id,
+then username, and creates missing ones under the file's id; `match-username` and
+`keep-first-admin` match by username only and give new accounts fresh ids, since
+every install's first admin shares `user-bootstrap-admin` and another install's
+ids mean nothing here. `keep-first-admin` skips any entry that reaches this
+install's bootstrap admin. `restore` applies the file's bootstrap entry first, so
+a same-named entry earlier in a reordered file cannot update that account in its
+place. A request without a mode is `restore`, the behaviour before the choice
+existed; an unknown one is refused before the step-up. Whatever entry reaches the
+bootstrap admin, it stays admin, active and on the admin template. The importer's
+own role and status are kept. A new password for them ends their sessions, and so
+does a rename while they are signed in through the trusted proxy header (that
+session names its account by username); the response says so
+(`importerSignedOut`, with the username to sign in with). The session can end at
+commit, seconds before the answer (the follow-ups run first), so the dialog defers
+the 401 redirect to Sign in for the whole request (`deferLoginRedirect` in
+`src/lib/query-client.ts`). A signed-out answer turns that into a hold, so the
+message stays until the importer goes to Sign in; any other answer or an error
+releases it, and a 401 that came meanwhile then goes to Sign in.
+It preselects `keep-first-admin`, and reads this install's users to warn about
+both the importer's account and the bootstrap admin.
+
 After the import transaction commits, `src/lib/settings-import/follow-ups.ts`
 brings the running server in line with it: loading app settings, purging the
 image cache (`purgeOlderCacheGenerations`, which fails loudly and sweeps every

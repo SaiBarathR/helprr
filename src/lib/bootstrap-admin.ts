@@ -6,12 +6,13 @@ import {
   localUsernameValidationError,
   normalizeLocalUsername,
 } from '@/lib/username-policy';
+import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin-id';
 
 // The single admin every Helprr install starts with. Migration 0015 seeds this
 // row (passwordHash NULL); this module hashes APP_PASSWORD into it on boot. The
 // id is stable so per-user backfills (migration 0016) can attach existing data
 // to it deterministically.
-export const BOOTSTRAP_ADMIN_ID = 'user-bootstrap-admin';
+export { BOOTSTRAP_ADMIN_ID };
 
 /**
  * Idempotently ensure the bootstrap admin exists and can log in with APP_PASSWORD.

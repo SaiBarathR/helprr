@@ -16,6 +16,14 @@ contains sessions, push subscriptions, or history, and it carries users'
 password hashes only when both **Users & accounts** and **Include API keys /
 tokens** are selected.
 
+Importing **Users & accounts** asks how to match the file's accounts to this
+install's. **Keep this install's first admin** (the default) matches by username
+and never changes the account the install started with. **Match by username**
+changes it only if the file has an account with its username. **Restore** lets
+the file's first admin replace it, for a backup of this same install. An account
+that gets another password from the file is signed out, yours included; the
+import says so before it runs.
+
 ## Back up
 
 Run it before every update and on a schedule:

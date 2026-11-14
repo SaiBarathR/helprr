@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/auth', () => ({
   requireUserCapability: mocks.requireUserCapability,
+  currentSessionIsTrusted: async () => false,
 }));
 
 vi.mock('@/lib/db', () => ({
