@@ -58,8 +58,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     // now-anchored, so fold today's LOCAL date into the key — otherwise a cached entry could
     // outlive local midnight and serve the previous day's window.
     const explicitWindow = Boolean(start && end);
+    // Its canonical spelling, so "pacific/auckland" and "Pacific/Auckland" share one entry.
     const releaseTimeZone = isValidTimeZone(requestedTimeZone)
-      ? requestedTimeZone
+      ? new Intl.DateTimeFormat('en', { timeZone: requestedTimeZone }).resolvedOptions().timeZone
       : (await getOrCreateAppSettings()).timeZone;
     const anchorKey = explicitWindow ? '' : getLocalDateKey(new Date(), releaseTimeZone);
     const cacheKeySeed = `${start ?? ''}|${end ?? ''}|${days ?? ''}|${fullDay}|${anchorKey}|${releaseTimeZone}`;
