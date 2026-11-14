@@ -239,11 +239,18 @@ export function arrowRoomNeeded(fields: ReadonlyArray<{ top: number; bottom: num
  * fields either side. Worked out the same way whether the header and buttons are
  * pinned (`scroll` fits, the body has the rest) or scroll with the fields (the
  * body is its full height, and `scroll` overflows by what pinning them would
- * take from it), so the layout does not flip back once switched.
+ * take from it), so the layout does not flip back once switched. That holds
+ * while the header and buttons can't shrink and the boxes marked min-h-0 are
+ * the only ones that do.
+ *
+ * Undefined (keep the layout as it is) while a field is moved by an inline
+ * transform: keepIosFromScrolling lifts a newly focused field 2000 px for a
+ * frame, and its box then reads as needing that much room.
  */
-export function formRoomTooShort(scroll: HTMLElement): boolean {
-  const fields = [...scroll.querySelectorAll<HTMLElement>('input, textarea, select')]
-    .filter(isArrowStop)
+export function formRoomTooShort(scroll: HTMLElement): boolean | undefined {
+  const candidates = [...scroll.querySelectorAll<HTMLElement>('input, textarea, select')].filter(isArrowStop);
+  if (candidates.some((el) => el.style.transform)) return undefined;
+  const fields = candidates
     .map((el) => ({ el, rect: el.getBoundingClientRect() }))
     .filter(({ rect }) => rect.bottom > rect.top);
   if (!fields.length) return false;

@@ -204,6 +204,18 @@ describe('formRoomTooShort', () => {
     expect(formRoomTooShort(sheet({ bodyHeight: 244, overflow: 0 }))).toBe(false);
   });
 
+  // keepIosFromScrolling lifts a newly focused field 2000 px for a frame.
+  it('gives no answer while a field is lifted by an inline transform, then measures again', () => {
+    const scroll = sheet({ bodyHeight: 247, overflow: 0 });
+    const field = scroll.querySelectorAll('input')[2];
+    field.style.transform = 'translateY(-2000px)';
+    vi.mocked(field.getBoundingClientRect).mockReturnValue({ top: -2316, bottom: -2272 } as DOMRect);
+    expect(formRoomTooShort(scroll)).toBeUndefined();
+    field.style.transform = '';
+    vi.mocked(field.getBoundingClientRect).mockReturnValue({ top: -316, bottom: -272 } as DOMRect);
+    expect(formRoomTooShort(scroll)).toBe(false);
+  });
+
   it('is never short for a step without fields to move between', () => {
     expect(formRoomTooShort(sheet({ bodyHeight: 10, overflow: 0, fields: [] }))).toBe(false);
   });

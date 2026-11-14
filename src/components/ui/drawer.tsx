@@ -68,7 +68,8 @@ function fitAboveKeyboard(node: HTMLElement): () => void {
     // it: an iPhone SE left the body 84 px between the pinned header and
     // buttons, less than a field and the centres of the fields either side.
     const scroll = node.querySelector<HTMLElement>(':scope > [data-slot="drawer-scroll"]')
-    node.toggleAttribute("data-scroll-together", tab || (isIOS() && scroll !== null && formRoomTooShort(scroll)))
+    const short = isIOS() && scroll !== null && formRoomTooShort(scroll)
+    node.toggleAttribute("data-scroll-together", tab || (short ?? node.hasAttribute("data-scroll-together")))
   })
 }
 

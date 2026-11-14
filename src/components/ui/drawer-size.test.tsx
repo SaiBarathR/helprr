@@ -196,6 +196,31 @@ describe('DrawerContent above the keyboard', () => {
     expect(panel.style.paddingBottom).toBe('0px');
   });
 
+  // A field lifted for a frame on focus (keepIosFromScrolling) can't be measured.
+  it('keeps the layout it has while the room cannot be measured', async () => {
+    vi.mocked(formRoomTooShort).mockReturnValue(true);
+    const { viewport, fire } = stubViewport(window.innerHeight - 300);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)', standalone: true });
+    const panel = openFormSheet();
+    expect(panel.hasAttribute('data-scroll-together')).toBe(true);
+    vi.mocked(formRoomTooShort).mockReturnValue(undefined);
+    viewport.height -= 10;
+    fire();
+    await waitFor(() => expect(panel.style.bottom).toBe('310px'));
+    expect(panel.hasAttribute('data-scroll-together')).toBe(true);
+    // The same keeps a pinned sheet pinned.
+    vi.mocked(formRoomTooShort).mockReturnValue(false);
+    viewport.height -= 10;
+    fire();
+    await waitFor(() => expect(panel.style.bottom).toBe('320px'));
+    expect(panel.hasAttribute('data-scroll-together')).toBe(false);
+    vi.mocked(formRoomTooShort).mockReturnValue(undefined);
+    viewport.height -= 10;
+    fire();
+    await waitFor(() => expect(panel.style.bottom).toBe('330px'));
+    expect(panel.hasAttribute('data-scroll-together')).toBe(false);
+  });
+
   it('keeps the buttons pinned in the Home Screen app when the form has room', () => {
     stubViewport(window.innerHeight - 300);
     vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)', standalone: true });
