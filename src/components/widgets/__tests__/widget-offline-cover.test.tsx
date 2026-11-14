@@ -166,25 +166,41 @@ describe('dashboard widgets with Helprr out of reach', () => {
     expect(getBrowseFreshness()).toBe(0);
   });
 
-  it("Discover's reused in-memory response keeps its saved copy, so it still expires at five minutes", async () => {
+  function DiscoverSections({ refreshInterval }: WidgetProps) {
+    const { data } = useWidgetData({ fetchFn: (signal) => fetchSectionsCached(20, signal), refreshInterval, cacheKey: 'discover-test' });
+    return <span>{data ? 'sections' : 'none'}</span>;
+  }
+
+  it("Discover doesn't keep a saved copy in its in-memory cache, so it still expires at five minutes", async () => {
     const savedAt = NOW - 4 * 60_000;
-    function Sections({ refreshInterval }: WidgetProps) {
-      const { data } = useWidgetData({ fetchFn: (signal) => fetchSectionsCached(20, signal), refreshInterval, cacheKey: 'discover-test' });
-      return <span>{data ? 'sections' : 'none'}</span>;
-    }
     let calls = 0;
-    const { client } = await show('Discover', Sections, async () => {
+    const { client } = await show('Discover', DiscoverSections, async () => {
       calls += 1;
       return json({ sections: [] }, { [SNAPSHOT_STALE_HEADER]: '1', [SNAPSHOT_TIME_HEADER]: String(savedAt) });
     });
-    // The pill's Retry: a second load inside Discover's 5-minute promise cache.
+    // The pill's Retry asks again instead of reusing the saved copy.
     await act(async () => client.invalidateQueries({ queryKey: ['widget-data'] }));
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
     expect(document.body.textContent).toContain('sections');
     expect(getBrowseFreshness()).toBe(savedAt);
-    // The expiry's own refetch reuses the cached response too, so the copy stays expired.
+    // Still only the copy at five minutes: covered, and out of the notice.
     await act(async () => vi.advanceTimersByTimeAsync(60_100));
+    // The re-check (and any poll in that minute) asked the network again.
+    expect(calls).toBeGreaterThanOrEqual(3);
     expect(screen.getByRole('status').textContent).toBe('DiscoverCan’t reach Helprr right now.');
+    expect(getBrowseFreshness()).toBe(0);
+  });
+
+  it("Discover's five-minute re-check reaches the network, so a live answer then means no cover", async () => {
+    const savedAt = NOW - 4 * 60_000;
+    let live = false;
+    await show('Discover', DiscoverSections, async () =>
+      live ? json({ sections: [] }) : json({ sections: [] }, { [SNAPSHOT_STALE_HEADER]: '1', [SNAPSHOT_TIME_HEADER]: String(savedAt) }));
+    expect(getBrowseFreshness()).toBe(savedAt);
+    live = true;
+    await act(async () => vi.advanceTimersByTimeAsync(60_100));
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.body.textContent).toContain('sections');
     expect(getBrowseFreshness()).toBe(0);
   });
 });

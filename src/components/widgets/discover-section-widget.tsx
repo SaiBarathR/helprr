@@ -71,6 +71,12 @@ export function fetchSectionsCached(perSectionLimit: number, signal?: AbortSigna
       if (!res.ok) throw new Error('Failed to fetch Discover sections');
       return res.json() as Promise<DiscoverResponse>;
     })
+    .then((data) => {
+      // A saved copy is shared with loads already waiting, but not kept: the
+      // next load (a poll, the five-minute re-check) must ask the network.
+      if (savedCopyOf(signal)?.at && sectionsPromises.get(perSectionLimit)?.promise === promise) sectionsPromises.delete(perSectionLimit);
+      return data;
+    })
     .catch((err) => {
       if (sectionsPromises.get(perSectionLimit)?.promise === promise) sectionsPromises.delete(perSectionLimit);
       throw err;
@@ -145,7 +151,11 @@ function fetchCustomCached(filters: DiscoverLayoutCustomFilters, limit: number, 
       if (!res.ok) throw new Error('Failed to fetch Discover carousel');
       return res.json() as Promise<DiscoverResponse>;
     })
-    .then((data) => (data.items ?? []).slice(0, limit))
+    .then((data) => {
+      // As for the sections: a saved copy is not kept for later loads.
+      if (savedCopyOf(signal)?.at && customCache.get(query)?.promise === promise) customCache.delete(query);
+      return (data.items ?? []).slice(0, limit);
+    })
     .catch((err) => {
       if (customCache.get(query)?.promise === promise) customCache.delete(query);
       throw err;

@@ -122,7 +122,8 @@ export function useWidgetData<T>({
       forget();
       // Online, a route slower than the worker's 2 s timeout is answered from
       // the copy too: ask once more, and cover only if no newer answer came.
-      void refetch().then(() => {
+      // Not cancelling a fetch another widget on this key already started.
+      void refetch({ cancelRefetch: false }).then(() => {
         if (cancelled || savedCopies.get(key)?.at !== savedAt) return;
         forget();
         setExpiredAt(savedAt);
