@@ -250,5 +250,33 @@ describe('DataTable stored widths that no longer fit', () => {
       expect(shown()).toEqual(['354px', '155px', '90px']);
       expect(stored().year).toBe(180);
     });
+
+    it.each([
+      [0, 'Title', { title: 2000, year: 180 }, 600],
+      [1, 'Year', { title: 600, year: 800 }, 500],
+    ])('a narrowing drag on column %i (%s) that comes back to its start keeps the stored widths', (grip, _name, widths, width) => {
+      // Squeezed hard, one shown pixel stands for several stored ones: the
+      // search alone returned less than what was stored (2000 -> 1870, 800 -> 787).
+      cleanup();
+      localStorage.setItem('helprr-table:fit-test', JSON.stringify({ widths }));
+      containerWidth = tableWidth = width;
+      render(<DataTable tableId="fit-test" columns={columns} rows={['Alien']} rowKey={String} stickyHeader />);
+      const before = shown();
+      const handle = screen.getAllByRole('separator')[grip];
+      act(() => {
+        handle.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 300 }));
+        handle.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 280 }));
+        handle.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 300 }));
+        handle.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 300 }));
+      });
+      expect(shown()).toEqual(before);
+      expect(stored()).toEqual(widths);
+    });
+
+    it('a press that never leaves the dead zone saves nothing', () => {
+      const write = vi.spyOn(Storage.prototype, 'setItem');
+      drag(screen.getAllByRole('separator')[1], 2);
+      expect(write).not.toHaveBeenCalled();
+    });
   });
 });

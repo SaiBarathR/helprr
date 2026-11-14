@@ -167,13 +167,18 @@ export default function InsightsPage() {
             onValueChange={(v) => setTab(v as (typeof tabs)[number])}
             className="gap-0"
           >
-            <TabsList aria-label="Insight sections" variant="segmented" className="no-scrollbar overflow-x-auto overflow-y-hidden">
-              {tabs.map((id) => (
-                <TabsTrigger key={id} value={id}>
-                  {TAB_LABELS[id]}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            {/* The scroller is a wrapper with 4px above and below (taken back by
+                the negative margin), so it doesn't clip the tabs' 44px hit areas
+                to the 36px track as a scrolling list did. */}
+            <div data-scroll-restoration-key="insights:tabs" className="no-scrollbar -my-1 overflow-x-auto overflow-y-hidden py-1">
+              <TabsList aria-label="Insight sections" variant="segmented" className="w-max min-w-full sm:min-w-0">
+                {tabs.map((id) => (
+                  <TabsTrigger key={id} value={id}>
+                    {TAB_LABELS[id]}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
           </Tabs>
         )}
 

@@ -258,6 +258,11 @@ export function DataTable<T>({
       if (drag.direction > 0) {
         const widened = Math.round(Math.min(maxWidth, drag.shownWidth + delta));
         next = widened > drag.shownWidth ? Math.max(drag.storedWidth, widened) : drag.storedWidth;
+      } else if (delta >= 0) {
+        // Back at (or past) its start: keep the stored width. While fitted,
+        // one shown pixel stands for several stored ones, and the search
+        // would return the smallest that shows this width.
+        next = drag.storedWidth;
       } else {
         next = storedFor(Math.round(Math.max(columnFloor(col), drag.appliedWidth + delta)));
       }
@@ -266,10 +271,13 @@ export function DataTable<T>({
       ));
     };
     const onUp = () => {
+      const moved = Boolean(dragRef.current?.direction);
       dragRef.current = null;
       handle.removeEventListener('pointermove', onMove);
       handle.removeEventListener('pointerup', onUp);
       handle.removeEventListener('pointercancel', onUp);
+      // A press that never left the dead zone changed nothing to save.
+      if (!moved) return;
       // Read the committed value out of state via the updater so we persist
       // exactly what the last move landed on.
       setWidthOverrides((prev) => {
