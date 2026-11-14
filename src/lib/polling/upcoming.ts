@@ -7,6 +7,7 @@ import { releaseDayKey } from '@/lib/release-day';
 import { logger } from '@/lib/logger';
 import { noteJobFailure, noteJobSkipped } from '@/lib/polling-job-report';
 import { PollNotificationCollector } from '@/lib/notification-grouping';
+import { usersWhoCouldReceive } from '@/lib/notification-service';
 import { notifyAndLog, instanceTitle, type CycleContext } from './shared';
 
 // Tolerance (minutes) for the "before_air" firing window. Lets a sluggish poll
@@ -18,26 +19,7 @@ const BEFORE_AIR_GRACE_MIN = 5;
 // edge isn't excluded by clock skew between us and Sonarr/Radarr.
 const FETCH_END_BUFFER_MS = 60_000;
 
-/**
- * The time zones before-air film and album pushes count down in: each active
- * user's own Time zone setting, else the app's (as quiet hours and the
- * calendar feed read it). One zone (the usual household) is one broadcast, as
- * before; with several, each zone's users get their own send at their own
- * local midnight.
- */
-async function recipientTimeZones(appTimeZone: string): Promise<Array<{ timeZone: string; userIds?: string[] }>> {
-  const users = await prisma.user.findMany({
-    where: { status: 'active' },
-    select: { id: true, settings: { select: { timeZone: true } } },
-  });
-  const byZone = new Map<string, string[]>();
-  for (const user of users) {
-    const zone = normalizeTimeZone(user.settings?.timeZone, appTimeZone);
-    byZone.set(zone, [...(byZone.get(zone) ?? []), user.id]);
-  }
-  if (byZone.size <= 1) return [{ timeZone: byZone.keys().next().value ?? appTimeZone }];
-  return [...byZone].map(([timeZone, userIds]) => ({ timeZone, userIds }));
-}
+const HOUR_MS = 3_600_000;
 
 /** The moment a release day ("2026-11-20") starts in a time zone. */
 function localMidnightMs(dayKey: string, timeZone: string): number {
@@ -116,14 +98,17 @@ export async function checkUpcoming(context: CycleContext) {
   // row was written when its item was last inside the notify window — at most
   // (notifyBefore + grace) before its air time, and the furthest air time we
   // consider is fetchEndMs — so look back that far plus a day of slack; older
-  // rows can't match a key we build this cycle. The snapshot doesn't see rows
+  // rows can't match a key we build this cycle. A film's local midnight can be
+  // up to 14 h before its UTC midnight (UTC+14), and the digest for that day can
+  // run up to a day after it, so release keys need a second day of slack. The
+  // snapshot doesn't see rows
   // written later in this same cycle, so we also record each key as we fire it
   // (notifiedKeys.add below) — that suppresses a duplicate calendar entry that
   // a malformed/proxied upstream might repeat within one response.
   const dedupeLookbackMs =
     (settings.upcomingNotifyBeforeMins + BEFORE_AIR_GRACE_MIN) * 60_000 +
     FETCH_END_BUFFER_MS +
-    86_400_000;
+    2 * 86_400_000;
   const priorUpcoming = await prisma.notificationHistory.findMany({
     where: {
       eventType: 'upcomingPremiere',
@@ -133,18 +118,39 @@ export async function checkUpcoming(context: CycleContext) {
   });
   const notifiedKeys = new Set<string>();
   const notifiedBodies = new Set<string>();
+  // Who each film or album release (by its bare key) has already gone to:
+  // 'all' after a broadcast (the digest, the old UTC-midnight countdown, or a
+  // household whose midnight is one instant), else the users of its targeted
+  // sends ("<key>@<instant>", their ids in metadata.recipientUserIds). So a
+  // user who changes time zone after their send is not sent it again.
+  const releaseCoverage = new Map<string, 'all' | Set<string>>();
+  const cover = (key: string, recipients: unknown) => {
+    const at = key.lastIndexOf('@');
+    const base = at > 0 ? key.slice(0, at) : key;
+    const previous = releaseCoverage.get(base);
+    if (previous === 'all') return;
+    if (at <= 0 || !Array.isArray(recipients)) {
+      releaseCoverage.set(base, 'all');
+      return;
+    }
+    const ids = recipients.filter((id): id is string => typeof id === 'string');
+    releaseCoverage.set(base, new Set([...(previous ?? []), ...ids]));
+  };
   for (const row of priorUpcoming) {
+    const md = row.metadata as { grouped?: unknown; itemDedupeKeys?: unknown; recipientUserIds?: unknown } | null;
     if (row.dedupeKey) {
       notifiedKeys.add(row.dedupeKey);
+      cover(row.dedupeKey, md?.recipientUserIds);
       continue;
     }
     // A grouped row has no top-level dedupeKey; its per-item keys live in
     // metadata.itemDedupeKeys (see notification-grouping.ts). Harvest them so
     // items sent inside a digest are still suppressed on later cycles.
-    const md = row.metadata as { grouped?: unknown; itemDedupeKeys?: unknown } | null;
     if (md?.grouped && Array.isArray(md.itemDedupeKeys)) {
       for (const key of md.itemDedupeKeys) {
-        if (typeof key === 'string') notifiedKeys.add(key);
+        if (typeof key !== 'string') continue;
+        notifiedKeys.add(key);
+        cover(key, md.recipientUserIds);
       }
     } else {
       notifiedBodies.add(row.body);
@@ -166,26 +172,59 @@ export async function checkUpcoming(context: CycleContext) {
       minsUntilAir >= -BEFORE_AIR_GRACE_MIN
     );
   };
+  /** Whether any moment between the two could fire now. */
+  const shouldFireBeforeAirBetween = (earliestMs: number, latestMs: number): boolean =>
+    latestMs >= now.getTime() - BEFORE_AIR_GRACE_MIN * 60_000 &&
+    earliestMs <= now.getTime() + settings.upcomingNotifyBeforeMins * 60_000;
 
   // The sends a film or album release is due this cycle. The digest sends
-  // today's once, under the release's own key (`baseKey`). Before-air sends to
-  // each zone whose local midnight is in the window, under the key plus its
-  // zone. Each also checks the other's keys, and before-air the bare key that
-  // the UTC-midnight countdown wrote, so neither a mode switch nor this change
-  // sends one twice.
-  const zones = await recipientTimeZones(timeZone);
-  const zoneKey = (baseKey: string, zone: string) => `${baseKey}@${zone}`;
-  const releaseSends = (dateStr: string, baseKey: string): Array<{ dedupeKey: string; checkKeys: string[]; userIds?: string[] }> => {
+  // today's once, under the release's own key (`baseKey`), unless before-air
+  // already sent it. Before-air plans for the users who could receive it (the
+  // delivery's gates) and counts down to the day's midnight in each one's zone
+  // (their own, else the app's); users whose midnight is the same instant
+  // (Asia/Kolkata and Asia/Calcutta, or UTC and London in winter) share one send
+  // and one history row, keyed "<baseKey>@<instant>". A household on one instant
+  // gets one broadcast, as before. A release nobody could receive is still
+  // broadcast once at the app zone's midnight, so Notifications lists it.
+  const recipientsBySource = new Map<string, Promise<Array<{ id: string; timeZone: string }>>>();
+  const recipientsFor = (source: 'radarr' | 'lidarr') => {
+    let recipients = recipientsBySource.get(source);
+    if (!recipients) {
+      recipients = usersWhoCouldReceive('upcomingPremiere', { source }).then((users) =>
+        users.map((user) => ({ id: user.id, timeZone: normalizeTimeZone(user.timeZone, timeZone) })));
+      recipientsBySource.set(source, recipients);
+    }
+    return recipients;
+  };
+  const releaseSends = async (
+    dateStr: string,
+    baseKey: string,
+    source: 'radarr' | 'lidarr',
+  ): Promise<Array<{ dedupeKey: string; userIds?: string[] }>> => {
     const day = releaseDayKey(dateStr);
     if (!day) return [];
-    if (digestDay) {
-      return day === digestDay
-        ? [{ dedupeKey: baseKey, checkKeys: zones.map((zone) => zoneKey(baseKey, zone.timeZone)) }]
-        : [];
+    const covered = releaseCoverage.get(baseKey);
+    if (digestDay) return day === digestDay && !covered ? [{ dedupeKey: baseKey }] : [];
+    if (covered === 'all') return [];
+    // Local midnights fall from 14 h before the UTC midnight to 12 h after it:
+    // when none of them can be in the window, there is nobody to look up.
+    const utcMidnightMs = localMidnightMs(day, 'UTC');
+    if (!shouldFireBeforeAirBetween(utcMidnightMs - 14 * HOUR_MS, utcMidnightMs + 12 * HOUR_MS)) return [];
+    const byInstant = new Map<number, string[]>();
+    for (const { id, timeZone: zone } of await recipientsFor(source)) {
+      const at = localMidnightMs(day, zone);
+      byInstant.set(at, [...(byInstant.get(at) ?? []), id]);
     }
-    return zones
-      .filter((zone) => shouldFireBeforeAir(localMidnightMs(day, zone.timeZone)))
-      .map((zone) => ({ dedupeKey: zoneKey(baseKey, zone.timeZone), checkKeys: [baseKey], ...(zone.userIds ? { userIds: zone.userIds } : {}) }));
+    if (byInstant.size === 0) byInstant.set(localMidnightMs(day, timeZone), []);
+    const broadcast = byInstant.size === 1 && !covered;
+    const sends: Array<{ dedupeKey: string; userIds?: string[] }> = [];
+    for (const [at, ids] of byInstant) {
+      if (!shouldFireBeforeAir(at)) continue;
+      const userIds = covered ? ids.filter((id) => !covered.has(id)) : ids;
+      if (broadcast) sends.push({ dedupeKey: `${baseKey}@${at}` });
+      else if (userIds.length > 0) sends.push({ dedupeKey: `${baseKey}@${at}`, userIds });
+    }
+    return sends;
   };
 
   // Sonarr calendar (every instance) ---------------------------------------
@@ -323,8 +362,8 @@ export async function checkUpcoming(context: CycleContext) {
         // Radarr returns a movie if ANY of its 3 release dates falls in the
         // window, so the other two might be years away (e.g., cinema 2010,
         // digital today); those have no send.
-        for (const { dedupeKey, checkKeys, userIds } of releaseSends(dateStr, baseKey)) {
-          if (alreadyNotified([dedupeKey, ...checkKeys, ...(connection.isDefault ? [legacyKey] : [])], body)) {
+        for (const { dedupeKey, userIds } of await releaseSends(dateStr, baseKey, 'radarr')) {
+          if (alreadyNotified([dedupeKey, ...(connection.isDefault ? [legacyKey] : [])], body)) {
             logger.debug('Skipping duplicate Radarr upcoming notification', {
               movieId: movie.id,
               releaseType,
@@ -334,6 +373,7 @@ export async function checkUpcoming(context: CycleContext) {
           }
 
           notifiedKeys.add(dedupeKey);
+          cover(dedupeKey, userIds);
           collector.add({
             eventType: 'upcomingPremiere',
             title: instanceTitle('Upcoming Movie', connection.label, radarrClients.length),
@@ -341,6 +381,7 @@ export async function checkUpcoming(context: CycleContext) {
             dedupeKey,
             ...(userIds ? { userIds } : {}),
             metadata: {
+              ...(userIds ? { recipientUserIds: userIds } : {}),
               source: 'radarr',
               instanceId: connection.id,
               instanceLabel: connection.label,
@@ -391,10 +432,11 @@ export async function checkUpcoming(context: CycleContext) {
       const body = `${artistName ? `${artistName} — ` : ''}${album.title}`;
       const baseKey = `lidarr-${connection.id}-${album.id}-${releaseMs}`;
       const legacyKey = `lidarr-${album.id}-${releaseMs}`;
-      for (const { dedupeKey, checkKeys, userIds } of releaseSends(album.releaseDate, baseKey)) {
-        if (alreadyNotified([dedupeKey, ...checkKeys, ...(connection.isDefault ? [legacyKey] : [])], body)) continue;
+      for (const { dedupeKey, userIds } of await releaseSends(album.releaseDate, baseKey, 'lidarr')) {
+        if (alreadyNotified([dedupeKey, ...(connection.isDefault ? [legacyKey] : [])], body)) continue;
 
         notifiedKeys.add(dedupeKey);
+        cover(dedupeKey, userIds);
         collector.add({
           eventType: 'upcomingPremiere',
           title: instanceTitle('Upcoming Album', connection.label, lidarrClients.length),
@@ -402,6 +444,7 @@ export async function checkUpcoming(context: CycleContext) {
           dedupeKey,
           ...(userIds ? { userIds } : {}),
           metadata: {
+            ...(userIds ? { recipientUserIds: userIds } : {}),
             source: 'lidarr',
             instanceId: connection.id,
             instanceLabel: connection.label,

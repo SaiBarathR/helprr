@@ -182,6 +182,8 @@ function buildGroupedNotification(group: Entry[]): {
     .filter((k): k is string => typeof k === 'string');
   if (itemDedupeKeys.length > 0) metadata.itemDedupeKeys = itemDedupeKeys;
   if (source) metadata.source = source;
+  // Who a targeted group went to (upcoming films per time zone read it back).
+  if (first.metadata?.recipientUserIds) metadata.recipientUserIds = first.metadata.recipientUserIds;
   const instanceId = metaString(first.metadata, 'instanceId');
   if (instanceId) metadata.instanceId = instanceId;
   const instanceLabel = metaString(first.metadata, 'instanceLabel');

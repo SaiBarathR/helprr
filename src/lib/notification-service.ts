@@ -314,6 +314,43 @@ function recipientAllowed(
   return user.role === 'admin' || targeted;
 }
 
+/**
+ * The users a broadcast of this event could reach, by the gates delivery uses
+ * (before quiet hours and per-device backoff): active, allowed the event and
+ * its source, with a push device that takes it (its own choice, else the
+ * event's default) or an outbound channel set to it. A caller that times an
+ * event per recipient (upcoming films at each one's local midnight) plans
+ * only for these.
+ */
+export async function usersWhoCouldReceive(
+  eventType: string,
+  metadata: Record<string, unknown>,
+): Promise<Array<{ id: string; timeZone: string | null }>> {
+  const requiredCap = isKnownEventType(eventType) ? EVENT_TYPE_TO_CAPABILITY[eventType] : undefined;
+  const sourceCap = sourceCapability(metadata);
+  const users = await prisma.user.findMany({
+    where: {
+      status: 'active',
+      OR: [
+        { pushSubscriptions: { some: { revokedAt: null } } },
+        { notificationChannels: { some: { enabled: true, events: { has: eventType } } } },
+      ],
+    },
+    include: {
+      settings: { select: { timeZone: true } },
+      pushSubscriptions: { where: { revokedAt: null }, select: { preferences: { where: { eventType }, select: { enabled: true } } } },
+      notificationChannels: { where: { enabled: true, events: { has: eventType } }, select: { id: true } },
+    },
+  });
+  return users
+    .filter((user) => recipientAllowed(user, eventType, requiredCap, false, sourceCap))
+    .filter((user) => user.notificationChannels.length > 0 || user.pushSubscriptions.some((sub) => {
+      const pref = sub.preferences[0];
+      return pref ? pref.enabled : eventEnabledByDefault(eventType);
+    }))
+    .map((user) => ({ id: user.id, timeZone: user.settings?.timeZone ?? null }));
+}
+
 /** The in-app path a notification opens, and the absolute link to it when APP_ORIGIN is set. */
 function channelLinks(targetUrl: string | undefined): { link: string | null; path: string | null } {
   if (!targetUrl || !targetUrl.startsWith('/') || targetUrl.startsWith('//')) return { link: null, path: null };

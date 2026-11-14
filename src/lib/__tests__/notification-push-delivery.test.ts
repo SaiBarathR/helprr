@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   findMany: vi.fn(async () => [] as unknown[]),
   createHistory: vi.fn(async () => ({ id: 'h1' })),
   updateHistory: vi.fn(async () => ({})),
+  findUsers: vi.fn(async () => [] as unknown[]),
 }));
 
 vi.mock('web-push', () => ({
@@ -28,6 +29,7 @@ vi.mock('@/lib/db', () => ({
       findMany: mocks.findMany,
     },
     notificationHistory: { create: mocks.createHistory, update: mocks.updateHistory },
+    user: { findMany: mocks.findUsers },
   },
 }));
 vi.mock('@/lib/vapid', () => ({
@@ -38,7 +40,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import { Prisma } from '@prisma/client';
-import { notifyEvent, sendPushNotification } from '@/lib/notification-service';
+import { notifyEvent, sendPushNotification, usersWhoCouldReceive } from '@/lib/notification-service';
 import { PollNotificationCollector } from '@/lib/notification-grouping';
 import { jobReports, type JobReport } from '@/lib/polling-job-report';
 
@@ -212,6 +214,30 @@ describe('events that start off', () => {
     expect(sentTo()).toEqual([]);
   });
 
+  it("holds an upcoming film's push in quiet hours but keeps its history row, which claims it (not sent later)", async () => {
+    // Before-air films now fire near 23:00 local, inside most overnight quiet
+    // hours. As for every other held push: no push, but the row is written
+    // with its key and recipients, so the next cycles don't send it again.
+    const hour = new Date().getUTCHours();
+    mocks.findMany.mockResolvedValueOnce([{
+      ...device('sleepy', []),
+      user: {
+        id: 'user-sleepy', role: 'admin', template: 'admin', permissions: {},
+        settings: { quietHoursEnabled: true, quietHoursStart: hour, quietHoursEnd: (hour + 1) % 24, timeZone: 'UTC' },
+      },
+    }]);
+    await notifyEvent({
+      eventType: 'upcomingPremiere', title: 'Upcoming Movie', body: 'Film (2026) — In Cinemas',
+      dedupeKey: 'radarr-r1-50-cinema-1792454400000@1792434600000', userIds: ['user-sleepy'],
+      metadata: { recipientUserIds: ['user-sleepy'], source: 'radarr', movieId: 50 },
+    });
+    expect(sentTo()).toEqual([]);
+    expect(mocks.createHistory).toHaveBeenCalledWith({ data: expect.objectContaining({
+      dedupeKey: 'radarr-r1-50-cinema-1792454400000@1792434600000',
+      metadata: expect.objectContaining({ recipientUserIds: ['user-sleepy'] }),
+    }) });
+  });
+
   it('still sends other events to a device with no saved choice', async () => {
     mocks.findMany.mockResolvedValueOnce([device('unset', [])]);
     await notifyEvent({ eventType: 'grabbed', title: 'Grabbed', body: 'Body' });
@@ -283,5 +309,48 @@ describe('Lidarr-sourced pushes', () => {
     mocks.findMany.mockResolvedValueOnce(devices());
     await notifyEvent({ eventType: 'grabbed', title: 'Download Started', body: 'Show', metadata: { source: 'sonarr', instanceId: 'son-1' } });
     expect(sentTo()).toEqual(['admin', 'member', 'no-music']);
+  });
+});
+
+// Upcoming films are timed per recipient, so their sends are planned only for
+// the users the delivery could reach.
+describe('usersWhoCouldReceive', () => {
+  const user = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, role: 'member', template: 'member', permissions: {}, settings: { timeZone: `Zone/${id}` },
+    pushSubscriptions: [{ preferences: [] }], notificationChannels: [], ...extra,
+  });
+
+  it('keeps users allowed the event with a device or channel that takes it', async () => {
+    mocks.findUsers.mockResolvedValueOnce([
+      user('phone'),
+      user('admin', { role: 'admin', template: 'admin' }),
+      user('channel-only', { pushSubscriptions: [], notificationChannels: [{ id: 'c1' }] }),
+      user('turned-off', { pushSubscriptions: [{ preferences: [{ enabled: false }] }] }),
+      user('one-of-two-on', { pushSubscriptions: [{ preferences: [{ enabled: false }] }, { preferences: [{ enabled: true }] }] }),
+      user('no-media', { permissions: { 'notify.media': false } }),
+      user('no-zone', { settings: null }),
+    ]);
+    expect(await usersWhoCouldReceive('upcomingPremiere', { source: 'radarr' })).toEqual([
+      { id: 'phone', timeZone: 'Zone/phone' },
+      { id: 'admin', timeZone: 'Zone/admin' },
+      { id: 'channel-only', timeZone: 'Zone/channel-only' },
+      { id: 'one-of-two-on', timeZone: 'Zone/one-of-two-on' },
+      { id: 'no-zone', timeZone: null },
+    ]);
+    // Only active users with a live device or a channel set to the event are read.
+    expect(mocks.findUsers).toHaveBeenCalledWith(expect.objectContaining({ where: {
+      status: 'active',
+      OR: [
+        { pushSubscriptions: { some: { revokedAt: null } } },
+        { notificationChannels: { some: { enabled: true, events: { has: 'upcomingPremiere' } } } },
+      ],
+    } }));
+  });
+
+  it('needs music.view for an album', async () => {
+    mocks.findUsers.mockResolvedValue([user('member'), user('no-music', { permissions: { 'music.view': false } })]);
+    expect((await usersWhoCouldReceive('upcomingPremiere', { source: 'lidarr' })).map((u) => u.id)).toEqual(['member']);
+    expect((await usersWhoCouldReceive('upcomingPremiere', { source: 'radarr' })).map((u) => u.id)).toEqual(['member', 'no-music']);
+    mocks.findUsers.mockResolvedValue([]);
   });
 });
