@@ -45,6 +45,26 @@ describe('a widget whose service is not connected', () => {
     expect(screen.queryByRole('link')).toBeNull();
     expect(screen.getByText('Ask your admin to connect qBittorrent')).toBeDefined();
   });
+
+  it('gives a member "Needs X" in a tiny cell, and keeps the full sentence for screen readers and the title', () => {
+    mocks.canConnect = false;
+    render(<WidgetRenderer instance={instance} />);
+    const full = screen.getByText('Ask your admin to connect qBittorrent');
+    // Below 80px the sentence is only visually hidden, so it is still read.
+    expect(full.className).toContain('@max-[79px]/cell:sr-only');
+    const short = screen.getByText('Needs qBittorrent');
+    expect(short.getAttribute('aria-hidden')).toBe('true');
+    expect(short.className).toContain('@max-[79px]/cell:inline');
+    expect(full.parentElement?.getAttribute('title')).toBe('Ask your admin to connect qBittorrent');
+  });
+
+  it('tightens to fit a one-cell phone widget, and names the whole action in the title', () => {
+    render(<WidgetRenderer instance={instance} />);
+    const link = screen.getByRole('link', { name: /^Connect qBittorrent/ });
+    expect(link.getAttribute('title')).toBe('Connect qBittorrent');
+    expect(link.className).toContain('@max-[79px]/cell:p-0.5');
+    expect(link.className).toContain('@max-[159px]/cell:text-[10px]');
+  });
 });
 
 describe('the menu of an empty widget', () => {

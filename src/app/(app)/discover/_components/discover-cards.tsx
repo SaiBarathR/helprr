@@ -278,6 +278,10 @@ export function SectionRow({
   onPickGenre: (genreId: number, type: 'movie' | 'show') => void;
   onPickProvider: (providerId: number, type: 'movie' | 'show') => void;
 }) {
+  // A source that failed comes back empty; the page's "Missing: …" notice
+  // already names it, so a bare heading over a blank gap would only repeat it.
+  if (section.items.length === 0) return null;
+
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between">

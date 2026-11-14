@@ -194,8 +194,11 @@ export function JellyfinUserActivityWidget({ refreshInterval, editMode = false, 
                       </p>
                     </div>
                     <div className="text-right shrink-0">
-                      {/* "3 days ago" → "3d" on compact cells. */}
-                      <p className="text-[10px] text-muted-foreground @max-[219px]/cell:hidden">{user.last_seen}</p>
+                      {/* "3 days ago" → "3d" on compact cells. Below 360px the long
+                          form ("1 week 5 days 2 hours 13 minutes") pushed the
+                          user's name out of the row, so it shortens to "1w 5d". */}
+                      <p className="text-[10px] text-muted-foreground @max-[359px]/cell:hidden">{user.last_seen}</p>
+                      <p className="hidden text-[10px] text-muted-foreground @max-[359px]/cell:block @max-[219px]/cell:hidden">{shortPluginDuration(user.last_seen)}</p>
                       <p className="hidden text-[10px] text-muted-foreground @max-[219px]/cell:block">{shortPluginDuration(user.last_seen, 1)}</p>
                     </div>
                   </div>

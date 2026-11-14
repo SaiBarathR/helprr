@@ -23,13 +23,24 @@ function makeQueryClient() {
         gcTime: 5 * 60_000, // keep data warm so back-navigation paints from cache
         refetchOnWindowFocus: false, // iOS PWA focus churn would hammer the *arr instances
         refetchOnReconnect: false, // QueryProvider bounds and prioritizes reconnect reads.
-        // Local *arr — fast-fail. Never retry a 401 (let the handler above redirect).
-        retry: (count, error) =>
-          !(error instanceof ApiError && error.status === 401) && count < 1,
+        // Local *arr — fast-fail, one retry. Never retry a refusal or other
+        // client error (401 redirects above; a 403 or 404 answers the same
+        // twice), only a timeout or rate limit among the 4xx.
+        retry: (count, error) => !isFinalClientError(error) && count < 1,
       },
       mutations: { retry: 0 },
     },
   });
+}
+
+/**
+ * A client error asking again won't change (a refusal, not found, a conflict):
+ * no automatic retry, and no Retry button. A timeout (408) or rate limit (429)
+ * is worth another try.
+ */
+export function isFinalClientError(error: unknown): boolean {
+  return error instanceof ApiError && error.status >= 400 && error.status < 500
+    && error.status !== 408 && error.status !== 429;
 }
 
 let redirectingToLogin = false;

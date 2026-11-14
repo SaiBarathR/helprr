@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   gate: null as Promise<void> | null,
   tmdbConfigured: true,
   movieExtra: {} as Record<string, unknown>,
+  forbidden: false,
+  referenceEnabled: [] as boolean[],
 }));
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: '5' }),
@@ -20,10 +22,13 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/movies/5',
 }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }) }));
-vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => cap === 'movies.editMonitoring', useMe: () => ({ tmdbConfigured: mocks.tmdbConfigured }) }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => cap === 'movies.editMonitoring' || (cap === 'movies.view' && !mocks.forbidden), useMe: () => ({ tmdbConfigured: mocks.tmdbConfigured }) }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 vi.mock('@/lib/hooks/use-external-urls', () => ({ useExternalUrls: () => ({}), useExternalUrlResolver: () => () => undefined }));
-vi.mock('@/lib/hooks/use-reference-data', () => ({ useQualityProfiles: () => ({ data: [] }), useTags: () => ({ data: [] }) }));
+vi.mock('@/lib/hooks/use-reference-data', () => ({
+  useQualityProfiles: (_s: string, _i: string, enabled = true) => { mocks.referenceEnabled.push(enabled); return { data: [] }; },
+  useTags: (_s: string, _i: string, enabled = true) => { mocks.referenceEnabled.push(enabled); return { data: [] }; },
+}));
 vi.mock('@/components/jellyfin/watch-status-provider', () => ({
   hasWatchLookupIdentity: () => false,
   useWatchLookup: () => () => null,
@@ -60,6 +65,8 @@ beforeEach(() => {
   mocks.gate = null;
   mocks.tmdbConfigured = true;
   mocks.movieExtra = {};
+  mocks.forbidden = false;
+  mocks.referenceEnabled = [];
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(String(input), 'http://helprr.test');
     const method = init?.method ?? 'GET';
@@ -69,6 +76,7 @@ beforeEach(() => {
       if (mocks.gate) await mocks.gate;
       return Response.json(body);
     }
+    if (url.pathname === '/api/radarr/5' && mocks.forbidden) return Response.json({ error: 'Forbidden' }, { status: 403 });
     if (url.pathname === '/api/radarr/5') return Response.json({ ...movie, ...mocks.movieExtra });
     return Response.json([]);
   }));
@@ -222,5 +230,17 @@ describe('movie detail status badge', () => {
     renderPage();
     expect((await screen.findAllByText('Missing')).length).toBeGreaterThan(0);
     expect(screen.queryByText('Not released yet')).toBeNull();
+  });
+
+  it('asks once, and nothing beside it, when the member has no Movies access', async () => {
+    mocks.forbidden = true;
+    // The app's own defaults, retry included.
+    const { getQueryClient } = await import('@/lib/query-client');
+    renderPage(new QueryClient({ defaultOptions: getQueryClient().getDefaultOptions() }));
+    expect(await screen.findByText("You don't have access to Movies.")).toBeTruthy();
+    const calls = vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input), 'http://helprr.test').pathname);
+    expect(calls.filter((path) => path === '/api/radarr/5')).toHaveLength(1);
+    expect(mocks.referenceEnabled.length).toBeGreaterThan(0);
+    expect(mocks.referenceEnabled.every((enabled) => enabled === false)).toBe(true);
   });
 });

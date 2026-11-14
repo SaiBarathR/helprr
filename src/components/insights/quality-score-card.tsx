@@ -62,7 +62,9 @@ export function CandidateRow({ c }: { c: MediaAnalysisUpgradeCandidate }) {
       <ScoreBadge score={c.score} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-1.5 text-xs">
-          <span className="truncate font-medium" style={{ color: HPR.fg }}>{c.title}</span>
+          {/* The title keeps its room and the file name takes what is left:
+              shrinking both cut the title to "Honey a…" on phones. */}
+          <span className="max-w-full shrink-0 truncate font-medium" style={{ color: HPR.fg }}>{c.title}</span>
           {c.subtitle && (
             <span className="truncate shrink-[2] text-[10px]" style={{ color: HPR.fgSubtle }}>{c.subtitle}</span>
           )}

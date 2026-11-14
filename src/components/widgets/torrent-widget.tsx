@@ -52,6 +52,9 @@ export function TorrentWidget({
   // no room for the two speeds side by side either: stack them, as on phones.
   const compact = narrow || (width > 0 && width < 220);
   const hideIcon = width > 0 && height > 0 && (width < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
+  // A 120px phone cell (320 wide) has no room for a speed and its total on
+  // one line: "350.9 KB/s" was cut and "4.9 GB" wrapped. The speed stays.
+  const showTotals = !(width > 0 && width < 140);
   const { data, loading } = useWidgetData({
     fetchFn: fetchTorrentData,
     refreshInterval,
@@ -150,8 +153,8 @@ export function TorrentWidget({
             >
               {dl}
             </span>
-            {compact && (
-              <span style={{ fontFamily: FONT_MONO, fontSize: 9, color: HPR.fgSubtle, marginLeft: 'auto' }}>
+            {compact && showTotals && (
+              <span style={{ fontFamily: FONT_MONO, fontSize: 9, color: HPR.fgSubtle, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
                 {dlT}
               </span>
             )}
@@ -178,8 +181,8 @@ export function TorrentWidget({
             >
               {up}
             </span>
-            {compact && (
-              <span style={{ fontFamily: FONT_MONO, fontSize: 9, color: HPR.fgSubtle, marginLeft: 'auto' }}>
+            {compact && showTotals && (
+              <span style={{ fontFamily: FONT_MONO, fontSize: 9, color: HPR.fgSubtle, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
                 {upT}
               </span>
             )}

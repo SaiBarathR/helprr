@@ -95,8 +95,10 @@ export function WantedItemsWidget({
               In compact sizes the count drops to the small treatment (no big
               headline number) since the labels already name each data point. */}
           {/* Font sizes live in classes so tiny cells (~82px) can step the type
-              down; the label truncates as a last resort — the number never does. */}
-          <span className="min-w-0 max-w-full" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap' }}>
+              down. Where even that can't fit "22 missing" on a line (a 44px
+              1×1 cell on a 320 phone) the label wraps under its number; it
+              truncates only as a last resort — the number never does. */}
+          <span className="min-w-0 max-w-full" style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 4, whiteSpace: 'nowrap' }}>
             <span
               className={`${compact ? 'text-[15px]' : 'text-[22px]'} @max-[159px]/cell:text-[13px]`}
               style={{
@@ -109,12 +111,12 @@ export function WantedItemsWidget({
             >
               {missing}
             </span>
-            <span className={`min-w-0 truncate ${compact ? 'text-[10px]' : 'text-[11px]'} @max-[159px]/cell:text-[9px]`} style={{ color: HPR.fgMute }}>
+            <span className={`min-w-0 max-w-full truncate leading-none ${compact ? 'text-[10px]' : 'text-[11px]'} @max-[159px]/cell:text-[9px]`} style={{ color: HPR.fgMute }}>
               missing
             </span>
           </span>
           {cutoff > 0 && (
-            <span className="min-w-0 max-w-full" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap' }}>
+            <span className="min-w-0 max-w-full" style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 4, whiteSpace: 'nowrap' }}>
               <span
                 className={`${compact ? 'text-[15px]' : 'text-sm'} @max-[159px]/cell:text-[13px]`}
                 style={{
@@ -126,7 +128,7 @@ export function WantedItemsWidget({
               >
                 {cutoff}
               </span>
-              <span className={`min-w-0 truncate ${compact ? 'text-[10px]' : 'text-[11px]'} @max-[159px]/cell:text-[9px]`} style={{ color: HPR.fgMute }}>
+              <span className={`min-w-0 max-w-full truncate leading-none ${compact ? 'text-[10px]' : 'text-[11px]'} @max-[159px]/cell:text-[9px]`} style={{ color: HPR.fgMute }}>
                 cutoff
               </span>
             </span>

@@ -183,7 +183,7 @@ beforeEach(() => {
   caseCounter += 1;
   // A route of its own per test: the page keeps per-route view state in memory.
   mocks.search = `instance=son-1&case=${caseCounter}`;
-  mocks.caps = new Set(['activity.manage', 'series.editMonitoring', 'series.editTags', 'series.changePath', 'series.add', 'series.delete', 'series.manageFiles', 'scheduledAlerts.edit', 'anime.view', 'discover.view']);
+  mocks.caps = new Set(['series.view', 'activity.manage', 'series.editMonitoring', 'series.editTags', 'series.changePath', 'series.add', 'series.delete', 'series.manageFiles', 'scheduledAlerts.edit', 'anime.view', 'discover.view']);
   mocks.role = 'admin';
   mocks.tmdbConfigured = true;
   mocks.sent = [];
@@ -337,8 +337,18 @@ describe('series detail page (characterization)', () => {
     expect(await screen.findByRole('button', { name: 'Schedule alert' })).toBeTruthy();
   });
 
-  it('is read-only for a viewer', async () => {
+  it('asks only for the series, not its episodes or reference data, without Series access', async () => {
     mocks.caps = new Set();
+    mocks.role = 'member';
+    mocks.routes['GET /api/sonarr/7'] = () => Response.json({ error: 'Forbidden' }, { status: 403 });
+    renderPage();
+    expect(await screen.findByText("You don't have access to Series.")).toBeTruthy();
+    const paths = vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input), 'http://helprr.test').pathname);
+    expect(paths.filter((path) => path.startsWith('/api/sonarr/'))).toEqual(['/api/sonarr/7']);
+  });
+
+  it('is read-only for a viewer', async () => {
+    mocks.caps = new Set(['series.view']);
     mocks.role = 'member';
     renderPage();
     await screen.findAllByRole('heading', { level: 1, name: 'Severance' });

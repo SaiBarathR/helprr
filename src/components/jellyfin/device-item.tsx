@@ -117,8 +117,10 @@ export function DeviceItem({ device, variant, isSelf = false, onDelete }: Device
 
   return (
     <QuickContextMenu label={`${title} device actions`} actions={actions}>
-      <div className="rounded-xl bg-card p-3 flex items-center gap-3">
-        <div className="rounded-lg bg-[var(--hpr-cyan)]/10 p-2"><Icon className="h-4 w-4 text-[var(--hpr-cyan)]" /></div>
+      {/* In a narrow dashboard cell (155px at 820 with the sidebar expanded)
+          the glyph and padding left the device name one letter: drop the glyph. */}
+      <div className="rounded-xl bg-card p-3 flex items-center gap-3 @max-[219px]/cell:p-2 @max-[219px]/cell:gap-2">
+        <div className="rounded-lg bg-[var(--hpr-cyan)]/10 p-2 @max-[219px]/cell:hidden"><Icon className="h-4 w-4 text-[var(--hpr-cyan)]" /></div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{title}</p>
           <p className="text-xs text-muted-foreground truncate">

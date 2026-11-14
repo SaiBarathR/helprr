@@ -181,9 +181,12 @@ export default function MovieDetailPage() {
     : null;
   const canEditMovie = canEditMonitoring || canEditTags || canChangePath;
 
-  // Reference data — shared (and deduped) with the list / edit pages.
-  const { data: qualityProfiles = [] } = useQualityProfiles('radarr', instance);
-  const { data: tags = [] } = useTags('radarr', instance);
+  // Reference data — shared (and deduped) with the list / edit pages. Without
+  // Movies access the page can only say so: the movie's own request is the
+  // one that answers, and these would only add more 403s.
+  const canViewMovies = useCan('movies.view');
+  const { data: qualityProfiles = [] } = useQualityProfiles('radarr', instance, canViewMovies);
+  const { data: tags = [] } = useTags('radarr', instance, canViewMovies);
   // Cast/crew, fetched in the background once the movie is loaded.
   const { data: credits = [] } = useQuery({
     queryKey: queryKeys.credits('radarr', movieId, instance),
