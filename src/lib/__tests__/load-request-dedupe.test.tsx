@@ -86,9 +86,9 @@ it('leaves /api/settings alone on a signed-out page, where it could only 401', a
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
   expect(callsTo('/api/settings')).toBe(0);
 
-  // Signed in (the sign-in refresh re-renders the layout): later refreshes read again.
+  // Signed in (the sign-in refresh re-renders the layout): it reads at once,
+  // not only at the next visibility change.
   rerender(<ClientLogCapture signedIn />);
-  act(() => document.dispatchEvent(new Event('visibilitychange')));
   await waitFor(() => expect(callsTo('/api/settings')).toBe(1));
 });
 

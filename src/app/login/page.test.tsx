@@ -19,7 +19,7 @@ vi.mock('@/lib/client-cache', () => ({
   broadcastAuthenticationBoundary: vi.fn(),
   clearUserScopedBrowserCaches: mocks.clearUserScopedBrowserCaches,
   requestSessionLogout: vi.fn(),
-  userScopedCachesMayBeInUse: () => mocks.cachesMayBeInUse,
+  userScopedCachesMayRemain: async () => mocks.cachesMayBeInUse,
   subscribeToAuthenticationBoundaries: (onBoundary: () => void) => {
     mocks.boundaryListeners.add(onBoundary);
     return () => mocks.boundaryListeners.delete(onBoundary);

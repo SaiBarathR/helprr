@@ -8,6 +8,7 @@ import {
   subscribeToAuthenticationBoundaries,
   subscribeToSessionEnd,
   userScopedCachesMayBeInUse,
+  userScopedCachesMayRemain,
 } from '@/lib/client-cache';
 
 afterEach(() => {
@@ -370,6 +371,17 @@ describe('user-scoped cache marker', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await clearing;
     expect(userScopedCachesMayBeInUse()).toBe(true);
+  });
+
+  it('still asks when a user\'s caches are there without the marker, not for the login shell alone', async () => {
+    const present = new Set<string>(['pages']);
+    vi.stubGlobal('window', { localStorage: storage(), caches: { has: vi.fn(async (name: string) => present.has(name)) } });
+    expect(await userScopedCachesMayRemain()).toBe(false);
+    present.add('api-images');
+    expect(await userScopedCachesMayRemain()).toBe(true);
+    markUserScopedCachesInUse();
+    present.clear();
+    expect(await userScopedCachesMayRemain()).toBe(true);
   });
 
   it('counts unreadable storage as in use', () => {

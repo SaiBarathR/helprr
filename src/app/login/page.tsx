@@ -10,7 +10,7 @@ import {
   ACCOUNT_DELETED_KEY,
   clearUserScopedBrowserCaches,
   subscribeToAuthenticationBoundaries,
-  userScopedCachesMayBeInUse,
+  userScopedCachesMayRemain,
 } from '@/lib/client-cache';
 import { completeBrowserSignIn, setDeviceCookieFromMatchMedia } from '@/lib/client-sign-in';
 import { SIGN_IN_HELP_URL } from '@/lib/docs-links';
@@ -127,13 +127,13 @@ export default function LoginPage() {
   // Not asked when nothing is left to clear (never signed in here, or signed
   // out, which already cleared): the answer would be a 401 console error.
   useEffect(() => {
-    if (!userScopedCachesMayBeInUse()) return;
     let active = true;
     const unsubscribe = subscribeToAuthenticationBoundaries(() => {
       active = false;
     });
-    void fetch('/api/me', { cache: 'no-store' })
-      .then((res) => (active && res.status === 401 ? clearUserScopedBrowserCaches() : undefined))
+    void userScopedCachesMayRemain()
+      .then((mayRemain) => (active && mayRemain ? fetch('/api/me', { cache: 'no-store' }) : null))
+      .then((res) => (active && res?.status === 401 ? clearUserScopedBrowserCaches() : undefined))
       .catch(() => undefined);
     return () => {
       active = false;

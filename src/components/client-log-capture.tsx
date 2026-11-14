@@ -94,7 +94,10 @@ export const CLIENT_LOG_SETTINGS_EVENT = 'helprr:logging-settings-updated';
 export function ClientLogCapture({ signedIn = true }: { signedIn?: boolean }) {
   const signedInRef = useRef(signedIn);
   useEffect(() => {
+    const signedInNow = signedIn && !signedInRef.current;
     signedInRef.current = signedIn;
+    // Signed in without a reload: read the settings the signed-out page skipped.
+    if (signedInNow) window.dispatchEvent(new CustomEvent(CLIENT_LOG_SETTINGS_EVENT));
   }, [signedIn]);
   const originalsRef = useRef<ConsoleOriginals | null>(null);
   const stateRef = useRef<ClientCaptureState>({

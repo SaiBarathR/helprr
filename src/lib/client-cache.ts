@@ -327,3 +327,19 @@ export function userScopedCachesMayBeInUse(): boolean {
     return true;
   }
 }
+
+/**
+ * The marker, or a user's caches still there without it: a browser from
+ * before the marker existed, or storage cleared on its own. Not 'pages', which
+ * the service worker also fills with the signed-out /login shell.
+ */
+export async function userScopedCachesMayRemain(): Promise<boolean> {
+  if (userScopedCachesMayBeInUse()) return true;
+  try {
+    if (!window.caches) return false;
+    const present = await Promise.all(['api-readonly', 'api-images'].map((name) => window.caches.has(name)));
+    return present.some(Boolean);
+  } catch {
+    return true;
+  }
+}
