@@ -11,6 +11,7 @@ import { configureLogger } from '@/lib/logger';
 import { configureApiLogging, withApiLogging } from '@/lib/api-logger';
 import { getEnvTimeZone, isValidTimeZone, setAppTimeZone } from '@/lib/timezone';
 import { normalizeRegionCode } from '@/lib/region';
+import { recordSettingsUpdated } from '@/lib/security-audit';
 
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
 const UPCOMING_NOTIFY_MODES = new Set(['before_air', 'daily_digest']);
@@ -18,11 +19,12 @@ const ACTIVITY_DIGEST_MODES = new Set(['off', 'daily', 'weekly']);
 
 // The AppSettings fields a member may write when an admin gives them that
 // settings page: exactly what the Logging and Storage pages save. Every other
-// field (polling, time zone, region, notification timing, …) stays admin-only.
+// field (polling, time zone, region, notification timing, …) stays admin-only,
+// and so do the failed request/response body switches on the Logging page
+// (owner, 2026-11-14): they decide what request content lands on disk.
 const CAPABILITY_FIELDS: ReadonlyArray<readonly [Capability, ReadonlySet<string>]> = [
   ['settings.logging', new Set([
-    'logEnabled', 'logLevel', 'logMaxFileMb', 'logRetentionDays',
-    'logClientConsoleEnabled', 'logFailedRequestBodies', 'logFailedResponseBodies',
+    'logEnabled', 'logLevel', 'logMaxFileMb', 'logRetentionDays', 'logClientConsoleEnabled',
   ])],
   ['settings.storage', new Set(['cacheImagesEnabled'])],
 ];
@@ -375,6 +377,8 @@ async function putHandler(request: NextRequest) {
         anilistAiringTtlMin: (data.anilistAiringTtlMin as number | undefined) ?? 10,
       },
     });
+
+    await recordSettingsUpdated(request, auth.user, 'Server settings', Object.keys(data));
 
     setCachedCacheImagesEnabled(settings.cacheImagesEnabled);
     setCachedAnilistTtlSettings({

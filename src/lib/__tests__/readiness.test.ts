@@ -128,6 +128,7 @@ describe('migration readiness', () => {
     expect(names).toContain('20261108080000_tonight_pick_invite_default_off');
     expect(names).toContain('20261108090000_update_check_toggle_music_manage_files');
     expect(names).not.toContain('migration_lock.toml');
-    expect(names).toHaveLength(44);
+    expect(names).toContain('20261114120000_settings_updated_audit');
+    expect(names).toHaveLength(45);
   });
 });

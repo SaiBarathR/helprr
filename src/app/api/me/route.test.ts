@@ -23,6 +23,9 @@ const mocks = vi.hoisted(() => ({
   getJellyfinUser: vi.fn(),
   authenticateByName: vi.fn(),
   storeJellyfinToken: vi.fn(),
+  startMfaAttempt: vi.fn(),
+  consumeSecondFactor: vi.fn(),
+  clearMfaAttempts: vi.fn(),
   inTransaction: false,
 }));
 
@@ -75,6 +78,13 @@ vi.mock('@/lib/request-utils', () => ({ isHttpsRequest: () => false }));
 vi.mock('@/lib/service-helpers', () => ({ getJellyfinClientContext: mocks.getJellyfinClientContext }));
 vi.mock('@/lib/jellyfin-client', () => ({ JellyfinClient: { authenticateByName: mocks.authenticateByName } }));
 vi.mock('@/lib/jellyfin-token', () => ({ storeJellyfinToken: mocks.storeJellyfinToken }));
+// The real code shape and on/off check; only the stored-secret and Redis steps are stubbed.
+vi.mock('@/lib/totp', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/totp')>()),
+  startMfaAttempt: mocks.startMfaAttempt,
+  consumeSecondFactor: mocks.consumeSecondFactor,
+  clearMfaAttempts: mocks.clearMfaAttempts,
+}));
 vi.mock('@/lib/api-logger', () => ({
   withApiLogging: (fn: unknown, name: string, options?: unknown) => (mocks.logging.push([name, options]), fn),
 }));
@@ -93,7 +103,10 @@ function del(body: unknown, contentType = 'application/json') {
 }
 
 function account(overrides: Record<string, unknown> = {}) {
-  return { id: 'user-1', username: 'member', role: 'member', status: 'active', passwordHash: 'stored-hash', ...overrides };
+  return {
+    id: 'user-1', username: 'member', role: 'member', status: 'active', passwordHash: 'stored-hash',
+    totpSecret: null, totpEnabledAt: null, ...overrides,
+  };
 }
 
 function signedIn(overrides: Record<string, unknown> = {}) {
@@ -123,6 +136,11 @@ beforeEach(() => {
   });
   mocks.getJellyfinUser.mockResolvedValue({ Id: 'jf-1', Name: 'Member JF' });
   mocks.storeJellyfinToken.mockResolvedValue(undefined);
+  mocks.startMfaAttempt.mockResolvedValue({ ok: true });
+  mocks.clearMfaAttempts.mockResolvedValue(undefined);
+  mocks.consumeSecondFactor.mockImplementation(async (_u: unknown, code: string) => (
+    code === '123456' ? 'totp' : code === 'ABCD-EFGH-JKLM' ? 'recovery-code' : null
+  ));
   mocks.authenticateByName.mockImplementation(async (_url: string, _name: string, plain: string) => (
     plain === PASSWORD
       ? { ok: true, userId: 'jf-1', accessToken: 'jf-token', userName: 'Member JF' }
@@ -152,6 +170,7 @@ describe('DELETE /api/me', () => {
         status: 'active',
         role: 'member',
         passwordHash: 'stored-hash',
+        totpEnabledAt: null,
         sessions: { some: { id: 'session-current', revokedAt: null } },
       },
       data: { updatedAt: expect.any(Date) },
@@ -337,5 +356,95 @@ describe('DELETE /api/me', () => {
       expect((await del({ currentPassword: PASSWORD })).status).toBe(409);
       expect(mocks.userDelete).not.toHaveBeenCalled();
     });
+  });
+  describe('with two-step sign-in on', () => {
+    const TWO_STEP = { totpSecret: 'sealed-secret', totpEnabledAt: new Date('2026-11-01T00:00:00Z') };
+    beforeEach(() => {
+      mocks.requireUser.mockResolvedValue(signedIn(TWO_STEP));
+    });
+
+    it('refuses the password alone, before checking it', async () => {
+      const res = await del({ currentPassword: PASSWORD });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ field: 'code', needsCode: true });
+      expect(mocks.verifyUserPassword).not.toHaveBeenCalled();
+      expect(mocks.consumeSecondFactor).not.toHaveBeenCalled();
+      expect(mocks.userDelete).not.toHaveBeenCalled();
+      // A blank or oversized code is no code either.
+      expect((await del({ currentPassword: PASSWORD, code: '   ' })).status).toBe(400);
+      expect((await del({ currentPassword: PASSWORD, code: 'x'.repeat(65) })).status).toBe(400);
+      expect((await del({ currentPassword: PASSWORD, code: 123456 })).status).toBe(400);
+      expect(mocks.userDelete).not.toHaveBeenCalled();
+    });
+
+    it('refuses a wrong code with 403, counts it like a failed sign-in and deletes nothing', async () => {
+      const res = await del({ currentPassword: PASSWORD, code: '000000' });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ field: 'code' });
+      expect(mocks.recordFailedSignIn).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+        username: 'member', method: 'totp',
+      }));
+      expect(mocks.recordGlobalLoginFailure).toHaveBeenCalledTimes(1);
+      // The password passed, but the backoff stays until the code does too.
+      expect(mocks.clearUsernameBackoff).not.toHaveBeenCalled();
+      expect(mocks.userUpdateMany).not.toHaveBeenCalled();
+      expect(mocks.userDelete).not.toHaveBeenCalled();
+      expect(mocks.recordSecurityEvent).not.toHaveBeenCalled();
+      expect(res.headers.get('set-cookie')).toBeNull();
+    });
+
+    it('checks the password first: a wrong password never reaches the code', async () => {
+      const res = await del({ currentPassword: 'not the right words', code: '123456' });
+      expect(res.status).toBe(403);
+      expect(mocks.consumeSecondFactor).not.toHaveBeenCalled();
+      expect(mocks.userDelete).not.toHaveBeenCalled();
+    });
+
+    it('answers 429 without using the code when the code cap is reached', async () => {
+      mocks.startMfaAttempt.mockResolvedValue({ ok: false, reason: 'locked', retryMs: 30_000 });
+      expect((await del({ currentPassword: PASSWORD, code: '123456' })).status).toBe(429);
+      expect(mocks.consumeSecondFactor).not.toHaveBeenCalled();
+      expect(mocks.userDelete).not.toHaveBeenCalled();
+    });
+
+    it('deletes with the password and a valid code', async () => {
+      const res = await del({ currentPassword: PASSWORD, code: '123456' });
+      expect(res.status).toBe(200);
+      expect(mocks.consumeSecondFactor).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), '123456');
+      // The row must still have two-step on as it was when the code was checked.
+      expect(mocks.userUpdateMany.mock.calls[0][0].where.totpEnabledAt).toEqual(TWO_STEP.totpEnabledAt);
+      expect(mocks.userDelete).toHaveBeenCalledWith({ where: { id: 'user-1' } });
+      expect(mocks.recordSecurityEvent).toHaveBeenCalledTimes(1);
+      expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'USER_DELETED' }));
+    });
+
+    it('takes a recovery code, as turning two-step off does, and audits its use', async () => {
+      const res = await del({ currentPassword: PASSWORD, code: 'ABCD-EFGH-JKLM' });
+      expect(res.status).toBe(200);
+      expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+        action: 'MFA_RECOVERY_CODE_USED', targetId: 'user-1', fields: ['delete-account'],
+      }));
+      expect(mocks.userDelete).toHaveBeenCalledTimes(1);
+    });
+
+    it('deletes nothing when two-step changed after the check', async () => {
+      mocks.userUpdateMany.mockResolvedValue({ count: 0 });
+      expect((await del({ currentPassword: PASSWORD, code: '123456' })).status).toBe(409);
+      expect(mocks.userDelete).not.toHaveBeenCalled();
+    });
+
+    it('a Jellyfin-linked account with two-step on still needs the code', async () => {
+      mocks.requireUser.mockResolvedValue(signedIn({ ...TWO_STEP, passwordHash: null, jellyfinUserId: 'jf-1' }));
+      expect((await del({ currentPassword: PASSWORD })).status).toBe(400);
+      expect((await del({ currentPassword: PASSWORD, code: '000000' })).status).toBe(403);
+      expect(mocks.userDelete).not.toHaveBeenCalled();
+      expect((await del({ currentPassword: PASSWORD, code: '123456' })).status).toBe(200);
+    });
+  });
+
+  it('without two-step, ignores a code and never asks for one', async () => {
+    expect((await del({ currentPassword: PASSWORD, code: '000000' })).status).toBe(200);
+    expect(mocks.consumeSecondFactor).not.toHaveBeenCalled();
+    expect(mocks.startMfaAttempt).not.toHaveBeenCalled();
   });
 });

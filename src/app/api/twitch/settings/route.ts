@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { recordSettingsUpdated } from '@/lib/security-audit';
 import { prisma } from '@/lib/db';
 import { getTwitchSettings } from '@/lib/twitch/settings';
 import { TWITCH } from '@/lib/twitch/platform';
@@ -76,6 +77,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
 
   await getTwitchSettings();
   await prisma.archiveSettings.update({ where: { id: 'singleton' }, data });
+  await recordSettingsUpdated(request, auth.user, 'Twitch settings', Object.keys(data));
   return NextResponse.json(await publicSettings());
 }
 

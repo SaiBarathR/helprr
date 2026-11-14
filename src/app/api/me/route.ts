@@ -21,6 +21,8 @@ import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { getJellyfinClientContext } from '@/lib/service-helpers';
 import { storeJellyfinToken } from '@/lib/jellyfin-token';
+import { confirmSecondFactor } from '@/lib/server/confirm-password';
+import { isTotpEnabled } from '@/lib/totp';
 
 const DELETE_BODY_MAX_BYTES = 8 * 1024;
 
@@ -100,8 +102,11 @@ async function verifyJellyfinPassword(
  * password, checked behind the same throttles as sign-in (and counting toward
  * them), like a password change. A Jellyfin-only account has no Helprr password,
  * so it confirms with its Jellyfin password, checked against Jellyfin as the
- * Jellyfin user linked to the profile, behind the same throttles. The last
- * active admin is refused.
+ * Jellyfin user linked to the profile, behind the same throttles. With
+ * two-step sign-in on it also takes a code from the authenticator app or a
+ * recovery code, as turning two-step off does, so a password alone (or a
+ * signed-in session plus a guessed password) can't delete the account. The
+ * last active admin is refused.
  * The delete is the one Settings -> Users makes, so it cascades the same way;
  * the cookie is cleared, and the session went with the account.
  */
@@ -131,12 +136,20 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return badRequest('Invalid request body');
   }
-  const { currentPassword } = body as { currentPassword?: unknown };
+  const { currentPassword, code } = body as { currentPassword?: unknown; code?: unknown };
   if (typeof currentPassword !== 'string' || currentPassword.length === 0) {
     return badRequest('Current password is required');
   }
   if (Buffer.byteLength(currentPassword, 'utf8') > LOCAL_PASSWORD_MAX_BYTES) {
     return badRequest(`Password must be at most ${LOCAL_PASSWORD_MAX_BYTES} bytes`);
+  }
+  const twoStep = isTotpEnabled(user);
+  if (twoStep && (typeof code !== 'string' || code.trim().length === 0 || code.length > 64)) {
+    // needsCode: a page that thought two-step was off can ask for it now.
+    return NextResponse.json(
+      { error: 'Enter a code from your authenticator app or a recovery code', field: 'code', needsCode: true },
+      { status: 400 },
+    );
   }
   // No Helprr password and no Jellyfin link: nothing can confirm it is them.
   if (!user.passwordHash && !user.jellyfinUserId) {
@@ -185,6 +198,20 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
       { status: 403 },
     );
   }
+  if (twoStep) {
+    const second = await confirmSecondFactor(request, user, code as string);
+    if (!second.ok) return second.response;
+    if (second.factor === 'recovery-code') {
+      await recordSecurityEvent(request, {
+        actor: user,
+        action: 'MFA_RECOVERY_CODE_USED',
+        targetType: 'user',
+        targetId: user.id,
+        targetLabel: user.username,
+        fields: ['delete-account'],
+      });
+    }
+  }
   for (const name of backoffNames) await clearUsernameBackoff(name);
 
   try {
@@ -193,7 +220,8 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
       if (user.role === 'admin') await lockActiveAdminGuard(tx);
       // Lock the row, and only if it is still the account just confirmed, as
       // signed in through a live session: a password change, Jellyfin relink,
-      // disable, role change or revoke that landed first wins, and none can land after.
+      // disable, role change, two-step change or revoke that landed first
+      // wins, and none can land after.
       const locked = await tx.user.updateMany({
         where: {
           id: user.id,
@@ -201,6 +229,7 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
           role: user.role,
           passwordHash: user.passwordHash,
           jellyfinUserId: user.jellyfinUserId,
+          totpEnabledAt: user.totpEnabledAt,
           sessions: { some: { id: session.id, revokedAt: null } },
         },
         data: { updatedAt: new Date() },

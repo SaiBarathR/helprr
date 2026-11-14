@@ -22,6 +22,7 @@ type SecurityAction =
   | 'SERVICE_UPDATED'
   | 'SERVICE_DELETED'
   | 'SETTINGS_IMPORTED'
+  | 'SETTINGS_UPDATED'
   | 'INVITE_CREATED'
   | 'INVITE_REGENERATED'
   | 'INVITE_REVOKED'
@@ -70,6 +71,7 @@ const ACTION_BADGE: Record<SecurityAction, { label: string; variant: 'default' |
   SERVICE_UPDATED: { label: 'CONNECTION EDIT', variant: 'secondary' },
   SERVICE_DELETED: { label: 'CONNECTION DELETE', variant: 'destructive' },
   SETTINGS_IMPORTED: { label: 'SETTINGS IMPORT', variant: 'default' },
+  SETTINGS_UPDATED: { label: 'SETTINGS CHANGE', variant: 'secondary' },
   INVITE_CREATED: { label: 'INVITE LINK', variant: 'default' },
   INVITE_REGENERATED: { label: 'NEW INVITE LINK', variant: 'secondary' },
   INVITE_REVOKED: { label: 'INVITE REVOKED', variant: 'secondary' },
@@ -168,7 +170,8 @@ function summary(record: SecurityAuditRecord): string {
     case 'MFA_RECOVERY_CODE_USED':
       parts.push(record.fields?.[0] === 'turn-off'
         ? 'to turn off two-step sign-in'
-        : record.fields?.[0] === 'reset-link' ? 'to make a reset link for themselves' : 'to sign in');
+        : record.fields?.[0] === 'reset-link' ? 'to make a reset link for themselves'
+          : record.fields?.[0] === 'delete-account' ? 'to delete their account' : 'to sign in');
       break;
     case 'API_TOKEN_REVOKED':
       // fields: 'password' or 'status' when a password reset or a disable ended the user's tokens.

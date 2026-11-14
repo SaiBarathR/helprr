@@ -96,7 +96,7 @@ export default function FileAuditPage() {
         <h1 className="text-2xl font-semibold">Operation audit</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {tab === 'security'
-            ? 'Sign-ins, and changes to accounts, permissions, sessions, connections, and settings imports. Names what changed, never the values. Records are kept for 365 days.'
+            ? 'Sign-ins, and changes to accounts, permissions, sessions, connections, server settings and settings imports. Names what changed, never the values. Records are kept for 365 days.'
             : 'File edits/imports and destructive media, torrent, and queue operations. Records are kept for 365 days.'}
         </p>
       </div>

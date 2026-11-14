@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUserCapability } from '@/lib/auth';
+import { requireUserAnyCapability, requireUserCapability } from '@/lib/auth';
 import { deleteLogFile, listLogFiles } from '@/lib/logger';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -11,10 +11,14 @@ async function getHandler() {
 }
 
 async function deleteHandler(request: NextRequest) {
-  const auth = await requireUserCapability('logs.manage');
+  const all = request.nextUrl.searchParams.get('all') === 'true';
+  // "Delete all log files" is on the Logging page, so "Logging settings" may
+  // use it too (owner, 2026-11-14). Deleting one file (the Logs viewer) stays "Delete logs".
+  const auth = all
+    ? await requireUserAnyCapability(['logs.manage', 'settings.logging'])
+    : await requireUserCapability('logs.manage');
   if (!auth.ok) return auth.response;
 
-  const all = request.nextUrl.searchParams.get('all') === 'true';
   if (all) {
     const files = await listLogFiles();
     let deleted = 0;

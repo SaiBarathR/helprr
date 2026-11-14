@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CleanupAction, type Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireUserCapability } from '@/lib/auth';
+import { requireUserAnyCapability, requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { parsePageParams } from '@/lib/pagination';
 
@@ -72,11 +72,16 @@ function serialize<T extends { torrentSize: bigint | null }>(r: T) {
 }
 
 async function getHandler(req: NextRequest) {
-  const auth = await requireUserCapability('cleanup.view');
-  if (!auth.ok) return auth.response;
   const sp = req.nextUrl.searchParams;
+  const summary = sp.get('summary') === 'true';
+  // The Storage page shows the row count and oldest date next to its clear
+  // actions, which "Storage / cache" may use (see DELETE). The rows stay cleanup.view.
+  const auth = summary
+    ? await requireUserAnyCapability(['cleanup.view', 'settings.storage'])
+    : await requireUserCapability('cleanup.view');
+  if (!auth.ok) return auth.response;
 
-  if (sp.get('summary') === 'true') {
+  if (summary) {
     const agg = await prisma.cleanupHistory.aggregate({
       _count: { _all: true },
       _min: { createdAt: true },
@@ -113,16 +118,20 @@ async function getHandler(req: NextRequest) {
 }
 
 async function deleteHandler(req: NextRequest) {
-  const auth = await requireUserCapability('cleanup.manage');
-  if (!auth.ok) return auth.response;
   const sp = req.nextUrl.searchParams;
   const all = sp.get('all') === 'true';
+  const olderThanRaw = sp.get('olderThanDays');
+  // "Clear all" and "Clear older" are on the Storage page, so "Storage / cache"
+  // may use them too (owner, 2026-11-14). A filtered delete (the Cleanup page) stays cleanup.manage.
+  const auth = all || olderThanRaw !== null
+    ? await requireUserAnyCapability(['cleanup.manage', 'settings.storage'])
+    : await requireUserCapability('cleanup.manage');
+  if (!auth.ok) return auth.response;
   if (all) {
     const r = await prisma.cleanupHistory.deleteMany({});
     return NextResponse.json({ deleted: r.count });
   }
 
-  const olderThanRaw = sp.get('olderThanDays');
   if (olderThanRaw !== null) {
     const days = Number(olderThanRaw);
     if (!Number.isFinite(days) || days < 1 || days > 3650) {

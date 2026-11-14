@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { recordSettingsUpdated } from '@/lib/security-audit';
 import { prisma } from '@/lib/db';
 import { encryptTwitchToken } from '@/lib/twitch/token-cipher';
 import { cleanCookiesFile } from '@/lib/youtube/cookies';
@@ -29,14 +30,17 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     where: { id: 'singleton' },
     data: { cookies: encryptTwitchToken(result.cookies), cookiesValid: null, cookiesCheckedAt: null },
   });
+  // The key only: the cookies are a sign-in.
+  await recordSettingsUpdated(request, auth.user, 'YouTube cookies', ['cookies']);
   return NextResponse.json({ ok: true });
 }
 
-async function deleteHandler(): Promise<NextResponse> {
+async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('youtube.manage');
   if (!auth.ok) return auth.response;
 
   await prisma.youtubeSettings.updateMany({ data: { cookies: null, cookiesValid: null, cookiesCheckedAt: null } });
+  await recordSettingsUpdated(request, auth.user, 'YouTube cookies', ['cookies']);
   return NextResponse.json({ ok: true });
 }
 

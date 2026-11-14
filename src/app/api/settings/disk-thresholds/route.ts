@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
+import { recordSettingsUpdated } from '@/lib/security-audit';
 import {
   getAggregatedDiskSpace,
   diskId,
@@ -93,6 +94,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     update: { diskThresholds: persisted },
     create: { id: 'singleton', diskThresholds: persisted },
   });
+  await recordSettingsUpdated(request, auth.user, 'Low-space alerts', ['diskThresholds']);
 
   return NextResponse.json({ thresholds: [...byId.values()] });
 }

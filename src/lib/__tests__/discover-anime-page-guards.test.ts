@@ -22,7 +22,9 @@ import AnimeLayout from '@/app/(app)/anime/layout';
 import AnimePage from '@/app/(app)/anime/page';
 import AnimeScheduleLayout from '@/app/(app)/anime/schedule/layout';
 import AnimeExploreLayout from '@/app/(app)/anime/explore/layout';
+import AnimeLibraryLayout from '@/app/(app)/anime/library/layout';
 import { getAllWidgetDefinitions } from '@/lib/widgets/registry';
+import { CAPABILITIES } from '@/lib/capabilities';
 import { hasCapabilities } from '@/components/permission-provider';
 
 function member(permissions: Record<string, boolean>) {
@@ -111,6 +113,20 @@ describe('Anime page guards', () => {
   });
 });
 
+describe('AniList library page (the server account)', () => {
+  it('is Not found for every member, even one with every capability', async () => {
+    mocks.user = member(Object.fromEntries(CAPABILITIES.map((cap) => [cap, true])));
+    expect(await outcome(() => AnimeLibraryLayout({ children }))).toBe('notFound');
+    mocks.user = null;
+    expect(await outcome(() => AnimeLibraryLayout({ children }))).toBe('notFound');
+  });
+
+  it('opens for an admin', async () => {
+    mocks.user = { id: 'admin-1', role: 'admin', template: 'admin', permissions: {} };
+    expect(await outcome(() => AnimeLibraryLayout({ children }))).toBe('renders');
+  });
+});
+
 describe('dashboard widgets backed by gated routes', () => {
   const defs = getAllWidgetDefinitions({
     sections: [{ id: 'trending', label: 'Trending', enabled: true }],
@@ -123,6 +139,10 @@ describe('dashboard widgets backed by gated routes', () => {
     const animeCarousels = defs.filter((def) => def.id.startsWith('anime-'));
     expect(animeCarousels.length).toBeGreaterThan(0);
     for (const def of animeCarousels) expect(def.requiredCapability, def.id).toBe('anime.view');
+    // The two that read the server's AniList library are admin-only, like /anime/library.
+    expect(byId.get('anime-continueWatching')?.adminOnly).toBe(true);
+    expect(byId.get('anime-planToWatch')?.adminOnly).toBe(true);
+    expect(byId.get('anime-trending')?.adminOnly).toBeFalsy();
   });
 
   it('are hidden from a member without the capability, as the dashboard and gallery filter them', () => {

@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   upsert: vi.fn(),
   purge: vi.fn(),
+  audit: vi.fn(),
 }));
 
 const forbidden = () => ({ ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) });
@@ -35,6 +36,7 @@ vi.mock('@/lib/cache/state', () => ({ setCachedAnilistTtlSettings: vi.fn(), setC
 vi.mock('@/lib/logger', () => ({ configureLogger: vi.fn() }));
 vi.mock('@/lib/api-logger', () => ({ configureApiLogging: vi.fn(), withApiLogging: (handler: unknown) => handler }));
 vi.mock('@/lib/timezone', () => ({ getEnvTimeZone: () => 'UTC', isValidTimeZone: () => true, setAppTimeZone: vi.fn() }));
+vi.mock('@/lib/security-audit', () => ({ recordSettingsUpdated: mocks.audit }));
 vi.mock('@/lib/app-settings', () => ({
   getOrCreateAppSettings: vi.fn(async () => ({ qbtBandwidthSchedule: { rules: [] }, timeZone: 'UTC' })),
 }));
@@ -78,11 +80,36 @@ beforeEach(() => {
 describe('PUT /api/settings for a member', () => {
   it('saves the Logging page with settings.logging, without the admin-only backup fields', async () => {
     mocks.user = member('settings.logging');
-    const res = await putSettings(request({ logLevel: 'warn', logFailedRequestBodies: true }));
+    const res = await putSettings(request({ logLevel: 'warn' }));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.logLevel).toBe('warn');
     expect(Object.keys(body).filter((key) => /databaseBackup/i.test(key))).toEqual([]);
+    // Audited: who, and the key it wrote (never the value).
+    expect(mocks.audit).toHaveBeenCalledTimes(1);
+    expect(mocks.audit).toHaveBeenCalledWith(expect.anything(), mocks.user, 'Server settings', ['logLevel']);
+  });
+
+  it('keeps the failed request/response body switches admin-only, even with settings.logging', async () => {
+    mocks.user = member('settings.logging', 'settings.storage');
+    for (const body of [
+      { logFailedRequestBodies: true },
+      { logFailedResponseBodies: true },
+      { logLevel: 'warn', logFailedRequestBodies: true },
+    ]) {
+      expect((await putSettings(request(body))).status).toBe(403);
+    }
+    expect(mocks.upsert).not.toHaveBeenCalled();
+    expect(mocks.audit).not.toHaveBeenCalled();
+    // The rest of the Logging page still saves for that member.
+    for (const body of [{ logEnabled: false }, { logMaxFileMb: 20 }, { logRetentionDays: 7 }, { logClientConsoleEnabled: false }]) {
+      expect((await putSettings(request(body))).status).toBe(200);
+    }
+    mocks.user = { id: 'a1', role: 'admin', template: 'admin', permissions: {} };
+    expect((await putSettings(request({ logFailedRequestBodies: true, logFailedResponseBodies: true }))).status).toBe(200);
+    expect(mocks.audit).toHaveBeenLastCalledWith(
+      expect.anything(), mocks.user, 'Server settings', ['logFailedRequestBodies', 'logFailedResponseBodies'],
+    );
   });
 
   it('saves the Storage page switch with settings.storage', async () => {
@@ -103,6 +130,7 @@ describe('PUT /api/settings for a member', () => {
       expect((await putSettings(request(body))).status).toBe(403);
     }
     expect(mocks.upsert).not.toHaveBeenCalled();
+    expect(mocks.audit).not.toHaveBeenCalled();
   });
 
   it('fails closed on an admin-only, unknown or missing field', async () => {
@@ -120,7 +148,7 @@ describe('PUT /api/settings for a member', () => {
   });
 
   it('takes the logging switches only as real booleans', async () => {
-    mocks.user = member('settings.logging');
+    mocks.user = { id: 'a1', role: 'admin', template: 'admin', permissions: {} };
     for (const field of ['logEnabled', 'logClientConsoleEnabled', 'logFailedRequestBodies', 'logFailedResponseBodies']) {
       expect((await putSettings(request({ [field]: 'false' }))).status).toBe(400);
       expect((await putSettings(request({ [field]: 1 }))).status).toBe(400);
@@ -128,11 +156,20 @@ describe('PUT /api/settings for a member', () => {
     expect(mocks.upsert).not.toHaveBeenCalled();
     expect((await putSettings(request({ logFailedResponseBodies: false }))).status).toBe(200);
     expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { logFailedResponseBodies: false } }));
+    expect(mocks.audit).toHaveBeenCalledTimes(1);
   });
 
-  it('lets an admin write any field', async () => {
+  it('lets an admin write any field, and audits each key written', async () => {
     mocks.user = { id: 'a1', role: 'admin', template: 'admin', permissions: {} };
     expect((await putSettings(request({ pollingIntervalSecs: 60, logLevel: 'info' }))).status).toBe(200);
+    const [, actor, label, keys] = mocks.audit.mock.calls[0];
+    expect([actor, label, [...keys].sort()]).toEqual([mocks.user, 'Server settings', ['logLevel', 'pollingIntervalSecs']]);
+  });
+
+  it('audits nothing for a save refused for a bad value', async () => {
+    mocks.user = { id: 'a1', role: 'admin', template: 'admin', permissions: {} };
+    expect((await putSettings(request({ logLevel: 'loud' }))).status).toBe(400);
+    expect(mocks.audit).not.toHaveBeenCalled();
   });
 });
 
@@ -146,6 +183,7 @@ describe('the bandwidth schedule for Settings → Downloads', () => {
     mocks.user = member('settings.downloads');
     expect((await getSchedule()).status).toBe(200);
     expect((await putSchedule(schedule())).status).toBe(200);
+    expect(mocks.audit).toHaveBeenCalledWith(expect.anything(), mocks.user, 'Bandwidth schedule', ['qbtBandwidthSchedule']);
   });
 
   it('refuses without it, and for a neighbouring settings page', async () => {

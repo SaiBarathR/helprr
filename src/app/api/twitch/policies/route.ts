@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { recordSettingsUpdated } from '@/lib/security-audit';
 import { prisma } from '@/lib/db';
 import { layerMap, sanitizeLayer } from '@/lib/archive/policy';
 import { getTwitchSettings } from '@/lib/twitch/settings';
@@ -37,12 +38,14 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     if (!streamer) return NextResponse.json({ error: 'Streamer not found' }, { status: 404 });
     const data = { policy: json(sanitizeLayer(body.policy)), typePolicies: json(layerMap(body.typePolicies)) };
     await prisma.creatorPolicy.upsert({ where: { creatorId: streamer.id }, update: data, create: { creatorId: streamer.id, ...data } });
+    await recordSettingsUpdated(request, auth.user, 'Twitch retention for one streamer', ['policy', 'typePolicies']);
   } else {
     await getTwitchSettings();
     await prisma.archiveSettings.update({
       where: { id: 'singleton' },
       data: { defaultPolicy: json(sanitizeLayer(body.defaultPolicy)), typePolicies: json(layerMap(body.typePolicies)) },
     });
+    await recordSettingsUpdated(request, auth.user, 'Twitch retention', ['defaultPolicy', 'typePolicies']);
   }
   return NextResponse.json({ ok: true });
 }
