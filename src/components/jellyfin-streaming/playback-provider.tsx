@@ -1622,14 +1622,17 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         if (releaseOutgoing && outgoingSession) await releaseEncodings(outgoingSession);
       })();
       // A restart of the title on screen at the same moment (a track or
-      // quality change) keeps its picture up until the new stream has one; a
-      // hold already up from a restart still loading stays. A seek's frame
-      // would show the old moment under the new time, and another title
-      // starts from black.
+      // quality change) keeps its picture up until the new stream has one. A
+      // hold still waiting on a stream that has not shown a frame (a change
+      // made while the last one was loading, or while paused on Safari's own
+      // HLS) stays, since the element has nothing newer to draw; once the
+      // stream plays, a change takes a fresh frame. A seek's frame would show
+      // the old moment under the new time, and another title starts from black.
       const outgoingEl = mediaRef.current;
       const samePlace = streamRef.current?.item.Id === nextItem.Id && outgoingEl
         && Math.abs(ticksToSeconds(resumeTicks - streamRef.current.transcodingOffsetTicks) - outgoingEl.currentTime) < 2;
       if (samePlace && outgoingEl) {
+        if (frameHoldRef.current && !outgoingEl.paused && outgoingEl.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) releaseFrameHold();
         if (!frameHoldRef.current) {
           const hold = holdFrame(outgoingEl);
           if (hold) frameHoldRef.current = { hold };
@@ -2091,9 +2094,11 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       })();
       return;
     }
+    // The held frame is of where the viewer was, not where they are going.
+    releaseFrameHold();
     el.currentTime = seconds;
     setPositionSeconds(seconds);
-  }, [cancelPendingSkip, maxBitrate, releaseEncodings, setPositionSeconds, startItem]);
+  }, [cancelPendingSkip, maxBitrate, releaseEncodings, releaseFrameHold, setPositionSeconds, startItem]);
 
   const skip = useCallback((deltaSeconds: number) => {
     const current = streamRef.current;
