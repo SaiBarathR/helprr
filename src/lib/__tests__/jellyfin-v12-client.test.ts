@@ -7,7 +7,7 @@ const { get, create, post, onRequest } = vi.hoisted(() => ({
   onRequest: vi.fn(),
 }));
 vi.mock('axios', () => ({ default: { create, post, isAxiosError: () => false } }));
-import { JellyfinClient } from '@/lib/jellyfin-client';
+import { JellyfinClient, authDeviceId } from '@/lib/jellyfin-client';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -98,9 +98,12 @@ describe('Jellyfin 12 authentication with legacy mechanisms disabled', () => {
   });
 
   it('authenticates by name using the standard header and a distinct device identity', async () => {
+    vi.stubEnv('JWT_SECRET', 'install-secret-under-test-0123456789');
     await JellyfinClient.authenticateByName('http://jellyfin.test', 'member', 'password');
     const headers = post.mock.calls[0][2].headers;
-    expect(headers.Authorization).toContain('DeviceId="helprr-user-');
+    expect(headers.Authorization).toContain(`DeviceId="${authDeviceId('member')}"`);
+    expect(headers.Authorization).toMatch(/DeviceId="helprr-user-[0-9a-f]{16}"/);
     expect(headers).not.toHaveProperty('X-Emby-Authorization');
+    vi.unstubAllEnvs();
   });
 });

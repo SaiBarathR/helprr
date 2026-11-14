@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
 import { JellyfinClient } from '@/lib/jellyfin-client';
-import { storeJellyfinToken, invalidateJellyfinToken, readJellyfinToken } from '@/lib/jellyfin-token';
+import { storeJellyfinToken, clearJellyfinToken, readJellyfinToken } from '@/lib/jellyfin-token';
 import {
   getClientIp,
   enforceLoginRateLimit,
@@ -155,7 +155,7 @@ async function deleteHandler(): Promise<NextResponse> {
 
   // Only the cached token is dropped. The jellyfinUserId link is identity and
   // stays put, so reads keep resolving and reconnecting needs no admin.
-  await invalidateJellyfinToken(auth.user.id);
+  await clearJellyfinToken(auth.user.id);
   return NextResponse.json({ connected: false });
 }
 

@@ -41,7 +41,7 @@ export function upstreamErrorResponse(error: unknown, fallback: string): NextRes
  * their normal handling.
  */
 export async function jellyfinConnectGateResponse(
-  user: { id: string },
+  user: { id: string; jellyfinToken: string | null },
   error: unknown,
 ): Promise<NextResponse | null> {
   const needsConnect =
@@ -53,7 +53,8 @@ export async function jellyfinConnectGateResponse(
   if (!needsConnect && !revoked) return null;
 
   if (revoked) {
-    await invalidateJellyfinToken(user.id).catch((err) =>
+    // The row this request read its token from: only that token failed.
+    await invalidateJellyfinToken(user.id, user.jellyfinToken).catch((err) =>
       console.error('[api] Failed to drop a revoked Jellyfin token:', err),
     );
   }
