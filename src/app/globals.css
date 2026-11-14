@@ -817,6 +817,13 @@ html {
     display: none;
   }
 }
+/* A one-row 2×1 phone cell (120×60 at 320) has room for one message line
+   under the icon and name; "right now." would wrap to a cut second line. */
+@container widget-cover (max-width: 160px) and (max-height: 72px) {
+  .widget-cover-tail {
+    display: none;
+  }
+}
 @container widget-cover (max-width: 70px) {
   .widget-cover-body {
     gap: 2px;
