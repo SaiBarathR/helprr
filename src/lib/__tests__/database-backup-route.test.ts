@@ -10,9 +10,11 @@ const mocks = vi.hoisted(() => ({
   start: vi.fn(),
   running: vi.fn(() => false),
   last: vi.fn(() => null),
+  audit: vi.fn(),
 }));
 vi.mock('@/lib/auth', () => ({ requireAdmin: mocks.admin }));
 vi.mock('@/lib/db', () => ({ prisma: { appSettings: { findUnique: mocks.findUnique, upsert: mocks.upsert } } }));
+vi.mock('@/lib/security-audit', () => ({ recordSettingsUpdated: mocks.audit }));
 vi.mock('@/lib/database-backup', () => ({
   BACKUP_SCHEDULES: new Set(['off', 'daily', 'weekly']),
   BACKUP_KEEP_MAX: 100,
@@ -104,6 +106,8 @@ describe('PUT /api/admin/database-backup', () => {
     expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({
       update: { databaseBackupSchedule: 'daily', databaseBackupScheduledAt: NOW },
     }));
+    // The audit names what was asked for, not the derived catch-up time.
+    expect(mocks.audit).toHaveBeenCalledWith(expect.anything(), ADMIN.user, 'Database backups', ['databaseBackupSchedule']);
   });
 
   it('turned on before today\'s hour, backs up at that hour today', async () => {
@@ -146,6 +150,7 @@ describe('PUT /api/admin/database-backup', () => {
   ])('refuses %j', async (body) => {
     expect((await put(body)).status).toBe(400);
     expect(mocks.upsert).not.toHaveBeenCalled();
+    expect(mocks.audit).not.toHaveBeenCalled();
   });
 });
 
@@ -178,5 +183,6 @@ describe('authorization', () => {
     expect(mocks.checkDir).not.toHaveBeenCalled();
     expect(mocks.upsert).not.toHaveBeenCalled();
     expect(mocks.start).not.toHaveBeenCalled();
+    expect(mocks.audit).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { requireUserAnyCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
+import { recordSettingsUpdated } from '@/lib/security-audit';
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
 
@@ -89,6 +90,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     update: { qbtBandwidthSchedule: persisted },
     create: { id: 'singleton', qbtBandwidthSchedule: persisted },
   });
+  await recordSettingsUpdated(request, auth.user, 'Bandwidth schedule', ['qbtBandwidthSchedule']);
 
   const settings = await getOrCreateAppSettings();
   const active = pickActiveRule(parsed.rules, new Date(), settings.timeZone);

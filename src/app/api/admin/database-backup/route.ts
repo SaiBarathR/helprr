@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { requireAdmin } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { recordSettingsUpdated } from '@/lib/security-audit';
 import { prisma } from '@/lib/db';
 import {
   BACKUP_ALERT_DAYS_MAX,
@@ -118,6 +119,8 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'Nothing to change' }, { status: 400 });
   }
+  // What was asked for, before the derived databaseBackupScheduledAt below.
+  const savedKeys = Object.keys(data);
   if ('databaseBackupSchedule' in data || 'databaseBackupHour' in data || 'databaseBackupDayOfWeek' in data) {
     // A schedule turned on (or moved) after today's hour has passed waits for the
     // next scheduled time instead of backing up at once: today's window counts as
@@ -145,6 +148,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     create: { id: 'singleton', ...data },
     select: SCHEDULE_SELECT,
   });
+  await recordSettingsUpdated(request, admin.user, 'Database backups', savedKeys);
   return NextResponse.json(scheduleOf(row), { headers: NO_STORE });
 }
 

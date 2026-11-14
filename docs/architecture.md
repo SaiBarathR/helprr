@@ -805,7 +805,14 @@ Jellyfin account), first-admin setup, user create/edit/delete (an admin
 password reset with the sessions it revoked), a member linking their own
 Jellyfin account, permission changes, the self password change, session
 revocations, service connection add/edit/delete (main, external URL, YouTube,
-Twitch, AniList and the Seerr/Prowlarr import), settings import, and a user
+Twitch, AniList and the Seerr/Prowlarr import), settings import, every save of
+server-wide settings (`SETTINGS_UPDATED` via `recordSettingsUpdated`: `/api/settings`,
+low-space alerts, the bandwidth schedule, the Discover layout, database backup
+schedule, Twitch and YouTube settings, retention policies (a channel's or streamer's
+with its id as `targetId`), YouTube auto-cleanup, the Twitch and YouTube library links
+and the YouTube cookies; `targetLabel` names what was saved and `fields` the keys
+written, never values;
+personal settings such as `/api/me/settings` are not audited), and a user
 making or turning off a calendar feed link (renewals before named links appear as rotations), and making,
 turning off or ending personal API tokens and a token's first use from a new network. A row holds the actor (id not a FK, username
 denormalized), action, target type/id/label, the coarse IP (IPv4 /24, IPv6 /64,

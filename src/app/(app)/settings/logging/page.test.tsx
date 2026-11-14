@@ -3,8 +3,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ update: vi.fn(), toastError: vi.fn(), caps: new Set<string>(['logs.manage']) }));
-vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap) }));
+const mocks = vi.hoisted(() => ({ update: vi.fn(), toastError: vi.fn(), role: 'admin' as 'admin' | 'member' }));
+vi.mock('@/components/permission-provider', () => ({ useMe: () => ({ role: mocks.role }) }));
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError, success: vi.fn() } }));
 vi.mock('@/components/ui/app-link', () => ({ default: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock('@/lib/hooks/use-app-settings', () => ({
@@ -34,7 +34,7 @@ const render = async () => {
 const deleteButton = () => [...document.querySelectorAll('button')].find((b) => b.textContent === 'Delete all log files')!;
 
 beforeEach(async () => {
-  mocks.caps = new Set(['logs.manage']);
+  mocks.role = 'admin';
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
   document.body.innerHTML = '<div id="root"></div>';
@@ -99,27 +99,36 @@ it('sends a pending draft with keepalive when the app goes to the background', a
   root = createRoot(document.getElementById('root')!);
 });
 
-it('offers Delete all log files with logs.manage', () => {
+const bodySwitches = () => ['Failed Request Bodies', 'Failed Response Bodies']
+  .map((label) => document.querySelector(`[aria-label="${label}"]`) as HTMLButtonElement);
+
+it('gives an admin every switch and Delete all log files', () => {
   expect(deleteButton().disabled).toBe(false);
-  expect(document.body.textContent).not.toContain('needs “Delete logs”');
+  expect(bodySwitches().map((s) => s.disabled)).toEqual([false, false]);
+  expect(document.body.textContent).not.toContain('Only an admin can');
 });
 
-it('without logs.manage, says why Delete all log files is off and never offers it after turning logging off', async () => {
-  // A member given only the Logging page: DELETE /api/logs/files would answer Forbidden.
-  mocks.caps = new Set(['settings.logging']);
+it('a member with this page gets Delete all log files, and the body switches off with the reason', async () => {
+  // The page itself needs "Logging settings"; the server takes it for Delete all
+  // log files and refuses the body switches from anyone but an admin.
+  mocks.role = 'member';
   mocks.update.mockResolvedValue({ logEnabled: false, logClientConsoleEnabled: false });
   await render();
 
-  expect(deleteButton().disabled).toBe(true);
-  expect(document.body.textContent).toContain('Deleting log files needs “Delete logs”');
+  expect(deleteButton().disabled).toBe(false);
+  expect(bodySwitches().map((s) => s.disabled)).toEqual([true, true]);
+  expect(document.body.textContent).toContain('Only an admin can turn failed request and response bodies on or off.');
+  const consoleSwitch = document.querySelector('[aria-label="Client Console Logging"]') as HTMLButtonElement;
+  expect(consoleSwitch.disabled).toBe(false);
 
+  // Turning logging off still offers to delete the files on disk.
   const toggle = document.querySelector('[aria-label="Enable Logging"]') as HTMLButtonElement;
   await act(async () => toggle.click());
   expect(mocks.update).toHaveBeenCalledWith({ logEnabled: false });
-  expect(document.body.textContent).not.toContain('Delete log files on disk?');
+  expect(document.body.textContent).toContain('Delete log files on disk?');
 });
 
-it('with logs.manage, offers to delete the files after turning logging off', async () => {
+it('offers an admin to delete the files after turning logging off', async () => {
   mocks.update.mockResolvedValue({ logEnabled: false, logClientConsoleEnabled: false });
   const toggle = document.querySelector('[aria-label="Enable Logging"]') as HTMLButtonElement;
   await act(async () => toggle.click());

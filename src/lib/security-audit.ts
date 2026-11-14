@@ -16,7 +16,7 @@ import {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Security and admin audit trail: account, permission, session, service
-// connection and settings-import changes, database backups, and sign-ins. Each row says who did
+// connection, server-settings and settings-import changes, database backups, and sign-ins. Each row says who did
 // what to which target, and which FIELD NAMES changed: never a value, a hash, a
 // key or a password (the one value kept is a new role, as "made admin"; a failed
 // sign-in keeps the username as typed). Writes are fail-soft, made after the action, and never
@@ -103,6 +103,31 @@ function logWriteFailure(error: unknown): void {
     ? `${error.name}${typeof code === 'string' ? ` ${code}` : ''}`
     : 'unknown error';
   console.error(`[SecurityAudit] Failed to write audit row: ${reason}`);
+}
+
+/**
+ * One row per save of server-wide settings: who saved, what (`label`, e.g.
+ * "Server settings"), and the KEYS the save wrote, sorted. Never the values:
+ * some are secrets (cookies), and the audit keeps no values at all. A save that
+ * wrote nothing records nothing. `targetId` names the one record a save was
+ * for (a channel's or streamer's retention), when there is one.
+ */
+export async function recordSettingsUpdated(
+  request: NextRequest,
+  actor: SecurityAuditActor,
+  label: string,
+  keys: readonly string[],
+  targetId?: string,
+): Promise<void> {
+  if (keys.length === 0) return;
+  await recordSecurityEvent(request, {
+    actor,
+    action: 'SETTINGS_UPDATED',
+    targetType: 'settings',
+    targetId,
+    targetLabel: label,
+    fields: [...keys].sort(),
+  });
 }
 
 /** Record one security event; request is null outside a request (at start-up, or a scheduled job). Never throws. */

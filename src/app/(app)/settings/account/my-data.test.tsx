@@ -55,6 +55,16 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+// The drawer reads the two-step status, then sends the DELETE.
+function serve(deleteResponse: () => Response, twoStep = false) {
+  fetchMock.mockImplementation(async (url: string) => (
+    url === '/api/me/totp'
+      ? new Response(JSON.stringify({ available: true, enabled: twoStep, recoveryCodesLeft: twoStep ? 10 : 0 }), { status: 200 })
+      : deleteResponse()
+  ));
+}
+const deleteCall = () => fetchMock.mock.calls.find(([url, init]) => url === '/api/me' && init?.method === 'DELETE')!;
+
 async function openDelete() {
   const user = userEvent.setup();
   await user.click(screen.getByRole('button', { name: 'Delete my account' }));
@@ -92,25 +102,71 @@ describe('Account: your data', () => {
 
   it('deletes with the current password and signs out', async () => {
     mocks.me = me();
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    serve(() => new Response(JSON.stringify({ ok: true }), { status: 200 }));
     renderPage();
     const { user, submit } = await openDelete();
     expect(submit.disabled).toBe(true);
     await user.type(screen.getByLabelText('Current password'), 'the words typed at sign in');
+    // Two-step is off: no code is asked for.
+    expect(screen.queryByLabelText('Code from your app, or a recovery code')).toBeNull();
     await user.click(submit);
 
     await waitFor(() => expect(mocks.endSession).toHaveBeenCalledOnce());
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('/api/me');
-    expect(init.method).toBe('DELETE');
-    expect(JSON.parse(init.body)).toEqual({ currentPassword: 'the words typed at sign in' });
+    expect(JSON.parse(deleteCall()[1].body)).toEqual({ currentPassword: 'the words typed at sign in' });
+  });
+
+  it('with two-step on, also asks for a code and sends it', async () => {
+    mocks.me = me();
+    serve(() => new Response(JSON.stringify({ ok: true }), { status: 200 }), true);
+    renderPage();
+    const { user, submit } = await openDelete();
+    const code = await screen.findByLabelText('Code from your app, or a recovery code');
+    await user.type(screen.getByLabelText('Current password'), 'the words typed at sign in');
+    // The password alone is not enough.
+    expect(submit.disabled).toBe(true);
+    await user.type(code, ' 123456 ');
+    expect(submit.disabled).toBe(false);
+    await user.click(submit);
+
+    await waitFor(() => expect(mocks.endSession).toHaveBeenCalledOnce());
+    expect(JSON.parse(deleteCall()[1].body)).toEqual({ currentPassword: 'the words typed at sign in', code: '123456' });
+  });
+
+  it('shows a wrong code, clears it and stays signed in', async () => {
+    mocks.me = me();
+    serve(() => new Response(JSON.stringify({ error: 'That code didn’t work. Try again.', field: 'code' }), { status: 403 }), true);
+    renderPage();
+    const { user, submit } = await openDelete();
+    const code = await screen.findByLabelText('Code from your app, or a recovery code') as HTMLInputElement;
+    await user.type(screen.getByLabelText('Current password'), 'the words typed at sign in');
+    await user.type(code, '000000');
+    await user.click(submit);
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/code didn’t work/);
+    expect(code.value).toBe('');
+    expect(mocks.endSession).not.toHaveBeenCalled();
+  });
+
+  it('asks for the code when the server says two-step is on after all', async () => {
+    mocks.me = me();
+    serve(() => new Response(
+      JSON.stringify({ error: 'Enter a code from your authenticator app or a recovery code', field: 'code', needsCode: true }),
+      { status: 400 },
+    ));
+    renderPage();
+    const { user, submit } = await openDelete();
+    await user.type(screen.getByLabelText('Current password'), 'the words typed at sign in');
+    await user.click(submit);
+
+    expect(await screen.findByLabelText('Code from your app, or a recovery code')).toBeTruthy();
+    expect(mocks.endSession).not.toHaveBeenCalled();
   });
 
   it('shows a refusal and stays signed in', async () => {
     mocks.me = me({ role: 'admin' });
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ error: 'You are the last active admin. Make someone else an admin first.' }), { status: 409 }),
-    );
+    serve(() => new Response(
+      JSON.stringify({ error: 'You are the last active admin. Make someone else an admin first.' }), { status: 409 },
+    ));
     renderPage();
     const { user, submit } = await openDelete();
     await user.type(screen.getByLabelText('Current password'), 'the words typed at sign in');
@@ -122,7 +178,7 @@ describe('Account: your data', () => {
 
   it('asks a Jellyfin-only account for its Jellyfin password', async () => {
     mocks.me = me({ hasLocalPassword: false });
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    serve(() => new Response(JSON.stringify({ ok: true }), { status: 200 }));
     renderPage();
     const { user, submit } = await openDelete();
     const input = screen.getByLabelText('Jellyfin password') as HTMLInputElement;
@@ -132,6 +188,6 @@ describe('Account: your data', () => {
     await user.click(submit);
 
     await waitFor(() => expect(mocks.endSession).toHaveBeenCalledOnce());
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ currentPassword: 'the words typed at sign in' });
+    expect(JSON.parse(deleteCall()[1].body)).toEqual({ currentPassword: 'the words typed at sign in' });
   });
 });

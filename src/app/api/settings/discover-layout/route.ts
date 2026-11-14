@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth, requireAdmin } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { recordSettingsUpdated } from '@/lib/security-audit';
 import {
   reconcileDiscoverLayout,
   validateDiscoverLayout,
@@ -67,6 +68,7 @@ async function putHandler(request: NextRequest) {
         discoverLayout: reconciled as unknown as Prisma.InputJsonValue,
       },
     });
+    await recordSettingsUpdated(request, admin.user, 'Discover layout', ['discoverLayout']);
 
     return NextResponse.json(reconciled);
   } catch (error) {

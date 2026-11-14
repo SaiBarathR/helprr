@@ -33,6 +33,7 @@ import {
   recordFailedLinkAttempt,
   recordFailedSignIn,
   recordSecurityEvent,
+  recordSettingsUpdated,
   serviceTargetLabel,
 } from '@/lib/security-audit';
 import { runWithRequestContext } from '@/lib/request-context';
@@ -149,6 +150,43 @@ describe('recordSecurityEvent', () => {
 
     expect(error).toHaveBeenCalledWith('[SecurityAudit] Failed to write audit row: Error P2021');
     expect(JSON.stringify(error.mock.calls)).not.toContain('secret-hash-123');
+  });
+});
+
+describe('recordSettingsUpdated', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.clientIp.mockReturnValue('203.0.113.77');
+    mocks.create.mockResolvedValue({});
+  });
+
+  it('writes one settings row with the actor and the sorted keys, never values', async () => {
+    await recordSettingsUpdated(request(), { id: 'm1', username: 'member' }, 'Server settings', ['logLevel', 'cacheImagesEnabled']);
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: 'm1',
+        actorUsername: 'member',
+        action: 'SETTINGS_UPDATED',
+        targetType: 'settings',
+        targetId: null,
+        targetLabel: 'Server settings',
+        fields: ['cacheImagesEnabled', 'logLevel'],
+        count: 1,
+      }),
+    });
+  });
+
+  it('names the one record a save was for, when given', async () => {
+    await recordSettingsUpdated(request(), { id: 'm1', username: 'member' }, 'YouTube retention for one channel', ['policy'], 'creator-9');
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ targetId: 'creator-9', targetLabel: 'YouTube retention for one channel', fields: ['policy'] }),
+    });
+  });
+
+  it('writes nothing for a save that wrote no key', async () => {
+    await recordSettingsUpdated(request(), { id: 'm1', username: 'member' }, 'Server settings', []);
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 });
 

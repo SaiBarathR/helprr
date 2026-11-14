@@ -950,6 +950,7 @@ enum SecurityAuditAction {
   API_TOKEN_CREATED // a personal API token was made (fields: its scopes)
   API_TOKEN_REVOKED // turned off by its owner, or ended by a password change or reset (count: tokens)
   API_TOKEN_NEW_NETWORK // a token was used from a network it had not been used from before
+  SETTINGS_UPDATED // a server-wide setting was saved (targetLabel: what was saved; fields: the keys written, never values)
 }
 
 // Who did what to accounts, sessions, service connections and settings, and

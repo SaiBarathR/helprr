@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { getJellyfinClientContext } from '@/lib/service-helpers';
 import { invalidateQueuedCleanup } from '@/lib/youtube/cleanup';
 import { getYoutubeSettings } from '@/lib/youtube/settings';
+import { recordSettingsUpdated } from '@/lib/security-audit';
 
 /** The state of automatic cleanup, and the people whose watching could count. */
 async function getHandler(): Promise<NextResponse> {
@@ -34,7 +35,9 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
 
   await getYoutubeSettings();
   if (!body.enabled) {
-    await prisma.youtubeSettings.update({ where: { id: 'singleton' }, data: { autoCleanupEnabled: false, cleanupStatus: null } });
+    const data = { autoCleanupEnabled: false, cleanupStatus: null };
+    await prisma.youtubeSettings.update({ where: { id: 'singleton' }, data });
+    await recordSettingsUpdated(request, auth.user, 'YouTube auto-cleanup', Object.keys(data));
     await invalidateQueuedCleanup();
     return NextResponse.json({ ok: true });
   }
@@ -43,24 +46,25 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
   if (typeof body.viewerId !== 'string' || !body.viewerId) {
     return NextResponse.json({ error: 'Choose whose watched videos count' }, { status: 400 });
   }
+  let written: string[];
   try {
     const { client, connection, connectionFingerprint } = await getJellyfinClientContext();
     const viewer = await client.getUser(body.viewerId);
     if (viewer.Id !== body.viewerId) throw new Error('not that user');
-    await prisma.youtubeSettings.update({
-      where: { id: 'singleton' },
-      data: {
-        autoCleanupEnabled: true,
-        cleanupJellyfinUserId: viewer.Id,
-        cleanupConnectionId: connection.id,
-        cleanupConnectionFingerprint: connectionFingerprint,
-        cleanupStatus: null,
-        cleanupRanAt: null,
-      },
-    });
+    const data = {
+      autoCleanupEnabled: true,
+      cleanupJellyfinUserId: viewer.Id,
+      cleanupConnectionId: connection.id,
+      cleanupConnectionFingerprint: connectionFingerprint,
+      cleanupStatus: null,
+      cleanupRanAt: null,
+    };
+    await prisma.youtubeSettings.update({ where: { id: 'singleton' }, data });
+    written = Object.keys(data);
   } catch {
     return NextResponse.json({ error: 'Could not confirm that user in Jellyfin' }, { status: 502 });
   }
+  await recordSettingsUpdated(request, auth.user, 'YouTube auto-cleanup', written);
   await invalidateQueuedCleanup();
   return NextResponse.json({ ok: true });
 }

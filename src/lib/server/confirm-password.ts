@@ -75,7 +75,21 @@ export async function confirmPasswordAndSecondFactor(
 ): Promise<{ ok: true; factor: SecondFactor } | { ok: false; response: NextResponse }> {
   const passwordError = await confirmCurrentPassword(request, user, currentPassword);
   if (passwordError) return { ok: false, response: passwordError };
+  return confirmSecondFactor(request, user, code);
+}
 
+/**
+ * The second half of confirmPasswordAndSecondFactor, for a caller that checked
+ * the password itself (deleting your own account also takes a Jellyfin
+ * password): a code from the authenticator app or a recovery code, behind the
+ * account's hourly code cap. A wrong code counts as a failed sign-in; a right
+ * one is used up and clears the username backoff.
+ */
+export async function confirmSecondFactor(
+  request: NextRequest,
+  user: Pick<User, 'id' | 'username' | 'totpSecret' | 'totpEnabledAt' | 'totpLastUsedStep'>,
+  code: string,
+): Promise<{ ok: true; factor: SecondFactor } | { ok: false; response: NextResponse }> {
   let gate: Awaited<ReturnType<typeof startMfaAttempt>>;
   try {
     gate = await startMfaAttempt(user.id, secondFactorKind(code));

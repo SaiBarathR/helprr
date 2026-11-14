@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { recordSettingsUpdated } from '@/lib/security-audit';
 import { prisma } from '@/lib/db';
 import { getYoutubeSettings } from '@/lib/youtube/settings';
 
@@ -33,13 +34,12 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   await getYoutubeSettings();
-  await prisma.youtubeSettings.update({
-    where: { id: 'singleton' },
-    data: {
-      ...(typeof autoDownloadEnabled === 'boolean' ? { autoDownloadEnabled } : {}),
-      ...(validPoll ? { pollVideosSecs } : {}),
-    },
-  });
+  const data = {
+    ...(typeof autoDownloadEnabled === 'boolean' ? { autoDownloadEnabled } : {}),
+    ...(validPoll ? { pollVideosSecs } : {}),
+  };
+  await prisma.youtubeSettings.update({ where: { id: 'singleton' }, data });
+  await recordSettingsUpdated(request, auth.user, 'YouTube settings', Object.keys(data));
   return NextResponse.json(await publicSettings());
 }
 

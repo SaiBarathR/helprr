@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
-import { useCan } from '@/components/permission-provider';
+import { useMe } from '@/components/permission-provider';
 import { useAppSettings, type AppSettingsState } from '@/lib/hooks/use-app-settings';
 import { useDebouncedCommit } from '@/lib/hooks/use-debounced-commit';
 import {
@@ -38,9 +38,9 @@ function dispatchClientLogSettings(detail: ClientLogCaptureSettingsEvent) {
 
 export default function LoggingSettingsPage() {
   const { settings, loading, update } = useAppSettings();
-  // Deleting log files is "Delete logs" (logs.manage, DELETE /api/logs/files),
-  // a separate grant from these logging settings.
-  const canDeleteLogs = useCan('logs.manage');
+  // The failed-body switches are admin-only on the server (PUT /api/settings);
+  // everything else here, Delete all log files included, comes with this page.
+  const isAdmin = useMe()?.role === 'admin';
   const previousLogEnabled = useRef<boolean | null>(null);
   const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
   const [purgingLogs, setPurgingLogs] = useState(false);
@@ -108,7 +108,7 @@ export default function LoggingSettingsPage() {
       logEnabled: result.logEnabled,
       logClientConsoleEnabled: result.logClientConsoleEnabled,
     });
-    if (wasEnabled === true && next === false && canDeleteLogs) {
+    if (wasEnabled === true && next === false) {
       setPurgeConfirmOpen(true);
     }
   }
@@ -243,7 +243,10 @@ export default function LoggingSettingsPage() {
         </fieldset>
       </GroupedSection>
 
-      <GroupedSection title="Verbosity" footer="Synced across devices">
+      <GroupedSection
+        title="Verbosity"
+        footer={isAdmin ? 'Synced across devices' : 'Only an admin can turn failed request and response bodies on or off.'}
+      >
         <fieldset disabled={!logEnabled} className={!logEnabled ? 'opacity-50' : undefined}>
           <div className="grouped-row">
             <span className="text-sm">Client console</span>
@@ -259,7 +262,7 @@ export default function LoggingSettingsPage() {
             <Switch
               checked={settings?.logFailedRequestBodies ?? false}
               onCheckedChange={(v) => void update({ logFailedRequestBodies: v })}
-              disabled={loading || !logEnabled}
+              disabled={loading || !logEnabled || !isAdmin}
               aria-label="Failed Request Bodies"
             />
           </div>
@@ -268,25 +271,20 @@ export default function LoggingSettingsPage() {
             <Switch
               checked={settings?.logFailedResponseBodies ?? false}
               onCheckedChange={(v) => void update({ logFailedResponseBodies: v })}
-              disabled={loading || !logEnabled}
+              disabled={loading || !logEnabled || !isAdmin}
               aria-label="Failed Response Bodies"
             />
           </div>
         </fieldset>
       </GroupedSection>
 
-      <GroupedSection
-        title="Files"
-        footer={canDeleteLogs
-          ? 'Server action — affects all devices'
-          : 'Deleting log files needs “Delete logs”, which an admin turns on in Settings → Users.'}
-      >
+      <GroupedSection title="Files" footer="Server action — affects all devices">
         <div className="px-4 py-3">
           <Button
             variant="outline"
             className="w-full h-9"
             onClick={() => setPurgeConfirmOpen(true)}
-            disabled={purgingLogs || !canDeleteLogs}
+            disabled={purgingLogs}
           >
             {purgingLogs ? (
               <>

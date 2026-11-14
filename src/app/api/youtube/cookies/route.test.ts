@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ settings: vi.fn(), update: vi.fn(), updateMany: vi.fn() }));
+const mocks = vi.hoisted(() => ({ settings: vi.fn(), update: vi.fn(), updateMany: vi.fn(), audit: vi.fn() }));
 
 vi.mock('@/lib/auth', () => ({ requireUserCapability: vi.fn(async () => ({ ok: true, user: { id: 'admin' } })) }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: <T,>(handler: T) => handler }));
 vi.mock('@/lib/db', () => ({ prisma: { youtubeSettings: { update: mocks.update, updateMany: mocks.updateMany } } }));
 vi.mock('@/lib/youtube/settings', () => ({ getYoutubeSettings: mocks.settings }));
+vi.mock('@/lib/security-audit', () => ({ recordSettingsUpdated: mocks.audit }));
 vi.mock('@/lib/twitch/token-cipher', () => ({ encryptTwitchToken: (value: string) => `enc:v1:${Buffer.from(value).toString('base64')}` }));
 
 import { DELETE, GET, PUT } from './route';
@@ -36,6 +37,9 @@ describe('the spare account routes', () => {
     expect(data.cookies.startsWith('enc:v1:')).toBe(true);
     expect(JSON.stringify(data)).not.toContain(SECRET);
     expect(data).toMatchObject({ cookiesValid: null, cookiesCheckedAt: null });
+    // The audit names the key only.
+    expect(mocks.audit).toHaveBeenCalledWith(expect.anything(), { id: 'admin' }, 'YouTube cookies', ['cookies']);
+    expect(JSON.stringify(mocks.audit.mock.calls[0].slice(1))).not.toContain(SECRET);
   });
 
   it('refuses a bad file, stores nothing and echoes nothing', async () => {
@@ -43,10 +47,12 @@ describe('the spare account routes', () => {
     expect(response.status).toBe(400);
     expect(await response.text()).not.toContain(SECRET);
     expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.audit).not.toHaveBeenCalled();
   });
 
   it('removes it completely', async () => {
-    expect((await DELETE()).status).toBe(200);
+    expect((await DELETE(new NextRequest('http://test/api/youtube/cookies', { method: 'DELETE' }))).status).toBe(200);
     expect(mocks.updateMany).toHaveBeenCalledWith({ data: { cookies: null, cookiesValid: null, cookiesCheckedAt: null } });
+    expect(mocks.audit).toHaveBeenCalledWith(expect.anything(), { id: 'admin' }, 'YouTube cookies', ['cookies']);
   });
 });
