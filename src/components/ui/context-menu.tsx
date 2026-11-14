@@ -6,9 +6,12 @@ import { ContextMenu as ContextMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { useSafeAreaPadding } from "@/lib/hooks/use-safe-area-padding"
+import { useBackClosableOpen } from "@/lib/overlay-history"
 
-function ContextMenu(props: React.ComponentProps<typeof ContextMenuPrimitive.Root>) {
-  return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />
+function ContextMenu({ open: openProp, onOpenChange, ...props }: React.ComponentProps<typeof ContextMenuPrimitive.Root>) {
+  // Back closes the menu first (see overlay-history).
+  const [open, setOpen] = useBackClosableOpen(openProp, false, onOpenChange)
+  return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} open={open} onOpenChange={setOpen} />
 }
 
 function ContextMenuTrigger(props: React.ComponentProps<typeof ContextMenuPrimitive.Trigger>) {

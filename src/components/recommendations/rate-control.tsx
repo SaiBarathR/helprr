@@ -6,6 +6,7 @@ import { ThumbsDown, ThumbsUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCan } from '@/components/permission-provider';
 import type { Rating } from '@/lib/recommendations/ratings';
+import { useCloseOnBack } from '@/lib/overlay-history';
 import { cn } from '@/lib/utils';
 
 const OPTIONS: Array<{ rating: Rating; label: string }> = [
@@ -138,6 +139,9 @@ export function RateControl({
     setOpen(false);
     rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
   };
+
+  // Back closes the menu first (see overlay-history).
+  useCloseOnBack(open, () => setOpen(false));
 
   useEffect(() => {
     if (!open) return;

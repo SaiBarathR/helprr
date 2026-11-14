@@ -7,6 +7,7 @@ import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-
 import { History, Loader2, Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { jsonFetcher } from '@/lib/query-fetch';
+import { useCloseOnBack } from '@/lib/overlay-history';
 import { useSearchHistory } from '@/lib/hooks/use-search-history';
 import { AnimeCard, type AnimeItemWithLibrary } from '@/components/anime/anime-card';
 import type { AniListPageInfo } from '@/types/anilist';
@@ -129,6 +130,9 @@ export function AnimeSearchOverlay({
     onExpandedChange?.(false);
     inputRef.current?.blur();
   };
+
+  // Back closes the results panel first (see overlay-history).
+  useCloseOnBack(expanded, close);
 
   const runSearch = (term: string) => {
     const t = term.trim();

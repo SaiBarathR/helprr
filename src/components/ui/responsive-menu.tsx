@@ -15,7 +15,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { useIsMobile } from '@/hooks/use-is-mobile';
-import { useCloseOnBack } from '@/lib/overlay-history';
 import { cn } from '@/lib/utils';
 
 // True inside the phone drawer, where the dropdown's items have no menu to live in.
@@ -69,8 +68,6 @@ export function ResponsiveMenu({ trigger, title, titleInDropdown, align = 'start
     if (open === undefined) setOwnOpen(next);
     onOpenChange?.(next);
   };
-  // The phone drawer does this itself; the dropdown closes on Back too.
-  useCloseOnBack(!isPhone && isOpen, () => setOpen(false));
   const close = closeOnPick ? () => setOpen(false) : null;
   const closeOnAction = actions ? () => setOpen(false) : null;
   if (isPhone) {

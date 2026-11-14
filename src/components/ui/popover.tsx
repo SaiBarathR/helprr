@@ -5,11 +5,30 @@ import { Popover as PopoverPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { useSafeAreaPadding } from "@/lib/hooks/use-safe-area-padding"
+import { useBackClosableOpen } from "@/lib/overlay-history"
 
 function Popover({
+  backCloses = true,
+  ...props
+}: React.ComponentProps<typeof PopoverPrimitive.Root> & {
+  /** False for a pop-up that follows hover or typing (a preview, suggestions
+   *  under a field), not one the user opened: each would put a Back entry on
+   *  history and take it off again as the pointer or the text moves. */
+  backCloses?: boolean
+}) {
+  if (!backCloses) return <PopoverPrimitive.Root data-slot="popover" {...props} />
+  return <BackClosablePopover {...props} />
+}
+
+function BackClosablePopover({
+  open: openProp,
+  defaultOpen,
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
-  return <PopoverPrimitive.Root data-slot="popover" {...props} />
+  // Back closes the pop-up first (see overlay-history).
+  const [open, setOpen] = useBackClosableOpen(openProp, defaultOpen, onOpenChange)
+  return <PopoverPrimitive.Root data-slot="popover" {...props} open={open} onOpenChange={setOpen} />
 }
 
 function PopoverTrigger({

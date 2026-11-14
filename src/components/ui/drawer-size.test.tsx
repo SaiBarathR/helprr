@@ -97,6 +97,22 @@ describe('DrawerContent above the keyboard', () => {
     }
   });
 
+  it('in a Safari tab, keeps clear of the address bar and scrolls as one column', () => {
+    stubViewport(window.innerHeight - 300);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
+    const panel = open('content');
+    expect(panel.style.paddingBottom).toBe('3.75rem');
+    expect(panel.hasAttribute('data-keyboard-tab')).toBe(true);
+  });
+
+  it('keeps its own body scrolling in the Home Screen app', () => {
+    stubViewport(window.innerHeight - 300);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)', standalone: true });
+    const panel = open('content');
+    expect(panel.style.paddingBottom).toBe('0px');
+    expect(panel.hasAttribute('data-keyboard-tab')).toBe(false);
+  });
+
   it('leaves a drawer alone while no keyboard is open', () => {
     stubViewport(window.innerHeight);
     const panel = open('content');
