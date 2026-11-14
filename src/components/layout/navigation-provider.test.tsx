@@ -132,6 +132,18 @@ describe('app navigation feedback', () => {
     expect(document.querySelector('[data-navigation-loading]')).toBeNull();
   });
 
+  it('shows no loading view when Forward returns to a page left by an in-app Back', async () => {
+    // The router commits the new route before this provider's popstate
+    // listener runs, and the effect re-running for the new path takes that
+    // listener off: it sees neither the Back nor the Forward.
+    await click('Back');
+    await act(async () => { window.history.replaceState({}, '', '/movies'); commit('/movies', ready); resolve('Previous page'); });
+    expect(document.querySelector('[data-navigation-loading]')).toBeNull();
+    await act(async () => { window.history.replaceState({}, '', '/dashboard'); commit('/dashboard', ready); });
+    expect(document.querySelector('[data-navigation-loading]')).toBeNull();
+    expect(document.body.textContent).toContain('Previous page');
+  });
+
   it('restores the current page when Back has no history entry', async () => {
     vi.useFakeTimers();
     await click('Back');

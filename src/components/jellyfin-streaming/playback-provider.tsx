@@ -859,6 +859,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    * still write the title's resume point.
    */
   const announcedRef = useRef<HelprrStreamInfo | null>(null);
+  /** Whether Jellyfin was last told the stream is paused: the start report
+   *  and every progress report set it, so a pause or resume is reported once,
+   *  as it happens (see the progress effect). */
+  const reportedPauseRef = useRef<{ stream: HelprrStreamInfo; paused: boolean } | null>(null);
   const queueRef = useRef<JellyfinItem[]>([]);
   const indexRef = useRef(0);
   const orderRef = useRef<JellyfinItem[]>([]);
@@ -1564,6 +1568,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       // overwrite it back to playing.
       if (startPaused) mediaRef.current?.pause();
       announcedRef.current = nextStream;
+      reportedPauseRef.current = { stream: nextStream, paused: startPaused };
       await report('playing', nextStream, {
         positionTicks: (mediaRef.current?.currentTime
           ? secondsToTicks(mediaRef.current.currentTime) + nextStream.transcodingOffsetTicks
@@ -2304,11 +2309,19 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     clearTimers();
     if (status !== 'playing' && status !== 'paused') return undefined;
-    progressTimer.current = setInterval(() => {
+    const reportProgress = (onlyPauseChange: boolean) => {
       const current = streamRef.current;
       const el = mediaRef.current;
       if (!current || !el || el.readyState < 2
         || !lastRequestRef.current?.attached || lastRequestRef.current.token !== startTokenRef.current) return;
+      if (onlyPauseChange) {
+        // Only for the stream whose start was reported. A Stop, a failure, an
+        // ending or a restart has retired the attempt (the token above) by
+        // the time its own pause gets here, so no progress follows a Stopped.
+        const known = reportedPauseRef.current;
+        if (!known || known.stream !== current || known.paused === el.paused) return;
+      }
+      reportedPauseRef.current = { stream: current, paused: el.paused };
       void report('progress', current, {
         positionTicks: positionToReport(el, current, reachedStartRef.current),
         isPaused: el.paused,
@@ -2322,7 +2335,13 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         playbackStartTimeTicks: playbackStartRef.current,
         maxStreamingBitrate: maxBitrate || undefined,
       });
-    }, 10_000);
+    };
+    // A pause or resume reaches Jellyfin now, as jellyfin-web reports its
+    // `pause` and `unpause` at once; it used to wait up to 10 s for the next
+    // tick, with Jellyfin showing the title playing meanwhile. The status
+    // change restarts the interval, so no tick follows close behind.
+    reportProgress(true);
+    progressTimer.current = setInterval(() => reportProgress(false), 10_000);
     return clearTimers;
   }, [maxBitrate, status, stream]);
 
