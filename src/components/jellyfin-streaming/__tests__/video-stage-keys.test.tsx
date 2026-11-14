@@ -129,4 +129,29 @@ describe('the audio and subtitles panel', () => {
     expect(checked('Audio')).toEqual(['English:false', 'Japanese:true']);
     expect(checked('Subtitles')).toEqual(['Off:true', 'English CC:false']);
   });
+
+  it('leaves the arrow keys and Space to the choice list, Escape closes it and focus goes back to its button', async () => {
+    state.video = document.createElement('video');
+    const MediaStreams = [
+      { Type: 'Audio', Index: 1, DisplayTitle: 'English' },
+      { Type: 'Audio', Index: 2, DisplayTitle: 'Japanese' },
+    ];
+    await render(true, { stream: { mediaSource: { MediaStreams }, item: { Id: 'item1' }, subtitleTracks: [] }, audioStreamIndex: 1 });
+    const opener = document.querySelector('button[aria-label="Audio and subtitles"]') as HTMLButtonElement;
+    opener.focus();
+    await act(async () => opener.click());
+    const radio = document.querySelector('[role="radiogroup"][aria-label="Audio"] [role="radio"]') as HTMLElement;
+    radio.focus();
+    for (const key of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', ' ']) {
+      await act(async () => { radio.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })); });
+    }
+    expect(spy('setVolume')).not.toHaveBeenCalled();
+    expect(spy('skip')).not.toHaveBeenCalled();
+    expect(spy('togglePause')).not.toHaveBeenCalled();
+
+    await act(async () => { radio.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(document.querySelector('[data-player-panel]')).toBeNull();
+    expect(spy('setVideoExpanded')).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(opener);
+  });
 });

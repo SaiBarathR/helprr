@@ -863,6 +863,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    *  and every progress report set it, so a pause or resume is reported once,
    *  as it happens (see the progress effect). */
   const reportedPauseRef = useRef<{ stream: HelprrStreamInfo; paused: boolean } | null>(null);
+  // The latest start report: progress reports go out after it, so a quick
+  // pause can't reach Jellyfin before the start's isPaused: false and be undone.
+  const reportChainRef = useRef<Promise<unknown>>(Promise.resolve());
   const queueRef = useRef<JellyfinItem[]>([]);
   const indexRef = useRef(0);
   const orderRef = useRef<JellyfinItem[]>([]);
@@ -1569,7 +1572,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       if (startPaused) mediaRef.current?.pause();
       announcedRef.current = nextStream;
       reportedPauseRef.current = { stream: nextStream, paused: startPaused };
-      await report('playing', nextStream, {
+      const started = report('playing', nextStream, {
         positionTicks: (mediaRef.current?.currentTime
           ? secondsToTicks(mediaRef.current.currentTime) + nextStream.transcodingOffsetTicks
           : 0) || resumeTicks,
@@ -1584,6 +1587,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         playbackStartTimeTicks: playbackStartRef.current,
         maxStreamingBitrate: maxBitrate || undefined,
       });
+      reportChainRef.current = started.catch(() => undefined);
+      await started;
       if (superseded()) return;
       setStatus(pausedIntentRef.current ? 'paused' : 'playing');
       fetch(`/api/jellyfin/catalog/items/${nextItem.Id}?expand=segments`)
@@ -2322,7 +2327,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         if (!known || known.stream !== current || known.paused === el.paused) return;
       }
       reportedPauseRef.current = { stream: current, paused: el.paused };
-      void report('progress', current, {
+      const body: Parameters<typeof report>[2] = {
         positionTicks: positionToReport(el, current, reachedStartRef.current),
         isPaused: el.paused,
         volumeLevel: Math.round(el.volume * 100),
@@ -2334,7 +2339,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         shuffleMode: shuffledRef.current ? 'Shuffle' : 'Sorted',
         playbackStartTimeTicks: playbackStartRef.current,
         maxStreamingBitrate: maxBitrate || undefined,
-      });
+      };
+      // After the start report only, not after each other: one slow request
+      // must not hold up the reports behind it.
+      void reportChainRef.current.then(() => report('progress', current, body)).catch(() => undefined);
     };
     // A pause or resume reaches Jellyfin now, as jellyfin-web reports its
     // `pause` and `unpause` at once; it used to wait up to 10 s for the next

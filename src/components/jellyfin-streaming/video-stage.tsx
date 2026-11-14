@@ -192,6 +192,11 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
   const mediaRef = useJellyfinMediaRef();
   const [controlsVisible, setControlsVisible] = useState(true);
   const [panel, setPanel] = useState<'none' | 'subs' | 'quality' | 'speed' | 'chapters' | 'stats' | 'more'>('none');
+  // The control that had focus when a panel opened, for Escape to return to.
+  const panelOpenerRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (panel !== 'none' && document.activeElement instanceof HTMLElement) panelOpenerRef.current = document.activeElement;
+  }, [panel]);
   const coarse = useCoarsePointer();
   const fullscreen = useDocumentFullscreen();
   const stalled = useStalled(mediaRef, playback.stream);
@@ -329,6 +334,9 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
     if (!expanded) return undefined;
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || keyBelongsElsewhere(event.target)) return;
+      // In a panel's choice list (audio, subtitles, quality, speed) the keys
+      // pick an option; only Escape still closes the panel.
+      if (event.key !== 'Escape' && event.target instanceof HTMLElement && event.target.closest('[role="radiogroup"]')) return;
       const p = playbackRef.current;
       if (!p.item) return;
       if (event.key === ' ' || event.key === 'k') { event.preventDefault(); p.togglePause(); }
@@ -341,7 +349,11 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
       // only then the player itself.
       if (event.key === 'Escape') {
         if (p.queueOpen && p.queue.length > 0) p.setQueueOpen(false);
-        else if (panel !== 'none') setPanel('none');
+        else if (panel !== 'none') {
+          setPanel('none');
+          // Back to the button that opened it, rather than lost to <body>.
+          panelOpenerRef.current?.focus();
+        }
         else p.setVideoExpanded(false);
       }
       if (event.key === 'm') p.setMuted(!p.muted);

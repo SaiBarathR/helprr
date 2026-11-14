@@ -37,6 +37,25 @@ describe('pause and resume reports', () => {
     expect(progress(h)).toEqual([true, false]);
   });
 
+  it('sends a pause made while the start report is in flight only after it, so it is not undone', async () => {
+    const h = await mountPlayback();
+    harness = h;
+    h.holdStartReport();
+    let started: Promise<unknown> = Promise.resolve();
+    await h.act(async () => { started = h.playback().playItem(ITEM); await new Promise((r) => setTimeout(r, 0)); });
+    await h.act(async () => {
+      for (let i = 0; i < 20 && !h.reports.some((report) => report.event === 'playing'); i++) await new Promise((r) => setTimeout(r, 5));
+    });
+    expect(h.reports.map((report) => report.event)).toEqual(['playing']);
+
+    await h.act(() => { h.element().pause(); });
+    // Not sent yet: it would race the start's isPaused: false to Jellyfin.
+    expect(progress(h)).toEqual([]);
+
+    await h.act(async () => { h.releaseStartReport(); await started; });
+    expect(progress(h)).toEqual([true]);
+  });
+
   it('reports a pause from outside the player (lock screen, headphones) too', async () => {
     const h = await playing();
     await h.act(() => { h.element().pause(); });
