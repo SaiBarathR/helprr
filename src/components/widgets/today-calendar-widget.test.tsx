@@ -5,34 +5,41 @@ import { render, screen } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarEvent } from '@/types';
 
-const mocks = vi.hoisted(() => ({ height: 0 }));
+const mocks = vi.hoisted(() => ({ height: 0, fetchFn: null as null | ((signal?: AbortSignal) => Promise<unknown>) }));
 
+vi.mock('@/lib/timezone', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/timezone')>()),
+  getDeviceTimeZone: () => 'Pacific/Auckland',
+}));
 vi.mock('@/lib/widgets/use-widget-data', () => ({
-  useWidgetData: () => ({
-    data: [{
-      id: 'ep-1',
-      type: 'episode',
-      title: 'Classroom of the Elite',
-      subtitle: 'S01E03 - Episode 3',
-      date: '2026-11-13T19:30:00.000Z',
-      hasFile: false,
-      monitored: true,
-      seriesId: 1,
-      images: [],
-    }, {
-      id: 'radarr-1-7-digital',
-      type: 'movie',
-      title: 'The Odyssey',
-      subtitle: '2026 - Universal Pictures',
-      date: '2026-11-13T00:00:00Z',
-      hasFile: false,
-      monitored: true,
-      movieId: 7,
-      releaseType: 'digital',
-      images: [],
-    }] satisfies CalendarEvent[],
-    loading: false,
-  }),
+  useWidgetData: ({ fetchFn }: { fetchFn: (signal?: AbortSignal) => Promise<unknown> }) => {
+    mocks.fetchFn = fetchFn;
+    return {
+      data: [{
+        id: 'ep-1',
+        type: 'episode',
+        title: 'Classroom of the Elite',
+        subtitle: 'S01E03 - Episode 3',
+        date: '2026-11-13T19:30:00.000Z',
+        hasFile: false,
+        monitored: true,
+        seriesId: 1,
+        images: [],
+      }, {
+        id: 'radarr-1-7-digital',
+        type: 'movie',
+        title: 'The Odyssey',
+        subtitle: '2026 - Universal Pictures',
+        date: '2026-11-13T00:00:00Z',
+        hasFile: false,
+        monitored: true,
+        movieId: 7,
+        releaseType: 'digital',
+        images: [],
+      }] satisfies CalendarEvent[],
+      loading: false,
+    };
+  },
 }));
 vi.mock('@/lib/widgets/use-element-size', () => ({ useElementSize: () => ({ ref: () => {}, width: 366, height: mocks.height }) }));
 vi.mock('@/lib/widgets/use-list-fetch-size', () => ({ useListFetchSize: () => ({ visibleCount: 10 }) }));
@@ -104,5 +111,19 @@ describe('Today widget times', () => {
     // Upstream's UTC midnight is not a time: 5:30 AM in India, the evening before in Los Angeles.
     expect(film).not.toMatch(/\d:\d\d/);
     expect(rows.find((text) => text.includes('Classroom of the Elite'))).toMatch(/\d:\d\d/);
+  });
+});
+
+describe("Today widget's day", () => {
+  it("asks for this device's today, not the server's", async () => {
+    const fetchMock = vi.fn(async () => new Response('[]', { headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      renderCarousel();
+      await mocks.fetchFn!();
+      expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe('/api/calendar?days=1&fullDay=true&tz=Pacific%2FAuckland');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

@@ -806,6 +806,31 @@ html {
   }
 }
 
+/* The widget offline cover (widget-renderer.tsx). A one-cell phone widget
+   (about 44×60 inside the card at 320, 62×60 at 390) fits the name and
+   "Can't reach Helprr", not the icon or "right now.". */
+.widget-cover-body {
+  gap: 6px;
+}
+@container widget-cover (max-width: 100px) {
+  .widget-cover-tail {
+    display: none;
+  }
+}
+@container widget-cover (max-width: 70px) {
+  .widget-cover-body {
+    gap: 2px;
+  }
+  .widget-cover-body > svg {
+    display: none;
+  }
+}
+@container widget-cover (max-height: 50px) {
+  .widget-cover-body > svg {
+    display: none;
+  }
+}
+
 /* The empty state's next-step link needs room under icon + message; a short
    cell drops it rather than clipping it (the header's "View all" remains). */
 @container bento-empty (max-height: 80px) {

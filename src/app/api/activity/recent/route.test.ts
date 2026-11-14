@@ -12,6 +12,11 @@ vi.mock('@/lib/auth', () => ({
   requireUserCapability: vi.fn(async () => ({ ok: true, user: mocks.user })),
 }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
+const cache = vi.hoisted(() => new Map<string, unknown>());
+vi.mock('@/lib/cache/json-cache', () => ({
+  getCachedJson: async (scope: string, seed: string) => cache.get(`${scope}:${seed}`) ?? null,
+  setCachedJson: async (scope: string, seed: string, value: unknown) => { cache.set(`${scope}:${seed}`, value); },
+}));
 vi.mock('@/lib/service-helpers', () => ({
   getSonarrClients: async () => [{ connection: { id: 'son-1', label: 'Sonarr' }, client: { getHistory: mocks.sonarrHistory } }],
   getRadarrClients: async () => [],
@@ -35,6 +40,7 @@ function get(limit = 10) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  cache.clear();
   mocks.lidarrFails = false;
   mocks.user = { id: 'u1', role: 'admin' };
   mocks.sonarrHistory.mockResolvedValue({
@@ -109,5 +115,26 @@ describe('GET /api/activity/recent — Lidarr imports', () => {
     const items = await (await get()).json();
 
     expect(items.map((i: { id: string }) => i.id)).toEqual(['lidarr-lid-1-album-7', 'sonarr-son-1-1']);
+  });
+});
+
+describe('GET /api/activity/recent — shared server cache', () => {
+  it('asks each instance once for polls inside the cache window, whatever the limit', async () => {
+    mocks.lidarrHistory.mockResolvedValue({ records: [] });
+    expect(await (await get(10)).json()).toHaveLength(1);
+    expect(await (await get(3)).json()).toHaveLength(1);
+    expect(mocks.sonarrHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps albums out of the entry for viewers without music.view, and never asks Lidarr for them', async () => {
+    mocks.lidarrHistory.mockResolvedValue({ records: [rec(28, 'downloadImported', '2026-11-03T12:00:01Z', 7)] });
+    const withMusic = await (await get()).json();
+    expect(withMusic.some((item: { type: string }) => item.type === 'album')).toBe(true);
+
+    mocks.user = { id: 'u2', role: 'member', template: 'member', permissions: { 'activity.view': true, 'music.view': false } };
+    mocks.lidarrHistory.mockClear();
+    const without = await (await get()).json();
+    expect(without.some((item: { type: string }) => item.type === 'album')).toBe(false);
+    expect(mocks.lidarrHistory).not.toHaveBeenCalled();
   });
 });

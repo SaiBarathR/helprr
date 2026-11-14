@@ -398,6 +398,8 @@ export default function ScheduledAlertsPage() {
                     <QuickContextMenu
                       key={alert.id}
                       label={`Actions for ${alert.title}`}
+                      // A cancelled custom reminder has only Delete (no item to open).
+                      allowSingleAction={alert.status === 'cancelled'}
                       groups={[
                         {
                           id: 'navigation',
