@@ -181,7 +181,7 @@ describe('events that start off', () => {
     lastFailedAt: null,
     lastSucceededAt: null,
     preferences,
-    user: { id: `user-${name}`, role: 'admin', template: 'admin', permissions: {}, settings: null },
+    user: { id: `user-${name}`, status: 'active', role: 'admin', template: 'admin', permissions: {}, settings: null },
   });
   const sentTo = () => mocks.sendNotification.mock.calls.map(([target]) => (target as { endpoint: string }).endpoint);
 
@@ -200,7 +200,7 @@ describe('events that start off', () => {
     const sleepy = () => ({
       ...device('sleepy', []),
       user: {
-        id: 'user-sleepy', role: 'admin', template: 'admin', permissions: {},
+        id: 'user-sleepy', status: 'active', role: 'admin', template: 'admin', permissions: {},
         settings: { quietHoursEnabled: true, quietHoursStart: hour, quietHoursEnd: (hour + 1) % 24, timeZone: 'UTC' },
       },
     });
@@ -222,7 +222,7 @@ describe('events that start off', () => {
     mocks.findMany.mockResolvedValueOnce([{
       ...device('sleepy', []),
       user: {
-        id: 'user-sleepy', role: 'admin', template: 'admin', permissions: {},
+        id: 'user-sleepy', status: 'active', role: 'admin', template: 'admin', permissions: {},
         settings: { quietHoursEnabled: true, quietHoursStart: hour, quietHoursEnd: (hour + 1) % 24, timeZone: 'UTC' },
       },
     }]);
@@ -256,7 +256,7 @@ describe('Lidarr-sourced pushes', () => {
     lastFailedAt: null,
     lastSucceededAt: null,
     preferences: [],
-    user: { id: `user-${name}`, settings: null, ...user },
+    user: { id: `user-${name}`, status: 'active', settings: null, ...user },
   });
   const devices = () => [
     device('admin', { role: 'admin', template: 'admin', permissions: {} }),
@@ -312,11 +312,49 @@ describe('Lidarr-sourced pushes', () => {
   });
 });
 
+// Disabling a user ends their sessions but keeps their devices subscribed, so
+// re-enabling them brings their pushes back; until then nothing reaches them.
+describe('accounts that are not active', () => {
+  const device = (name: string, status: string) => ({
+    ...subscription,
+    id: name,
+    endpoint: `${subscription.endpoint}-${name}`,
+    consecutiveFailures: 0,
+    lastFailedAt: null,
+    lastSucceededAt: null,
+    preferences: [],
+    user: { id: `user-${name}`, status, role: 'admin', template: 'admin', permissions: {}, settings: null },
+  });
+  const devices = () => [device('active', 'active'), device('disabled', 'disabled'), device('pending', 'pending')];
+  const sentTo = () => mocks.sendNotification.mock.calls
+    .map(([target]) => (target as { endpoint: string }).endpoint.replace(`${subscription.endpoint}-`, ''));
+
+  it('sends a broadcast only to an active account', async () => {
+    mocks.findMany.mockResolvedValueOnce(devices());
+    await notifyEvent({ eventType: 'upcomingPremiere', title: 'Upcoming Movie', body: 'Film', metadata: { source: 'radarr', movieId: 1 } });
+    expect(sentTo()).toEqual(['active']);
+  });
+
+  it('holds a targeted push to a disabled or pending account too', async () => {
+    mocks.findMany.mockResolvedValueOnce(devices());
+    await notifyEvent({ eventType: 'test', title: 'Test', body: 'Body', userIds: ['user-active', 'user-disabled', 'user-pending'] });
+    expect(sentTo()).toEqual(['active']);
+  });
+
+  it('plans upcoming films only for active accounts', async () => {
+    mocks.findUsers.mockResolvedValueOnce([
+      { id: 'active', status: 'active', role: 'admin', template: 'admin', permissions: {}, settings: null, pushSubscriptions: [{ preferences: [] }], notificationChannels: [] },
+      { id: 'disabled', status: 'disabled', role: 'admin', template: 'admin', permissions: {}, settings: null, pushSubscriptions: [{ preferences: [] }], notificationChannels: [] },
+    ]);
+    expect((await usersWhoCouldReceive('upcomingPremiere', { source: 'radarr' })).map((u) => u.id)).toEqual(['active']);
+  });
+});
+
 // Upcoming films are timed per recipient, so their sends are planned only for
 // the users the delivery could reach.
 describe('usersWhoCouldReceive', () => {
   const user = (id: string, extra: Record<string, unknown> = {}) => ({
-    id, role: 'member', template: 'member', permissions: {}, settings: { timeZone: `Zone/${id}` },
+    id, status: 'active', role: 'member', template: 'member', permissions: {}, settings: { timeZone: `Zone/${id}` },
     pushSubscriptions: [{ preferences: [] }], notificationChannels: [], ...extra,
   });
 

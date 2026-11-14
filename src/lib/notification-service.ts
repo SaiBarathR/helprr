@@ -283,7 +283,7 @@ function matchesFilters(
   return true;
 }
 
-type RecipientUser = Parameters<typeof can>[0] & { role: string };
+type RecipientUser = Parameters<typeof can>[0] & { role: string; status: string };
 
 // An event about a Lidarr album (download started, import required, imported,
 // upcoming album), or an activity digest that names some (includesLidarr),
@@ -305,7 +305,9 @@ function recipientAllowed(
   targeted: boolean,
   sourceCap: Capability | undefined,
 ): boolean {
-  if (!user) return false;
+  // A disabled or pending account gets nothing, on any device or channel. Its
+  // devices stay subscribed, so re-enabling it brings its pushes back.
+  if (!user || user.status !== 'active') return false;
   if (sourceCap && !can(user, sourceCap)) return false;
   if (requiredCap) {
     if (ADMIN_ONLY_EVENT_TYPES.has(eventType as never) && user.role !== 'admin') return false;

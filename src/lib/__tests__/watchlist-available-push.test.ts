@@ -34,7 +34,7 @@ function device(overrides: { permissions?: Record<string, boolean>; preferences?
     lastFailedAt: null,
     lastSucceededAt: null,
     preferences: overrides.preferences ?? [],
-    user: { id: 'u-member', role: 'member', template: 'member', permissions: overrides.permissions ?? {}, settings: null },
+    user: { id: 'u-member', status: 'active', role: 'member', template: 'member', permissions: overrides.permissions ?? {}, settings: null },
   };
 }
 
