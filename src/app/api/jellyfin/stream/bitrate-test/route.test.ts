@@ -31,6 +31,6 @@ it('serves the size asked for, within its bounds, uncached', async () => {
   expect(res.status).toBe(200);
   expect(res.headers.get('cache-control')).toBe('no-store');
   expect((await res.arrayBuffer()).byteLength).toBe(500_000);
-  expect((await (await get('?size=99999999')).arrayBuffer()).byteLength).toBe(1_000_000);
+  expect((await (await get('?size=99999999')).arrayBuffer()).byteLength).toBe(3_000_000);
   expect((await (await get('?size=1')).arrayBuffer()).byteLength).toBe(64_000);
 });

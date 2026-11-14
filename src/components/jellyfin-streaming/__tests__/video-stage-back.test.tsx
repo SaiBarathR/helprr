@@ -102,4 +102,49 @@ describe('the expanded player and Back', () => {
     await tick(80);
     expect(spy('setVideoExpanded')).toHaveBeenCalledWith(false);
   });
+
+  it('closes an open panel first, one Back for it, and only the next Back collapses', async () => {
+    await render(true, false);
+    window.history.pushState({ __NA: true }, '', '/watch/item1');
+    const before = window.history.length;
+    await act(async () => (document.querySelector('button[aria-label="Player settings"]') as HTMLButtonElement).click());
+    await tick();
+    expect(document.querySelector('[data-player-panel]')).not.toBeNull();
+    expect(window.history.length).toBe(before + 1);
+
+    await act(async () => { window.history.back(); });
+    await tick(80);
+    expect(document.querySelector('[data-player-panel]')).toBeNull();
+    expect(spy('setVideoExpanded')).not.toHaveBeenCalled();
+
+    await act(async () => { window.history.back(); });
+    await tick(80);
+    expect(spy('setVideoExpanded')).toHaveBeenCalledWith(false);
+  });
+
+  it('takes the panel entry off again when the panel closes another way', async () => {
+    await render(true, false);
+    const settings = () => document.querySelector('button[aria-label="Player settings"]') as HTMLButtonElement;
+    await act(async () => settings().click());
+    await tick();
+    expect((window.history.state as Record<string, unknown>).__helprrOverlay).toBeDefined();
+    await act(async () => settings().click());
+    await tick(80);
+    expect(document.querySelector('[data-player-panel]')).toBeNull();
+    expect((window.history.state as Record<string, unknown>).__helprrOverlay).toBeUndefined();
+    expect(spy('setVideoExpanded')).not.toHaveBeenCalled();
+  });
+
+  it('closes the queue first on Back', async () => {
+    playback(true);
+    state.playback = { ...state.playback, queueOpen: true, queue: [{ Id: 'item1' }, { Id: 'item2' }] };
+    await act(async () => root.render(
+      <QueryClientProvider client={client}><VideoStage mediaContainer={mediaContainer} /></QueryClientProvider>,
+    ));
+    await tick();
+    await act(async () => { window.history.back(); });
+    await tick(80);
+    expect(spy('setQueueOpen')).toHaveBeenCalledWith(false);
+    expect(spy('setVideoExpanded')).not.toHaveBeenCalled();
+  });
 });

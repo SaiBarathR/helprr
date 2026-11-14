@@ -3,11 +3,14 @@
 import { use, useEffect, useRef } from 'react';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { useQuery } from '@tanstack/react-query';
-import { jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { isFinalClientError } from '@/lib/query-client';
 import { queryKeys } from '@/lib/query-keys';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
+import { Button } from '@/components/ui/button';
+import Link from '@/components/ui/app-link';
+import { useMe } from '@/components/permission-provider';
 import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { JellyfinLinkPrompt } from '@/components/jellyfin-streaming/jellyfin-link-prompt';
 import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
@@ -17,6 +20,7 @@ export default function WatchPage({ params }: { params: Promise<{ itemId: string
   const { itemId } = use(params);
   const playback = useJellyfinPlaybackState();
   const router = useRouter();
+  const me = useMe();
   const startedId = useRef<string | null>(null);
   const query = useQuery({
     queryKey: queryKeys.jellyfinItem(itemId),
@@ -44,6 +48,24 @@ export default function WatchPage({ params }: { params: Promise<{ itemId: string
       <div className="p-4">
         <WatchTopBar />
         <JellyfinLinkPrompt />
+      </div>
+    );
+  }
+  // Jellyfin refused the server's own API key (see
+  // jellyfinApiKeyRejectedResponse): a retry fails the same way, and only an
+  // admin entering a new key fixes it.
+  if (query.error instanceof ApiError && query.error.code === 'jellyfin_api_key_rejected') {
+    const admin = me?.role === 'admin';
+    return (
+      <div className="p-4">
+        <WatchTopBar />
+        <ErrorState message={admin ? 'Jellyfin no longer accepts Helprr\'s API key.' : 'Jellyfin no longer accepts Helprr\'s API key. Ask an admin to enter a new one in Settings.'}>
+          {admin && (
+            <Button asChild variant="outline" size="sm" className="relative mt-3 touch-target">
+              <Link href="/settings/instances/jellyfin">Enter a new API key</Link>
+            </Button>
+          )}
+        </ErrorState>
       </div>
     );
   }

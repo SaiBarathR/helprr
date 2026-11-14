@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClientForUser, JellyfinNotLinkedError } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { upstreamErrorResponse } from '@/lib/api-error';
+import { jellyfinApiKeyRejectedResponse, upstreamErrorResponse } from '@/lib/api-error';
 import { withoutSourceLocation } from '@/lib/jellyfin-playback/source-location';
 import { isLiveTvItemType, liveTvAccess, withoutLiveTvItems } from '@/lib/jellyfin-playback/item-access';
 import type { CatalogItemDetailResponse } from '@/types/jellyfin-streaming';
@@ -129,7 +129,7 @@ async function getHandler(
     if (error instanceof JellyfinNotLinkedError) {
       return NextResponse.json({ linked: false, item: null } satisfies CatalogItemDetailResponse);
     }
-    return upstreamErrorResponse(error, 'Failed to load Jellyfin item');
+    return jellyfinApiKeyRejectedResponse(error) ?? upstreamErrorResponse(error, 'Failed to load Jellyfin item');
   }
 }
 

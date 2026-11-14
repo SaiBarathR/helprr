@@ -4,7 +4,7 @@ import { getQueryClient } from '@/lib/query-client';
 import { ITEM, mountPlayback, type Harness } from './playback-restart-harness';
 
 /**
- * Automatic quality's first ceiling comes from a timed download, as
+ * Automatic quality's first ceiling comes from timed downloads, as
  * jellyfin-web's does. A fixed 6 Mbps guess direct-played a 5 Mbps file over a
  * 1.5 Mbps link and took about 20 s to show a frame.
  */
@@ -14,16 +14,19 @@ afterEach(() => {
   h?.cleanup();
   vi.restoreAllMocks();
   getQueryClient().clear();
+  // A picked quality is remembered there, and the next mount would start with it.
+  localStorage.clear();
 });
 
 const PROBE = '/api/jellyfin/stream/bitrate-test';
 
-/** Serve the probe as `chunks` pieces of 125 kB, `gapMs` apart. */
-function serveProbe(chunks: number, gapMs: number) {
+/** Serve each speed test as pieces of 125 kB, `gapMs` apart. */
+function serveProbe(gapMs: number) {
   const originalFetch = globalThis.fetch;
   const signals: (AbortSignal | undefined)[] = [];
   const fetchSpy = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     if (!String(input).startsWith(PROBE)) return originalFetch(input, init);
+    const chunks = Number(new URL(String(input), 'http://helprr.test').searchParams.get('size')) / 125_000;
     let sent = 0;
     const body = new ReadableStream<Uint8Array>({
       async pull(controller) {
@@ -40,46 +43,64 @@ function serveProbe(chunks: number, gapMs: number) {
   return {
     signals,
     probes: () => fetchSpy.mock.calls.filter(([url]) => String(url).startsWith(PROBE)).length,
+    sizes: () => fetchSpy.mock.calls
+      .filter(([url]) => String(url).startsWith(PROBE))
+      .map(([url]) => Number(new URL(String(url), 'http://helprr.test').searchParams.get('size'))),
     ceilings: () => fetchSpy.mock.calls
       .filter(([url]) => String(url) === '/api/jellyfin/stream/info')
       .map(([, init]) => JSON.parse(String(init?.body)).maxStreamingBitrate as number | undefined),
   };
 }
 
-it('measures the link once before the first Automatic start and starts below a slow one', async () => {
+it('measures the link before the first Automatic start and starts below a slow one', async () => {
   h = await mountPlayback();
-  // 500 kB arriving over ~0.9 s: about 4.4 Mbps, so a ceiling near 60% of it.
-  const probe = serveProbe(4, 300);
+  // About 8 Mbps: past the first test's 0.5 Mbps, so the 1 MB test runs too,
+  // and short of its 20 Mbps, so the 3 MB one does not.
+  const probe = serveProbe(150);
 
   await h.act(async () => { await h.playback().playItem(ITEM); });
 
   expect(h.playback().status).toBe('playing');
-  expect(probe.probes()).toBe(1);
+  expect(probe.sizes()).toEqual([500_000, 1_000_000]);
   const [first] = probe.ceilings();
   expect(first).toBeGreaterThanOrEqual(2_000_000);
   expect(first).toBeLessThan(6_000_000);
   expect(h.playback().effectiveMaxBitrate).toBe(first);
 
-  // Trusted for a while: a restart, or the next title, does not measure again.
+  // Trusted for an hour: a restart, or the next title 59 minutes on, does not measure again.
   await h.act(async () => { await h.playback().setAudioStream(2); });
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 59 * 60_000);
   await h.act(async () => { await h.playback().playItem({ ...ITEM, Id: 'item-2' }); });
-  expect(probe.probes()).toBe(1);
+  expect(probe.probes()).toBe(2);
   expect(probe.ceilings()).toEqual([first, first, first]);
 });
 
-it('leaves a fast link exactly where Automatic started before', async () => {
+it('raises the start on a fast link, up to the highest quality offered', async () => {
   h = await mountPlayback();
-  const probe = serveProbe(4, 0);
+  const probe = serveProbe(1);
 
   await h.act(async () => { await h.playback().playItem(ITEM); });
 
-  expect(probe.probes()).toBe(1);
-  expect(probe.ceilings()).toEqual([6_000_000]);
+  expect(probe.sizes()).toEqual([500_000, 1_000_000, 3_000_000]);
+  expect(probe.ceilings()).toEqual([120_000_000]);
+});
+
+it('skips a bigger test that could not finish in time and keeps the smaller one', async () => {
+  h = await mountPlayback();
+  // 500 kB over 2.4 s: about 1.7 Mbps, at which 1 MB would take longer than a test may.
+  const probe = serveProbe(800);
+
+  await h.act(async () => { await h.playback().playItem(ITEM); });
+
+  expect(probe.sizes()).toEqual([500_000]);
+  const [first] = probe.ceilings();
+  expect(first).toBeGreaterThan(720_000);
+  expect(first).toBeLessThan(2_000_000);
 });
 
 it('does not measure for an explicit quality or for music', async () => {
   h = await mountPlayback({ audioIds: ['song'] });
-  const probe = serveProbe(4, 0);
+  const probe = serveProbe(0);
 
   await h.act(async () => { await h.playback().playItem({ ...ITEM, Id: 'song', Type: 'Audio', MediaType: 'Audio' }); });
   await h.act(async () => { await h.playback().playItem(ITEM, { maxStreamingBitrate: 10_000_000 }); });
@@ -89,43 +110,74 @@ it('does not measure for an explicit quality or for music', async () => {
 
 it('never measures for a restart of the title on the player, even once the measurement is old', async () => {
   h = await mountPlayback();
-  const probe = serveProbe(4, 300);
+  const probe = serveProbe(150);
   await h.act(async () => { await h.playback().playItem(ITEM); });
   const [first] = probe.ceilings();
   expect(first).toBeLessThan(6_000_000);
+  expect(probe.probes()).toBe(2);
 
-  // Fifteen minutes on: a track change neither waits on a test nor loses the
+  // Past the hour: a track change neither waits on a test nor loses the
   // ceiling the stream is running at.
-  const later = Date.now() + 15 * 60_000;
+  const later = Date.now() + 61 * 60_000;
   vi.spyOn(Date, 'now').mockReturnValue(later);
   await h.act(async () => { await h.playback().setAudioStream(2); });
-  expect(probe.probes()).toBe(1);
+  expect(probe.probes()).toBe(2);
   expect(probe.ceilings()).toEqual([first, first]);
 
   // A fresh pick of another title does measure again, the old result expired.
   await h.act(async () => { await h.playback().playItem({ ...ITEM, Id: 'item-2' }); });
+  expect(probe.probes()).toBe(4);
+});
+
+it('measures again when the viewer picks Automatic, however recent the last test', async () => {
+  h = await mountPlayback();
+  const probe = serveProbe(150);
+  await h.act(async () => { await h.playback().playItem(ITEM); });
   expect(probe.probes()).toBe(2);
+
+  await h.act(async () => { await h.playback().setMaxBitrate(10_000_000); });
+  expect(probe.probes()).toBe(2);
+  expect(probe.ceilings().at(-1)).toBe(10_000_000);
+
+  await h.act(async () => { await h.playback().setMaxBitrate(0); });
+  expect(probe.probes()).toBe(4);
+  expect(probe.ceilings().at(-1)).toBeLessThan(6_000_000);
+  expect(h.playback().maxBitrate).toBe(0);
+});
+
+it('lets a quality picked during that test win over Automatic', async () => {
+  h = await mountPlayback();
+  const probe = serveProbe(150);
+  await h.act(async () => { await h.playback().playItem(ITEM); });
+  const before = probe.ceilings().length;
+
+  let automatic!: Promise<void>;
+  await h.act(() => { automatic = h.playback().setMaxBitrate(0); });
+  await h.act(async () => { await h.playback().setMaxBitrate(8_000_000); await automatic; });
+
+  expect(probe.ceilings().slice(before)).toEqual([8_000_000]);
+  expect(h.playback().maxBitrate).toBe(8_000_000);
 });
 
 it('shares one test between starts that overlap it, and Stop cancels it', async () => {
   h = await mountPlayback();
-  const probe = serveProbe(4, 300);
+  const probe = serveProbe(150);
 
   let firstStart!: Promise<void>;
   let secondStart!: Promise<void>;
   await h.act(() => { firstStart = h.playback().playItem(ITEM); });
   await h.act(() => { secondStart = h.playback().playItem({ ...ITEM, Id: 'item-2' }); });
   await h.act(async () => { await Promise.all([firstStart, secondStart]); });
-  expect(probe.probes()).toBe(1);
+  expect(probe.probes()).toBe(2);
   expect(h.playback().stream?.item.Id).toBe('item-2');
 
   // A test cut short by Stop measures nothing, so the next start tries again.
-  vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 15 * 60_000);
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 61 * 60_000);
   let third!: Promise<void>;
   await h.act(() => { third = h.playback().playItem({ ...ITEM, Id: 'item-3' }); });
   await h.act(async () => { await h.playback().stop(); await third; });
-  expect(probe.probes()).toBe(2);
+  expect(probe.probes()).toBe(3);
   expect(probe.signals.at(-1)?.aborted).toBe(true);
   await h.act(async () => { await h.playback().playItem({ ...ITEM, Id: 'item-4' }); });
-  expect(probe.probes()).toBe(3);
+  expect(probe.probes()).toBe(5);
 });

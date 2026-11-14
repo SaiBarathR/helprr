@@ -1,11 +1,17 @@
 export const AUTOMATIC_INITIAL_BITRATE = 6_000_000;
 export const DATA_SAVER_BITRATE = 2_000_000;
 export const PLAYBACK_POLICY_KEY = 'helprr:playback-bitrate';
+/** How long a measured start bitrate is trusted: jellyfin-web's hour
+ *  (bitrateTest.ts `BITRATE_CACHE_DURATION`). */
+export const BANDWIDTH_PROBE_TTL_MS = 60 * 60_000;
 /**
- * How long a measured start bitrate is trusted. Shorter than jellyfin-web's
- * hour (bitrateTest.ts): a phone leaves home Wi-Fi for cellular well within one.
+ * Automatic's highest ceiling: the highest quality the picker offers and the
+ * stream route accepts. jellyfin-web's Automatic has no lower cap than that, so
+ * a fast link direct-plays what it can carry.
  */
-export const BANDWIDTH_PROBE_TTL_MS = 10 * 60_000;
+export const AUTOMATIC_MAX_BITRATE = 120_000_000;
+/** The share of a measured link a start may use (jellyfin-web: 70%). */
+const MEASURED_HEADROOM = 0.7;
 
 // 0 = automatic, -1 = data saver, positive = explicit ceiling in bits/sec.
 export function normalizeBitrateChoice(value: number): number {
@@ -14,7 +20,23 @@ export function normalizeBitrateChoice(value: number): number {
 export function effectiveBitrate(choice: number, measured = AUTOMATIC_INITIAL_BITRATE): number {
   if (choice === -1) return DATA_SAVER_BITRATE;
   if (choice > 0) return normalizeBitrateChoice(choice) || AUTOMATIC_INITIAL_BITRATE;
-  return Math.min(20_000_000, Math.max(720_000, measured));
+  return Math.min(AUTOMATIC_MAX_BITRATE, Math.max(720_000, measured));
+}
+
+/**
+ * The start ceiling a speed test gives, by jellyfin-web's rule
+ * (bitrateTest.ts `normalizeReturnBitrate`): 70% of what was measured, and no
+ * more than 70% of the connection's own top speed where the browser reports
+ * one (`navigator.connection.downlinkMax`, in Mbps; Chrome on Android only).
+ * jellyfin-web converts that top speed to bytes, not bits, by mistake, which
+ * caps it at an eighth of the link; this keeps it in bits.
+ */
+export function measuredStartBitrate(bitsPerSecond: number, downlinkMaxMbps?: number): number {
+  let result = bitsPerSecond * MEASURED_HEADROOM;
+  if (downlinkMaxMbps && downlinkMaxMbps > 0 && Number.isFinite(downlinkMaxMbps)) {
+    result = Math.min(result, downlinkMaxMbps * 1_000_000 * MEASURED_HEADROOM);
+  }
+  return Math.round(result / 100_000) * 100_000;
 }
 
 /** Conservative headroom, three samples before raising, immediate lower ceiling
@@ -32,16 +54,14 @@ export class PlaybackBandwidthEstimate {
   }
   /**
    * Start from a measured download (`probeBandwidth`) instead of the fixed
-   * guess. It can bring the ceiling down, for a slow link, but never pushes it
-   * above the higher of the 6 Mbps guess and what streams have already shown
-   * the link to carry: a fast link starts exactly where it did before, and a
-   * ceiling hls.js has learned is not thrown away.
+   * guess, as jellyfin-web does: the measurement replaces the ceiling, lower
+   * for a slow link and higher for a fast one (see `measuredStartBitrate`).
+   * A failed test (0) keeps the ceiling it has.
    */
-  seed(bitsPerSecond: number, now = Date.now()): void {
+  seed(bitsPerSecond: number, now = Date.now(), downlinkMaxMbps?: number): void {
     this.seededAt = now;
     if (!(bitsPerSecond > 0)) return;
-    const candidate = effectiveBitrate(0, Math.round(bitsPerSecond * 0.6 / 100_000) * 100_000);
-    const next = Math.min(Math.max(AUTOMATIC_INITIAL_BITRATE, this.ceiling), candidate);
+    const next = effectiveBitrate(0, measuredStartBitrate(bitsPerSecond, downlinkMaxMbps));
     if (next === this.ceiling) return;
     this.ceiling = next;
     this.samples = 0;
