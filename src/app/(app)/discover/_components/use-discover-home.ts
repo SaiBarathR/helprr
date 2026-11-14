@@ -146,7 +146,14 @@ export function useDiscoverHome(discoverContentType: 'all' | 'movie' | 'show', c
   const failedSectionKeys = new Set(sectionsQuery.data?.failedSections ?? []);
   const unavailable: string[] = [];
   if (failed(sectionsQuery)) unavailable.push('the built-in sections');
-  else unavailable.push(...visibleSections.filter((s) => failedSectionKeys.has(s.key)).map((s) => s.title));
+  else {
+    unavailable.push(...visibleSections.filter((s) => failedSectionKeys.has(s.key)).map((s) => s.title));
+    // The hero is fed by `trending` whatever the layout and content type show,
+    // so its failure removed the hero with nothing said when that rail is off.
+    if (failedSectionKeys.has('trending') && !visibleSections.some((s) => s.key === 'trending')) {
+      unavailable.push('the Trending banner');
+    }
+  }
   customCarouselEntries.forEach((entry, i) => {
     // Only the custom carousels the content type leaves on screen, as the home renders them.
     const ct = entry.filters!.contentType;

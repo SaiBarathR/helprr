@@ -159,7 +159,8 @@ export function TonightPick({ id, onClose, onOpenPick }: { id: string; onClose: 
     },
     refetchInterval: (q) => (!isGone(q.state.error) && q.state.data?.status === 'open' ? TONIGHT_POLL_MS : false),
     refetchIntervalInBackground: false,
-    retry: (count, error) => !(error instanceof ApiError && (error.status === 404 || error.status === 403)) && count < 2,
+    // The app's retry rule (query-client.ts): a gone pick (404) or a refusal
+    // (403) answers the same again; Redis down (503) or no answer gets one retry.
   });
   // Expired, ended long ago, or access taken away: a cached view must not keep looking live.
   const gone = isGone(query.error);

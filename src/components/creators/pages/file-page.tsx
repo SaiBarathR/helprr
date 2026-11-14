@@ -184,7 +184,8 @@ export function CreatorFilePage({ params }: { params: Promise<{ id: string }> })
       if (!res.ok) throw new ApiError(res.status, 'Failed to load the file');
       return (await res.json()) as TwitchFileDetail;
     },
-    retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 2,
+    // The app's retry rule (query-client.ts): a deleted file (404) or a refusal
+    // (403) answers the same again; an outage gets one retry.
     refetchInterval: (state) => (state.state.data?.activeJob && !isGone(state.state.error) ? 3_000 : false),
     refetchIntervalInBackground: false,
   });

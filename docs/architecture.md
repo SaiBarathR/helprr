@@ -142,6 +142,10 @@ images continue through the no-store bypass path.
 Sonarr, Radarr, Lidarr, Prowlarr health, qBittorrent, Jellyfin, Seerr, and service reachability.
 It also drives release and scheduled alerts, activity digests, disk snapshots,
 retention, anime auto-mapping, cache warming, and qBittorrent bandwidth rules.
+Before-air "Upcoming" pushes for films and albums count down to the release
+day's local midnight in each recipient's time zone (their own, else the app's,
+as for quiet hours): one zone is one broadcast, several are one send per zone to
+its users (`src/lib/polling/upcoming.ts`); episodes count down to their airing.
 One upstream failure must not cancel every other source. Sonarr, Radarr, and
 Lidarr instances share two polling slots per cycle; an instance that fails twice
 in a row is skipped (without taking a slot) for 30 seconds, doubling to 5

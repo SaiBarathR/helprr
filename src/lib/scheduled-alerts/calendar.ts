@@ -1,13 +1,29 @@
 import { prisma } from '@/lib/db';
 import type { CalendarEvent } from '@/types';
 import { validateInternalHref } from '@/lib/scheduled-alerts/helpers';
+import { isReleaseDayEvent, releaseDayKey } from '@/lib/release-day';
+import { getLocalDateKey } from '@/lib/timezone';
 
-function sameCalendarDay(a: string, b: string): boolean {
-  return a.slice(0, 10) === b.slice(0, 10);
+/** A scheduled-alert event plus the zone its alert counts its days in (used to merge, never sent). */
+export type ScheduledCalendarEvent = CalendarEvent & { alertTimeZone: string };
+
+/**
+ * Whether a service event falls on the day a reminder is for. The reminder's
+ * moment is 9:00 on the release day in the alert's zone, which east of UTC+9
+ * is still the UTC day before, so comparing the two raw UTC dates split a
+ * film and its reminder into two rows there. Both are read in the alert's
+ * zone instead; a film or album is dated by its UTC day (release-day.ts), an
+ * episode by its moment (the reminder is that same moment).
+ */
+function sameCalendarDay(service: CalendarEvent, sched: ScheduledCalendarEvent): boolean {
+  const serviceDay = isReleaseDayEvent(service)
+    ? releaseDayKey(service.date)
+    : getLocalDateKey(service.date, sched.alertTimeZone);
+  return serviceDay !== null && serviceDay !== '' && serviceDay === getLocalDateKey(sched.date, sched.alertTimeZone);
 }
 
-function matchesServiceEvent(service: CalendarEvent, sched: CalendarEvent): boolean {
-  if (!sameCalendarDay(service.date, sched.date) || service.title !== sched.title) return false;
+function matchesServiceEvent(service: CalendarEvent, sched: ScheduledCalendarEvent): boolean {
+  if (!sameCalendarDay(service, sched) || service.title !== sched.title) return false;
   if (sched.instanceId && service.instanceId && sched.instanceId !== service.instanceId) return false;
   return true;
 }
@@ -16,7 +32,7 @@ export async function fetchScheduledCalendarEvents(args: {
   userId: string;
   start: Date;
   end: Date;
-}): Promise<CalendarEvent[]> {
+}): Promise<ScheduledCalendarEvent[]> {
   const occurrences = await prisma.scheduledAlertOccurrence.findMany({
     where: {
       status: { in: ['pending', 'sent'] },
@@ -61,13 +77,14 @@ export async function fetchScheduledCalendarEvents(args: {
       ...(alert.instanceId ? { instanceId: alert.instanceId } : {}),
       ...(alert.mediaType === 'movie' && Number.isFinite(externalNum) ? { movieId: externalNum } : {}),
       ...(alert.mediaType === 'series' && Number.isFinite(externalNum) ? { seriesId: externalNum } : {}),
+      alertTimeZone: alert.timeZone,
     };
   });
 }
 
 export function mergeCalendarWithScheduled(
   serviceEvents: CalendarEvent[],
-  scheduledEvents: CalendarEvent[],
+  scheduledEvents: ScheduledCalendarEvent[],
 ): CalendarEvent[] {
   const merged = [...serviceEvents];
   for (const sched of scheduledEvents) {
@@ -87,7 +104,9 @@ export function mergeCalendarWithScheduled(
         continue;
       }
     }
-    merged.push(sched);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- only the merge reads it
+    const { alertTimeZone, ...event } = sched;
+    merged.push(event);
   }
   merged.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   return merged;

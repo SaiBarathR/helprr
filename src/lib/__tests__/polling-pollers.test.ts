@@ -296,8 +296,8 @@ function digestFixture() {
 }
 
 let service: PollingService;
-async function run(method: string, settings: typeof SETTINGS = SETTINGS) {
-  const context = createPollingCycleContext(async () => settings as never, { instanceConcurrency: 2, startedAtMs: NOW, cycleId: 'golden' });
+async function run(method: string, settings: typeof SETTINGS = SETTINGS, startedAtMs = NOW) {
+  const context = createPollingCycleContext(async () => settings as never, { instanceConcurrency: 2, startedAtMs, cycleId: 'golden' });
   // As the cycle does: the job runs inside its report, which says whether it failed or skipped.
   const report: JobReport = { failure: null, skipped: false };
   await jobReports.run(report, () => (service as unknown as Record<string, (context: unknown) => Promise<void>>)[method](context));
@@ -396,6 +396,10 @@ describe('pollers on fixed fixtures (golden)', () => {
 
   it('checkUpcoming: episodes, movie releases and albums inside the before-air window, deduplicated', async () => {
     upcomingFixture();
+    // Film and album pushes count to the release day's local midnight in the
+    // user's zone: Oct 19 starts at NOW (04:00Z) in New York. Film B was sent
+    // under its zone-less key (the UTC-midnight rule) and is not sent again.
+    mocks.users = () => [{ id: 'u1', settings: { timeZone: 'America/New_York' } }];
     expectGolden('checkUpcoming', await run('checkUpcoming'));
   });
 
@@ -514,6 +518,85 @@ describe('pollers on fixed fixtures (golden)', () => {
     expect(bodies).toEqual(['Today Film (2026) — Digital Release', 'Band — Today Album']);
     // The local day (07:00Z to 06:59:59Z), a day wider on each side.
     expect(radarrCalendar).toHaveBeenCalledWith('2026-10-17T07:00:00.000Z', '2026-10-20T06:59:59.999Z');
+  });
+
+  describe("checkUpcoming before air: films and albums count to the release day's local midnight", () => {
+    // Oct 20's releases, given as its UTC midnight.
+    const releaseMs = Date.parse('2026-10-20T00:00:00Z');
+    let radarrCalendar: ReturnType<typeof vi.fn>;
+    beforeEach(() => {
+      radarrCalendar = vi.fn(async () => [{ id: 50, title: 'Film', year: 2026, inCinemas: '2026-10-20T00:00:00Z' }]);
+      mocks.radarr = [{ connection: { id: 'r1', label: 'main', isDefault: true }, client: { getCalendar: radarrCalendar } }];
+      mocks.lidarr = [{ connection: { id: 'l1', label: 'music', isDefault: true }, client: { getCalendar: vi.fn(async () => [
+        { id: 90, title: 'Album', releaseDate: '2026-10-20T00:00:00Z', artist: { artistName: 'Band' } },
+      ]) } }];
+    });
+    const sends = (out: unknown[]) => out.flatMap((entry) => {
+      if (!('notify' in (entry as object))) return [];
+      const { body, dedupeKey, userIds } = (entry as { notify: { body: string; dedupeKey: string; userIds?: string[] } }).notify;
+      return [{ body, dedupeKey, ...(userIds ? { userIds } : {}) }];
+    });
+    const IN_45_MIN_UTC = Date.parse('2026-10-19T23:15:00Z'); // 45 min before UTC midnight (the old moment)
+
+    it('in India: 45 min before 00:00 IST, not before 05:30 IST', async () => {
+      const at = Date.parse('2026-10-19T17:45:00Z'); // 23:15 IST
+      expect(sends(await run('checkUpcoming', SETTINGS, at))).toEqual([
+        { body: 'Film (2026) — In Cinemas', dedupeKey: `radarr-r1-50-cinema-${releaseMs}@Asia/Kolkata` },
+        { body: 'Band — Album', dedupeKey: `lidarr-l1-90-${releaseMs}@Asia/Kolkata` },
+      ]);
+      // A day more on each side, so a release is returned wherever its local midnight falls.
+      expect(radarrCalendar).toHaveBeenCalledWith('2026-10-18T17:40:00.000Z', '2026-10-20T18:46:00.000Z');
+      mocks.out = [];
+      expect(sends(await run('checkUpcoming', SETTINGS, IN_45_MIN_UTC))).toEqual([]);
+    });
+
+    it('in Los Angeles: 45 min before its midnight, not at 4:15 PM the day before', async () => {
+      const settings = { ...SETTINGS, timeZone: 'America/Los_Angeles' };
+      expect(sends(await run('checkUpcoming', settings, IN_45_MIN_UTC))).toEqual([]);
+      mocks.out = [];
+      const at = Date.parse('2026-10-20T06:15:00Z'); // 23:15 PDT on Oct 19
+      expect(sends(await run('checkUpcoming', settings, at)).map((s) => s.dedupeKey)).toEqual([
+        `radarr-r1-50-cinema-${releaseMs}@America/Los_Angeles`,
+        `lidarr-l1-90-${releaseMs}@America/Los_Angeles`,
+      ]);
+    });
+
+    it("in each user's own zone (else the app's): one send per zone, to its users", async () => {
+      mocks.users = () => [
+        { id: 'u1', settings: { timeZone: 'Asia/Kolkata' } },
+        { id: 'u2', settings: null },
+        { id: 'u3', settings: { timeZone: 'America/Los_Angeles' } },
+        { id: 'u4', settings: { timeZone: 'Not/AZone' } },
+      ];
+      const settings = { ...SETTINGS, timeZone: 'America/Los_Angeles' };
+      expect(sends(await run('checkUpcoming', settings, Date.parse('2026-10-19T17:45:00Z')))).toEqual([
+        { body: 'Film (2026) — In Cinemas', dedupeKey: `radarr-r1-50-cinema-${releaseMs}@Asia/Kolkata`, userIds: ['u1'] },
+        { body: 'Band — Album', dedupeKey: `lidarr-l1-90-${releaseMs}@Asia/Kolkata`, userIds: ['u1'] },
+      ]);
+      // India's send does not hold back Los Angeles' later one.
+      mocks.history = [{ dedupeKey: `radarr-r1-50-cinema-${releaseMs}@Asia/Kolkata`, body: 'x', metadata: null }];
+      mocks.out = [];
+      expect(sends(await run('checkUpcoming', settings, Date.parse('2026-10-20T06:15:00Z')))[0]).toEqual(
+        { body: 'Film (2026) — In Cinemas', dedupeKey: `radarr-r1-50-cinema-${releaseMs}@America/Los_Angeles`, userIds: ['u2', 'u3', 'u4'] },
+      );
+    });
+
+    it('does not send again what the UTC-midnight countdown or the digest already sent', async () => {
+      // Sent under the zone-less key before this change (or by the digest).
+      mocks.history = [
+        { dedupeKey: `radarr-r1-50-cinema-${releaseMs}`, body: 'x', metadata: null },
+        { dedupeKey: null, body: 'y', metadata: { grouped: true, itemDedupeKeys: [`lidarr-l1-90-${releaseMs}`] } },
+      ];
+      const settings = { ...SETTINGS, timeZone: 'America/Los_Angeles' };
+      expect(sends(await run('checkUpcoming', settings, Date.parse('2026-10-20T06:15:00Z')))).toEqual([]);
+    });
+
+    it('the digest does not send again what before-air sent', async () => {
+      mocks.history = [{ dedupeKey: `radarr-r1-50-cinema-${releaseMs}@Asia/Kolkata`, body: 'x', metadata: null }];
+      // 09:00 IST on Oct 20, the digest hour.
+      const out = await run('checkUpcoming', { ...SETTINGS, upcomingNotifyMode: 'daily_digest' }, Date.parse('2026-10-20T03:30:00Z'));
+      expect(sends(out)).toEqual([{ body: 'Band — Album', dedupeKey: `lidarr-l1-90-${releaseMs}` }]);
+    });
   });
 
   it('checkActivityDigest: weekly on its day; skipped before the hour, on another day, or when already sent', async () => {

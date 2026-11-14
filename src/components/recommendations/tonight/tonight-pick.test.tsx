@@ -8,6 +8,7 @@ import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TonightTitle, TonightView } from '@/types/tonight';
 import { TONIGHT_LAST_KEY, TONIGHT_POLL_MS, TonightPick } from './tonight-pick';
+import { getQueryClient } from '@/lib/query-client';
 
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
@@ -198,5 +199,29 @@ describe('TonightPick', () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
     });
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe('TonightPick retries (the app rule)', () => {
+  // The app's own client, so the pick is held to the app's retry rule.
+  const renderWithAppClient = () => render(
+    <QueryClientProvider client={getQueryClient()}>
+      <TonightPick id={ID} onClose={vi.fn()} onOpenPick={vi.fn()} />
+    </QueryClientProvider>,
+  );
+  afterEach(() => getQueryClient().clear());
+
+  it.each([400, 403, 404, 409])('does not ask again after a %i', async (status) => {
+    fetchMock.mockResolvedValue(respond(status, { error: 'No' }));
+    renderWithAppClient();
+    expect(await screen.findByText(/This pick isn’t available|Couldn’t open this pick/)).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks once more when the pick store is down (503)', async () => {
+    fetchMock.mockResolvedValue(respond(503, { error: 'Tonight pick is unavailable right now' }));
+    renderWithAppClient();
+    expect(await screen.findByText('Couldn’t open this pick', {}, { timeout: 4_000 })).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

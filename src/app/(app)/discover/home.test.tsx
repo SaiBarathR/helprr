@@ -231,6 +231,26 @@ describe('Discover home (characterization)', () => {
     expect(sectionUrls().map((url) => url.searchParams.get('retry'))).toEqual([null, '1']);
   });
 
+  it('names the hero when its Trending source failed and the Trending rail is not shown, and Retry brings it back', async () => {
+    // The saved layout turns the Trending rail off; the hero still reads it.
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn((input: string) => (new URL(String(input), 'http://helprr.test').pathname === '/api/settings/discover-layout'
+      ? Promise.resolve(Response.json({ sections: LAYOUT.sections.map((entry) => (entry.id === 'trending' ? { ...entry, enabled: false } : entry)) }))
+      : realFetch(input))));
+    let calls = 0;
+    mocks.sections = () => (calls++ === 0
+      ? { sections: SECTIONS.map((s) => (s.key === 'trending' ? { ...s, items: [] } : s)), failedSections: ['trending'] }
+      : { sections: SECTIONS });
+    const user = renderHome();
+    expect(await screen.findByText('Missing: the Trending banner.')).toBeTruthy();
+    expect(screen.queryByLabelText('Hero')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(screen.queryByText('Missing: the Trending banner.')).toBeNull());
+    expect(screen.getByLabelText('Hero')).toBeTruthy();
+  });
+
   it('keeps Retry ready while an unrelated carousel is still loading', async () => {
     mocks.sections = () => ({ sections: SECTIONS, failedSections: ['trending'] });
     const realFetch = globalThis.fetch;

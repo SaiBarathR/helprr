@@ -1172,7 +1172,7 @@
     "eventType": "upcomingPremiere",
     "title": "main · Upcoming Movie",
     "body": "Film A (2026) — In Cinemas",
-    "dedupeKey": "radarr-r1-40-cinema-1792385400000",
+    "dedupeKey": "radarr-r1-40-cinema-1792385400000@America/New_York",
     "metadata": {
      "source": "radarr",
      "instanceId": "r1",
@@ -1189,7 +1189,7 @@
     "eventType": "upcomingPremiere",
     "title": "4k · Upcoming Movie",
     "body": "Film A (2026) — In Cinemas",
-    "dedupeKey": "radarr-r2-40-cinema-1792385400000",
+    "dedupeKey": "radarr-r2-40-cinema-1792385400000@America/New_York",
     "metadata": {
      "source": "radarr",
      "instanceId": "r2",
@@ -1206,7 +1206,7 @@
     "eventType": "upcomingPremiere",
     "title": "Upcoming Album",
     "body": "Band — Album X",
-    "dedupeKey": "lidarr-l1-90-1792383300000",
+    "dedupeKey": "lidarr-l1-90-1792383300000@America/New_York",
     "metadata": {
      "source": "lidarr",
      "instanceId": "l1",

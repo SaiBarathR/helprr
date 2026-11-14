@@ -6,6 +6,9 @@ import { expect, it, vi } from 'vitest';
 import { BrowseFreshnessBanner, BrowseFreshnessNotice } from './browse-freshness-notice';
 import { recordBrowseFreshness } from '@/lib/browse-freshness';
 
+const nav = vi.hoisted(() => ({ pathname: null as string | null }));
+vi.mock('next/navigation', () => ({ usePathname: () => nav.pathname }));
+
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 it('shows saved provenance, retries, and disappears only after fresh data arrives', () => {
@@ -50,4 +53,45 @@ it('keeps clear of a landscape notch, and leaves the top inset alone', () => {
   expect(markup).toContain('env(safe-area-inset-left');
   expect(markup).toContain('env(safe-area-inset-right');
   expect(markup).not.toContain('safe-area-inset-top');
+});
+
+it("speaks for the open page only: gone on leaving, back at once on returning", () => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const stale = () => new Response('{}', { headers: { 'x-helprr-stale': '1', 'x-helprr-snapshot-at': '1700000000000' } });
+  const render = (pathname: string) => {
+    nav.pathname = pathname;
+    act(() => root.render(<BrowseFreshnessNotice onRetry={() => {}} />));
+  };
+  try {
+    // Calendar loads a saved copy while it is the open page.
+    window.history.pushState(null, '', '/calendar');
+    render('/calendar');
+    act(() => recordBrowseFreshness('/api/calendar?x=1', stale()));
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+    // Leaving it: the next page has live data (or none of its own saved), so no pill.
+    window.history.pushState(null, '', '/settings');
+    render('/settings');
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    // A library page with its own saved copy shows the pill for that copy.
+    window.history.pushState(null, '', '/movies');
+    render('/movies');
+    act(() => recordBrowseFreshness('/api/radarr/movies', stale()));
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+    // Back on Calendar, still showing its saved copy: the pill is there on the
+    // first render, with no new request.
+    window.history.pushState(null, '', '/calendar');
+    render('/calendar');
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+    // A live answer for it clears it there.
+    act(() => recordBrowseFreshness('/api/calendar?x=1', new Response('{}')));
+    expect(container.querySelector('[role="status"]')).toBeNull();
+  } finally {
+    act(() => root.unmount());
+    recordBrowseFreshness('/api/radarr/movies', new Response('{}'));
+    nav.pathname = null;
+    window.history.pushState(null, '', '/');
+    container.remove();
+  }
 });
