@@ -129,13 +129,27 @@ function MissingServices({ services, setupPath, canConnect }: {
   setupPath: string | null;
   canConnect: boolean;
 }) {
-  const style = { fontSize: 11, color: HPR.fgSubtle, padding: 12 };
-  // Short, so it fits the narrowest widget.
-  if (!canConnect) return <div style={style}>Ask your admin to connect {services}</div>;
-  if (!setupPath) return <div style={style}>Connect {services}</div>;
+  // Sized by the cell: a 1×1 phone cell is 46px wide at 320 and 64px at 390,
+  // a 2×1 is 122px at 320, all 62px tall. Below 160px the padding and type
+  // tighten; below 80px they tighten again (the cell keeps its own padding,
+  // so under 60px the text uses all of it) and a member reads "Needs X" (the
+  // full sentence stays for screen readers and in the title). A name longer
+  // than the line ("qBittorrent" in 46px) hyphenates or breaks, never clips.
+  const className = 'block h-full p-3 text-[11px] hyphens-auto break-words @max-[159px]/cell:p-2 @max-[159px]/cell:text-[10px] @max-[159px]/cell:leading-tight @max-[79px]/cell:p-0.5 @max-[59px]/cell:p-0';
+  const style = { color: HPR.fgSubtle };
+  if (!canConnect) {
+    const full = `Ask your admin to connect ${services}`;
+    return (
+      <div className={className} style={style} title={full}>
+        <span className="@max-[79px]/cell:sr-only">{full}</span>
+        <span className="hidden @max-[79px]/cell:inline" aria-hidden="true">Needs {services}</span>
+      </div>
+    );
+  }
+  if (!setupPath) return <div className={className} style={style} title={`Connect ${services}`}>Connect {services}</div>;
   return (
     // It fills the widget, so it stands for the widget: long-press and right-click still open its menu.
-    <Link href={setupPath} data-context-menu-row style={{ ...style, display: 'block', height: '100%' }}>
+    <Link href={setupPath} data-context-menu-row className={className} style={style} title={`Connect ${services}`}>
       Connect {services} <span aria-hidden="true">→</span>
     </Link>
   );
