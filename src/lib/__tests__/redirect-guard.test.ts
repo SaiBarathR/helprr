@@ -1,6 +1,6 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from 'vitest';
 import { isRefusedRedirect, refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
@@ -124,8 +124,8 @@ describe('a service client that is redirected', () => {
   it('does not resend a sign-in to another host', async () => {
     // The sign-in DeviceId is keyed with the install secret.
     vi.stubEnv('JWT_SECRET', 'install-secret-under-test-0123456789');
+    onTestFinished(() => { vi.unstubAllEnvs(); });
     const result = await JellyfinClient.authenticateByName(serviceUrl, 'member', 'the-members-password');
-    vi.unstubAllEnvs();
 
     expect(result).toEqual({ ok: false, reason: 'unavailable' });
     expect(seenByService).toHaveLength(1);

@@ -52,3 +52,16 @@ describe('authDeviceId', () => {
     expect(id).not.toBe(`helprr-user-${unkeyed}`);
   });
 });
+
+describe('JellyfinClient.authenticateByName without an install secret', () => {
+  it('answers unavailable instead of throwing, and sends nothing', async () => {
+    const { JellyfinClient } = await import('@/lib/jellyfin-client');
+    const axios = (await import('axios')).default;
+    vi.stubEnv('JWT_SECRET', '');
+    vi.stubEnv('APP_PASSWORD', '');
+    const post = vi.spyOn(axios, 'post');
+    await expect(JellyfinClient.authenticateByName('http://jellyfin.invalid', 'member', 'pw')).resolves.toEqual({ ok: false, reason: 'unavailable' });
+    expect(post).not.toHaveBeenCalled();
+    post.mockRestore();
+  });
+});

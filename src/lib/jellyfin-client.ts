@@ -156,8 +156,10 @@ export class JellyfinClient {
     | { ok: false; reason: 'invalid_credentials' | 'unavailable' }
   > {
     const base = serverUrl.replace(/\/+$/, '');
-    const authHeader = `MediaBrowser Client="${CLIENT_NAME}", Device="${AUTH_DEVICE_NAME}", DeviceId="${authDeviceId(username)}", Version="${CLIENT_VERSION}"`;
     try {
+      // Inside the try: authDeviceId throws without an install secret, and
+      // that too is 'unavailable', not a 500.
+      const authHeader = `MediaBrowser Client="${CLIENT_NAME}", Device="${AUTH_DEVICE_NAME}", DeviceId="${authDeviceId(username)}", Version="${CLIENT_VERSION}"`;
       const response = await axios.post(
         `${base}/Users/AuthenticateByName`,
         { Username: username, Pw: password },
