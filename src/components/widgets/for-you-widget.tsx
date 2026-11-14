@@ -25,6 +25,7 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
+import { CompactRailTile } from './compact-rail-tile';
 
 async function fetchForYou(limit: number, signal?: AbortSignal): Promise<ForYouItem[]> {
   const res = await widgetFetch(`/api/recommendations/for-you?limit=${limit}`, { signal });
@@ -37,6 +38,7 @@ export function ForYouWidget({
   refreshInterval,
   editMode = false,
   narrow = false,
+  rowSpan,
   layoutVariant,
   instanceId,
   mobileGrid = false,
@@ -70,6 +72,24 @@ export function ForYouWidget({
   ) : null;
 
   const title = 'For You';
+
+  // The one-row half-width phone cell (2×1): the Discover rails' compact tile.
+  if (narrow && (rowSpan ?? 1) <= 1) {
+    const top = list[0];
+    return (
+      <CompactRailTile
+        title={title}
+        editMode={editMode}
+        note={loading ? 'Loading…' : 'No suggestions yet'}
+        item={top ? {
+          href: top.href,
+          title: top.title,
+          meta: [top.year != null ? String(top.year) : null, top.mediaType === 'movie' ? 'Movie' : 'TV'].filter(Boolean).join(' · '),
+          imageUrl: toCachedImageSrc(top.posterPath, 'tmdb') || top.posterPath,
+        } : null}
+      />
+    );
+  }
 
   if (loading && list.length === 0) {
     return (

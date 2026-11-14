@@ -11,7 +11,7 @@ import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowSafe } from '@/lib/format';
 import { isToday, isTomorrow } from 'date-fns';
 import { toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
-import type { CalendarEvent, MediaImage } from '@/types';
+import type { CalendarEvent, MediaImage, MovieReleaseType } from '@/types';
 import type { WidgetProps } from '@/lib/widgets/types';
 import {
   CAROUSEL_CARD_HEIGHT,
@@ -28,8 +28,46 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
+import { CompactRailTile } from './compact-rail-tile';
+import { ReleaseTypeBadge } from '@/components/calendar/release-badges';
 import { formatDate, formatDateTime } from '@/lib/date-format';
-import { calendarEventDate, compareCalendarEvents, isReleaseDayEvent } from '@/lib/release-day';
+import { calendarEventDate, calendarEventDayKey, compareCalendarEvents, isReleaseDayEvent } from '@/lib/release-day';
+
+/** A calendar event with every release type of its film on that day (see mergeFilmReleaseDays). */
+export type UpcomingEvent = CalendarEvent & { releaseTypes?: MovieReleaseType[] };
+
+/**
+ * One row per film and day. Radarr gives a film one event per release type,
+ * so a physical and a digital release on the same day read as two identical
+ * rows; they become one that keeps both types. Expects Calendar's order.
+ */
+export function mergeFilmReleaseDays(events: CalendarEvent[]): UpcomingEvent[] {
+  const out: UpcomingEvent[] = [];
+  const byFilmDay = new Map<string, UpcomingEvent>();
+  for (const ev of events) {
+    if (ev.type !== 'movie' || !ev.releaseType || ev.movieId == null) {
+      out.push(ev);
+      continue;
+    }
+    const key = `${ev.instanceId ?? ''}|${ev.movieId}|${calendarEventDayKey(ev)}`;
+    const row = byFilmDay.get(key);
+    if (row) {
+      if (!row.releaseTypes!.includes(ev.releaseType)) row.releaseTypes!.push(ev.releaseType);
+      continue;
+    }
+    const merged: UpcomingEvent = { ...ev, releaseTypes: [ev.releaseType] };
+    byFilmDay.set(key, merged);
+    out.push(merged);
+  }
+  return out;
+}
+
+// The Today widget's short tags, for the carousel card and the 2×1 tile.
+const RELEASE_TAG: Record<MovieReleaseType, string> = { cinema: 'CIN', physical: 'PHY', digital: 'DIG' };
+
+function withReleaseTags(text: string, ev: UpcomingEvent): string {
+  return [text, ...(ev.releaseTypes ?? []).map((t) => RELEASE_TAG[t])].filter(Boolean).join(' · ');
+}
 
 const DAYS_OPTIONS = [7, 14, 30] as const;
 const STORAGE_KEY = 'helprr-upcoming-days';
@@ -108,6 +146,7 @@ export function UpcomingWidget({
   refreshInterval,
   editMode = false,
   narrow = false,
+  rowSpan,
   layoutVariant,
   instanceId,
   mobileGrid = false,
@@ -116,13 +155,13 @@ export function UpcomingWidget({
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const { setWidgetLayoutOverride } = useDashboardLayout();
 
-  const fetchUpcoming = useCallback(async (signal?: AbortSignal): Promise<CalendarEvent[]> => {
+  const fetchUpcoming = useCallback(async (signal?: AbortSignal): Promise<UpcomingEvent[]> => {
     const path = `/api/calendar?days=${days}`;
     // An offline snapshot from the worker shows the shared "saved data" notice, as Calendar does.
     const res = await widgetFetch(path, { signal });
     if (!res.ok) throw new ApiError(res.status, 'Request failed');
     // Listed as Calendar lists them (by day here, all-day first), not upstream's instant order.
-    return ((await res.json()) as CalendarEvent[]).sort(compareCalendarEvents);
+    return mergeFilmReleaseDays(((await res.json()) as CalendarEvent[]).sort(compareCalendarEvents));
   }, [days]);
 
   const { data, loading, error, offline } = useWidgetData({
@@ -172,6 +211,26 @@ export function UpcomingWidget({
       </Pill>
     </button>
   );
+
+  // The one-row half-width phone cell (2×1): the Discover rails' compact tile.
+  // The days switch stays on the larger sizes.
+  if (narrow && (rowSpan ?? 1) <= 1) {
+    const top = list[0];
+    return (
+      <CompactRailTile
+        title="Upcoming"
+        viewAllHref="/calendar"
+        editMode={editMode}
+        note={loading ? 'Loading…' : offline ? "You're offline" : error ?? 'Nothing upcoming'}
+        item={top ? {
+          href: eventHref(top),
+          title: top.title,
+          meta: withReleaseTags(formatEventDate(top), top),
+          imageUrl: getPoster(top.images, posterHint(top.type)),
+        } : null}
+      />
+    );
+  }
 
   if (loading && list.length === 0) {
     return (
@@ -321,7 +380,7 @@ export function UpcomingWidget({
                     textOverflow: 'ellipsis',
                   }}
                 >
-                  {formatEventDate(ev)}
+                  {withReleaseTags(formatEventDate(ev), ev)}
                 </div>
               </div>
             </>
@@ -350,7 +409,7 @@ export function UpcomingWidget({
   );
 }
 
-function UpcomingRow({ ev }: { ev: CalendarEvent }) {
+function UpcomingRow({ ev }: { ev: UpcomingEvent }) {
   const poster = getPoster(ev.images, posterHint(ev.type));
   return (
     <div
@@ -385,6 +444,12 @@ function UpcomingRow({ ev }: { ev: CalendarEvent }) {
         >
           {ev.title}
         </div>
+        {ev.releaseTypes && (
+          // As the Today widget: badges wrap onto extra lines on narrow cells instead of clipping.
+          <div className="flex flex-wrap items-center gap-1" style={{ marginTop: 3 }}>
+            {ev.releaseTypes.map((t) => <ReleaseTypeBadge key={t} type={t} />)}
+          </div>
+        )}
         <div
           style={{
             fontSize: 12,

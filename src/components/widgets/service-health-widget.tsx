@@ -5,7 +5,8 @@ import { Activity } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { withAppName } from '@/components/instance-filter';
-import { Dot, Eyebrow, FONT_MONO, HPR, EmptyState } from './bento-primitives';
+import { Dot, Eyebrow, FONT_DISPLAY, FONT_MONO, HPR, EmptyState } from './bento-primitives';
+import { useElementSize } from '@/lib/widgets/use-element-size';
 import { fetchOrOffline } from '@/lib/network-error';
 
 interface ServiceStatus {
@@ -23,7 +24,8 @@ async function fetchServiceHealth(signal?: AbortSignal): Promise<ServiceStatus[]
   return res.json();
 }
 
-export function ServiceHealthWidget({ refreshInterval, narrow = false, editMode = false }: WidgetProps) {
+export function ServiceHealthWidget({ refreshInterval, narrow = false, colSpan, editMode = false }: WidgetProps) {
+  const { ref, width } = useElementSize<HTMLDivElement>();
   const { data: services } = useWidgetData({
     fetchFn: fetchServiceHealth,
     refreshInterval,
@@ -34,6 +36,55 @@ export function ServiceHealthWidget({ refreshInterval, narrow = false, editMode 
 
   const list = services ?? [];
   const okCount = list.filter((s) => s.ok).length;
+
+  // A one-column phone cell (44–80px wide) cut the label and every row to
+  // "s…": like the Indexers and Wanted tiles, it shows the count instead.
+  if (narrow && (colSpan ?? 2) <= 1) {
+    const down = list.length - okCount;
+    return (
+      <div ref={ref} style={{ minWidth: 0, height: '100%' }}>
+        <Eyebrow
+          style={{
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            // The Indexers tile's step for the 44px (320) and 58px (375) cells.
+            ...(width > 0 && width < 64 ? { fontSize: 8, letterSpacing: '0.04em' } : null),
+          }}
+        >
+          Health
+        </Eyebrow>
+        <div
+          style={{
+            fontFamily: FONT_DISPLAY,
+            fontSize: width > 0 && width < 64 ? 16 : 20,
+            color: HPR.fg,
+            fontWeight: 700,
+            lineHeight: 1,
+            letterSpacing: '-0.02em',
+            marginTop: 3,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {services ? `${okCount}/${list.length}` : '–'}
+        </div>
+        {services && list.length > 0 && (
+          <div
+            style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6, fontSize: 10, color: HPR.fgMute, fontFamily: FONT_MONO }}
+          >
+            {/* The count already says how many are up: name what needs a look. */}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: down > 0 ? HPR.rose : HPR.green }}>
+              <Dot color={down > 0 ? HPR.rose : HPR.green} size={5} />
+              {down > 0 ? (
+                // In the 44px (320) cell "2 down" wrapped under its dot; the red dot says it.
+                <span>{down}<span className={width > 0 && width < 64 ? 'sr-only' : undefined}> down</span></span>
+              ) : 'OK'}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>

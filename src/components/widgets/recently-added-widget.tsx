@@ -24,6 +24,7 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
+import { CompactRailTile } from './compact-rail-tile';
 import { formatDate } from '@/lib/date-format';
 import { fetchOrOffline } from '@/lib/network-error';
 
@@ -74,6 +75,7 @@ export function RecentlyAddedWidget({
   refreshInterval,
   editMode = false,
   narrow = false,
+  rowSpan,
   layoutVariant,
   instanceId,
   mobileGrid = false,
@@ -104,6 +106,25 @@ export function RecentlyAddedWidget({
       onChange={(next) => setWidgetLayoutOverride(instanceId, next, { mobile: mobileGrid })}
     />
   ) : null;
+
+  // The one-row half-width phone cell (2×1): the Discover rails' compact tile.
+  if (narrow && (rowSpan ?? 1) <= 1) {
+    const top = list[0];
+    return (
+      <CompactRailTile
+        title="Recently Added"
+        viewAllHref="/activity"
+        editMode={editMode}
+        note={loading ? 'Loading…' : 'No recent imports'}
+        item={top ? {
+          href: top.href,
+          title: top.title,
+          meta: [formatDistanceToNowShort(top.date), top.subtitle].filter(Boolean).join(' · '),
+          imageUrl: toCachedImageSrc(top.poster, posterHint(top.type)) || top.poster,
+        } : null}
+      />
+    );
+  }
 
   if (loading && list.length === 0) {
     return (
