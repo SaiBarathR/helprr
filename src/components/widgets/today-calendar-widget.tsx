@@ -4,6 +4,7 @@ import { ApiError } from '@/lib/query-fetch';
 import Link from '@/components/ui/app-link';
 import { Check, Disc3, Film, Tv, CalendarDays } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { widgetFetch } from '@/lib/widgets/widget-fetch';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
@@ -27,7 +28,6 @@ import {
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { formatTime as formatDisplayTime } from '@/lib/date-format';
-import { recordBrowseFreshness } from '@/lib/browse-freshness';
 import { compareCalendarEvents, isReleaseDayEvent } from '@/lib/release-day';
 
 // The header plus a carousel card's poster (with its badges and air time) and
@@ -84,9 +84,8 @@ function typeColor(type: CalendarEvent['type']): string {
 
 async function fetchToday(signal?: AbortSignal): Promise<CalendarEvent[]> {
   const path = '/api/calendar?days=1&fullDay=true';
-  const res = await fetch(path, { signal });
   // An offline snapshot from the worker shows the shared "saved data" notice, as Calendar does.
-  recordBrowseFreshness(path, res);
+  const res = await widgetFetch(path, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   // Listed as Calendar lists them (all-day first, then by time), not upstream's instant order.
   return ((await res.json()) as CalendarEvent[]).sort(compareCalendarEvents);
@@ -125,8 +124,6 @@ export function TodayCalendarWidget({
     refreshInterval,
     enabled: !editMode,
     cacheKey: 'today-calendar',
-    // Offline, still ask: the worker's saved copy shows with the saved-data notice.
-    networkMode: 'offlineFirst',
   });
   const list = data ?? [];
   // Unmeasured (0) keeps the chosen layout until the cell's height is known.

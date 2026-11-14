@@ -37,6 +37,8 @@ async function fetchUserActivity(days: number, signal?: AbortSignal): Promise<Us
     fetch(`/api/jellyfin/playback/users?days=${queryDays}`, { signal }),
     fetch('/api/jellyfin/users', { signal }),
   ]);
+  // Neither reached Helprr: say so, rather than an empty user list.
+  if (pbRes.status === 'rejected' && jfRes.status === 'rejected') throw pbRes.reason;
   let users: PlaybackUserActivity[] = [];
   let jellyfinUsers: JellyfinUser[] = [];
   let pluginAvailable = true;

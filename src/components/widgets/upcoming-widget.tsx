@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { Disc3, Film, Tv, Calendar } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { widgetFetch } from '@/lib/widgets/widget-fetch';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowSafe } from '@/lib/format';
@@ -27,7 +28,6 @@ import {
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { formatDate, formatDateTime } from '@/lib/date-format';
-import { recordBrowseFreshness } from '@/lib/browse-freshness';
 import { calendarEventDate, compareCalendarEvents, isReleaseDayEvent } from '@/lib/release-day';
 
 const DAYS_OPTIONS = [7, 14, 30] as const;
@@ -113,9 +113,8 @@ export function UpcomingWidget({
 
   const fetchUpcoming = useCallback(async (signal?: AbortSignal): Promise<CalendarEvent[]> => {
     const path = `/api/calendar?days=${days}`;
-    const res = await fetch(path, { signal });
     // An offline snapshot from the worker shows the shared "saved data" notice, as Calendar does.
-    recordBrowseFreshness(path, res);
+    const res = await widgetFetch(path, { signal });
     if (!res.ok) throw new ApiError(res.status, 'Request failed');
     // Listed as Calendar lists them (by day here, all-day first), not upstream's instant order.
     return ((await res.json()) as CalendarEvent[]).sort(compareCalendarEvents);
@@ -126,8 +125,6 @@ export function UpcomingWidget({
     refreshInterval,
     enabled: !editMode,
     cacheKey: `upcoming-${days}d`,
-    // Offline, still ask: the worker's saved copy shows with the saved-data notice.
-    networkMode: 'offlineFirst',
   });
   const list = data ?? [];
   const useList = narrow || layoutVariant === 'list';

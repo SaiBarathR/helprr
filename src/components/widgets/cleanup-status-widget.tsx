@@ -47,15 +47,19 @@ interface CleanupStatusData {
 async function fetchCleanupStatus(signal?: AbortSignal): Promise<CleanupStatusData> {
   // Per-request fallbacks: a single endpoint failing (network error or non-2xx)
   // degrades just its own section instead of blanking the whole widget.
-  const [schedRes, strikesRes, statsRes] = await Promise.all([
-    fetch('/api/cleanup/scheduler-status', { signal }).catch(() => null),
+  const results = await Promise.allSettled([
+    fetch('/api/cleanup/scheduler-status', { signal }),
     // Compact preview: top 5 strikes; the header count comes from the response total.
-    fetch('/api/cleanup/strikes?limit=5', { signal }).catch(() => null),
+    fetch('/api/cleanup/strikes?limit=5', { signal }),
     // Offset at local midnight (not now) so DST-transition days keep the
     // server's "today" boundary aligned with the user's calendar day.
-    fetch(`/api/cleanup/stats?tzOffsetMinutes=${new Date(new Date().setHours(0, 0, 0, 0)).getTimezoneOffset()}`, { signal }).catch(() => null),
+    fetch(`/api/cleanup/stats?tzOffsetMinutes=${new Date(new Date().setHours(0, 0, 0, 0)).getTimezoneOffset()}`, { signal }),
   ]);
   signal?.throwIfAborted();
+  // None reached Helprr: say so, rather than "0 strikes" and an idle scheduler.
+  const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (failed.length === results.length) throw failed[0].reason;
+  const [schedRes, strikesRes, statsRes] = results.map((r) => (r.status === 'fulfilled' ? r.value : null));
   const strikesJson = strikesRes?.ok
     ? ((await strikesRes.json()) as { records?: StrikeRow[]; total?: number })
     : { records: [], total: 0 };

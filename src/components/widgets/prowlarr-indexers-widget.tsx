@@ -22,9 +22,9 @@ async function fetchProwlarr(signal?: AbortSignal): Promise<ProwlarrSummary | nu
     fetch('/api/prowlarr/status', { signal }),
   ]);
   signal?.throwIfAborted();
-  // Network failure → graceful empty (matches the allSettled intent); a non-ok
-  // response throws so a 401 redirects via the global handler.
-  if (indexersRes.status !== 'fulfilled') return null;
+  // A network failure throws, so the widget says it is offline instead of
+  // "0 indexers"; a non-ok response throws so a 401 redirects via the global handler.
+  if (indexersRes.status !== 'fulfilled') throw indexersRes.reason;
   if (!indexersRes.value.ok) throw new ApiError(indexersRes.value.status, 'Request failed');
   const indexers: { id: number; enable: boolean }[] = await indexersRes.value.json();
   if (!Array.isArray(indexers)) return null;

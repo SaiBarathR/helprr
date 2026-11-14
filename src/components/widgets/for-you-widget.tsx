@@ -5,6 +5,7 @@ import { useCallback } from 'react';
 import Link from '@/components/ui/app-link';
 import { Sparkles } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { widgetFetch } from '@/lib/widgets/widget-fetch';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { toCachedImageSrc } from '@/lib/image';
@@ -26,7 +27,7 @@ import {
 import { useDashboardLayout } from './dashboard-layout-context';
 
 async function fetchForYou(limit: number, signal?: AbortSignal): Promise<ForYouItem[]> {
-  const res = await fetch(`/api/recommendations/for-you?limit=${limit}`, { signal });
+  const res = await widgetFetch(`/api/recommendations/for-you?limit=${limit}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = (await res.json()) as ForYouResponse;
   return data.items ?? [];

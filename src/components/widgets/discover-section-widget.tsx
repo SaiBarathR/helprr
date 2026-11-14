@@ -3,6 +3,7 @@
 import Link from '@/components/ui/app-link';
 import { useCallback, useMemo } from 'react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { widgetFetch } from '@/lib/widgets/widget-fetch';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { toCachedImageSrc } from '@/lib/image';
@@ -58,7 +59,7 @@ function fetchSectionsCached(perSectionLimit: number, signal?: AbortSignal): Pro
   const now = Date.now();
   const existing = sectionsPromises.get(perSectionLimit);
   if (existing && !existing.signal?.aborted && now - existing.time < CLIENT_CACHE_MS) return existing.promise;
-  const promise = fetch(`/api/discover?mode=sections&perSectionLimit=${perSectionLimit}`, { signal })
+  const promise = widgetFetch(`/api/discover?mode=sections&perSectionLimit=${perSectionLimit}`, { signal })
     .then((res) => {
       if (!res.ok) throw new Error('Failed to fetch Discover sections');
       return res.json() as Promise<DiscoverResponse>;
@@ -128,7 +129,7 @@ function fetchCustomCached(filters: DiscoverLayoutCustomFilters, limit: number, 
     customCacheSet(query, cached);
     return cached.promise;
   }
-  const promise = fetch(`/api/discover?${query}`, { signal })
+  const promise = widgetFetch(`/api/discover?${query}`, { signal })
     .then((res) => {
       if (!res.ok) throw new Error('Failed to fetch Discover carousel');
       return res.json() as Promise<DiscoverResponse>;

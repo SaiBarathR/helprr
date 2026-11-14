@@ -3,6 +3,7 @@
 import Link from '@/components/ui/app-link';
 import { Search } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { widgetFetch } from '@/lib/widgets/widget-fetch';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { AMBER_SOFT, Eyebrow, FONT_DISPLAY, HPR, ICON_HIDE_HEIGHT_THRESHOLD, ICON_HIDE_THRESHOLD } from './bento-primitives';
@@ -13,7 +14,7 @@ interface WantedCounts {
 }
 
 async function fetchWanted(signal?: AbortSignal): Promise<WantedCounts> {
-  const res = await fetch('/api/activity/wanted', { signal });
+  const res = await widgetFetch('/api/activity/wanted', { signal });
   if (!res.ok) throw new Error('Failed to fetch wanted counts');
   const data = (await res.json()) as { missingTotal?: number; cutoffTotal?: number };
   return {
