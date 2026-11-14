@@ -28,6 +28,7 @@ Helprr is not trying to clone every setting from Sonarr, Radarr, Lidarr, qBittor
 - TMDb discovery with the rails I use most, plus collections, people, credits, region/language controls, and filters.
 - AniList anime and manga discovery, schedules, people/studio pages, library tracking, and Sonarr/Radarr mappings (including auto-mapping).
 - Watchlists, scheduled reminders, calendar views, a random-watch picker, and library-gap views for when I do not know what to watch.
+- Subscribe to the calendar in Apple, Google or any calendar app with private, revocable feed links, and pick a title together with the household's Tonight pick.
 - Watch a Jellyfin library without leaving Helprr: in-app playback with audio/subtitle track selection, scrubbing previews, chapters, and resume from whichever device stopped last. An optional cinematic layout turns the section into a streaming-service home. Titles the browser cannot play natively are transcoded by the Jellyfin server, so it needs the headroom for that. Each person signs in to Jellyfin once so what they watch is recorded on their own Jellyfin account — progress, resume points, and history — rather than showing up unattributed.
 - Seerr request visibility and workflow when Seerr is part of the setup.
 - Send a magnet link or `.torrent` file to Sonarr or Radarr for one title from **Add Torrent**: Helprr checks first what Sonarr/Radarr will read from it and do, adds the title (searches off) when it is new, and follows the download through Sonarr/Radarr's own queue to the imported file under **Torrents → Linked downloads**. An advanced option picks the torrent's files before anything downloads; Sonarr/Radarr then say what each file is, and you confirm any file they are unsure of.
@@ -36,7 +37,9 @@ Helprr is not trying to clone every setting from Sonarr, Radarr, Lidarr, qBittor
 
 ### Operations and server control
 
-- Activity queue/history, wanted/missing/cutoff views, manual import, and queue actions.
+- Activity queue/history, wanted/missing/cutoff views with search-all, blocklist, mark as failed, grab now, bulk removal, and manual import (Sonarr, Radarr and Lidarr).
+- Library cleanup with a "Leaving soon" countdown that anyone can stop with Keep, and that never deletes on its own.
+- Bulk edit of quality profile, root folder and other settings, and bulk Organize.
 - qBittorrent details/files, add/start/stop/delete actions, moving, tags, queue order, speed limits, alternative limits, and time-windowed bandwidth schedules.
 - Rule-based queue, download, and seeding cleanup with dry runs, automation, strikes, and history.
 - Prowlarr indexer status and detail, on/off switches, quick edit of priority, app profile and tags, health warnings with push notifications, search across all indexers with grab, app sync status, testing, statistics, and history.
@@ -47,10 +50,11 @@ Helprr is not trying to clone every setting from Sonarr, Radarr, Lidarr, qBittor
 
 ### Alerts, users, and administration
 
-- Installable PWA with Web Push, device preferences, inbox/history, test notifications, digest events, and per-event controls.
-- Per-user accounts, admin/member roles, granular capability overrides, and active-session revocation.
+- Installable PWA with Web Push, device preferences, inbox/history, test notifications, digest events, and per-event controls, plus ntfy, Gotify, Apprise, webhook and email channels, and admin alerts for updates, security events and backups.
+- Per-user accounts with invite links, two-step sign-in, optional sign-in at an authenticating proxy, admin/member roles, granular capability overrides, and active-session revocation.
 - Multiple Sonarr, Radarr, and Lidarr instances; service health checks; custom HTTP headers for supported integrations behind an authenticating proxy.
-- Backup/restore, operation-audit records, log retention, and server-log inspection for the moments when something needs fixing.
+- Database backups from Helprr (now or on a schedule), settings backup/restore, a security log and operation audit, log retention, and server-log inspection for the moments when something needs fixing.
+- Personal API tokens for a read-only status API (iOS Shortcuts, Homepage, Home Assistant).
 
 
 

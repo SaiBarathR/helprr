@@ -507,6 +507,41 @@ time zone. A 404 for the album means Lidarr no longer has it and gives no remind
 Lidarr ids repeat across instances, so an alert made on the default instance is tied
 to it.
 
+### Calls added in 1.15.0
+
+Each line says how it was checked: "source" means read from the upstream source only,
+"live" means checked read-only against the test host's instance.
+
+- **Prowlarr history filter** (live, Prowlarr `2.7.0.5723`): `GET /api/v1/history`
+  filters only on `indexerIds`; `indexerId` is ignored (`?indexerId=1` returned all
+  127,724 rows, `?indexerIds=1` returned 41,005, all from indexer 1).
+- **Lidarr queue, unmatched items** (source, `QueueController`): `GET /api/v1/queue` lists
+  downloads Lidarr could not match only with `includeUnknownArtistItems=true`.
+- **Lidarr manual import** (source, Lidarr `develop`; not live-probed):
+  `GET`/`POST /api/v1/manualimport`, the `ManualImport` command and
+  `GET /api/v1/track?albumReleaseId=`. Lidarr trusts the ids it is sent, so Helprr checks
+  album, release and track ownership itself.
+- **Blocklist** (source): `GET /blocklist`, `DELETE /blocklist/{id}` and
+  `DELETE /blocklist/bulk` (Sonarr and Radarr `/api/v3`, Lidarr `/api/v1`).
+- **History and queue actions** (source): `POST history/failed/{id}`,
+  `POST queue/grab/{id}` and `DELETE queue/bulk`, with every option explicit in the
+  query, since upstream removes from the download client unless told not to.
+- **Bulk editor and rename** (source): the `PUT …/editor` fields Helprr sends per app,
+  and Sonarr `RenameSeries` binding `seriesIds` (the singular `seriesId` is ignored).
+- **Sonarr `monitorNewItems`** (source, Sonarr v4): `all`/`none` on add and edit.
+- **qBittorrent 5.1.4** (source and live): tracker status codes 0–4 and `-1` counts;
+  `setLocation`; `addTags` (creates unknown tags); `removeTags` (an empty list removes
+  every tag, so Helprr refuses it); `topPrio`/`increasePrio`/`decreasePrio`/`bottomPrio`
+  (409 while queueing is off); `app/preferences` for queueing.
+- **Seerr server defaults** (live): `GET /api/v1/settings/sonarr` and `/radarr`,
+  matched by API key or address, including `activeAnimeProfileId` and
+  `activeAnimeDirectory`.
+- **Jellyfin tag lookup** (live, Jellyfin `12.4.0`):
+  `/Items?ParentId=&Tags=a|b|c&Fields=Tags,Path` returns items carrying any of the tags.
+- **Jellyfin per-user play history** (live): `/Items` sorted by `DatePlayed`, paged, with
+  the series provider ids (Tvdb, Tmdb); library cleanup and the "New episode"
+  notification both use it.
+
 ## Before reporting an upstream compatibility problem
 
 1. In **Settings → Instances**, re-test the affected connection and record the exact
