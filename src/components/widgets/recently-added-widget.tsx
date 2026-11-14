@@ -62,7 +62,9 @@ function formatShortDate(dateStr: string): string {
 }
 
 async function fetchRecent(limit: number, signal?: AbortSignal): Promise<RecentItem[]> {
-  const res = await fetchOrOffline(`/api/activity/recent?limit=${limit}`, { signal });
+  // A poll asks Helprr, not the browser's copy (60 s + 120 s stale), so with
+  // Helprr down it fails and the widget is covered instead of looking live.
+  const res = await fetchOrOffline(`/api/activity/recent?limit=${limit}`, { signal, cache: 'no-cache' });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return Array.isArray(data) ? data : [];

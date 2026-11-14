@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarEvent } from '@/types';
 
 const mocks = vi.hoisted(() => ({
@@ -81,5 +81,43 @@ describe('GET /api/calendar release days', () => {
     expect(mocks.fetchEvents.mock.calls[0][2]).toBe('UTC');
     await get('?days=7');
     expect(mocks.fetchEvents.mock.calls[1][2]).toBe('UTC');
+  });
+});
+
+describe("GET /api/calendar today (the Today widget's days=1&fullDay=true)", () => {
+  afterEach(() => vi.useRealTimers());
+  const today = (tz?: string) => get(`?days=1&fullDay=true${tz ? `&tz=${encodeURIComponent(tz)}` : ''}`);
+  // The window as instants (the route writes them with the zone's offset).
+  const instants = (call: unknown[]) => [new Date(call[0] as string).toISOString(), new Date(call[1] as string).toISOString(), call[2]];
+
+  it("east of UTC just after midnight, today is the device's new day, not the server's", async () => {
+    // 01:59 on Nov 15 in Auckland (UTC+13) is still Nov 14 in UTC.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-14T12:59:00Z'));
+    await today('Pacific/Auckland');
+    expect(instants(mocks.fetchEvents.mock.calls[0])).toEqual(['2026-11-14T11:00:00.000Z', '2026-11-15T10:59:59.999Z', 'Pacific/Auckland']);
+    // Its own cache entry, on its own day: another zone's today is another window.
+    expect(mocks.getCachedJson.mock.calls[0][1]).toContain('2026-11-15');
+    expect(mocks.getCachedJson.mock.calls[0][1]).toContain('Pacific/Auckland');
+  });
+
+  it('west of UTC just before midnight, today is still the device\'s day', async () => {
+    // 23:30 on Nov 14 in Los Angeles (UTC-8) is already Nov 15 in UTC.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-15T07:30:00Z'));
+    await today('America/Los_Angeles');
+    expect(instants(mocks.fetchEvents.mock.calls[0])).toEqual(['2026-11-14T08:00:00.000Z', '2026-11-15T07:59:59.999Z', 'America/Los_Angeles']);
+    expect(mocks.getCachedJson.mock.calls[0][1]).toContain('2026-11-14');
+  });
+
+  it("keeps the app's day without a zone, or for one that is not real", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-15T07:30:00Z'));
+    await today();
+    await today('Not/AZone');
+    for (const call of mocks.fetchEvents.mock.calls) {
+      expect(instants(call)).toEqual(['2026-11-15T00:00:00.000Z', '2026-11-15T23:59:59.999Z', 'UTC']);
+    }
+    expect(mocks.getCachedJson.mock.calls[1][1]).not.toContain('Not/AZone');
   });
 });

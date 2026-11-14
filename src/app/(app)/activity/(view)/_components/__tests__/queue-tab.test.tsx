@@ -170,6 +170,7 @@ describe('Queue tab: instance chips', () => {
     const card = (title: string) => screen.getByText(title).parentElement as HTMLElement;
     await waitFor(() => expect(within(card('Movie.2026')).getByText('main (Radarr)')).toBeTruthy());
     expect(within(card('Movie.Delayed')).getByText('radarr-anime')).toBeTruthy();
-    expect(within(card('Show.S01E01')).getByText('sonarr')).toBeTruthy();
+    // Its app's name, written as the instance chips write it (not "sonarr").
+    expect(within(card('Show.S01E01')).getByText('Sonarr')).toBeTruthy();
   });
 });

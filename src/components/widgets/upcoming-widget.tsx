@@ -9,6 +9,7 @@ import { widgetFetch } from '@/lib/widgets/widget-fetch';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowSafe } from '@/lib/format';
+import { isToday, isTomorrow } from 'date-fns';
 import { toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import type { CalendarEvent, MediaImage } from '@/types';
 import type { WidgetProps } from '@/lib/widgets/types';
@@ -48,6 +49,10 @@ function formatEventDate(ev: CalendarEvent): string {
 
 function eventDistance(ev: CalendarEvent): string {
   const d = calendarEventDate(ev);
+  // A release is the whole day: today's read "Today", not "About 12 hours ago"
+  // from its midnight (nor tomorrow's "In about 12 hours").
+  if (isReleaseDayEvent(ev) && isToday(d)) return 'Today';
+  if (isReleaseDayEvent(ev) && isTomorrow(d)) return 'Tomorrow';
   return formatDistanceToNowSafe(Number.isFinite(d.getTime()) ? d.toISOString() : ev.date);
 }
 

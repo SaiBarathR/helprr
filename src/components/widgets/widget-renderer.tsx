@@ -18,7 +18,7 @@ import { getWidgetComponent, resetWidgetComponent } from './widget-loaders';
 import { WidgetWrapper, WidgetSkeleton } from './widget-wrapper';
 import { useUIStore } from '@/lib/store';
 import type { WidgetInstance, WidgetLayoutVariant, WidgetProps } from '@/lib/widgets/types';
-import { EmptyState, HPR } from './bento-primitives';
+import { FONT_BODY, HPR } from './bento-primitives';
 
 interface WidgetRendererProps {
   instance: WidgetInstance;
@@ -159,12 +159,46 @@ function UnavailableCover({ name, children }: { name: string; children: ReactNod
           {children}
         </div>
         {unavailable && (
-          <div role="status" style={{ position: 'absolute', inset: 0, display: 'flex' }}>
-            <EmptyState>
-              <WifiOff size={18} aria-hidden="true" />
-              <span style={{ color: HPR.fgMute, fontWeight: 600 }}>{name}</span>
-              {unavailable === 'offline' ? "You're offline" : 'Can’t reach Helprr right now.'}
-            </EmptyState>
+          // EmptyState's look, sized for a one-cell phone widget too (about
+          // 44×60 inside the card at 320): the name stays on one line, and
+          // globals.css drops the icon and "right now." where they don't fit.
+          <div role="status" className="widget-cover" style={{ position: 'absolute', inset: 0, container: 'widget-cover / size' }}>
+            <div
+              className="widget-cover-body"
+              style={{
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                // Anything that still doesn't fit is cut at the bottom, never the name at the top.
+                justifyContent: 'safe center',
+                overflow: 'hidden',
+                color: HPR.fgSubtle,
+                fontSize: 11,
+                // Four 11px lines (name + three of message) fit a 60px one-cell cover.
+                lineHeight: 1.25,
+                fontFamily: FONT_BODY,
+                textAlign: 'center',
+              }}
+            >
+              <WifiOff size={18} aria-hidden="true" style={{ flexShrink: 0 }} />
+              <span
+                style={{
+                  flexShrink: 0,
+                  color: HPR.fgMute,
+                  fontWeight: 600,
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {name}
+              </span>
+              {unavailable === 'offline'
+                ? <span>You&apos;re offline</span>
+                : <span>Can’t reach Helprr<span className="widget-cover-tail"> right now.</span></span>}
+            </div>
           </div>
         )}
       </div>

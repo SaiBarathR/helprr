@@ -1,4 +1,4 @@
-import { forgetBrowseFreshness, recordBrowseFreshness } from '@/lib/browse-freshness';
+import { recordBrowseFreshness } from '@/lib/browse-freshness';
 import { fetchOrOffline } from '@/lib/network-error';
 import { SNAPSHOT_STALE_HEADER, SNAPSHOT_TIME_HEADER } from '@/lib/offline-snapshot';
 
@@ -44,15 +44,10 @@ export function adoptSavedCopy(signal: AbortSignal | undefined, from: SavedCopy 
  * it with "You're offline" once it is five minutes old.
  */
 export async function widgetFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  let res: Response;
-  try {
-    // An OfflineError marks a request that got no answer (see useWidgetData).
-    res = await fetchOrOffline(path, init);
-  } catch (error) {
-    // Past the copy's five minutes the worker has nothing left to answer with.
-    if (!init.signal?.aborted) forgetBrowseFreshness(path);
-    throw error;
-  }
+  // An OfflineError marks a request that got no answer (see useWidgetData). A
+  // failed request leaves the notice alone: the copy stays on screen until
+  // useWidgetData covers it, which takes it out of the notice then.
+  const res = await fetchOrOffline(path, init);
   recordBrowseFreshness(path, res);
   const copy = init.signal ? loads.get(init.signal) : undefined;
   const at = res.headers.get(SNAPSHOT_STALE_HEADER) === '1' ? Number(res.headers.get(SNAPSHOT_TIME_HEADER)) : 0;

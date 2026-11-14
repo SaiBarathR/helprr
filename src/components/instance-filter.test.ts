@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveInstances, severalInstanceLabels, withAppName } from './instance-filter';
+import { appDisplayName, deriveInstances, severalInstanceLabels, withAppName } from './instance-filter';
 
 describe('withAppName', () => {
   it('names the app so same-named instances can be told apart', () => {
@@ -23,6 +23,14 @@ describe('withAppName', () => {
   it('leaves the label alone when the app is unknown', () => {
     expect(withAppName('main')).toBe('main');
     expect(withAppName('main', 'plex')).toBe('main');
+  });
+});
+
+describe('appDisplayName', () => {
+  it("writes a row's source as the instance chips write the app, so one list doesn't mix \"lidarr\" and \"Radarr\"", () => {
+    expect(appDisplayName('lidarr')).toBe('Lidarr');
+    expect(appDisplayName('SONARR')).toBe('Sonarr');
+    expect(appDisplayName('plex')).toBe('plex');
   });
 });
 

@@ -29,6 +29,7 @@ import {
 import { useDashboardLayout } from './dashboard-layout-context';
 import { formatTime as formatDisplayTime } from '@/lib/date-format';
 import { compareCalendarEvents, isReleaseDayEvent } from '@/lib/release-day';
+import { getDeviceTimeZone } from '@/lib/timezone';
 
 // The header plus a carousel card's poster (with its badges and air time) and
 // title line. A shorter cell, such as a phone's two-row default, cut the
@@ -83,7 +84,8 @@ function typeColor(type: CalendarEvent['type']): string {
 }
 
 async function fetchToday(signal?: AbortSignal): Promise<CalendarEvent[]> {
-  const path = '/api/calendar?days=1&fullDay=true';
+  // This device's today, as the Calendar page shows it, not the server's.
+  const path = `/api/calendar?days=1&fullDay=true&tz=${encodeURIComponent(getDeviceTimeZone())}`;
   // An offline snapshot from the worker shows the shared "saved data" notice, as Calendar does.
   const res = await widgetFetch(path, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');

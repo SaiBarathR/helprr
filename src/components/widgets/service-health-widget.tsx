@@ -16,7 +16,9 @@ interface ServiceStatus {
 }
 
 async function fetchServiceHealth(signal?: AbortSignal): Promise<ServiceStatus[]> {
-  const res = await fetchOrOffline('/api/services/health', { signal });
+  // A poll asks Helprr, not the browser's copy (the route allows 60 s + 120 s
+  // stale): with Helprr down that copy kept reading "all online" for minutes.
+  const res = await fetchOrOffline('/api/services/health', { signal, cache: 'no-cache' });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }
