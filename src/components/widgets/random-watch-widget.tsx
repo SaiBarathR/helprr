@@ -84,11 +84,12 @@ export function RandomWatchWidget({
 
   const pick = data?.pick ?? null;
 
-  // The one-row half-width phone cell (2×1): under the header the hero had no
-  // room left at all, so it takes the Discover rails' compact tile, as For You
-  // and Upcoming do there. The label opens the Random mode of For You; a new
-  // pick still lands with every poll.
-  if (narrow && (rowSpan ?? 1) <= 1) {
+  // Any one-row cell: under the header (and the filter chips in a wide one) the
+  // hero had 4–30px left, too little for any of the pick, so it takes the
+  // Discover rails' compact tile, as For You and Upcoming do in a 2×1. Unlike
+  // theirs, this layout is a hero and can't shrink to one row. The label opens
+  // the Random mode of For You; a new pick still lands with every poll.
+  if ((rowSpan ?? 1) <= 1) {
     const hint = pick?.mediaType === 'movie' ? 'radarr' : 'sonarr';
     return (
       <CompactRailTile
@@ -248,6 +249,10 @@ function PickHero({
 
   const hero = (
     <div
+      // A size container: in a short hero (a one-row 4×1 phone cell) globals.css
+      // hides the poster, chips, facts and title whole, in that order, instead
+      // of cutting them at the hero's top.
+      className="rp-hero"
       style={{
         position: 'relative',
         flex: 1,
@@ -287,7 +292,7 @@ function PickHero({
           padding: 10,
         }}
       >
-        <div style={{ flexShrink: 0 }} className="@max-[159px]/cell:hidden">
+        <div style={{ flexShrink: 0 }} className="rp-hero-poster @max-[159px]/cell:hidden">
           <Poster
             width={narrow ? 40 : 52}
             height={narrow ? 60 : 78}
@@ -297,7 +302,7 @@ function PickHero({
             imageUrl={poster ?? undefined}
           />
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0 }} className="rp-hero-text">
           <div
             style={{
               fontFamily: FONT_DISPLAY,
@@ -318,6 +323,7 @@ function PickHero({
           {/* Whole facts only, like the genre chips below: one that doesn't
               fit wraps onto a hidden second line instead of being cut. */}
           <div
+            className="rp-hero-meta"
             style={{
               display: 'flex',
               flexWrap: 'wrap',
@@ -358,7 +364,7 @@ function PickHero({
             <div
               // display in the class, not the style, which would override the
               // container query that hides the row in cells under 240px.
-              className="flex @max-[239px]/cell:hidden"
+              className="rp-hero-genres flex @max-[239px]/cell:hidden"
               style={{ flexWrap: 'wrap', gap: '8px 4px', marginTop: 6, height: 20, overflow: 'hidden' }}
             >
               {pick.genres.slice(0, 3).map((g) => (
@@ -378,6 +384,8 @@ function PickHero({
   return (
     <Link
       href={pick.href}
+      // Its name even where a short hero hides the title (globals.css).
+      aria-label={pick.title}
       style={{
         textDecoration: 'none',
         color: 'inherit',

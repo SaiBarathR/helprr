@@ -918,6 +918,36 @@ html {
   }
 }
 
+/* Random Pick's hero (random-watch-widget.tsx): its text sits at the bottom
+   of a box only as tall as the cell leaves it, so a short box (a one-row 4×1
+   phone cell) cut the chips and title at its top. Each part hides whole as the
+   box shrinks: the 78px poster (98 with padding), then the chips (title, facts
+   and chips need ~82), the facts (~56), and the title (~40). !important beats
+   the inline display these rows set. */
+.rp-hero {
+  container: rp-hero / size;
+}
+@container rp-hero (max-height: 99px) {
+  .rp-hero-poster {
+    display: none !important;
+  }
+}
+@container rp-hero (max-height: 84px) {
+  .rp-hero-genres {
+    display: none !important;
+  }
+}
+@container rp-hero (max-height: 57px) {
+  .rp-hero-meta {
+    display: none !important;
+  }
+}
+@container rp-hero (max-height: 41px) {
+  .rp-hero-text {
+    display: none !important;
+  }
+}
+
 /* The empty state's next-step link needs room under icon + message; a short
    cell drops it rather than clipping it (the header's "View all" remains). */
 @container bento-empty (max-height: 80px) {

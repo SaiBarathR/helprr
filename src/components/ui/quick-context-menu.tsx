@@ -504,7 +504,10 @@ export function QuickContextMenu({
             aria-label="Reload"
             title="Reload"
             onSelect={() => {
-              window.location.reload();
+              // After the menu's own Back entry is gone: closing the menu steps
+              // back through history, and that step cancelled a reload started
+              // first (a real tap only closed the menu).
+              afterOverlayHistory(() => window.location.reload());
             }}
           >
             <RotateCw />

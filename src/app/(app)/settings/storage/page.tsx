@@ -23,6 +23,8 @@ import {
 import { parseUsage, type CacheUsageStats } from './parse-usage';
 import { formatDateTime } from '@/lib/date-format';
 
+const HISTORY_TOAST = 'cleanup-history-clear';
+
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -134,18 +136,19 @@ export default function StorageSettingsPage() {
       const res = await fetch(`/api/cleanup/history?${query}`, { method: 'DELETE' });
       const payload = await res.json().catch(() => null);
       if (!res.ok) {
-        toast.error(payload?.error || 'Failed to delete cleanup history');
+        toast.error(payload?.error || 'Failed to delete cleanup history', { id: HISTORY_TOAST });
         return;
       }
       const deleted = typeof payload?.deleted === 'number' ? payload.deleted : 0;
-      toast.success(deleted === 0 ? 'No matching rows to delete' : `Deleted ${deleted} row${deleted === 1 ? '' : 's'}`);
+      // The same id as the failure's toast: a retry that works replaces it.
+      toast.success(deleted === 0 ? 'No matching rows to delete' : `Deleted ${deleted} row${deleted === 1 ? '' : 's'}`, { id: HISTORY_TOAST });
       // Done: close the confirm. A failure above keeps it open beside its
       // error toast, so the user can try again or cancel.
       setConfirmOlder(false);
       setConfirmAll(false);
       await queryClient.invalidateQueries({ queryKey: CLEANUP_SUMMARY_KEY });
     } catch {
-      toast.error('Failed to delete cleanup history');
+      toast.error('Failed to delete cleanup history', { id: HISTORY_TOAST });
     } finally {
       setDeletingHistory(false);
     }

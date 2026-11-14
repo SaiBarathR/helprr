@@ -211,8 +211,11 @@ export function UpcomingWidget({
   }
 
   const dayBadge = (
+    // A one-column phone cell has no room for it beside the title (it was
+    // clipped); the switch stays on the larger sizes, as the 2×1 tile does.
     <button
       type="button"
+      className="@max-[99px]/cell:hidden"
       onClick={editMode ? undefined : handleDaysChange}
       style={{ border: 'none', padding: 0, background: 'transparent', cursor: editMode ? 'default' : 'pointer' }}
     >
@@ -494,14 +497,15 @@ function UpcomingRow({ ev }: { ev: UpcomingEvent }) {
             )}
           </div>
         )}
+        {/* Whole words (break-word split "S02E07" mid-word); a one-column phone
+            cell has no room for a second line, so it keeps the title and date. */}
         <div
           style={{
             fontSize: 12,
             color: HPR.fgMute,
             marginTop: 2,
-            wordBreak: 'break-word',
           }}
-          className="line-clamp-2 overflow-hidden text-ellipsis"
+          className="line-clamp-2 overflow-hidden text-ellipsis @max-[79px]/cell:hidden"
         >
           {ev.subtitle}
         </div>
@@ -515,12 +519,13 @@ function UpcomingRow({ ev }: { ev: UpcomingEvent }) {
             height: 16,
             lineHeight: '16px',
             overflow: 'hidden',
-            fontSize: 12,
             color: HPR.fgMute,
             fontFamily: FONT_MONO,
             marginTop: 2,
             whiteSpace: 'nowrap',
           }}
+          // In a one-column phone cell the smaller size fits "Nov 17" whole (it read "Nov…").
+          className="text-[12px] @max-[79px]/cell:text-[10px]"
         >
           {eventDateParts(ev).map((part, i) => (
             <span key={i} style={i === 0 ? { maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' } : undefined}>{part}</span>

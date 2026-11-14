@@ -30,9 +30,9 @@ export function PushReenableBanner() {
 
   if (wasReregistered) {
     return (
-      <div className="mx-1 mb-2 flex items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-2.5 text-sm">
-        <span className="text-amber-300">Notifications were re-registered for this device.</span>
-        <Button variant="ghost" size="sm" onClick={dismissReregisteredNotice}>
+      <div className="mx-1 mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-2.5 text-sm">
+        <span className="min-w-0 flex-[1_1_12rem] text-amber-300">Notifications were re-registered for this device.</span>
+        <Button variant="ghost" size="sm" className="ml-auto" onClick={dismissReregisteredNotice}>
           Dismiss
         </Button>
       </div>
@@ -42,8 +42,10 @@ export function PushReenableBanner() {
   if (!needsReenable || dismissed) return null;
 
   return (
-    <div className="mx-1 mb-2 flex items-start justify-between gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm">
-      <div className="flex items-start gap-2.5 min-w-0">
+    // The buttons wrap under the text where the row is narrow (large text or
+    // zoom), rather than squeezing it to a word per line under them.
+    <div className="mx-1 mb-2 flex flex-wrap items-start justify-between gap-x-3 gap-y-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm">
+      <div className="flex min-w-0 flex-[1_1_10rem] items-start gap-2.5">
         <BellOff className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
         <div className="min-w-0">
           <div className="font-medium text-red-200">Notifications stopped on this device</div>
@@ -62,7 +64,7 @@ export function PushReenableBanner() {
           )}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="ml-auto flex shrink-0 items-center gap-1">
         {!permissionDenied && (
           <Button size="sm" onClick={handleReenable} disabled={loading} className="h-8">
             {loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Bell className="mr-1.5 h-3.5 w-3.5" />}

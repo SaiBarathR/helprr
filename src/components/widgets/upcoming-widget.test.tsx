@@ -110,3 +110,17 @@ describe('Upcoming widget, one row per film-day', () => {
     expect(container.textContent).toContain('Next release');
   });
 });
+
+describe('Upcoming in a one-column phone cell', () => {
+  it('keeps subtitle words whole and drops what does not fit, rather than cutting it', () => {
+    vi.setSystemTime(new Date(2026, 10, 17, 12, 0));
+    mocks.data = [{ ...film('Odyssey', '2026-11-18'), subtitle: 'S02E07 - The Long Night' }];
+    const { container, getByRole } = render(<UpcomingWidget refreshInterval={60_000} layoutVariant="list" />);
+    const subtitle = [...container.querySelectorAll('div')].find((el) => el.textContent === 'S02E07 - The Long Night')!;
+    // break-word split "S02E07" mid-word in a ~44px cell; below 80px the line goes.
+    expect(subtitle.style.wordBreak).toBe('');
+    expect(subtitle.className).toContain('@max-[79px]/cell:hidden');
+    // The days switch hides whole where it was clipped beside the title.
+    expect(getByRole('button', { name: /D(AYS)? ▾/ }).className).toContain('@max-[99px]/cell:hidden');
+  });
+});

@@ -55,7 +55,7 @@ describe('Clear all confirm', () => {
     await openClearAll();
 
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
-    expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Deleted 12 rows');
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Deleted 12 rows', { id: 'cleanup-history-clear' });
   });
 
   it('stays open beside the error when the delete fails', async () => {
@@ -66,7 +66,7 @@ describe('Clear all confirm', () => {
     ));
     await openClearAll();
 
-    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith('Database unavailable'));
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith('Database unavailable', { id: 'cleanup-history-clear' }));
     expect(screen.getByRole('alertdialog')).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Yes, delete all' }) as HTMLButtonElement).disabled).toBe(false);
   });
