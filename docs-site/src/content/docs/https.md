@@ -30,6 +30,9 @@ Each recipe uses Helprr's default port, 3050; use yours if you changed it. After
   Behind a proxy that passes a visitor's headers on, a visitor could choose the address
   Helprr sees, so leave it off there: Helprr still works, and still limits sign-in
   attempts per username. Each recipe below says which kind it is.
+
+  It is also how Helprr sees a viewer's address for Jellyfin's Internet streaming
+  limits: see [below](#jellyfins-internet-streaming-limits).
 - **The proxy as the only way in from the internet.** At home, behind your router, only
   devices on your network reach Helprr's port directly, which is fine for most homes. On
   a machine with a public IP address (a VPS), whichever proxy you use, make the port
@@ -108,6 +111,24 @@ which removes everything Serve was serving).
 
 *Tested 2026-11-05 with Tailscale 1.104.5: Helprr behind Serve, a sent `X-Forwarded-For`
 replaced.*
+
+## Jellyfin's Internet streaming limits
+
+Jellyfin's *Internet streaming bitrate limit* (Dashboard → Playback → Streaming, or per
+user under the user's settings) caps viewers who are not on your network. Every stream
+reaches Jellyfin from Helprr's machine, which is on your network, so Jellyfin never
+applies the limit itself; Helprr applies it, by the viewer's address:
+
+- Helprr can only see that address behind a trusted proxy with
+  `TRUST_FORWARDED_PROTO=true` (Tailscale Serve, Caddy). Otherwise (no proxy, or one that
+  passes a visitor's headers on, such as Cloudflare Tunnel), **every viewer counts as
+  remote whenever such a limit is set**, including viewers at home. With no limit set,
+  nothing changes.
+- Local means on Jellyfin's LAN networks (Dashboard → Networking → LAN networks; your
+  private ranges when that list is empty). A Tailscale address (`100.64.0.0/10`) counts
+  as remote unless you add that range there.
+- Make Helprr's port answer the proxy only (see above): anyone who reaches the port
+  directly can send a made-up address.
 
 ## Cloudflare Tunnel
 

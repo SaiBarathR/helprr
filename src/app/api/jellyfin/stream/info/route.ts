@@ -66,19 +66,22 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     const { client, jellyfinUserId, connectionFingerprint } = await getJellyfinPlaybackContext(auth.user);
     // Jellyfin's Internet streaming limits, which it cannot apply itself
     // through Helprr (see remoteBitrateCap): a remote viewer's request, a
-    // picked quality included, is capped here.
-    const remoteCap = await remoteBitrateCap(client, connectionFingerprint, jellyfinUserId, getClientIp(request));
+    // picked quality included, is capped here. Read beside the media proxy's
+    // gate (and cache), which is checked before PlaybackInfo so a refused item,
+    // such as a channel for an account without Live TV, opens no stream. That
+    // check throws if Jellyfin cannot be asked, which the catch reports as a
+    // failure to start, not as a missing item; the cap never throws.
+    const [remoteCap, allowed] = await Promise.all([
+      remoteBitrateCap(client, connectionFingerprint, jellyfinUserId, getClientIp(request)),
+      itemAccess(auth.user, itemId),
+    ]);
+    if (!allowed) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
     const maxStreamingBitrate = remoteCap ? Math.min(requestedBitrate ?? remoteCap, remoteCap) : requestedBitrate;
     playbackRequest.maxStreamingBitrate = maxStreamingBitrate;
     if (maxStreamingBitrate) {
       playbackRequest.deviceProfile = { ...playbackRequest.deviceProfile, MaxStreamingBitrate: maxStreamingBitrate, MaxStaticBitrate: maxStreamingBitrate };
-    }
-    // The media proxy's gate (and cache), checked before PlaybackInfo so a refused
-    // item, such as a channel for an account without Live TV, opens no stream.
-    // Throws if Jellyfin cannot be asked, which the catch reports as a failure
-    // to start, not as a missing item.
-    if (!(await itemAccess(auth.user, itemId))) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     if (playbackRequest.liveStreamId && !(await liveStreamBelongsTo(auth.user.id, playbackRequest.liveStreamId, itemId))) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });

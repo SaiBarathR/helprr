@@ -78,13 +78,16 @@ describe('stream/info and Jellyfin\'s Internet streaming limits', () => {
     expect((await negotiate(undefined, '203.0.113.9')).asked).toBe(8_000_000); // no choice sent
   });
 
-  it('takes the lower of the server and user limits, and caps nothing when neither is set', async () => {
+  it('takes the user limit when it has one, else the server one, and caps nothing when neither is set', async () => {
     mocks.serverConfig.mockResolvedValue({ RemoteClientBitrateLimit: 5_000_000 });
+    expect((await negotiate(120_000_000, '203.0.113.9')).asked).toBe(8_000_000); // the user's, above the server's
+
+    resetRemoteLimitCacheForTests();
+    mocks.user.mockResolvedValue({ Policy: { RemoteClientBitrateLimit: 0 } });
     expect((await negotiate(120_000_000, '203.0.113.9')).asked).toBe(5_000_000);
 
     resetRemoteLimitCacheForTests();
     mocks.serverConfig.mockResolvedValue({ RemoteClientBitrateLimit: 0 });
-    mocks.user.mockResolvedValue({ Policy: { RemoteClientBitrateLimit: 0 } });
     const unlimited = await negotiate(120_000_000, '203.0.113.9');
     expect(unlimited.asked).toBe(120_000_000);
     expect(unlimited.body.bitrateCap).toBeUndefined();

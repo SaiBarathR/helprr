@@ -234,3 +234,28 @@ it('does not let the test on picking Automatic lower the ceiling under a stream 
   expect(slow.probes()).toBe(1);
   expect(slow.ceilings()).toEqual([120_000_000]);
 });
+
+it('ignores a connection change event that only moved Chrome\'s speed estimate', async () => {
+  const connection = Object.assign(new EventTarget(), { type: 'wifi', effectiveType: '4g', downlink: 10 });
+  Object.defineProperty(navigator, 'connection', { configurable: true, value: connection });
+  try {
+    h = await mountPlayback();
+    serveProbe(1); // a fast LAN: 120 Mbps
+    await h.act(async () => { await h.playback().playItem(ITEM); });
+
+    // Estimate jitter: same type and class. A restart keeps the ceiling.
+    const probe = serveProbe(1);
+    connection.downlink = 7.5;
+    await h.act(() => { connection.dispatchEvent(new Event('change')); });
+    await h.act(async () => { await h.playback().setAudioStream(2); });
+    expect(probe.ceilings()).toEqual([120_000_000]);
+
+    // A real move (Wi-Fi to cellular): the ceiling drops until the next test.
+    connection.type = 'cellular';
+    await h.act(() => { connection.dispatchEvent(new Event('change')); });
+    await h.act(async () => { await h.playback().setAudioStream(1); });
+    expect(probe.ceilings()).toEqual([120_000_000, 6_000_000]);
+  } finally {
+    delete (navigator as unknown as Record<string, unknown>).connection;
+  }
+});
