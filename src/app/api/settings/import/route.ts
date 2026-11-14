@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUserCapability } from '@/lib/auth';
+import { currentSessionIsTrusted, requireUserCapability } from '@/lib/auth';
 import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
 import { withApiLogging } from '@/lib/api-logger';
 import { MAX_IMPORT_BYTES } from '@/lib/settings-export';
@@ -32,8 +32,8 @@ interface ImportResult {
   /** Saved, but not yet in effect on this server; each can be retried. */
   warnings: ImportWarning[];
   discoverLayoutApplied: boolean;
-  /** The import gave the importer's own account another password, so this session has ended. */
-  importerSignedOut: boolean;
+  /** The import ended this session (another password, or a rename behind the sign-in proxy): the username to sign in with. */
+  importerSignedOut: ImportOutcome['importerSignedOut'];
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
@@ -137,7 +137,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   let outcome: ImportOutcome;
   try {
-    outcome = await applySettingsImport(body, importerId, auth.session.id);
+    // Only a users import can rename the importer, which ends a proxy-header session.
+    const trusted = importsUsers && await currentSessionIsTrusted();
+    outcome = await applySettingsImport(body, importerId, auth.session.id, trusted);
   } catch (error) {
     console.error('Failed to import settings', error);
     return NextResponse.json(

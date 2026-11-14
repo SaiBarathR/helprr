@@ -18,7 +18,7 @@ import { applyDashboardLayoutsInTxn } from './layouts';
 import { applyPreparedScheduledAlerts, prepareScheduledAlerts } from './alerts';
 import { applyPreparedWatchlist, prepareWatchlist } from './watchlist';
 import { applyPreparedAnimeMappings, prepareAnimeMappings } from './anime-mappings';
-import { applyUsersInTxn, prepareAccountContent } from './users';
+import { applyUsersInTxn, prepareAccountContent, type ImporterState } from './users';
 import { parseUsersImportMode } from './users-mode';
 import { revokeJellyfinLinkedSessions } from '@/lib/jellyfin-linked-sessions';
 
@@ -72,19 +72,21 @@ export interface ImportOutcome {
   followUps: ImportFollowUpPlan;
   /** The Jellyfin address changed: the sessions of Jellyfin-linked accounts ended with it. */
   jellyfinSignOut: { sessions: number; accounts: number } | null;
-  /** The users section gave the importer's account another password: their sessions ended. */
-  importerSignedOut: boolean;
+  /** The users section ended the importer's session (another password, or a rename behind the sign-in proxy). */
+  importerSignedOut: ImporterState['signedOut'];
 }
 
 /**
  * Throws when the transaction fails; nothing is then saved. `keepSessionId`
  * is the importer's session, kept when a new Jellyfin address signs out the
- * Jellyfin-linked accounts.
+ * Jellyfin-linked accounts. `importerSessionTrusted`: that session came from
+ * the trusted proxy header, so renaming the importer ends it.
  */
 export async function applySettingsImport(
   body: ImportRequestBody,
   importerId: string,
   keepSessionId: string | null = null,
+  importerSessionTrusted = false,
 ): Promise<ImportOutcome> {
   const skipped: string[] = [];
   const appliedServices: ServiceType[] = [];
@@ -106,7 +108,7 @@ export async function applySettingsImport(
   const updatedUserIds: string[] = [];
   const serviceChanges = { jellyfinAddress: false };
   let jellyfinSignOut: ImportOutcome['jellyfinSignOut'] = null;
-  const importer = { signedOut: false };
+  const importer: ImporterState = { trustedSession: importerSessionTrusted, signedOut: null };
   // The route refuses an unknown mode; this guards a direct caller the same way.
   const usersMode = parseUsersImportMode(body.usersMode);
   if (!usersMode) throw new Error('Unknown users import mode');

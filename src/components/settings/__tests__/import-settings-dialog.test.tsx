@@ -508,30 +508,57 @@ describe('importing user accounts asks for your password, and a code while your 
 
 describe('choosing how user accounts are imported', () => {
   const FIRST_ADMIN = 'user-bootstrap-admin';
-  const withUsers = () => ({
+  const withUsers = (...extra: object[]) => ({
     ...exportFile(off, off),
     users: { accounts: [
       { id: FIRST_ADMIN, username: 'owner', displayName: 'Owner', role: 'admin', status: 'active', template: 'admin', permissions: {}, passwordHash: 'scrypt$hash' },
       { id: 'other-1', username: 'admin', displayName: 'Admin', role: 'member', status: 'active', template: 'member', permissions: {} },
+      ...extra,
     ] },
   });
+  // This install: its first admin "admin" and the admin "boss".
+  let localUsers: Response | (() => Response);
   const radio = (title: string) =>
     [...document.querySelectorAll('[role="radio"]')].find((el) => el.textContent?.startsWith(title)) as HTMLButtonElement;
-  const warning = () => document.querySelector('[role="radiogroup"] + div')?.textContent ?? null;
+  const warnings = () => [...document.querySelectorAll('[role="radiogroup"] + div p')].map((el) => el.textContent);
+  const choose = (title: string) => act(async () => { radio(title).click(); });
 
   beforeEach(() => {
+    localUsers = () => new Response(JSON.stringify([{ id: FIRST_ADMIN, username: 'admin' }, { id: 'boss-id', username: 'boss' }]));
     const base = vi.mocked(fetch).getMockImplementation()!;
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) =>
-      url === '/api/me/totp' ? new Response(JSON.stringify({ available: true, enabled: false, recoveryCodesLeft: 0 })) : base(url, init)));
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/me/totp') return new Response(JSON.stringify({ available: true, enabled: false, recoveryCodesLeft: 0 }));
+      if (url === '/api/users') return typeof localUsers === 'function' ? localUsers() : localUsers;
+      return base(url, init);
+    }));
   });
+
+  async function openRead(file: object) {
+    await open(file);
+    // This install's accounts are read.
+    await vi.waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => url === '/api/users')).toBe(true));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  }
+
+  async function importWith(response: object) {
+    const { default: userEvent } = await import('@testing-library/user-event');
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => url === '/api/settings/import'
+      ? new Response(JSON.stringify(response))
+      : base(url, init)));
+    await click('Replace everything');
+    await vi.waitFor(() => expect(document.querySelector('input[aria-label="Your current password"]')).not.toBeNull());
+    await userEvent.type(document.querySelector<HTMLInputElement>('input[aria-label="Your current password"]')!, 'pw');
+    await click('Continue');
+  }
 
   it("preselects keeping this install's first admin, explains each choice, and sends the mode with the users", async () => {
     const { default: userEvent } = await import('@testing-library/user-event');
     signedIn.me = { role: 'admin', id: FIRST_ADMIN, username: 'admin' };
-    await open(withUsers());
+    await openRead(withUsers());
     expect([...document.querySelectorAll('[role="radio"]')].map((el) => el.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false']);
     expect(radio("Keep this install's first admin").textContent).toContain('the rest added. This install\'s first admin is never changed');
-    expect(warning()).toBeNull();
+    expect(warnings()).toEqual([]);
 
     await click('Replace everything');
     await vi.waitFor(() => expect(document.querySelector('input[aria-label="Your current password"]')).not.toBeNull());
@@ -544,42 +571,109 @@ describe('choosing how user accounts are imported', () => {
 
   it('warns the first admin that Restore renames them, gives them the file password and signs them out', async () => {
     signedIn.me = { role: 'admin', id: FIRST_ADMIN, username: 'admin' };
-    await open(withUsers());
-    await act(async () => { radio('Restore').click(); });
-    expect(warning()).toContain('you become “owner” with the file\'s password, and are signed out now');
+    await openRead(withUsers());
+    await choose('Restore');
+    expect(warnings()).toEqual([expect.stringContaining('you become “owner” with the file\'s password, and are signed out now')]);
     // Matching by username reaches them through the file's "admin", which has no password.
-    await act(async () => { radio('Match by username').click(); });
-    expect(warning()).toContain('This updates your own account from the file');
+    await choose('Match by username');
+    expect(warnings()).toEqual(['This updates your own account from the file. Your role and password stay.']);
   });
 
-  it("tells another admin what Restore does to this install's first admin", async () => {
-    signedIn.me = { role: 'admin', id: 'boss-id', username: 'boss' };
-    await open(withUsers());
-    await act(async () => { radio('Restore').click(); });
-    expect(warning()).toContain('This install\'s first admin becomes “owner” with the file\'s password');
-    await act(async () => { radio('Match by username').click(); });
-    expect(warning()).toBeNull();
-  });
-
-  it('keeps the signed-out message up with a way to Sign in, instead of the page reload that would hide it', async () => {
-    const { default: userEvent } = await import('@testing-library/user-event');
-    const { toast } = await import('sonner');
-    const base = vi.mocked(fetch).getMockImplementation()!;
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => url === '/api/settings/import'
-      ? new Response(JSON.stringify({ skipped: [], warnings: [], importerSignedOut: true }))
-      : base(url, init)));
+  it('does not promise a renamed importer that nothing else changes: a sign-in proxy must send the new name', async () => {
     signedIn.me = { role: 'admin', id: FIRST_ADMIN, username: 'admin' };
-    await open(withUsers());
-    await act(async () => { radio('Restore').click(); });
-    await click('Replace everything');
-    await vi.waitFor(() => expect(document.querySelector('input[aria-label="Your current password"]')).not.toBeNull());
-    await userEvent.type(document.querySelector<HTMLInputElement>('input[aria-label="Your current password"]')!, 'pw');
-    await click('Continue');
+    await openRead({ ...exportFile(off, off), users: { accounts: [{ id: FIRST_ADMIN, username: 'owner', role: 'admin', status: 'active', template: 'admin', permissions: {} }] } });
+    await choose('Restore');
+    expect(warnings()[0]).toContain('its username becomes “owner”, and your password stays. A sign-in proxy must then send “owner”: until it does, you are signed out.');
+    expect(warnings()[0]).not.toContain('from now on');
+  });
+
+  it("Restore by the first admin, when the file's first-admin name is already another account's, warns about the entry that really reaches them", async () => {
+    localUsers = () => new Response(JSON.stringify([{ id: FIRST_ADMIN, username: 'admin' }, { id: 'o', username: 'owner' }]));
+    signedIn.me = { role: 'admin', id: FIRST_ADMIN, username: 'admin' };
+    await openRead(withUsers());
+    await choose('Restore');
+    expect(warnings()).toEqual(['This updates your own account from the file. Your role and password stay.']);
+  });
+
+  it("tells another admin what Restore and Match do to this install's first admin", async () => {
+    signedIn.me = { role: 'admin', id: 'boss-id', username: 'boss' };
+    await openRead(withUsers());
+    await choose('Restore');
+    expect(warnings()).toEqual(['This install\'s first admin “admin” becomes “owner” with the file\'s password, and is signed out if it differs.']);
+    // The file's "admin" has this install's first admin's username.
+    await choose('Match by username');
+    expect(warnings()).toEqual(['This install\'s first admin “admin” is updated from the file. It stays an admin.']);
+    await choose("Keep this install's first admin");
+    expect(warnings()).toEqual([]);
+  });
+
+  it('shows both warnings when another admin in the file restores: theirs and the first admin\'s', async () => {
+    signedIn.me = { role: 'admin', id: 'boss-id', username: 'boss' };
+    await openRead(withUsers({ id: 'boss-elsewhere', username: 'boss', role: 'admin', status: 'active', template: 'admin', permissions: {}, passwordHash: 'scrypt$b' }));
+    await choose('Restore');
+    expect(warnings()).toEqual([
+      expect.stringContaining('This changes your own account: it gets the file\'s password'),
+      expect.stringContaining('This install\'s first admin “admin” becomes “owner”'),
+    ]);
+  });
+
+  it("cautions another admin choosing Match when this install's accounts cannot be read", async () => {
+    localUsers = () => new Response(null, { status: 500 });
+    signedIn.me = { role: 'admin', id: 'boss-id', username: 'boss' };
+    await openRead(withUsers());
+    await choose('Match by username');
+    expect(warnings()).toEqual([expect.stringContaining("If the file has an account with this install's first admin's username")]);
+  });
+
+  it('keeps the signed-out message up with the new username and the notes, and a 401 meanwhile does not load Sign in', async () => {
+    const { toast } = await import('sonner');
+    const { handleAuthError } = await import('@/lib/query-client');
+    const { ApiError } = await import('@/lib/query-fetch');
+    signedIn.me = { role: 'admin', id: FIRST_ADMIN, username: 'admin' };
+    await openRead(withUsers());
+    await choose('Restore');
+    await importWith({
+      skipped: ['User "bob" skipped: username already belongs to another account'],
+      warnings: [{ task: 'cleanupSchedulers', message: 'Schedulers did not restart.' }],
+      importerSignedOut: { username: 'owner', renamedBehindProxy: false },
+    });
     await vi.waitFor(() => expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(
-      expect.stringContaining('you are signed out'),
+      expect.stringContaining('Sign in as “owner” with the imported password'),
       expect.objectContaining({ duration: Infinity, action: expect.objectContaining({ label: 'Sign in' }) }),
     ));
+    const [, options] = vi.mocked(toast.warning).mock.calls.at(-1)! as [string, { description: React.ReactElement }];
+    const list = document.createElement('div');
+    const listRoot = createRoot(list);
+    await act(async () => listRoot.render(options.description));
+    expect(list.textContent).toContain('username already belongs to another account');
+    expect(list.textContent).toContain('Schedulers did not restart.');
+    await act(async () => listRoot.unmount());
     expect(importedCalls).toHaveLength(0);
+
+    // The badge poll's 401 (or any query's) goes through handleAuthError.
+    const assign = vi.fn();
+    const realWindow = window;
+    vi.stubGlobal('window', new Proxy(realWindow, {
+      get: (target, key) => (key === 'location' ? { pathname: '/settings/backup', search: '', hash: '', assign } : Reflect.get(target, key)),
+    }));
+    try {
+      handleAuthError(new ApiError(401, 'GET /api/badges → 401'));
+    } finally {
+      vi.stubGlobal('window', realWindow);
+    }
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('says the proxy must send the new username when a rename ended a proxy session', async () => {
+    const { toast } = await import('sonner');
+    signedIn.me = { role: 'admin', id: FIRST_ADMIN, username: 'admin' };
+    await openRead(withUsers());
+    await choose('Restore');
+    await importWith({ skipped: [], warnings: [], importerSignedOut: { username: 'owner', renamedBehindProxy: true } });
+    await vi.waitFor(() => expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(
+      expect.stringContaining('Your username is now “owner”, so you are signed out. Have your sign-in proxy send it'),
+      expect.anything(),
+    ));
   });
 
   it('does not send a mode when the users are left out', async () => {

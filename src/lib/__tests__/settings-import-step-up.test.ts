@@ -12,9 +12,10 @@ const mocks = vi.hoisted(() => ({
   apply: vi.fn(),
   findFirst: vi.fn(),
   recordSecurityEvent: vi.fn(),
+  trusted: vi.fn(async () => false),
 }));
 
-vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.auth }));
+vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.auth, currentSessionIsTrusted: mocks.trusted }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (fn: unknown) => fn }));
 vi.mock('@/lib/server/confirm-password', () => ({ confirmAdminStepUp: mocks.stepUp }));
 vi.mock('@/lib/settings-import/run-import', () => ({ applySettingsImport: mocks.apply }));
@@ -70,7 +71,7 @@ describe('an import with a users section', () => {
   it('applies once confirmed, without passing the password or code on', async () => {
     const res = await run({ users, currentPassword: 'secret', code: '123456' });
     expect(res.status).toBe(200);
-    expect(mocks.apply).toHaveBeenCalledWith({ users }, 'admin-1', 'sess-admin');
+    expect(mocks.apply).toHaveBeenCalledWith({ users }, 'admin-1', 'sess-admin', false);
   });
 });
 
@@ -78,7 +79,19 @@ describe('the users import mode', () => {
   it('is passed on when it is one of the three', async () => {
     const res = await run({ users, usersMode: 'keep-first-admin', currentPassword: 'secret' });
     expect(res.status).toBe(200);
-    expect(mocks.apply).toHaveBeenCalledWith({ users, usersMode: 'keep-first-admin' }, 'admin-1', 'sess-admin');
+    expect(mocks.apply).toHaveBeenCalledWith({ users, usersMode: 'keep-first-admin' }, 'admin-1', 'sess-admin', false);
+  });
+
+  it("tells the import when the importer's session came from the sign-in proxy, which a rename ends", async () => {
+    mocks.trusted.mockResolvedValueOnce(true);
+    await run({ users, usersMode: 'restore' });
+    expect(mocks.apply).toHaveBeenCalledWith({ users, usersMode: 'restore' }, 'admin-1', 'sess-admin', true);
+  });
+
+  it('does not look at the session for an import without users', async () => {
+    await run({ appSettings: { pollingIntervalSecs: 30 } });
+    expect(mocks.trusted).not.toHaveBeenCalled();
+    expect(mocks.apply).toHaveBeenCalledWith(expect.anything(), 'admin-1', 'sess-admin', false);
   });
 
   it.each([['an unknown word', 'merge'], ['a wrong type', 1], ['null', null]])(
@@ -104,10 +117,10 @@ describe('the users import mode', () => {
       discoverLayoutApplied: false,
       followUps: {},
       jellyfinSignOut: null,
-      importerSignedOut: true,
+      importerSignedOut: { username: 'owner', renamedBehindProxy: false },
     });
     const res = await run({ users, usersMode: 'restore' });
-    expect(await res.json()).toMatchObject({ importerSignedOut: true });
+    expect(await res.json()).toMatchObject({ importerSignedOut: { username: 'owner', renamedBehindProxy: false } });
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: 'SETTINGS_IMPORTED', fields: ['users', 'users mode: restore'],
     }));

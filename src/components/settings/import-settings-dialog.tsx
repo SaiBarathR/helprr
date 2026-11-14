@@ -51,10 +51,11 @@ import { formatDateTime } from '@/lib/date-format';
 import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin-id';
 import {
   DEFAULT_USERS_IMPORT_MODE,
-  importerAccountInFile,
-  type ImporterAccountMatch,
+  accountInFile,
+  type AccountInFileMatch,
   type UsersImportMode,
 } from '@/lib/settings-import/users-mode';
+import { holdLoginRedirect } from '@/lib/query-client';
 
 interface ImportSettingsDialogProps {
   open: boolean;
@@ -144,16 +145,39 @@ const USERS_MODE_OPTIONS: { mode: UsersImportMode; title: string; description: s
 ];
 
 /** What the import does to the importer's own account, in plain words. */
-function importerWarning(match: ImporterAccountMatch, myUsername: string | undefined): string {
+function importerWarning(match: AccountInFileMatch, myUsername: string | undefined): string {
   const renamed = myUsername !== undefined && match.username !== myUsername;
+  // A sign-in proxy names the account by username, so a rename ends its session.
+  const proxy = ` A sign-in proxy must then send “${match.username}”: until it does, you are signed out.`;
   if (match.hasPassword) {
     return renamed
-      ? `This changes your own account: you become “${match.username}” with the file's password, and are signed out now if it differs from yours.`
+      ? `This changes your own account: you become “${match.username}” with the file's password, and are signed out now if it differs from yours.${proxy}`
       : "This changes your own account: it gets the file's password, and you are signed out now if it differs from yours.";
   }
   return renamed
-    ? `This changes your own account: you sign in as “${match.username}” from now on. Your password stays.`
+    ? `This changes your own account: its username becomes “${match.username}”, and your password stays.${proxy}`
     : 'This updates your own account from the file. Your role and password stay.';
+}
+
+/** What the import does to this install's first admin when someone else imports. */
+function firstAdminWarning(match: AccountInFileMatch, currentName?: string): string {
+  const who = currentName ? `This install's first admin “${currentName}”` : "This install's first admin";
+  const renamed = match.username !== currentName;
+  if (match.hasPassword) {
+    return renamed
+      ? `${who} becomes “${match.username}” with the file's password, and is signed out if it differs.`
+      : `${who} gets the file's password, and is signed out if it differs.`;
+  }
+  return renamed ? `${who} becomes “${match.username}”. Its password stays.` : `${who} is updated from the file. It stays an admin.`;
+}
+
+function AmberNote({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
+      <p className="text-xs text-amber-800 dark:text-amber-200">{children}</p>
+    </div>
+  );
 }
 
 /** A push subscription lookup that failed or did not answer in time. */
@@ -386,23 +410,38 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     )
   ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedTwitch, selectedYoutube, selectedDashboardLayouts, selectedWatchlist, selectedScheduledAlerts, selectedAnimeMappings, selectedUsers, selectedServices, selectedSourceDevice, availableNotifDevices, currentEndpoint]);
 
-  // What the chosen mode does to the importer's own account, and, in Restore,
-  // to this install's first admin when that is someone else.
+  // What the chosen mode does to the importer's own account and, when someone
+  // else imports, to this install's first admin. This install's accounts give
+  // the first admin's username and the names a Restore entry would clash with.
   const fileAccounts = parsed?.payload.users?.accounts;
-  const importerMatch = useMemo(
-    () => (me && Array.isArray(fileAccounts) ? importerAccountInFile(usersMode, fileAccounts, me) : null),
-    [me, fileAccounts, usersMode],
-  );
-  const firstAdminInFile = Array.isArray(fileAccounts)
-    ? fileAccounts.find((a) => a && typeof a === 'object' && a.id === BOOTSTRAP_ADMIN_ID && typeof a.username === 'string')
-    : undefined;
-  const usersModeWarning = importerMatch
-    ? importerWarning(importerMatch, me?.username)
-    : usersMode === 'restore' && firstAdminInFile
-      ? `This install's first admin becomes “${firstAdminInFile.username.trim()}”${typeof firstAdminInFile.passwordHash === 'string' && firstAdminInFile.passwordHash
-        ? " with the file's password, and is signed out if it differs."
-        : '.'}`
-      : null;
+  const localUsers = useQuery({
+    queryKey: queryKeys.users(),
+    queryFn: jsonFetcher<{ id: string; username: string }[]>('/api/users'),
+    enabled: open && isAdmin && Array.isArray(fileAccounts),
+  });
+  const here = localUsers.data;
+  const usersModeWarnings = useMemo(() => {
+    if (!me || !Array.isArray(fileAccounts)) return [];
+    const takenByOthers = (id: string) => new Set((here ?? []).filter((u) => u.id !== id).map((u) => u.username));
+    const warnings: string[] = [];
+    const mine = accountInFile(usersMode, fileAccounts, me, takenByOthers(me.id));
+    if (mine) warnings.push(importerWarning(mine, me.username));
+    if (me.id !== BOOTSTRAP_ADMIN_ID) {
+      const firstAdmin = here?.find((u) => u.id === BOOTSTRAP_ADMIN_ID);
+      if (firstAdmin) {
+        const match = accountInFile(usersMode, fileAccounts, firstAdmin, takenByOthers(firstAdmin.id));
+        if (match) warnings.push(firstAdminWarning(match, firstAdmin.username));
+      } else if (!here) {
+        // This install's accounts could not be read: say what the file alone shows.
+        const match = usersMode === 'restore' ? accountInFile('restore', fileAccounts, { id: BOOTSTRAP_ADMIN_ID }) : null;
+        if (match) warnings.push(firstAdminWarning(match));
+        if (usersMode === 'match-username') {
+          warnings.push("If the file has an account with this install's first admin's username, that admin takes its details and any password in it.");
+        }
+      }
+    }
+    return warnings;
+  }, [me, fileAccounts, usersMode, here]);
 
   function importsUsers(replaceAll: boolean): boolean {
     return isAdmin && !!parsed?.payload.users && (replaceAll || selectedUsers);
@@ -595,27 +634,42 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         }
         stepUp.clear();
         if (mergedUiPrefs) applyImportedUiPrefs(mergedUiPrefs);
+        const signedOutAs: { username: string; renamedBehindProxy: boolean } | null =
+          json?.importerSignedOut && typeof json.importerSignedOut === 'object' ? json.importerSignedOut : null;
+        // This session has ended. Any request now gets a 401, which would load
+        // Sign in at once and take the message below with it.
+        if (signedOutAs) holdLoginRedirect();
         if (json?.discoverLayoutApplied && parsed.payload.discoverLayout) {
           const validatedLayout = validateDiscoverLayout(parsed.payload.discoverLayout);
           if (validatedLayout) setDiscoverLayout(validatedLayout);
-          // Signed out, the refetch would only jump to Sign in before the message below is read.
-          if (!json.importerSignedOut) void queryClient.invalidateQueries({ queryKey: queryKeys.discover('layout') });
+          // Signed out, the refetch would only fail.
+          if (!signedOutAs) void queryClient.invalidateQueries({ queryKey: queryKeys.discover('layout') });
         }
         const skipped: string[] = Array.isArray(json?.skipped) ? json.skipped : [];
         const successMsg = json?.discoverLayoutApplied
           ? 'Settings imported (incl. discover layout).'
           : 'Settings imported.';
-        if (json?.importerSignedOut) {
+        importWarnings = Array.isArray(json?.warnings) ? json.warnings : [];
+        if (signedOutAs) {
           signedOut = true;
-          // Your own password changed and this session has ended. The message
-          // stays until you go to Sign in, which a reload would do at once.
+          // One message that stays until you go to Sign in, with the notes and
+          // the follow-up warnings (not retryable without a session) in it.
+          const details = [...skipped, ...importWarnings.map((w) => w.message)];
+          // A full load, as for any ended session: it drops every cached query.
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+          const signIn = () => window.location.assign('/login');
           toast.warning(
-            `${successMsg} Your password changed, so you are signed out. Sign in with the imported password.${skipped.length > 0 ? ` Notes: ${skipped.join('; ')}` : ''}`,
+            signedOutAs.renamedBehindProxy
+              ? `${successMsg} Your username is now “${signedOutAs.username}”, so you are signed out. Have your sign-in proxy send it, then sign in.`
+              : `${successMsg} Your password changed, so you are signed out. Sign in as “${signedOutAs.username}” with the imported password.`,
             {
+              description: details.length > 0
+                ? <ul className="list-disc space-y-1 pl-4">{details.map((d, i) => <li key={i}>{d}</li>)}</ul>
+                : undefined,
               duration: Infinity,
-              // A full load, as for any ended session: it drops every cached query.
-              // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-              action: { label: 'Sign in', onClick: () => window.location.assign('/login') },
+              action: { label: 'Sign in', onClick: signIn },
+              // Closed without the button: this page can do nothing more.
+              onDismiss: signIn,
             },
           );
         } else if (skipped.length > 0) {
@@ -623,7 +677,6 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         } else {
           toast.success(successMsg);
         }
-        importWarnings = Array.isArray(json?.warnings) ? json.warnings : [];
       } else if (mergedUiPrefs) {
         applyImportedUiPrefs(mergedUiPrefs);
         toast.success('UI preferences imported.');
@@ -631,9 +684,12 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         toast.info('Nothing to import.');
       }
 
-      // Signed out, the page's reload would only land on Sign in and hide why.
-      if (onImported && !signedOut) onImported(importWarnings);
-      else showImportWarnings(importWarnings);
+      // Signed out, the warnings are in that message, and the page's reload
+      // would only land on Sign in and hide why.
+      if (!signedOut) {
+        if (onImported) onImported(importWarnings);
+        else showImportWarnings(importWarnings);
+      }
       // Not a later opening's to close.
       if (lookupGeneration.current === opening) onOpenChange(false);
     } catch (err) {
@@ -915,10 +971,9 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
                     />
                   ))}
                 </div>
-                {usersModeWarning && (
-                  <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
-                    <p className="text-xs text-amber-800 dark:text-amber-200">{usersModeWarning}</p>
+                {usersModeWarnings.length > 0 && (
+                  <div className="mt-2 space-y-2" data-testid="users-mode-warnings">
+                    {usersModeWarnings.map((w) => <AmberNote key={w}>{w}</AmberNote>)}
                   </div>
                 )}
               </section>
@@ -1011,12 +1066,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               <p>
                 User accounts: <span className="font-medium">{USERS_MODE_OPTIONS.find((o) => o.mode === usersMode)?.title}</span>
               </p>
-              {usersModeWarning && (
-                <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
-                  <p className="text-xs text-amber-800 dark:text-amber-200">{usersModeWarning}</p>
-                </div>
-              )}
+              {usersModeWarnings.map((w) => <AmberNote key={w}>{w}</AmberNote>)}
             </div>
           )}
           {pendingConfirm && needsStepUp(pendingConfirm.replaceAll) && (

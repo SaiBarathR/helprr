@@ -29,6 +29,14 @@ import { applyPreparedScheduledAlerts, prepareScheduledAlerts, type PreparedAler
 import { markTasteProfileStale } from '@/lib/recommendations/profile-store';
 import type { UsersImportMode } from './users-mode';
 
+/** What the import does to the account performing it. */
+export interface ImporterState {
+  /** Signed in through the trusted proxy header: that session ends when the account's username changes. */
+  trustedSession: boolean;
+  /** Set when the import ended the importer's session: their username afterwards, and why. */
+  signedOut: { username: string; renamedBehindProxy: boolean } | null;
+}
+
 export interface PreparedAccountContent {
   watchlist: PreparedWatchlist | null;
   alerts: PreparedAlert[] | null;
@@ -67,8 +75,7 @@ export async function applyUsersInTxn(
   updatedUserIds: string[] = [],
   /** How the file's accounts match this install's (users-mode.ts). */
   mode: UsersImportMode = 'restore',
-  /** Set when the import ended the importer's own sessions. */
-  importer: { signedOut: boolean } = { signedOut: false },
+  importer: ImporterState = { trustedSession: false, signedOut: null },
 ): Promise<number> {
   if (!Array.isArray(data.accounts)) {
     skipped.push('Users: missing accounts array');
@@ -79,8 +86,17 @@ export async function applyUsersInTxn(
   // the rest of the transaction, like every other change that can remove one.
   await lockActiveAdminGuard(tx);
 
+  // Restore applies the file's first admin before anyone else. In a reordered
+  // file, an earlier entry with this install's first admin's username would
+  // otherwise update that account in its place.
+  const isFirstAdminEntry = (acc: unknown) =>
+    !!acc && typeof acc === 'object' && (acc as { id?: unknown }).id === BOOTSTRAP_ADMIN_ID;
+  const accounts = mode === 'restore'
+    ? [...data.accounts.filter(isFirstAdminEntry), ...data.accounts.filter((acc) => !isFirstAdminEntry(acc))]
+    : data.accounts;
+
   let applied = 0;
-  for (const acc of data.accounts) {
+  for (const acc of accounts) {
     if (!acc || typeof acc !== 'object') continue;
     const username = typeof acc.username === 'string'
       ? normalizeLocalUsername(acc.username)
@@ -213,7 +229,11 @@ export async function applyUsersInTxn(
           where: { userId: target.id, revokedAt: null },
           data: { revokedAt: new Date() },
         });
-        if (target.id === importerId) importer.signedOut = true;
+        if (target.id === importerId) importer.signedOut = { username, renamedBehindProxy: false };
+      }
+      // A proxy-header session names its account by username, so a rename ends it.
+      if (target.id === importerId && importer.trustedSession && username !== target.username) {
+        importer.signedOut = { username, renamedBehindProxy: true };
       }
       // As in Settings -> Users: a restored password or status ends an
       // outstanding invite or reset link, and the calendar feed link. So does

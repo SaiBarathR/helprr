@@ -30,23 +30,26 @@ export function parseUsersImportMode(value: unknown): UsersImportMode | null {
   return (USERS_IMPORT_MODES as readonly unknown[]).includes(value) ? (value as UsersImportMode) : null;
 }
 
-export interface ImporterAccountMatch {
-  /** The username the importer signs in with afterwards. */
+export interface AccountInFileMatch {
+  /** The username the account has afterwards. */
   username: string;
-  /** The file carries a password for it, which replaces theirs. */
+  /** The file carries a password for it, which replaces the account's. */
   hasPassword: boolean;
 }
 
 /**
- * The file account that would update the importer's own account in `mode`, as
- * far as the file shows (the server also skips clashes with other accounts),
- * or null when the import leaves it alone.
+ * The file entry that would update `account` (an account on this install) in
+ * `mode`, following the server's matching (users.ts), or null when the import
+ * leaves it alone. `takenByOthers` holds the usernames of this install's other
+ * accounts, when known: Restore skips an entry whose username one of them has.
+ * A clash the file cannot show is otherwise assumed away.
  */
-export function importerAccountInFile(
+export function accountInFile(
   mode: UsersImportMode,
   accounts: readonly unknown[],
-  importer: { id: string; username?: string },
-): ImporterAccountMatch | null {
+  account: { id: string; username?: string },
+  takenByOthers: ReadonlySet<string> = new Set(),
+): AccountInFileMatch | null {
   const entries = accounts
     .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
     .map((a) => ({
@@ -55,15 +58,18 @@ export function importerAccountInFile(
       hasPassword: typeof a.passwordHash === 'string' && a.passwordHash.length > 0,
     }))
     .filter((a) => a.username.length > 0);
-  const sameName = (a: { username: string }) => importer.username !== undefined && a.username === importer.username;
-  const isFirstAdmin = importer.id === BOOTSTRAP_ADMIN_ID;
+  const sameName = (a: { username: string }) => account.username !== undefined && a.username === account.username;
 
   let match: (typeof entries)[number] | undefined;
   if (mode === 'restore') {
-    match = isFirstAdmin
-      ? entries.find((a) => a.id === BOOTSTRAP_ADMIN_ID) ?? entries.find((a) => a.id !== BOOTSTRAP_ADMIN_ID && sameName(a))
-      : entries.find((a) => a.id === importer.id) ?? entries.find((a) => a.id !== BOOTSTRAP_ADMIN_ID && sameName(a));
-  } else if (!(mode === 'keep-first-admin' && isFirstAdmin)) {
+    // Its own entry by id (the first admin's fixed id, or this install's own
+    // id in a same-install backup) first. Skipped for a username another
+    // account has, it can still be reached by its current username.
+    const own = entries.find((a) => a.id === account.id);
+    match = own && !takenByOthers.has(own.username)
+      ? own
+      : entries.find((a) => a !== own && a.id !== BOOTSTRAP_ADMIN_ID && sameName(a));
+  } else if (!(mode === 'keep-first-admin' && account.id === BOOTSTRAP_ADMIN_ID)) {
     match = entries.find(sameName);
   }
   return match ? { username: match.username, hasPassword: match.hasPassword } : null;

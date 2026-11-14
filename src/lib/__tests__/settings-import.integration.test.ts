@@ -599,7 +599,7 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
 
       expect(await firstAdmin()).toMatchObject({ username: 'owner', passwordHash: hashB, role: 'admin', status: 'active', settings: { timeZone: 'Europe/Paris' } });
       expect(await liveSessions(FIRST_ADMIN)).toBe(0);
-      expect(outcome.importerSignedOut).toBe(true);
+      expect(outcome.importerSignedOut).toEqual({ username: 'owner', renamedBehindProxy: false });
       // Same-install semantics for everyone else: the id re-attaches bob's row as "carol".
       expect(await prisma.user.findUniqueOrThrow({ where: { id: 'here-bob' } })).toMatchObject({ username: 'carol' });
     });
@@ -607,7 +607,7 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     it('Restore by another admin does not report them signed out', async () => {
       await seedThisInstall();
       const outcome = await runImport.applySettingsImport({ users: otherInstallUsers(), usersMode: 'restore' } as never, IMPORTER_ID);
-      expect(outcome.importerSignedOut).toBe(false);
+      expect(outcome.importerSignedOut).toBeNull();
       expect(await liveSessions(FIRST_ADMIN)).toBe(0);
     });
 
@@ -618,13 +618,41 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
       expect(await firstAdmin()).toMatchObject({ role: 'admin', status: 'active', template: 'admin' });
     });
 
+    it('Restore applies the file\'s first admin before a same-named entry that comes earlier in a reordered file', async () => {
+      await seedThisInstall();
+      const users = otherInstallUsers('owner');
+      // Hand-reordered: an "admin" member before the file's first admin.
+      users.accounts.unshift({ ...users.accounts[2], id: 'other-x', username: 'admin', displayName: 'Imposter', passwordHash: hashB } as never);
+      await runImport.applySettingsImport({ users, usersMode: 'restore' } as never, IMPORTER_ID);
+
+      expect(await firstAdmin()).toMatchObject({ username: 'owner', displayName: 'owner (other)' });
+      // The "admin" entry is its own account, not merged into the first admin.
+      const imposter = await prisma.user.findUniqueOrThrow({ where: { username: 'admin' } });
+      expect(imposter).toMatchObject({ id: 'other-x', displayName: 'Imposter', role: 'member' });
+    });
+
+    it('a rename alone ends a sign-in proxy session, and the import says so; a password session stays', async () => {
+      await seedThisInstall();
+      const users = { accounts: [{ ...otherInstallUsers('owner').accounts[0], passwordHash: undefined }] };
+
+      const proxied = await runImport.applySettingsImport({ users, usersMode: 'restore' } as never, FIRST_ADMIN, null, true);
+      expect(proxied.importerSignedOut).toEqual({ username: 'owner', renamedBehindProxy: true });
+      expect(await firstAdmin()).toMatchObject({ username: 'owner', passwordHash: hashA });
+
+      await reset();
+      await seedThisInstall();
+      const local = await runImport.applySettingsImport({ users, usersMode: 'restore' } as never, FIRST_ADMIN, null, false);
+      expect(local.importerSignedOut).toBeNull();
+      expect(await liveSessions(FIRST_ADMIN)).toBe(1);
+    });
+
     it("Match by username: the first admin stays when no file account has its username", async () => {
       await seedThisInstall();
       const outcome = await runImport.applySettingsImport({ users: otherInstallUsers(), usersMode: 'match-username' } as never, FIRST_ADMIN);
 
       expect(await firstAdmin()).toMatchObject({ username: 'admin', passwordHash: hashA, settings: { timeZone: 'Asia/Kolkata' } });
       expect(await liveSessions(FIRST_ADMIN)).toBe(1);
-      expect(outcome.importerSignedOut).toBe(false);
+      expect(outcome.importerSignedOut).toBeNull();
       // The other first admin becomes an ordinary admin with a fresh id.
       const owner = await prisma.user.findUniqueOrThrow({ where: { username: 'owner' } });
       expect(owner).toMatchObject({ role: 'admin', passwordHash: hashB });
@@ -645,7 +673,7 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
 
       expect(await firstAdmin()).toMatchObject({ username: 'admin', role: 'admin', status: 'active', template: 'admin', passwordHash: hashB });
       expect(await liveSessions(FIRST_ADMIN)).toBe(0);
-      expect(outcome.importerSignedOut).toBe(true);
+      expect(outcome.importerSignedOut).toEqual({ username: 'admin', renamedBehindProxy: false });
     });
 
     it("Keep this install's first admin: never changed, even by a file account with its username", async () => {
@@ -657,7 +685,7 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
       expect(kept).toMatchObject({ username: 'admin', displayName: 'Here Admin', passwordHash: hashA, settings: { timeZone: 'Asia/Kolkata' } });
       expect(await liveSessions(FIRST_ADMIN)).toBe(1);
       expect(await prisma.watchlistItem.count({ where: { userId: FIRST_ADMIN } })).toBe(1);
-      expect(outcome.importerSignedOut).toBe(false);
+      expect(outcome.importerSignedOut).toBeNull();
       expect(outcome.skipped).toContain('User "admin" skipped: this install\'s first admin is kept as it is');
       // Everyone else is imported by username.
       expect(outcome.applied.users).toBe(2);
@@ -682,7 +710,7 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
 
         expect(await prisma.user.findUniqueOrThrow({ where: { id: IMPORTER_ID } })).toMatchObject({ role: 'admin', status: 'active', passwordHash: hashB });
         expect(await liveSessions(IMPORTER_ID)).toBe(0);
-        expect(outcome.importerSignedOut).toBe(true);
+        expect(outcome.importerSignedOut).toEqual({ username: 'importer', renamedBehindProxy: false });
       },
     );
 
@@ -728,7 +756,7 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
         expect(await prisma.user.findUniqueOrThrow({ where: { username: 'dave' } })).toMatchObject({ permissions: { 'music.delete': true, 'music.manageFiles': true } });
         expect(await firstAdmin()).toMatchObject({ passwordHash: hashA, displayName: usersMode === 'keep-first-admin' ? 'Here Admin' : 'Old' });
         expect(await liveSessions(FIRST_ADMIN)).toBe(1);
-        expect(outcome.importerSignedOut).toBe(false);
+        expect(outcome.importerSignedOut).toBeNull();
       },
     );
 
