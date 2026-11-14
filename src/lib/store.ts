@@ -31,6 +31,7 @@ import {
 } from '@/lib/jellyfin-playback/subtitle-appearance';
 import { DEFAULT_SKIP_SECONDS, isSkipLength } from '@/lib/jellyfin-playback/skip-length';
 import { DEFAULT_RANDOM_WATCH_PREFS, normalizeRandomWatchPrefs, type RandomWatchPrefs } from '@/lib/random-watch-filters';
+import { normalizeDateKey } from '@/lib/insights';
 import {
   MOVIE_FILTERS,
   MOVIE_SORT_KEYS,
@@ -977,6 +978,16 @@ function usablePersistedValue(key: PersistedKey, value: unknown, fallback: unkno
   if (key === 'playerSkipBackSeconds' || key === 'playerSkipForwardSeconds') return isSkipLength(value) ? value : UNUSABLE;
   // Items removed since are dropped and new ones appended, as the setter does.
   if (key === 'navOrder') return Array.isArray(value) ? reconcileNavOrder(value as NavItemId[]) : UNUSABLE;
+  // Empty by default, so no default kind to hold to, but read as typed values:
+  // Insights parsed a number as a date key and crashed on every visit.
+  if (key === 'insightsDateFrom' || key === 'insightsDateTo') {
+    if (value === null) return null;
+    return (typeof value === 'string' && normalizeDateKey(value)) || UNUSABLE;
+  }
+  if (key === 'requestsUserFilter') return value === null || (Number.isInteger(value) && (value as number) > 0) ? value : UNUSABLE;
+  if (key === 'dashboardFg' || key === 'dashboardFgMute' || key === 'dashboardFgSubtle') {
+    return typeof value === 'string' ? value : UNUSABLE;
+  }
   if (key === 'discoverLayout') {
     if (value === null) return null;
     const sections = (value as { sections?: unknown } | undefined)?.sections;
@@ -985,7 +996,7 @@ function usablePersistedValue(key: PersistedKey, value: unknown, fallback: unkno
       sections: sections.filter((entry) => entry && typeof entry === 'object' && typeof entry.id === 'string'),
     });
   }
-  // A null or unset default (a date, a cached layout) has no kind to hold to.
+  // Any other null or unset default has no kind to hold to.
   if (fallback === null || fallback === undefined) return value;
   return valueKind(value) === valueKind(fallback) ? value : UNUSABLE;
 }

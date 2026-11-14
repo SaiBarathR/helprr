@@ -109,6 +109,24 @@ describe('stored view, sort and filter preferences', () => {
     expect(state.discoverLayout?.sections.every((section) => typeof section === 'object' && section !== null)).toBe(true);
   });
 
+  // Empty by default, but Insights reads them as date keys: a number crashed it on every visit.
+  it('keeps only real date keys for the Insights range, and typed values for other empty defaults', async () => {
+    let state = await loadStored({
+      insightsDateFrom: 5, insightsDateTo: 'abc', requestsUserFilter: 'me', dashboardFg: 7, dashboardFgMute: '#aabbcc',
+    });
+    expect(state.insightsDateFrom).toBeNull();
+    expect(state.insightsDateTo).toBeNull();
+    expect(state.requestsUserFilter).toBeNull();
+    expect(state.dashboardFg).toBeUndefined();
+    expect(state.dashboardFgMute).toBe('#aabbcc');
+
+    useUIStore.setState(initial, true);
+    state = await loadStored({ insightsDateFrom: ' 2026-10-01 ', insightsDateTo: '2026-02-30', requestsUserFilter: 12 });
+    expect(state.insightsDateFrom).toBe('2026-10-01');
+    expect(state.insightsDateTo).toBeNull();
+    expect(state.requestsUserFilter).toBe(12);
+  });
+
   it('checks values that came through a version migration too', async () => {
     const state = await loadStored({ moviesView: 'grid', moviesSort: 'year' }, STORE_VERSION - 1);
     expect(state.moviesView).toBe('posters');
@@ -135,6 +153,14 @@ describe('stored view, sort and filter preferences', () => {
     expect(state.calendarImageOpacity).toBe(initial.calendarImageOpacity);
     expect(state.glassIntensity).toBe(70);
     expect(state.playerSkipBackSeconds).toBe(initial.playerSkipBackSeconds);
+  });
+
+  it('a settings import keeps only real date keys for the Insights range', () => {
+    useUIStore.setState({ insightsDateFrom: '2026-09-01', insightsDateTo: '2026-09-30' });
+    useUIStore.getState().applyImportedUiPrefs({ insightsDateFrom: 5, insightsDateTo: 'abc' });
+    expect(useUIStore.getState()).toMatchObject({ insightsDateFrom: '2026-09-01', insightsDateTo: '2026-09-30' });
+    useUIStore.getState().applyImportedUiPrefs({ insightsDateFrom: '2026-10-01', insightsDateTo: null, requestsUserFilter: -1 });
+    expect(useUIStore.getState()).toMatchObject({ insightsDateFrom: '2026-10-01', insightsDateTo: null, requestsUserFilter: null });
   });
 
   it('a settings import may clear a pref whose default is empty', () => {
