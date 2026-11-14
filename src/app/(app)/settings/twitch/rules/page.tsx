@@ -4,13 +4,12 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { RuleLayers, type RuleLayerValue } from '@/components/creators/policy-editor';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
 import { FloatingActionBar } from '@/components/ui/floating-action-bar';
-import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
+import { useLeaveConfirm, useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import type { PolicyLayer } from '@/lib/archive/policy';
 
 interface GlobalPolicies {
@@ -19,13 +18,12 @@ interface GlobalPolicies {
 }
 
 export default function TwitchGlobalRulesPage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [rules, setRules] = useState<RuleLayerValue | null>(null);
   // The fields keep their own text, so a discard has to rebuild them.
   const [revision, setRevision] = useState(0);
-  const [confirmLeave, setConfirmLeave] = useState(false);
   useUnsavedChangesGuard(rules !== null);
+  const leave = useLeaveConfirm(rules !== null, '/settings/twitch');
 
   const policies = useQuery({
     queryKey: ['twitch', 'policies'],
@@ -65,7 +63,7 @@ export default function TwitchGlobalRulesPage() {
       <div className="px-1 pb-2 pt-1">
         <button
           type="button"
-          onClick={() => (rules ? setConfirmLeave(true) : router.push('/settings/twitch'))}
+          onClick={leave.leave}
           className="-ml-1 inline-flex min-h-[44px] items-center gap-1 px-1 text-sm text-primary"
         >
           <ChevronLeft className="h-5 w-5" />
@@ -113,14 +111,12 @@ export default function TwitchGlobalRulesPage() {
       )}
 
       <ConfirmDialog
-        open={confirmLeave}
-        onOpenChange={setConfirmLeave}
+        {...leave.dialog}
         title="Discard unsaved changes?"
         description="Your rule edits haven't been saved. Leaving now will discard them."
         confirmLabel="Discard changes"
         cancelLabel="Keep editing"
         destructive
-        onConfirm={() => router.push('/settings/twitch')}
       />
     </div>
   );

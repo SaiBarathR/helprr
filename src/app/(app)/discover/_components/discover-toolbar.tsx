@@ -7,12 +7,12 @@ import {
   ResponsiveMenu,
   ResponsiveMenuCheckboxItem,
 } from '@/components/ui/responsive-menu';
-import { Compass, Film, Filter, Tv } from 'lucide-react';
-import { SORT_OPTIONS, formatWait, type RateLimitInfo } from './discover-data';
+import { Compass, Film, Filter, RefreshCw, Tv } from 'lucide-react';
+import { SORT_OPTIONS, formatUnavailable, formatWait, type RateLimitInfo } from './discover-data';
 import type { DiscoverView } from './link-view';
 import { formatTime } from '@/lib/date-format';
 
-/** Discover's toolbar: search, content type, advanced filters, the sort pills, and the TMDB rate-limit banner. */
+/** Discover's toolbar: search, content type, advanced filters, the sort pills, and the TMDB rate-limit and partial-failure notices. */
 export function DiscoverToolbar({
   searchParamsKey,
   query,
@@ -25,6 +25,7 @@ export function DiscoverToolbar({
   handleSelectSort,
   rateLimitInfo,
   rateLimitCountdown,
+  unavailable,
 }: {
   searchParamsKey: string;
   query: string;
@@ -37,6 +38,8 @@ export function DiscoverToolbar({
   handleSelectSort: (sort: string) => void;
   rateLimitInfo: RateLimitInfo | null;
   rateLimitCountdown: number | null;
+  /** Parts of the home that failed to load, by name, or null when all loaded. */
+  unavailable: { names: string[]; onRetry: () => void; retrying: boolean } | null;
 }) {
   // Search ignores the sort, so no chip claims the results while searching and
   // the chips are off until the search is cleared. The chosen sort stays saved
@@ -175,6 +178,24 @@ export function DiscoverToolbar({
                 ? `Please retry around ${formatTime(rateLimitInfo.retryAt)}.`
                 : `${rateLimitInfo.message}. Please wait and try again.`}
           </p>
+        </div>
+      )}
+
+      {unavailable && (
+        <div role="status" className="mt-2 flex items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">Some of Discover couldn&apos;t load</p>
+            <p className="text-xs text-amber-800/90 dark:text-amber-200/90">{formatUnavailable(unavailable.names)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={unavailable.onRetry}
+            disabled={unavailable.retrying}
+            className="relative touch-target inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-500/50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-500/15 disabled:opacity-60 dark:text-amber-200"
+          >
+            <RefreshCw className={`h-3.5 w-3.5${unavailable.retrying ? ' animate-spin' : ''}`} />
+            Retry
+          </button>
         </div>
       )}
     </div>

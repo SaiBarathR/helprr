@@ -4,6 +4,7 @@ import { lazy, Suspense, useMemo, type CSSProperties } from 'react';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
 import type { WidgetInstance } from '@/lib/widgets/types';
 import { useUIStore } from '@/lib/store';
+import { compactGridRects } from '@/lib/widgets/compact-layout';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { useVisibleDashboardWidgets, WidgetGridItem } from './widget-grid-shared';
 
@@ -54,14 +55,19 @@ function StaticWidgetGrid({ isMobile, onConfigureRefresh }: WidgetGridProps) {
   const { widgets: dashboardLayout, removeWidget } = useDashboardLayout();
   const discoverLayout = useUIStore((s) => s.discoverLayout);
   const visibleWidgets = useVisibleDashboardWidgets(dashboardLayout);
-  const layouts = useMemo(
-    () => new Map(visibleWidgets.map((instance) => [
-      instance.id,
-      getStaticLayout(instance, isMobile, discoverLayout),
-    ])),
-    [visibleWidgets, isMobile, discoverLayout],
-  );
   const cols = isMobile ? MOBILE_COLS : DESKTOP_COLS;
+  const layouts = useMemo(() => {
+    const placed = visibleWidgets.map((instance) => ({
+      id: instance.id,
+      ...getStaticLayout(instance, isMobile, discoverLayout),
+    }));
+    // Saved rows of widgets this viewer can't see would otherwise stay as gaps.
+    const packed = compactGridRects(
+      placed.map(({ id, x, y, col, row }) => ({ i: id, x, y, w: col, h: row })),
+      cols,
+    );
+    return new Map(placed.map((layout) => [layout.id, { ...layout, ...packed.get(layout.id) }]));
+  }, [visibleWidgets, isMobile, discoverLayout, cols]);
   const rowHeight = isMobile ? MOBILE_ROW_HEIGHT : DESKTOP_ROW_HEIGHT;
   const gap = isMobile ? MOBILE_GAP : DESKTOP_GAP;
 

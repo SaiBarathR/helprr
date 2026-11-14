@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { PageHeader } from '@/components/layout/page-header';
+import { NotFoundState } from '@/components/ui/not-found-state';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import {
   Drawer,
@@ -313,12 +314,14 @@ export default function ArtistDetailPage() {
 
   // Fetch failure is not "not found": only a confirmed 404 resolves to null.
   if (artistQuery.isError && !artist) {
+    // A refusal is not an outage, and retrying it can't help.
+    const forbidden = artistQuery.error instanceof ApiError && artistQuery.error.status === 403;
     return (
       <>
         <PageHeader title="Artist" />
         <ErrorState
-          message="Couldn't load this artist. Lidarr may be unreachable."
-          onRetry={() => artistQuery.refetch()}
+          message={forbidden ? "You don't have access to Music." : "Couldn't load this artist. Lidarr may be unreachable."}
+          onRetry={forbidden ? undefined : () => artistQuery.refetch()}
           retrying={artistQuery.isFetching}
         />
       </>
@@ -326,7 +329,7 @@ export default function ArtistDetailPage() {
   }
 
   if (!artist) {
-    return <div className="text-center py-12 text-muted-foreground">Artist not found</div>;
+    return <><PageHeader title="Artist" /><NotFoundState message="Artist not found" /></>;
   }
 
   const poster = getImageUrl(artist.images, 'poster', 'lidarr');

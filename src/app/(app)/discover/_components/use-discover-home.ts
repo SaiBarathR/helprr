@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import type { DiscoverFiltersResponse, DiscoverItem, DiscoverResponse, DiscoverSection } from '@/types';
 import { validateDiscoverLayout } from '@/lib/discover-layout-config';
-import { buildCustomCarouselParams, discoverFetch } from './discover-data';
+import { RateLimitError, buildCustomCarouselParams, discoverFetch } from './discover-data';
 
 /** The Discover home's data: carousels, filter choices, the saved layout and its custom carousels. */
 export function useDiscoverHome(discoverContentType: 'all' | 'movie' | 'show', carouselItemLimit: number) {
@@ -13,11 +13,19 @@ export function useDiscoverHome(discoverContentType: 'all' | 'movie' | 'show', c
   // so it refetches on mount unless fetched under 5s ago, e.g. by the app's
   // layout hydrator on the same load (layout saves invalidate it). discoverFetch surfaces
   // TMDB 429s as RateLimitError (drives the banner below) instead of an error screen.
+  // Set by Retry for its one sections fetch: the server then skips the short
+  // cache it keeps for a catalog with failed sections.
+  const retrySectionsRef = useRef(false);
   const sectionsQuery = useQuery({
     queryKey: queryKeys.discover('sections', { perSectionLimit: carouselItemLimit }),
-    queryFn: ({ signal }) =>
-      discoverFetch<DiscoverResponse>(`/api/discover?mode=sections&perSectionLimit=${carouselItemLimit}`, signal),
-    select: (data: DiscoverResponse) => data.sections ?? [],
+    queryFn: ({ signal }) => {
+      const retry = retrySectionsRef.current;
+      retrySectionsRef.current = false;
+      return discoverFetch<DiscoverResponse>(
+        `/api/discover?mode=sections&perSectionLimit=${carouselItemLimit}${retry ? '&retry=1' : ''}`,
+        signal,
+      );
+    },
     staleTime: 60_000,
     retry: false,
   });
@@ -37,7 +45,7 @@ export function useDiscoverHome(discoverContentType: 'all' | 'movie' | 'show', c
 
   // useMemo keeps a stable [] reference when data is absent, so the downstream
   // visibleSections/heroItems memos don't recompute on every render.
-  const sections = useMemo(() => sectionsQuery.data ?? [], [sectionsQuery.data]);
+  const sections = useMemo(() => sectionsQuery.data?.sections ?? [], [sectionsQuery.data]);
   const filtersMeta = filtersMetaQuery.data ?? null;
   const layoutConfig = layoutConfigQuery.data ?? null;
   const loadingSections = sectionsQuery.isLoading;
@@ -130,6 +138,39 @@ export function useDiscoverHome(discoverContentType: 'all' | 'movie' | 'show', c
     return map;
   }, [customCarouselEntries, customResults]);
 
+  // What the home could not load, named for the notice above the rails. A TMDB 429
+  // is left to the rate-limit banner, and a query still holding earlier data is
+  // not missing anything.
+  const failed = (q: { isError: boolean; data: unknown; error: unknown }) =>
+    q.isError && q.data === undefined && !(q.error instanceof RateLimitError);
+  const failedSectionKeys = new Set(sectionsQuery.data?.failedSections ?? []);
+  const unavailable: string[] = [];
+  if (failed(sectionsQuery)) unavailable.push('the built-in sections');
+  else unavailable.push(...visibleSections.filter((s) => failedSectionKeys.has(s.key)).map((s) => s.title));
+  customCarouselEntries.forEach((entry, i) => {
+    // Only the custom carousels the content type leaves on screen, as the home renders them.
+    const ct = entry.filters!.contentType;
+    const shown = discoverContentType === 'all' || ct === 'all' || ct === discoverContentType;
+    if (shown && customResults[i] && failed(customResults[i])) unavailable.push(entry.label);
+  });
+  if (failed(layoutConfigQuery)) unavailable.push('your saved layout');
+  if (failed(filtersMetaQuery)) unavailable.push('the filter choices');
+
+  // Retry asks again only for what failed, and spins only while those run, not
+  // during an unrelated background refetch.
+  const sectionsFailed = failed(sectionsQuery) || failedSectionKeys.size > 0;
+  const failedQueries = [
+    ...(sectionsFailed ? [sectionsQuery] : []),
+    ...customResults.filter(failed),
+    ...(failed(layoutConfigQuery) ? [layoutConfigQuery] : []),
+    ...(failed(filtersMetaQuery) ? [filtersMetaQuery] : []),
+  ];
+  const retryUnavailable = () => {
+    if (sectionsFailed) retrySectionsRef.current = true;
+    failedQueries.forEach((q) => { void q.refetch(); });
+  };
+  const retryingUnavailable = failedQueries.some((q) => q.isFetching);
+
   return {
     sectionsQuery,
     filtersMetaQuery,
@@ -141,5 +182,8 @@ export function useDiscoverHome(discoverContentType: 'all' | 'movie' | 'show', c
     heroItems,
     customCarouselItems,
     customCarouselLoading,
+    unavailable,
+    retryUnavailable,
+    retryingUnavailable,
   };
 }

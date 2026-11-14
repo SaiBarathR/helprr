@@ -82,7 +82,10 @@ describe('restart keeps the viewer\'s paused intent', () => {
     expect(lastStartReport(h)?.isPaused).toBe(true);
     // The newest pick is the one that survives; `reserveStart` retires the
     // older chain rather than letting it land last.
-    expect(h.requests.at(-1)?.audioStreamIndex).toBe(3);
+    expect(h.requestOnPlayer()?.audioStreamIndex).toBe(3);
+    // And the superseded restart's grant was handed back: only the stream on
+    // the player is still held.
+    expect(h.heldSessions()).toEqual([h.playback().stream?.playSessionId]);
   });
 
   it('keeps playing through a track change when it was playing', async () => {
@@ -147,8 +150,11 @@ describe('where a restart starts while another is still coming in', () => {
         await Promise.all([first, second]);
         for (let i = 0; i < 10; i += 1) await flush();
       });
-      expect(h.requests.at(-1)?.startTimeTicks).toBe(RESUME);
-      expect(h.requests.at(-1)?.audioStreamIndex).toBe(3);
+      expect(h.requestOnPlayer()?.startTimeTicks).toBe(RESUME);
+      expect(h.requestOnPlayer()?.audioStreamIndex).toBe(3);
+      // And the superseded restart's grant was handed back: only the stream on
+      // the player is still held.
+      expect(h.heldSessions()).toEqual([h.playback().stream?.playSessionId]);
     });
   });
 

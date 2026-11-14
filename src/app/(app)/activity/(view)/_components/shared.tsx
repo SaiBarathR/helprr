@@ -1,8 +1,34 @@
 'use client';
 
+import { useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, Upload, RefreshCw } from 'lucide-react';
+import { severalInstanceLabels } from '@/components/instance-filter';
+import { jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import type { QueueItem } from '@/types';
+
+const selectSeveralInstanceLabels = (connections: unknown) =>
+  severalInstanceLabels(Array.isArray(connections) ? connections : []);
+
+/**
+ * The text of a row's app chip: the instance's name when its app has several
+ * instances (keyed on instanceId), else the app ("radarr"). Same list and cache
+ * as the page's instance filter.
+ */
+export function useSourceChipLabel(): (item: { source?: string; instanceId?: string }) => string | undefined {
+  const { data: labels } = useQuery({
+    queryKey: queryKeys.arrInstances(),
+    queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
+    select: selectSeveralInstanceLabels,
+    staleTime: 5 * 60_000,
+  });
+  return useCallback(
+    (item) => (item.instanceId ? labels?.get(item.instanceId) : undefined) ?? item.source,
+    [labels],
+  );
+}
 
 // --- Status helpers ---
 

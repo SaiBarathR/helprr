@@ -130,7 +130,7 @@ describe('queue preparation that cannot start an item', () => {
     expect(h.element().hasAttribute('src')).toBe(false);
     expect(load).toHaveBeenCalled();
     expect(h.playback().status).toBe('error');
-    expect(h.playback().error).toBe(result === 'reject' ? 'Network unavailable' : 'Unable to load the playback queue');
+    expect(h.playback().error).toBe(result === 'reject' ? 'Unable to prepare playback' : 'Unable to load the playback queue');
     expect(h.playback().item?.Id).toBe(container.Id);
     expect(h.playback().stream).toBeNull();
     expect(h.playback().positionSeconds).toBe(0);

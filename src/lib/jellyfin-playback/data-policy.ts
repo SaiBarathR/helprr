@@ -1,6 +1,11 @@
 export const AUTOMATIC_INITIAL_BITRATE = 6_000_000;
 export const DATA_SAVER_BITRATE = 2_000_000;
 export const PLAYBACK_POLICY_KEY = 'helprr:playback-bitrate';
+/**
+ * How long a measured start bitrate is trusted. Shorter than jellyfin-web's
+ * hour (bitrateTest.ts): a phone leaves home Wi-Fi for cellular well within one.
+ */
+export const BANDWIDTH_PROBE_TTL_MS = 10 * 60_000;
 
 // 0 = automatic, -1 = data saver, positive = explicit ceiling in bits/sec.
 export function normalizeBitrateChoice(value: number): number {
@@ -17,8 +22,30 @@ export function effectiveBitrate(choice: number, measured = AUTOMATIC_INITIAL_BI
  * an active stream merely because a network hint changed. */
 export class PlaybackBandwidthEstimate {
   ceiling = AUTOMATIC_INITIAL_BITRATE;
+  /** When `seed` last set the ceiling from a measured download; 0 before. */
+  seededAt = 0;
   private samples = 0;
   private average = 0;
+  /** Whether Automatic should measure the link again before its next start. */
+  needsProbe(now = Date.now()): boolean {
+    return !this.seededAt || now - this.seededAt > BANDWIDTH_PROBE_TTL_MS;
+  }
+  /**
+   * Start from a measured download (`probeBandwidth`) instead of the fixed
+   * guess. It can bring the ceiling down, for a slow link, but never pushes it
+   * above the higher of the 6 Mbps guess and what streams have already shown
+   * the link to carry: a fast link starts exactly where it did before, and a
+   * ceiling hls.js has learned is not thrown away.
+   */
+  seed(bitsPerSecond: number, now = Date.now()): void {
+    this.seededAt = now;
+    if (!(bitsPerSecond > 0)) return;
+    const candidate = effectiveBitrate(0, Math.round(bitsPerSecond * 0.6 / 100_000) * 100_000);
+    const next = Math.min(Math.max(AUTOMATIC_INITIAL_BITRATE, this.ceiling), candidate);
+    if (next === this.ceiling) return;
+    this.ceiling = next;
+    this.samples = 0;
+  }
   observe(bytes: number, milliseconds: number): void {
     if (bytes < 32_000 || milliseconds < 100 || !Number.isFinite(milliseconds)) return;
     const measured = bytes * 8_000 / milliseconds;

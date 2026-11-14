@@ -23,7 +23,7 @@ function request(method = 'GET') {
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.auth.mockResolvedValue({ ok: true, user: { id: 'member' } });
+  mocks.auth.mockResolvedValue({ ok: true, user: { id: 'member', jellyfinToken: 'enc:v1:stored' } });
   mocks.access.mockResolvedValue(true);
   mocks.connection.mockResolvedValue({ url: 'http://jellyfin.test/base', apiKey: 'admin-key' });
   mocks.token.mockReturnValue('member-token');
@@ -127,7 +127,7 @@ describe('Jellyfin 12 media authorization', () => {
   it('invalidates a revoked member token instead of retrying with the admin key', async () => {
     mocks.fetch.mockResolvedValue(new Response(null, { status: 401 }));
     expect((await GET(request(), context)).status).toBe(409);
-    expect(mocks.invalidate).toHaveBeenCalledWith('member');
+    expect(mocks.invalidate).toHaveBeenCalledWith('member', 'enc:v1:stored');
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
   });
   it('forwards a legitimate name with a space, encoded once, under the base path', async () => {

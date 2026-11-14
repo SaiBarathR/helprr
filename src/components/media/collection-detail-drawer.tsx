@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useCan } from '@/components/permission-provider';
-import { invalidateCollections } from '@/lib/query-invalidation';
+import { invalidateCollections, invalidateLibraryMembership } from '@/lib/query-invalidation';
 import { ApiError } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
@@ -157,6 +157,7 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
       await addCollectionMovie(collection, tmdbId);
       setMovies((prev) => prev.map((m) => (m.tmdbId === tmdbId ? { ...m, inLibrary: true } : m)));
       invalidateCollections(qc);
+      invalidateLibraryMembership(qc);
       toast.success('Added to Radarr');
     } catch (error) {
       reportError(error, 'Failed to add movie');
@@ -177,6 +178,7 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
       const addedSet = new Set(result.addedTmdbIds);
       setMovies((prev) => prev.map((m) => (addedSet.has(m.tmdbId) ? { ...m, inLibrary: true } : m)));
       invalidateCollections(qc);
+      invalidateLibraryMembership(qc);
     }
     if (result.firstError) handleAuthError(result.firstError);
     if (result.failed === 0) toast.success(`Added ${result.addedTmdbIds.length} ${result.addedTmdbIds.length === 1 ? 'movie' : 'movies'}`);

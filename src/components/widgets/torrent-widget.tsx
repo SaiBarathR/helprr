@@ -48,7 +48,9 @@ export function TorrentWidget({
   narrow = false,
 }: WidgetProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
-  const compact = narrow;
+  // A small desktop span (colSpan 4 beside an expanded sidebar at 820px) has
+  // no room for the two speeds side by side either: stack them, as on phones.
+  const compact = narrow || (width > 0 && width < 220);
   const hideIcon = width > 0 && height > 0 && (width < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
   const { data, loading } = useWidgetData({
     fetchFn: fetchTorrentData,

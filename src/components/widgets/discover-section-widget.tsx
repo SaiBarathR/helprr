@@ -23,6 +23,7 @@ import {
 } from './bento-primitives';
 import { Film, Tv } from 'lucide-react';
 import { useDashboardLayout } from './dashboard-layout-context';
+import { CompactRailTile } from './compact-rail-tile';
 import type { WidgetLayoutVariant } from '@/lib/widgets/types';
 import {
   BUILTIN_DISCOVER_SECTIONS,
@@ -43,6 +44,7 @@ interface DiscoverSectionWidgetProps {
   editMode?: boolean;
   narrow?: boolean;
   colSpan?: number;
+  rowSpan?: number;
   layoutVariant?: WidgetLayoutVariant;
   instanceId?: string;
   mobileGrid?: boolean;
@@ -208,6 +210,7 @@ function MediaCarouselView({
   items,
   limit,
   useList,
+  tiny,
   toggleNode,
 }: {
   title: string;
@@ -215,6 +218,8 @@ function MediaCarouselView({
   items: DiscoverItem[];
   limit: number;
   useList: boolean;
+  /** A one-row half-width phone cell (2×1). */
+  tiny: boolean;
   toggleNode: React.ReactNode;
 }) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
@@ -227,6 +232,22 @@ function MediaCarouselView({
     : width > 0
       ? Math.max(limit, Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4)
       : limit;
+  if (tiny) {
+    const top = items[0];
+    return (
+      <CompactRailTile
+        title={title}
+        viewAllHref={viewAllHref}
+        item={top ? {
+          href: detailHref(top),
+          title: top.title,
+          meta: [top.year != null ? String(top.year) : null, top.mediaType === 'movie' ? 'Movie' : 'TV'].filter(Boolean).join(' · '),
+          imageUrl: top.posterPath,
+          inLibrary: Boolean(top.library?.exists),
+        } : null}
+      />
+    );
+  }
   const headerRight = (
     <>
       {toggleNode}
@@ -595,11 +616,14 @@ export function DiscoverSectionWidget({
   editMode,
   narrow,
   colSpan,
+  rowSpan,
   layoutVariant,
   instanceId,
   mobileGrid = false,
 }: DiscoverSectionWidgetProps) {
   const compact = narrow || (colSpan != null && colSpan <= 6);
+  // The one-row narrow cell the watchlist widget also gives its own compact tile.
+  const tiny = !!narrow && (rowSpan ?? 1) <= 1;
   const discoverLayout = useUIStore((s) => s.discoverLayout);
   const { setWidgetLayoutOverride } = useDashboardLayout();
   const useList = !!narrow || layoutVariant === 'list';
@@ -711,6 +735,7 @@ export function DiscoverSectionWidget({
         items={items}
         limit={compact ? 16 : 20}
         useList={useList}
+        tiny={tiny}
         toggleNode={toggleNode}
       />,
     );
@@ -772,6 +797,7 @@ export function DiscoverSectionWidget({
         items={items}
         limit={compact ? 16 : 20}
         useList={useList}
+        tiny={tiny}
         toggleNode={toggleNode}
       />,
     );

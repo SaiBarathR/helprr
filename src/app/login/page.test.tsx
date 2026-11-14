@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   replace: vi.fn(),
   clearUserScopedBrowserCaches: vi.fn(),
+  cachesMayBeInUse: true,
   boundaryListeners: new Set<() => void>(),
 }));
 // One router for every render, so a redirect can be checked.
@@ -18,6 +19,7 @@ vi.mock('@/lib/client-cache', () => ({
   broadcastAuthenticationBoundary: vi.fn(),
   clearUserScopedBrowserCaches: mocks.clearUserScopedBrowserCaches,
   requestSessionLogout: vi.fn(),
+  userScopedCachesMayRemain: async () => mocks.cachesMayBeInUse,
   subscribeToAuthenticationBoundaries: (onBoundary: () => void) => {
     mocks.boundaryListeners.add(onBoundary);
     return () => mocks.boundaryListeners.delete(onBoundary);
@@ -43,6 +45,7 @@ async function openLogin() {
 beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
+  mocks.cachesMayBeInUse = true;
   mocks.clearUserScopedBrowserCaches.mockResolvedValue(undefined);
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })));
   container = document.createElement('div');
@@ -64,6 +67,16 @@ describe('Login page', () => {
     await openLogin();
     expect(fetchMock).toHaveBeenCalledWith('/api/me', { cache: 'no-store' });
     expect(mocks.clearUserScopedBrowserCaches).toHaveBeenCalledTimes(1);
+  });
+
+  // A browser that never signed in here, or already cleared on signing out, has
+  // nothing to clear, and the check could only answer with a 401 console error.
+  it('does not ask when nothing user-scoped is left to clear', async () => {
+    mocks.cachesMayBeInUse = false;
+    const fetchMock = meAnswers(Promise.resolve(Response.json({ error: 'Unauthorized' }, { status: 401 })));
+    await openLogin();
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/me', expect.anything());
+    expect(mocks.clearUserScopedBrowserCaches).not.toHaveBeenCalled();
   });
 
   it('keeps the caches of a visitor who is still signed in', async () => {

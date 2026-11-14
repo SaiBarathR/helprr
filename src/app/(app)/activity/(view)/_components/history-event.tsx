@@ -186,7 +186,12 @@ async function copyHistoryText(value: string, label: string) {
 }
 
 /** One history event: its badge, release name and metadata; tap opens its detail sheet. */
-export function HistoryEventRow({ item, onSelect }: { item: HistoryRecord; onSelect: () => void }) {
+export function HistoryEventRow({ item, sourceLabel, onSelect }: {
+  item: HistoryRecord;
+  /** The app chip's text: the instance's name when its app has several (useSourceChipLabel). */
+  sourceLabel?: string;
+  onSelect: () => void;
+}) {
   const mediaHref = getHistoryMediaHref(item);
   return (
     <QuickContextMenu
@@ -258,7 +263,7 @@ export function HistoryEventRow({ item, onSelect }: { item: HistoryRecord; onSel
             </Badge>
           )}
           <Badge variant="outline" className="text-[9px] px-1.5 py-0">
-            {item.source}
+            {sourceLabel ?? item.source}
           </Badge>
         </div>
       </div>

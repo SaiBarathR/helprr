@@ -12,10 +12,11 @@ function AlertDialog({
   open: openProp,
   defaultOpen,
   onOpenChange,
+  closeOnBack,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Root> & { closeOnBack?: boolean }) {
   // Back closes the dialog first (see overlay-history).
-  const [open, setOpen] = useBackClosableOpen(openProp, defaultOpen, onOpenChange)
+  const [open, setOpen] = useBackClosableOpen(openProp, defaultOpen, onOpenChange, closeOnBack)
   return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} open={open} onOpenChange={setOpen} />
 }
 

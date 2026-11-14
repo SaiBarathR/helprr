@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveInstances, withAppName } from './instance-filter';
+import { deriveInstances, severalInstanceLabels, withAppName } from './instance-filter';
 
 describe('withAppName', () => {
   it('names the app so same-named instances can be told apart', () => {
@@ -39,5 +39,16 @@ describe('deriveInstances', () => {
       { id: 'r1', label: 'main (Radarr)' },
     ]);
     expect(deriveInstances(items)[0]).toEqual({ id: 's1', label: 'main' });
+  });
+});
+
+describe('severalInstanceLabels', () => {
+  it('names the instances of an app that has several, and leaves single ones to the app chip', () => {
+    const labels = severalInstanceLabels([
+      { id: 'r1', label: 'RADARR', type: 'RADARR' },
+      { id: 'r2', label: 'radarr-anime', type: 'RADARR' },
+      { id: 's1', label: 'main', type: 'SONARR' },
+    ]);
+    expect([...labels]).toEqual([['r1', 'Radarr'], ['r2', 'radarr-anime']]);
   });
 });

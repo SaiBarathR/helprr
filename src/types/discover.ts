@@ -100,6 +100,9 @@ export interface DiscoverResponse {
   totalResults?: number;
   items?: DiscoverItem[];
   sections?: DiscoverSection[];
+  /** Sections mode: keys of the built-in sections whose TMDB source failed, so
+   *  they came back empty or short. Absent when everything loaded. */
+  failedSections?: string[];
 }
 
 export interface DiscoverDetail extends DiscoverItem {

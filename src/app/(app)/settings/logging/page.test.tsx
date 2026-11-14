@@ -74,7 +74,28 @@ it('commits a valid draft when the page unmounts', async () => {
   await type(input('log-max-file-mb'), '200');
   await act(async () => root.unmount());
 
-  expect(mocks.update).toHaveBeenCalledWith({ logMaxFileMb: 200 });
+  expect(mocks.update).toHaveBeenCalledWith({ logMaxFileMb: 200 }, undefined);
+  root = createRoot(document.getElementById('root')!);
+});
+
+it('sends a pending draft with keepalive when the page hides (a reload, a Back out)', async () => {
+  await type(input('log-max-file-mb'), '200');
+  await act(async () => { window.dispatchEvent(new Event('pagehide')); });
+
+  expect(mocks.update).toHaveBeenCalledTimes(1);
+  expect(mocks.update).toHaveBeenCalledWith({ logMaxFileMb: 200 }, { keepalive: true });
+});
+
+it('sends a pending draft with keepalive when the app goes to the background', async () => {
+  await type(input('log-retention-days'), '45');
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+  visibility.mockRestore();
+
+  expect(mocks.update).toHaveBeenCalledWith({ logRetentionDays: 45 }, { keepalive: true });
+  // Nothing left to send on unmount.
+  await act(async () => root.unmount());
+  expect(mocks.update).toHaveBeenCalledTimes(1);
   root = createRoot(document.getElementById('root')!);
 });
 
@@ -103,4 +124,18 @@ it('with logs.manage, offers to delete the files after turning logging off', asy
   const toggle = document.querySelector('[aria-label="Enable Logging"]') as HTMLButtonElement;
   await act(async () => toggle.click());
   expect(document.body.textContent).toContain('Delete log files on disk?');
+});
+
+it.each([
+  ['log-max-file-mb', '0'],
+  ['log-retention-days', '5000'],
+])('%s: an invalid draft stays as typed, with no toast, when the app is only switched away from', async (id, invalid) => {
+  await type(input(id), invalid);
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+  visibility.mockRestore();
+
+  expect(mocks.update).not.toHaveBeenCalled();
+  expect(mocks.toastError).not.toHaveBeenCalled();
+  expect(input(id).value).toBe(invalid);
 });

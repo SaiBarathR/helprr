@@ -6,6 +6,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import Link from '@/components/ui/app-link';
 import { PageHeader } from '@/components/layout/page-header';
+import { NotFoundState } from '@/components/ui/not-found-state';
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerClose,
 } from '@/components/ui/drawer';
@@ -294,7 +295,7 @@ export default function SeasonDetailPage() {
   }
 
   if (!series) {
-    return <div className="text-center py-12 text-muted-foreground">Series not found</div>;
+    return <><PageHeader title="Season" /><NotFoundState message="Series not found" /></>;
   }
 
   const seasonTitle = seasonNumber === 0 ? 'Specials' : `Season ${seasonNumber}`;

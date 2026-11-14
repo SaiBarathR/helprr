@@ -20,6 +20,7 @@ import { useIsMobile } from '@/hooks/use-is-mobile';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { buildRadarrAddParams, buildSonarrAddParams, isMovieFormat } from '@/lib/anilist-helpers';
 import { useMe, hasCapability } from '@/components/permission-provider';
+import { canOpenLibrary } from '@/components/discover/open-in-instances';
 import { useWatchLookup } from '@/components/jellyfin/watch-status-provider';
 import { PosterWatchOverlay } from '@/components/jellyfin/watch-status-indicator';
 import type { AniListMediaFormat, AniListMediaType } from '@/types/anilist';
@@ -76,7 +77,9 @@ function RailCard({
   const inLibrary = item.library?.exists === true || watchStatus != null;
   // Deep-link to the in-app detail of the library copy; ?instance= because arr
   // ids are only unique per instance (same scheme as OpenInInstances).
+  // No link for a user who can't open that library: it would end on a refusal.
   const libraryHref = item.library?.exists && item.library.id != null
+    && canOpenLibrary(me, item.library.type === 'movie' ? 'movie' : 'series')
     ? `${item.library.type === 'movie' ? '/movies' : '/series'}/${item.library.id}${item.library.instanceId ? `?instance=${item.library.instanceId}` : ''}`
     : null;
 
@@ -183,7 +186,7 @@ function RailCard({
               <Plus className="h-3.5 w-3.5" />
             </Link>
           )}
-          {libraryHref && (
+          {libraryHref ? (
             <Link
               href={libraryHref}
               aria-label="Open in library"
@@ -191,6 +194,15 @@ function RailCard({
             >
               <Check className="h-3 w-3" strokeWidth={3} />
             </Link>
+          ) : item.library?.exists && (
+            // Still marks the title as held for a user who can't open that library.
+            <span
+              role="img"
+              aria-label="In library"
+              className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-black/55 backdrop-blur-md text-green-400"
+            >
+              <Check className="h-3 w-3" strokeWidth={3} />
+            </span>
           )}
           {canWatchlist && (
             <button

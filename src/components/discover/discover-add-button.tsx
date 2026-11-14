@@ -16,7 +16,7 @@ import type { DiscoverDetail } from '@/types';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
 import type { WatchlistMatchQuery } from '@/components/watchlist/watchlist-saved';
 import { RequestMediaButton } from '@/components/discover/request-media-button';
-import { OpenInInstances } from '@/components/discover/open-in-instances';
+import { OpenInInstances, canOpenLibrary } from '@/components/discover/open-in-instances';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { useRequestedMedia } from '@/components/seerr/requested-media-provider';
@@ -149,7 +149,7 @@ export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddCon
     {
       id: 'library',
       actions: detail.addTarget.exists
-        ? instances.map((instance) => ({
+        ? (canOpenLibrary(me, type) ? instances : []).map((instance) => ({
             id: `open-${instance.instanceId || instance.id}`,
             label: instances.length > 1 && instance.instanceLabel
               ? `Open in library · ${instance.instanceLabel}`

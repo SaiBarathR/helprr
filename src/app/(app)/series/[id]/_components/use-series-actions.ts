@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { SonarrSeries } from '@/types';
 import { queryKeys } from '@/lib/query-keys';
-import { invalidateSeries, patchLibraryMonitored } from '@/lib/query-invalidation';
+import { invalidateAfterLibraryRemove, invalidateSeries, patchLibraryMonitored } from '@/lib/query-invalidation';
 import { ApiError, arrMutationFetch } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { episodesWithFileKey } from '@/lib/series-query-cache';
@@ -220,6 +220,7 @@ export function useSeriesActions({
       const res = await arrMutationFetch(instance, `/api/sonarr/${series.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       invalidateSeries(queryClient);
+      invalidateAfterLibraryRemove(queryClient, 'sonarr', [{ id: series.id, instanceId: instance }]);
       queryClient.removeQueries({ queryKey: queryKeys.detail('sonarr', series.id, instance) });
       queryClient.removeQueries({ queryKey: queryKeys.episodes(series.id, instance) });
       queryClient.removeQueries({ queryKey: episodesWithFileKey(series.id, instance) });

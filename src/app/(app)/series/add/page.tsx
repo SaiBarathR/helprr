@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
-import { invalidateSeries } from '@/lib/query-invalidation';
+import { invalidateAfterLibraryAdd } from '@/lib/query-invalidation';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
@@ -232,7 +232,15 @@ function AddSeriesPageContent() {
       return res.json();
     },
     onSuccess: (s, payload) => {
-      invalidateSeries(queryClient);
+      // Discover and Anime show it as in the library at once, Back included.
+      invalidateAfterLibraryAdd(queryClient, 'sonarr', {
+        id: s.id,
+        tmdbId: s.tmdbId,
+        tvdbId: s.tvdbId ?? (payload.tvdbId as number | undefined),
+        titleSlug: s.titleSlug,
+        instanceId: payload.instanceId,
+        instanceLabel: instances.find((instance) => instance.id === payload.instanceId)?.label,
+      });
       const scope = profileFolderScope(payload.seriesType);
       const profileFolder = { profileId: String(payload.qualityProfileId), rootFolder: payload.rootFolderPath };
       if (scope === 'sonarr') {

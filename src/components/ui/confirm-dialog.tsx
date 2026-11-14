@@ -25,6 +25,8 @@ interface ConfirmDialogProps {
   destructive?: boolean
   busy?: boolean
   onConfirm: () => void | Promise<void>
+  /** False: the system Back doesn't close it first (no history entry). */
+  closeOnBack?: boolean
 }
 
 export function ConfirmDialog({
@@ -37,9 +39,10 @@ export function ConfirmDialog({
   destructive = false,
   busy = false,
   onConfirm,
+  closeOnBack,
 }: ConfirmDialogProps) {
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog open={open} onOpenChange={onOpenChange} closeOnBack={closeOnBack}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>

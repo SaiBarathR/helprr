@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import crypto from 'crypto';
 import { ConfigurationError } from '@/lib/config-error';
+import { getInstallKey } from '@/lib/install-key';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { getAppTimeZone, getLocalDateKey, getTimeZoneOffsetMinutes } from '@/lib/timezone';
@@ -50,14 +51,26 @@ const UNSAFE_PATH_RE = /(?:^|\/)\.{1,2}(?:\/|$)|[?#%\\\s\p{Cc}]/u;
  * constant makes them overwrite each other in Dashboard → Devices. Derive a
  * stable id per Jellyfin account instead.
  *
+ * Per install too: when the same user signs in again with the same DeviceId,
+ * Jellyfin revokes the token it issued before (verified against 12.4.0). Two
+ * Helprr installs on one Jellyfin (stable and development, say) would then
+ * each sign the other out of playback, so the id is keyed with this install's
+ * secret. Within an install it stays stable, and it changes only if the secret
+ * rotates, which already makes stored tokens unreadable.
+ *
  * Derived rather than stored: a token is accepted when presented with a
  * *different* DeviceId than it was minted against (verified against 10.11.11),
  * so playback keeps using the browser's own id and this one only has to be
- * unique and stable. It is a hash so the dashboard doesn't carry usernames in
- * device ids; the username is already visible as the device's owner.
+ * unique and stable. It is an HMAC so the dashboard carries neither usernames
+ * nor anything about the secret; the username is already visible as the
+ * device's owner. The key is separated by a label so it is never the same key
+ * material the token store encrypts with.
  */
-function authDeviceId(username: string): string {
-  const digest = crypto.createHash('sha256').update(username.toLowerCase()).digest('hex');
+export function authDeviceId(username: string): string {
+  const key = crypto.createHmac('sha256', getInstallKey('sign in to Jellyfin'))
+    .update('helprr:jellyfin-auth-device-id')
+    .digest();
+  const digest = crypto.createHmac('sha256', key).update(username.toLowerCase()).digest('hex');
   return `helprr-user-${digest.slice(0, 16)}`;
 }
 
@@ -143,8 +156,10 @@ export class JellyfinClient {
     | { ok: false; reason: 'invalid_credentials' | 'unavailable' }
   > {
     const base = serverUrl.replace(/\/+$/, '');
-    const authHeader = `MediaBrowser Client="${CLIENT_NAME}", Device="${AUTH_DEVICE_NAME}", DeviceId="${authDeviceId(username)}", Version="${CLIENT_VERSION}"`;
     try {
+      // Inside the try: authDeviceId throws without an install secret, and
+      // that too is 'unavailable', not a 500.
+      const authHeader = `MediaBrowser Client="${CLIENT_NAME}", Device="${AUTH_DEVICE_NAME}", DeviceId="${authDeviceId(username)}", Version="${CLIENT_VERSION}"`;
       const response = await axios.post(
         `${base}/Users/AuthenticateByName`,
         { Username: username, Pw: password },

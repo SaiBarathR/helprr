@@ -215,7 +215,10 @@ describe('seeking a progressive transcode', () => {
       await Promise.all([first, second]);
       for (let i = 0; i < 10; i += 1) await flush();
     });
-    expect(h.requests.at(-1)?.startTimeTicks).toBe(110 * 10_000_000);
-    expect(h.requests.at(-1)?.audioStreamIndex).toBe(3);
+    expect(h.requestOnPlayer()?.startTimeTicks).toBe(110 * 10_000_000);
+    expect(h.requestOnPlayer()?.audioStreamIndex).toBe(3);
+    // And the superseded restart's grant was handed back: only the stream on
+    // the player is still held.
+    expect(h.heldSessions()).toEqual([h.playback().stream?.playSessionId]);
   });
 });
