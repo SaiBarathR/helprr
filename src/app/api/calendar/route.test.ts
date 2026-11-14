@@ -67,3 +67,19 @@ describe('GET /api/calendar and music access', () => {
       .toEqual(['ep', 'film', 'alert-film']);
   });
 });
+
+describe('GET /api/calendar release days', () => {
+  it("matches release days on the device's time zone when the page sends one", async () => {
+    await get('?start=2026-11-01T07:00:00Z&end=2026-12-01T07:59:59Z&tz=America/Los_Angeles');
+    expect(mocks.fetchEvents).toHaveBeenCalledWith('2026-11-01T07:00:00Z', '2026-12-01T07:59:59Z', 'America/Los_Angeles');
+    // Each zone has its own cache entry: the same window holds other days elsewhere.
+    expect(mocks.getCachedJson.mock.calls[0][1]).toContain('America/Los_Angeles');
+  });
+
+  it("uses the app's time zone without one, or for a zone that is not real", async () => {
+    await get('?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&tz=Not/AZone');
+    expect(mocks.fetchEvents.mock.calls[0][2]).toBe('UTC');
+    await get('?days=7');
+    expect(mocks.fetchEvents.mock.calls[1][2]).toBe('UTC');
+  });
+});

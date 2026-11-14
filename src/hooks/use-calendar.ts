@@ -41,6 +41,8 @@ export function useCalendar({ start, end, type, includeScheduled }: UseCalendarP
       const params = new URLSearchParams({
         start: startISO,
         end: endISO,
+        // The days shown are this device's, so the server matches film and album release days on them.
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
 
       if (type && type !== 'all') {

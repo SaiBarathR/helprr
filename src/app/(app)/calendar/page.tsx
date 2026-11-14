@@ -24,7 +24,6 @@ import {
   addMonths,
   addWeeks,
   format,
-  isSameDay,
   eachDayOfInterval,
   isToday,
   isSameMonth,
@@ -79,6 +78,7 @@ import { HeroImage } from '@/components/media/hero-image';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import { PageTitle } from '@/components/layout/page-title';
 import { formatDate, formatTime } from '@/lib/date-format';
+import { calendarEventDate, calendarEventDayKey } from '@/lib/release-day';
 import { CalendarFeedDialog } from '@/components/calendar/calendar-feed-dialog';
 import { useCan } from '@/components/permission-provider';
 
@@ -510,7 +510,7 @@ function AgendaView({ events, showImages, stickyOffset }, ref) {
   const rows = useMemo<AgendaRow[]>(() => {
     const groups: Record<string, CalendarEvent[]> = {};
     for (const event of events) {
-      const key = format(new Date(event.date), 'yyyy-MM-dd');
+      const key = calendarEventDayKey(event);
       if (!groups[key]) groups[key] = [];
       groups[key].push(event);
     }
@@ -632,7 +632,7 @@ AgendaView.displayName = 'AgendaView';
 function AgendaEventRow({ row, showImages }: { row: AgendaRow; showImages: boolean }) {
   const { dateKey, date, event, isFirstOfDay, today } = row;
   const href = eventHref(event);
-  const eventDate = new Date(event.date);
+  const eventDate = calendarEventDate(event);
   const scheduleDraft = event.origin !== 'scheduled' ? scheduleDraftFromEvent(event) : null;
   const poster = posterSrc(event);
 
@@ -752,7 +752,7 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
   const href = eventHref(event);
   const accentKey = event.releaseType ?? event.finaleType;
   const accent = getMonthBorderClass(accentKey);
-  const eventDate = new Date(event.date);
+  const eventDate = calendarEventDate(event);
   const poster = posterSrc(event);
   const scheduled = event.origin === 'scheduled' || Boolean(event.scheduleLabel);
 
@@ -862,7 +862,7 @@ function dotClass(event: CalendarEvent): string {
  *  the schedule-alert shortcut — the month view's readable surface. */
 function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: boolean }) {
   const href = eventHref(event);
-  const eventDate = new Date(event.date);
+  const eventDate = calendarEventDate(event);
   const scheduleDraft = event.origin !== 'scheduled' ? scheduleDraftFromEvent(event) : null;
   const poster = posterSrc(event);
 
@@ -1005,7 +1005,7 @@ function MonthView({
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
     for (const event of events) {
-      const key = format(new Date(event.date), 'yyyy-MM-dd');
+      const key = calendarEventDayKey(event);
       const list = map.get(key);
       if (list) list.push(event);
       else map.set(key, [event]);
@@ -1187,9 +1187,8 @@ function WeekView({
   return (
     <div className="space-y-2">
       {days.map((day) => {
-        const dayEvents = events.filter((e) =>
-          isSameDay(new Date(e.date), day)
-        );
+        const dayKey = format(day, 'yyyy-MM-dd');
+        const dayEvents = events.filter((e) => calendarEventDayKey(e) === dayKey);
         const today = isToday(day);
 
         return (
@@ -1279,7 +1278,7 @@ function WeekView({
                           </p>
                         </div>
                         <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
-                          {eventTimeLabel(event, new Date(event.date))}
+                          {eventTimeLabel(event, calendarEventDate(event))}
                         </span>
                       </div>
                     </Link>
@@ -1328,7 +1327,8 @@ function ViewTabs({
           <TabsTrigger
             key={v.key}
             value={v.key}
-            className="px-2.5 py-1 text-[11px] font-medium flex-none data-[state=active]:shadow-sm"
+            // Narrower on a 320px phone, so the row's last button (⋯) ends inside the screen.
+            className="px-2.5 max-[359px]:px-2 py-1 text-[11px] font-medium flex-none data-[state=active]:shadow-sm"
           >
             {v.label}
           </TabsTrigger>
@@ -1509,7 +1509,7 @@ export default function CalendarPage() {
     if (filteredEvents.length === 0) return undefined;
 
     const dayKeys = Array.from(
-      new Set(filteredEvents.map((event) => format(new Date(event.date), 'yyyy-MM-dd')))
+      new Set(filteredEvents.map((event) => calendarEventDayKey(event)))
     ).sort((a, b) => a.localeCompare(b));
 
     const todayKey = format(new Date(), 'yyyy-MM-dd');
@@ -1623,7 +1623,9 @@ export default function CalendarPage() {
             views={CALENDAR_VIEWS}
             onChange={(v) => setCalendarView(v)}
           />
-          <div className="flex shrink-0 items-center justify-end gap-3">
+          {/* gap-2: the Instance button is 44px wide, so its tap area needs no
+              room past it, and Type's reaches 4px out; 320px has none to spare. */}
+          <div className="flex shrink-0 items-center justify-end gap-2">
             <InstanceFilter compact instances={instances} value={instanceFilter} onChange={setInstanceFilter} />
             <CompactFilters
               typeFilter={typeFilter}

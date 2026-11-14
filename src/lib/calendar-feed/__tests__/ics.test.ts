@@ -70,7 +70,7 @@ describe('foldIcsLine', () => {
 
 describe('buildCalendarFeed', () => {
   it('writes a CRLF VCALENDAR with the required properties', () => {
-    const text = buildCalendarFeed([], { timeZone: 'UTC', now: NOW });
+    const text = buildCalendarFeed([], { now: NOW });
     expect(text.startsWith('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:')).toBe(true);
     expect(text.endsWith('END:VCALENDAR\r\n')).toBe(true);
     expect(text.replace(/\r\n/g, '')).not.toMatch(/[\r\n]/);
@@ -82,7 +82,7 @@ describe('buildCalendarFeed', () => {
       event({ id: 'sonarr-conn1-43', runtime: undefined }),
       event({ id: 'radarr-conn2-7-digital', type: 'movie', title: 'Film', releaseType: 'digital', date: '2026-12-31T00:00:00Z' }),
       event({ id: 'lidarr-conn3-9', type: 'album', title: 'Artist', subtitle: 'Album', date: '2026-11-20T00:00:00Z' }),
-    ], { timeZone: 'UTC', now: NOW });
+    ], { now: NOW });
     const [ep, epDefault, movie, album] = vevents(text);
     expect(ep).toContain('DTSTART:20261110T010000Z\r\nDTEND:20261110T014500Z');
     expect(epDefault).toContain('DTEND:20261110T013000Z');
@@ -93,34 +93,31 @@ describe('buildCalendarFeed', () => {
     for (const block of [ep, movie, album]) expect(block).toContain('DTSTAMP:20261107T100000Z');
   });
 
-  it("dates a release on its local day in the app's time zone, as the Calendar page does", () => {
+  it('dates a release on its own day in every time zone', () => {
     const events = [
       event({ id: 'radarr-conn2-7-digital', type: 'movie', title: 'Film', releaseType: 'digital', date: '2026-12-31T00:00:00Z' }),
-      event({ id: 'lidarr-conn3-9', type: 'album', title: 'Artist', subtitle: 'Album', date: '2026-11-20T22:30:00Z' }),
+      event({ id: 'lidarr-conn3-9', type: 'album', title: 'Artist', subtitle: 'Album', date: '2026-11-20T00:00:00Z' }),
     ];
-    // West of UTC, UTC midnight is still the evening before.
-    const [westMovie, westAlbum] = vevents(buildCalendarFeed(events, { timeZone: 'America/New_York', now: NOW }));
-    expect(westMovie).toContain('DTSTART;VALUE=DATE:20261230\r\nDTEND;VALUE=DATE:20261231');
-    expect(westAlbum).toContain('DTSTART;VALUE=DATE:20261120\r\nDTEND;VALUE=DATE:20261121');
-    // East of UTC, a late-evening UTC instant is already the next day.
-    const [eastMovie, eastAlbum] = vevents(buildCalendarFeed(events, { timeZone: 'Asia/Kolkata', now: NOW }));
-    expect(eastMovie).toContain('DTSTART;VALUE=DATE:20261231\r\nDTEND;VALUE=DATE:20270101');
-    expect(eastAlbum).toContain('DTSTART;VALUE=DATE:20261121\r\nDTEND;VALUE=DATE:20261122');
+    // Upstream gives the day as its UTC midnight, which is still the evening
+    // before west of UTC; the feed does not depend on a zone at all now.
+    const [movie, album] = vevents(buildCalendarFeed(events, { now: NOW }));
+    expect(movie).toContain('DTSTART;VALUE=DATE:20261231\r\nDTEND;VALUE=DATE:20270101');
+    expect(album).toContain('DTSTART;VALUE=DATE:20261120\r\nDTEND;VALUE=DATE:20261121');
     // Episodes stay timed in UTC.
-    expect(vevents(buildCalendarFeed([event({ runtime: 45 })], { timeZone: 'Asia/Kolkata', now: NOW }))[0])
+    expect(vevents(buildCalendarFeed([event({ runtime: 45 })], { now: NOW }))[0])
       .toContain('DTSTART:20261110T010000Z');
   });
 
   it("names the calendar after the link, plain Helprr for the default one", () => {
-    expect(buildCalendarFeed([], { timeZone: 'UTC', now: NOW })).toContain('X-WR-CALNAME:Helprr\r\n');
-    expect(buildCalendarFeed([], { timeZone: 'UTC', name: 'Calendar', now: NOW })).toContain('X-WR-CALNAME:Helprr\r\n');
-    expect(buildCalendarFeed([], { timeZone: 'UTC', name: 'Kids, movies', now: NOW })).toContain('X-WR-CALNAME:Helprr · Kids\\, movies\r\n');
+    expect(buildCalendarFeed([], { now: NOW })).toContain('X-WR-CALNAME:Helprr\r\n');
+    expect(buildCalendarFeed([], { name: 'Calendar', now: NOW })).toContain('X-WR-CALNAME:Helprr\r\n');
+    expect(buildCalendarFeed([], { name: 'Kids, movies', now: NOW })).toContain('X-WR-CALNAME:Helprr · Kids\\, movies\r\n');
   });
 
   it('gives each event a stable UID from its instance and upstream id', () => {
     const events = [event({}), event({ id: 'radarr-conn2-7-cinema', type: 'movie', releaseType: 'cinema' })];
-    const first = buildCalendarFeed(events, { timeZone: 'UTC', now: NOW });
-    const later = buildCalendarFeed(events, { timeZone: 'UTC', now: new Date('2026-11-08T10:00:00Z') });
+    const first = buildCalendarFeed(events, { now: NOW });
+    const later = buildCalendarFeed(events, { now: new Date('2026-11-08T10:00:00Z') });
     const uids = (text: string) => vevents(text).map((block) => block.match(/UID:(.*)\r\n/)?.[1]);
     expect(uids(first)).toEqual(['sonarr-conn1-42@helprr', 'radarr-conn2-7-cinema@helprr']);
     expect(uids(later)).toEqual(uids(first));
@@ -128,7 +125,7 @@ describe('buildCalendarFeed', () => {
 
   it('escapes and folds titles from upstream', () => {
     const title = 'Law, Order; Special\\Victims\nUnit '.repeat(4);
-    const text = buildCalendarFeed([event({ title })], { timeZone: 'UTC', now: NOW });
+    const text = buildCalendarFeed([event({ title })], { now: NOW });
     for (const line of text.split('\r\n')) expect(Buffer.byteLength(line, 'utf8')).toBeLessThanOrEqual(75);
     const summary = unfold(text).match(/SUMMARY:(.*)\r\n/)?.[1] ?? '';
     expect(summary).toContain(String.raw`Law\, Order\; Special\\Victims\nUnit`);
@@ -136,11 +133,11 @@ describe('buildCalendarFeed', () => {
   });
 
   it('describes the instance, finale and download state', () => {
-    const [block] = vevents(buildCalendarFeed([event({ finaleType: 'season', hasFile: true })], { timeZone: 'UTC', now: NOW }));
+    const [block] = vevents(buildCalendarFeed([event({ finaleType: 'season', hasFile: true })], { now: NOW }));
     expect(block).toContain('DESCRIPTION:Season finale\\nSonarr · HD\\nMonitored · Downloaded');
   });
 
   it('skips an event with an unreadable date', () => {
-    expect(vevents(buildCalendarFeed([event({ date: 'not a date' })], { timeZone: 'UTC', now: NOW }))).toHaveLength(0);
+    expect(vevents(buildCalendarFeed([event({ date: 'not a date' })], { now: NOW }))).toHaveLength(0);
   });
 });

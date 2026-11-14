@@ -1,11 +1,10 @@
 import type { CalendarEvent, MovieReleaseType } from '@/types';
-import { getLocalDateParts } from '@/lib/timezone';
+import { releaseDayKey } from '@/lib/release-day';
 
 // RFC 5545 output for the subscribable calendar feed. Lines end in CRLF and are
 // folded at 75 octets; text values are escaped. Episodes are timed (UTC, their
-// series runtime long); movie and album releases are all-day events on the
-// local date of the upstream instant in the app's time zone (Settings →
-// Preferences → Timezone), not the instant's UTC date.
+// series runtime long); movie and album releases are all-day events on their
+// release day (release-day.ts), the same in every time zone.
 
 const CRLF = '\r\n';
 const MAX_LINE_OCTETS = 75;
@@ -97,7 +96,7 @@ function descriptionOf(event: CalendarEvent): string {
   return lines.join('\n');
 }
 
-function eventLines(event: CalendarEvent, stamp: string, timeZone: string): string[] | null {
+function eventLines(event: CalendarEvent, stamp: string): string[] | null {
   const start = new Date(event.date);
   if (!Number.isFinite(start.getTime())) return null;
 
@@ -109,11 +108,9 @@ function eventLines(event: CalendarEvent, stamp: string, timeZone: string): stri
       `DTEND:${formatUtcDateTime(new Date(start.getTime() + minutes * 60_000))}`,
     );
   } else {
-    // Radarr and Lidarr give an instant (often UTC midnight); the day is the local one.
-    const local = getLocalDateParts(start, timeZone);
-    if (!local) return null;
-    const day = new Date(Date.UTC(local.year, local.month - 1, local.day));
-    const nextDay = new Date(Date.UTC(local.year, local.month - 1, local.day + 1));
+    // Radarr and Lidarr give the day as its UTC midnight; formatUtcDate reads it back.
+    const day = new Date(`${releaseDayKey(event.date)}T00:00:00Z`);
+    const nextDay = new Date(day.getTime() + 86_400_000);
     lines.push(`DTSTART;VALUE=DATE:${formatUtcDate(day)}`, `DTEND;VALUE=DATE:${formatUtcDate(nextDay)}`);
   }
   lines.push(
@@ -128,12 +125,12 @@ function eventLines(event: CalendarEvent, stamp: string, timeZone: string): stri
 }
 
 /**
- * A whole VCALENDAR document, CRLF-terminated. `timeZone` decides the day of an
- * all-day release; `name` is the link's, shown by calendar apps after "Helprr".
+ * A whole VCALENDAR document, CRLF-terminated. `name` is the link's, shown by
+ * calendar apps after "Helprr".
  */
 export function buildCalendarFeed(
   events: readonly CalendarEvent[],
-  { timeZone, name, now = new Date() }: { timeZone: string; name?: string; now?: Date },
+  { name, now = new Date() }: { name?: string; now?: Date },
 ): string {
   const stamp = formatUtcDateTime(now);
   const calendarName = name && name !== DEFAULT_LINK_NAME ? `Helprr · ${name}` : 'Helprr';
@@ -148,7 +145,7 @@ export function buildCalendarFeed(
     'X-PUBLISHED-TTL:PT1H',
   ];
   for (const event of events) {
-    const vevent = eventLines(event, stamp, timeZone);
+    const vevent = eventLines(event, stamp);
     if (vevent) lines.push(...vevent);
   }
   lines.push('END:VCALENDAR');

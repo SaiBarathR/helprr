@@ -9,12 +9,14 @@ import {
 } from "lucide-react"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { useIsMobile } from "@/hooks/use-is-mobile"
+import { usePageToolbarBottom } from "@/hooks/use-page-toolbar-bottom"
 
 const Toaster = ({ ...props }: ToasterProps) => {
   // On a phone (Sonner's own breakpoint, 600px and under) toasts come from the
   // top, as iOS banners do: at the bottom they sat over the buttons of every
   // bottom sheet (Copy/Download, Make link, Create) while they showed.
   const phone = useIsMobile(600)
+  usePageToolbarBottom(phone)
   return (
     <Sonner
       className="toaster group"
@@ -30,8 +32,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
         right: "calc(env(safe-area-inset-right, 0px) + 24px)",
       }}
       // Below the page's sticky toolbar (pinned at --header-height: the status
-      // bar, plus the top nav when it is up), not over its Back and ⋯ buttons.
-      mobileOffset={{ top: "calc(var(--header-height, env(safe-area-inset-top, 0px)) + 3.75rem)" }}
+      // bar, plus the top nav when it is up), not over any of its rows. Pages
+      // without one keep room for a one-row bar's Back and ⋯ buttons.
+      mobileOffset={{ top: "calc(var(--page-toolbar-bottom, calc(var(--header-height, env(safe-area-inset-top, 0px)) + 3.25rem)) + 0.5rem)" }}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,

@@ -1,7 +1,8 @@
 // Upcoming episodes, movie releases and albums, before they air or as a daily digest, each once.
 import { prisma } from '@/lib/db';
 import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
-import { startOfLocalDay, endOfLocalDay, toZonedDate } from '@/lib/timezone';
+import { startOfLocalDay, endOfLocalDay, toZonedDate, getLocalDateKey } from '@/lib/timezone';
+import { releaseDayKey } from '@/lib/release-day';
 import { logger } from '@/lib/logger';
 import { noteJobFailure, noteJobSkipped } from '@/lib/polling-job-report';
 import { PollNotificationCollector } from '@/lib/notification-grouping';
@@ -64,6 +65,17 @@ export async function checkUpcoming(context: CycleContext) {
 
   const start = new Date(fetchStartMs).toISOString();
   const end = new Date(fetchEndMs).toISOString();
+
+  // A film or album release is a day, given as its UTC midnight (release-day.ts).
+  // The digest takes the releases dated today: by instant, the local day west of
+  // UTC held tomorrow's. Radarr and Lidarr are asked for a day more on each side
+  // so today's come back wherever their midnight falls. Before-air mode still
+  // counts down to that UTC midnight.
+  const digestDay = mode === 'daily_digest' ? getLocalDateKey(now, timeZone) : null;
+  const releaseStart = digestDay ? new Date(fetchStartMs - 86_400_000).toISOString() : start;
+  const releaseEnd = digestDay ? new Date(fetchEndMs + 86_400_000).toISOString() : end;
+  const releaseInWindow = (dateStr: string, releaseMs: number) =>
+    digestDay ? releaseDayKey(dateStr) === digestDay : releaseMs >= fetchStartMs && releaseMs <= fetchEndMs;
 
   // Helpers ----------------------------------------------------------------
   // For each candidate item we ask: "have we ever notified for this exact
@@ -232,12 +244,12 @@ export async function checkUpcoming(context: CycleContext) {
   }
   for (const { connection, client } of radarrClients) {
   try {
-    const calendar = await client.getCalendar(start, end);
+    const calendar = await client.getCalendar(releaseStart, releaseEnd);
     logger.debug('Radarr upcoming calendar polled', {
       instanceId: connection.id,
       calendarCount: calendar.length,
-      start,
-      end,
+      start: releaseStart,
+      end: releaseEnd,
       mode,
     }, { scope: 'polling' });
     const releaseTypeLabels = {
@@ -259,7 +271,7 @@ export async function checkUpcoming(context: CycleContext) {
         // Skip release dates outside the fetch window. Radarr returns a
         // movie if ANY of its 3 release dates falls in the window, so the
         // other two might be years away (e.g., cinema 2010, digital today).
-        if (releaseMs < fetchStartMs || releaseMs > fetchEndMs) continue;
+        if (!releaseInWindow(dateStr, releaseMs)) continue;
 
         if (mode === 'before_air' && !shouldFireBeforeAir(releaseMs)) {
           logger.debug('Skipping Radarr upcoming item outside before-air window', {
@@ -324,19 +336,19 @@ export async function checkUpcoming(context: CycleContext) {
   }
   for (const { connection, client } of lidarrClients) {
   try {
-    const calendar = await client.getCalendar(start, end);
+    const calendar = await client.getCalendar(releaseStart, releaseEnd);
     logger.debug('Lidarr upcoming calendar polled', {
       instanceId: connection.id,
       calendarCount: calendar.length,
-      start,
-      end,
+      start: releaseStart,
+      end: releaseEnd,
       mode,
     }, { scope: 'polling' });
     for (const album of calendar) {
       if (!album.releaseDate) continue;
       const releaseMs = new Date(album.releaseDate).getTime();
       if (!Number.isFinite(releaseMs)) continue;
-      if (releaseMs < fetchStartMs || releaseMs > fetchEndMs) continue;
+      if (!releaseInWindow(album.releaseDate, releaseMs)) continue;
       if (mode === 'before_air' && !shouldFireBeforeAir(releaseMs)) continue;
 
       const artistName = album.artist?.artistName ?? '';

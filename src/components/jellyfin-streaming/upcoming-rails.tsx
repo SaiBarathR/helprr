@@ -12,6 +12,7 @@ import { MediaTile } from '@/components/jellyfin-streaming/media-tile';
 import { toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import type { CalendarEvent } from '@/types';
 import { formatDateTime } from '@/lib/date-format';
+import { calendarEventDate } from '@/lib/release-day';
 
 const DAY_MS = 86_400_000;
 const EPISODE_WINDOW_DAYS = 7;
@@ -45,10 +46,11 @@ function backdropFor(event: CalendarEvent): string | null {
 
 /**
  * Airtimes come from Sonarr/Radarr with real precision, so show them. Midnight
- * usually means "date only" upstream rather than an actual 00:00 broadcast.
+ * usually means "date only" upstream rather than an actual 00:00 broadcast; a
+ * film's release is its day (release-day.ts), at local midnight here.
  */
-function airsAt(iso: string): string | null {
-  const date = new Date(iso);
+function airsAt(event: CalendarEvent): string | null {
+  const date = calendarEventDate(event);
   if (Number.isNaN(date.getTime())) return null;
   const midnight = date.getHours() === 0 && date.getMinutes() === 0;
   return formatDateTime(date, {
@@ -58,8 +60,8 @@ function airsAt(iso: string): string | null {
   });
 }
 
-function countdown(iso: string): string {
-  const days = Math.ceil((new Date(iso).getTime() - Date.now()) / DAY_MS);
+function countdown(event: CalendarEvent): string {
+  const days = Math.ceil((calendarEventDate(event).getTime() - Date.now()) / DAY_MS);
   if (days <= 0) return 'Today';
   if (days === 1) return 'Tomorrow';
   if (days < 30) return `${days} days`;
@@ -104,7 +106,7 @@ export function UpcomingRails({ only }: {
 
   const rails = useMemo(() => {
     const events = query.data ?? [];
-    const future = events.filter((event) => new Date(event.date).getTime() >= range.startMs);
+    const future = events.filter((event) => calendarEventDate(event).getTime() >= range.startMs);
     const weekEnd = range.startMs + EPISODE_WINDOW_DAYS * DAY_MS;
 
     return [
@@ -150,8 +152,8 @@ export function UpcomingRails({ only }: {
               // next/image will not optimize.
               imageUrl={posterFor(event)}
               landscapeUrl={backdropFor(event)}
-              lines={[event.subtitle, airsAt(event.date)]}
-              topLeftBadge={{ label: countdown(event.date), tone: 'green' }}
+              lines={[event.subtitle, airsAt(event)]}
+              topLeftBadge={{ label: countdown(event), tone: 'green' }}
             />
           ))}
         </MediaRail>

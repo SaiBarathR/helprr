@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUser, requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
-import { startOfLocalDay, toZonedDate, getLocalDateKey } from '@/lib/timezone';
+import { startOfLocalDay, toZonedDate, getLocalDateKey, isValidTimeZone } from '@/lib/timezone';
 import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
 import { calendarEventsFor, fetchServiceCalendarEvents } from '@/lib/calendar-events';
 import {
@@ -30,6 +30,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const fullDay = searchParams.get('fullDay') === 'true';
     const type = searchParams.get('type');
     const includeScheduled = searchParams.get('includeScheduled') === 'true';
+    // The zone whose days the window's film and album releases are matched on:
+    // the Calendar page sends this device's, as it shows its days; other callers
+    // get the app's, which their now-anchored windows are built in.
+    const requestedTimeZone = searchParams.get('tz');
 
     const authUser = includeScheduled ? await requireUser() : null;
     if (includeScheduled && !authUser?.ok) return authUser!.response;
@@ -47,15 +51,18 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // Cache the full merged event set keyed by the requested window (not `type`, which is a
-    // post-fetch filter). All authorized callers see every instance (binary capability gate),
+    // Cache the full merged event set keyed by the requested window and the zone of its release
+    // days (not `type`, which is a post-fetch filter). All authorized callers see every instance (binary capability gate),
     // so the cached events are identical per user. When start/end are absent the window is
     // now-anchored, so fold today's LOCAL date into the key — otherwise a cached entry could
     // outlive local midnight and serve the previous day's window.
     const explicitWindow = Boolean(start && end);
     const settings = explicitWindow ? null : await getOrCreateAppSettings();
     const anchorKey = settings ? getLocalDateKey(new Date(), settings.timeZone) : '';
-    const cacheKeySeed = `${start ?? ''}|${end ?? ''}|${days ?? ''}|${fullDay}|${anchorKey}`;
+    const releaseTimeZone = explicitWindow && isValidTimeZone(requestedTimeZone)
+      ? requestedTimeZone
+      : (settings ?? await getOrCreateAppSettings()).timeZone;
+    const cacheKeySeed = `${start ?? ''}|${end ?? ''}|${days ?? ''}|${fullDay}|${anchorKey}|${releaseTimeZone}`;
     const cachedEvents = !includeScheduled
       ? await getCachedJson<CalendarEvent[]>('calendar', cacheKeySeed)
       : null;
@@ -122,7 +129,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       end = endDate.toISOString();
     }
 
-    const { events, cacheable } = await fetchServiceCalendarEvents(start!, end!);
+    const { events, cacheable } = await fetchServiceCalendarEvents(start!, end!, releaseTimeZone);
     if (cacheable) {
       await setCachedJson('calendar', cacheKeySeed, events, 120);
     }

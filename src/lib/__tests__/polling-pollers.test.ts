@@ -498,6 +498,24 @@ describe('pollers on fixed fixtures (golden)', () => {
     expectGolden('checkUpcoming:dailyDigest', out);
   });
 
+  it("checkUpcoming's daily digest west of UTC takes the releases dated today, not tomorrow's UTC midnight", async () => {
+    // NOW is 21:00 on Oct 18 in Los Angeles; Oct 19's UTC midnight is 17:00 that day.
+    const radarrCalendar = vi.fn(async () => [
+      { id: 50, title: 'Tomorrow Film', year: 2026, inCinemas: '2026-10-19T00:00:00Z' },
+      { id: 51, title: 'Today Film', year: 2026, digitalRelease: '2026-10-18T00:00:00Z' },
+    ]);
+    mocks.radarr = [{ connection: { id: 'r1', label: 'main', isDefault: true }, client: { getCalendar: radarrCalendar } }];
+    mocks.lidarr = [{ connection: { id: 'l1', label: 'music', isDefault: true }, client: { getCalendar: vi.fn(async () => [
+      { id: 92, title: 'Today Album', releaseDate: '2026-10-18T00:00:00Z', artist: { artistName: 'Band' } },
+      { id: 93, title: 'Tomorrow Album', releaseDate: '2026-10-19T00:00:00Z', artist: { artistName: 'Band' } },
+    ]) } }];
+    const out = await run('checkUpcoming', { ...SETTINGS, timeZone: 'America/Los_Angeles', upcomingNotifyMode: 'daily_digest', upcomingDailyNotifyHour: 21 });
+    const bodies = out.flatMap((entry) => ('notify' in (entry as object) ? [(entry as { notify: { body: string } }).notify.body] : []));
+    expect(bodies).toEqual(['Today Film (2026) — Digital Release', 'Band — Today Album']);
+    // The local day (07:00Z to 06:59:59Z), a day wider on each side.
+    expect(radarrCalendar).toHaveBeenCalledWith('2026-10-17T07:00:00.000Z', '2026-10-20T06:59:59.999Z');
+  });
+
   it('checkActivityDigest: weekly on its day; skipped before the hour, on another day, or when already sent', async () => {
     digestFixture();
     const runs = [

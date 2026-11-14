@@ -27,14 +27,22 @@ import {
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { formatTime as formatDisplayTime } from '@/lib/date-format';
+import { recordBrowseFreshness } from '@/lib/browse-freshness';
+import { isReleaseDayEvent } from '@/lib/release-day';
 
 // The header plus a carousel card's poster (with its badges and air time) and
 // title line. A shorter cell, such as a phone's two-row default, cut the
 // poster and hid the title and time, so it shows the list, which scrolls.
 const CAROUSEL_FIT_HEIGHT = SECTION_HEADER_HEIGHT + CAROUSEL_CARD_HEIGHT + 24;
 
-function formatTime(dateStr: string): string {
-  const d = new Date(dateStr);
+/**
+ * An episode's air time. A film or album release is a day (release-day.ts):
+ * "All day", as on the Calendar page; upstream's UTC midnight read as a time
+ * was "5:30 AM" in India and the afternoon before west of UTC.
+ */
+function formatTime(ev: CalendarEvent): string {
+  if (isReleaseDayEvent(ev)) return 'All day';
+  const d = new Date(ev.date);
   if (!Number.isFinite(d.getTime())) return '';
   return formatDisplayTime(d);
 }
@@ -75,7 +83,10 @@ function typeColor(type: CalendarEvent['type']): string {
 }
 
 async function fetchToday(signal?: AbortSignal): Promise<CalendarEvent[]> {
-  const res = await fetch('/api/calendar?days=1&fullDay=true', { signal });
+  const path = '/api/calendar?days=1&fullDay=true';
+  const res = await fetch(path, { signal });
+  // An offline snapshot from the worker shows the shared "saved data" notice, as Calendar does.
+  recordBrowseFreshness(path, res);
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }
@@ -182,7 +193,7 @@ export function TodayCalendarWidget({
           }}
         >
           {list.slice(0, visibleCount).map((ev) => {
-            const time = formatTime(ev.date);
+            const time = formatTime(ev);
             const poster = getPoster(ev.images, posterHint(ev.type));
             const row = (
               <div
@@ -318,7 +329,7 @@ export function TodayCalendarWidget({
         style={{ display: 'flex', gap: CAROUSEL_GAP, overflowX: 'auto', paddingBottom: 4 }}
       >
         {list.slice(0, visibleCount).map((ev) => {
-          const time = formatTime(ev.date);
+          const time = formatTime(ev);
           const poster = getPoster(ev.images, posterHint(ev.type));
           const tag = shortTagFor(ev);
           const card = (
