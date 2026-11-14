@@ -25,6 +25,7 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
+import { CompactRailTile } from './compact-rail-tile';
 
 interface SeasonWindow {
   season: AniListMediaSeason;
@@ -125,6 +126,7 @@ export function AnimeCarouselWidget({
   refreshInterval,
   editMode,
   narrow,
+  rowSpan,
   layoutVariant,
   instanceId,
   mobileGrid = false,
@@ -261,6 +263,29 @@ export function AnimeCarouselWidget({
           No items
         </EmptyState>
       </div>
+    );
+  }
+
+  // The one-row narrow cell the watchlist widget also gives its own compact tile.
+  if (narrow && (rowSpan ?? 1) <= 1) {
+    const top = items[0];
+    const isManga = top && (top.format === 'MANGA' || top.format === 'NOVEL' || top.format === 'ONE_SHOT');
+    return (
+      <CompactRailTile
+        title={title}
+        viewAllHref={viewAllHref}
+        editMode={editMode}
+        item={top ? {
+          href: isManga ? `/anime/manga/${top.id}` : `/anime/${top.id}`,
+          title: top.title,
+          meta: [
+            top.format?.replace('_', ' '),
+            top.episodes != null ? `${top.episodes} eps` : null,
+            top.seasonYear != null ? String(top.seasonYear) : null,
+          ].filter(Boolean).join(' · '),
+          imageUrl: top.coverImage ? toCachedImageSrc(top.coverImage, 'anilist') || top.coverImage : null,
+        } : null}
+      />
     );
   }
 

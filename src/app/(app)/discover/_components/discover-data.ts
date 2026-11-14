@@ -137,6 +137,13 @@ export function formatWait(seconds: number) {
   return `${secs}s`;
 }
 
+/** "Missing: A, B and C." — past three names, the first two and a count, so the notice stays short. */
+export function formatUnavailable(names: string[]): string {
+  const shown = names.length > 3 ? [...names.slice(0, 2), `${names.length - 2} more`] : names;
+  const list = shown.length > 1 ? `${shown.slice(0, -1).join(', ')} and ${shown[shown.length - 1]}` : shown[0];
+  return `Missing: ${list}.`;
+}
+
 export function countActiveAdvancedFilters(filters: DiscoverFiltersState): number {
   let count = 0;
   if (filters.genres.length > 0) count += 1;

@@ -314,12 +314,14 @@ export default function ArtistDetailPage() {
 
   // Fetch failure is not "not found": only a confirmed 404 resolves to null.
   if (artistQuery.isError && !artist) {
+    // A refusal is not an outage, and retrying it can't help.
+    const forbidden = artistQuery.error instanceof ApiError && artistQuery.error.status === 403;
     return (
       <>
         <PageHeader title="Artist" />
         <ErrorState
-          message="Couldn't load this artist. Lidarr may be unreachable."
-          onRetry={() => artistQuery.refetch()}
+          message={forbidden ? "You don't have access to Music." : "Couldn't load this artist. Lidarr may be unreachable."}
+          onRetry={forbidden ? undefined : () => artistQuery.refetch()}
           retrying={artistQuery.isFetching}
         />
       </>

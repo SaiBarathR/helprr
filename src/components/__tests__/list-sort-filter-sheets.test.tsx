@@ -121,6 +121,7 @@ describe('list sort, filter and view menus on a phone', () => {
         searchParamsKey="" query="" handleQueryChange={vi.fn()} discoverContentType="all"
         handleSelectContentType={handleSelectContentType} handleOpenFilters={vi.fn()} activeAdvancedFilterCount={0}
         discoverSort="trending" handleSelectSort={vi.fn()} rateLimitInfo={null} rateLimitCountdown={null}
+        unavailable={null}
       />,
     );
     await userEvent.click(screen.getByRole('button', { name: 'Content type' }));

@@ -6,10 +6,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiscoverDetail } from '@/types';
 
-const mocks = vi.hoisted(() => ({ canAdd: true }));
+const mocks = vi.hoisted(() => ({ canAdd: true, canView: true }));
 vi.mock('@/components/permission-provider', () => ({
   useMe: () => ({ role: 'member', seerrConfigured: false, capabilities: {} }),
-  hasCapability: (_me: unknown, cap: string) => (cap === 'movies.add' || cap === 'series.add' ? mocks.canAdd : false),
+  hasCapability: (_me: unknown, cap: string) => (cap === 'movies.add' || cap === 'series.add'
+    ? mocks.canAdd
+    : cap === 'movies.view' || cap === 'series.view' ? mocks.canView : false),
 }));
 vi.mock('@/components/seerr/requested-media-provider', () => ({ useRequestedMedia: () => ({ isRequested: () => false }) }));
 vi.mock('@/components/watchlist/watchlist-button', () => ({ WatchlistButton: () => null }));
@@ -37,8 +39,17 @@ function movie(held: Array<{ instanceId: string; instanceLabel: string; id: numb
 
 function Harness({ detail }: { detail: DiscoverDetail }) {
   const controller = useDiscoverAddController(detail);
-  return <DiscoverAddButton detail={detail} controller={controller} />;
+  return (
+    <>
+      <DiscoverAddButton detail={detail} controller={controller} />
+      {/* The long-press menu's entries, listed so a test can read them. */}
+      <ul data-testid="menu">
+        {controller.contextGroups.flatMap((g) => g.actions).map((a) => <li key={a.id}>{a.label}</li>)}
+      </ul>
+    </>
+  );
 }
+const menuLabels = () => [...container.querySelectorAll('[data-testid="menu"] li')].map((li) => li.textContent);
 
 let container: HTMLDivElement;
 let root: Root;
@@ -55,6 +66,7 @@ const links = () => [...container.querySelectorAll('a')].map((a) => [a.textConte
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   mocks.canAdd = true;
+  mocks.canView = true;
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -125,5 +137,23 @@ describe('DiscoverAddButton for a title in no library', () => {
     expect(add?.textContent?.trim()).toBe('Add to library');
     expect(add?.getAttribute('aria-label')).toBeNull();
     expect(container.textContent).not.toMatch(/Radarr/i);
+  });
+});
+
+describe('DiscoverAddButton for a user who cannot open that library', () => {
+  it('states the title is held instead of linking to a page that would refuse them', async () => {
+    mocks.canView = false;
+    await render(movie([{ instanceId: 'rad-a', instanceLabel: 'RADARR', id: 7 }]));
+    expect(container.textContent).toContain('In library');
+    expect(container.textContent).not.toContain('Open in library');
+    expect(menuLabels()).not.toContain('Open in library');
+    expect(container.querySelector('a[href^="/movies/7"]')).toBeNull();
+    expect(container.querySelector('[aria-label="In library. You don\'t have access to Movies."]')).not.toBeNull();
+  });
+
+  it('still links when the user can open it', async () => {
+    await render(movie([{ instanceId: 'rad-a', instanceLabel: 'RADARR', id: 7 }]));
+    expect(links()).toContainEqual(['Open in library', '/movies/7?instance=rad-a']);
+    expect(menuLabels()).toContain('Open in library');
   });
 });

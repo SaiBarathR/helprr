@@ -11,6 +11,7 @@ import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { Check, ChevronRight, Plus, Star } from 'lucide-react';
 import { buildRadarrAddParams, buildSonarrAddParams, isMovieFormat } from '@/lib/anilist-helpers';
 import { hasCapability, useMe } from '@/components/permission-provider';
+import { canOpenLibrary } from '@/components/discover/open-in-instances';
 import type { AniListListItem } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
 
@@ -34,7 +35,9 @@ export function AnimeCard({
     ? toCachedImageSrc(item.coverImage, 'anilist') || item.coverImage
     : null;
   const href = `/anime/${item.id}`;
+  // No link for a user who can't open that library: it would end on a refusal.
   const libraryHref = item.library?.exists && item.library.id != null
+    && canOpenLibrary(me, item.library.type === 'movie' ? 'movie' : 'series')
     ? `${item.library.type === 'movie' ? '/movies' : '/series'}/${item.library.id}${item.library.instanceId ? `?instance=${item.library.instanceId}` : ''}`
     : null;
   const isMovie = isMovieFormat(item.format);

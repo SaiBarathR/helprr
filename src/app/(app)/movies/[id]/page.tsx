@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { arrMutationFetch, jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, arrMutationFetch, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
@@ -57,7 +57,7 @@ import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { crewRolePriority } from '@/lib/crew-priority';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { invalidateMovies, patchLibraryMonitored } from '@/lib/query-invalidation';
+import { invalidateAfterLibraryRemove, invalidateMovies, patchLibraryMonitored } from '@/lib/query-invalidation';
 import { useQualityProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
 import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
@@ -111,7 +111,7 @@ export default function MovieDetailPage() {
         // ignore invalid error payloads
       }
       if (response.status === 404 || /not found|does not exist/i.test(message)) return null;
-      throw new Error(message || `Failed to fetch movie (${response.status})`);
+      throw new ApiError(response.status, message || `Failed to fetch movie (${response.status})`);
     },
     enabled: Number.isFinite(movieId),
   });
@@ -311,6 +311,7 @@ export default function MovieDetailPage() {
       const res = await arrMutationFetch(instance, `/api/radarr/${movie.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       invalidateMovies(queryClient);
+      invalidateAfterLibraryRemove(queryClient, 'radarr', [{ id: movie.id, instanceId: instance }]);
       queryClient.removeQueries({ queryKey: queryKeys.detail('radarr', movie.id, instance) });
       toast.success('Movie deleted');
       router.push('/movies');
@@ -324,12 +325,14 @@ export default function MovieDetailPage() {
 
   // Fetch failure is not "not found": only a confirmed 404 resolves to null.
   if (movieQuery.isError && !movie) {
+    // A refusal is not an outage, and retrying it can't help.
+    const forbidden = movieQuery.error instanceof ApiError && movieQuery.error.status === 403;
     return (
       <>
         <PageHeader title="Movie" />
         <ErrorState
-          message="Couldn't load this movie. Radarr may be unreachable."
-          onRetry={() => movieQuery.refetch()}
+          message={forbidden ? "You don't have access to Movies." : "Couldn't load this movie. Radarr may be unreachable."}
+          onRetry={forbidden ? undefined : () => movieQuery.refetch()}
           retrying={movieQuery.isFetching}
         />
       </>

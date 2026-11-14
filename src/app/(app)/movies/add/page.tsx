@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
-import { invalidateMovies } from '@/lib/query-invalidation';
+import { invalidateAfterLibraryAdd } from '@/lib/query-invalidation';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
@@ -175,7 +175,14 @@ function AddMoviePageContent() {
       return res.json();
     },
     onSuccess: (movie, payload) => {
-      invalidateMovies(queryClient);
+      // Discover and Anime show it as in the library at once, Back included.
+      invalidateAfterLibraryAdd(queryClient, 'radarr', {
+        id: movie.id,
+        tmdbId: movie.tmdbId ?? (payload.tmdbId as number | undefined),
+        titleSlug: movie.titleSlug,
+        instanceId: payload.instanceId,
+        instanceLabel: instances.find((instance) => instance.id === payload.instanceId)?.label,
+      });
       saveAddDefaults('radarr', payload.instanceId, {
         profileId: String(payload.qualityProfileId),
         rootFolder: payload.rootFolderPath,

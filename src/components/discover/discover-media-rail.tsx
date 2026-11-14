@@ -22,10 +22,14 @@ function DiscoverRailCard({
   item,
   canAddMovies,
   canAddSeries,
+  canOpenMovies,
+  canOpenSeries,
 }: {
   item: DiscoverItem;
   canAddMovies: boolean;
   canAddSeries: boolean;
+  canOpenMovies: boolean;
+  canOpenSeries: boolean;
 }) {
   const posterSrc = item.posterPath
     ? toCachedImageSrc(item.posterPath, 'tmdb') || item.posterPath
@@ -36,7 +40,8 @@ function DiscoverRailCard({
       id: item.library.id,
       instanceId: item.library.instanceId ?? '',
     } : null);
-  const libraryHref = libraryInstance
+  // No link for a user who can't open that library: it would end on a refusal.
+  const libraryHref = libraryInstance && (item.mediaType === 'movie' ? canOpenMovies : canOpenSeries)
     ? `/${item.mediaType === 'movie' ? 'movies' : 'series'}/${libraryInstance.id}${libraryInstance.instanceId ? `?instance=${libraryInstance.instanceId}` : ''}`
     : null;
   const canAdd = item.mediaType === 'movie' ? canAddMovies : canAddSeries;
@@ -113,6 +118,8 @@ export function DiscoverMediaRail({ title, items }: DiscoverMediaRailProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const canAddMovies = useCan('movies.add');
   const canAddSeries = useCan('series.add');
+  const canOpenMovies = useCan('movies.view');
+  const canOpenSeries = useCan('series.view');
   if (!items.length) return null;
 
   return (
@@ -130,6 +137,8 @@ export function DiscoverMediaRail({ title, items }: DiscoverMediaRailProps) {
               item={item}
               canAddMovies={canAddMovies}
               canAddSeries={canAddSeries}
+              canOpenMovies={canOpenMovies}
+              canOpenSeries={canOpenSeries}
             />
           ))}
         </WindowedRailItems>

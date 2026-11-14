@@ -222,6 +222,121 @@ describe('GET /api/discover sections cache', () => {
     });
   });
 
+  it('names the sections a failed TMDB source left empty, without upstream detail', async () => {
+    const broken = tmdbClient();
+    broken.discoverMovie = vi.fn(async () => { throw new Error('TMDB down at https://api.themoviedb.org/3?api_key=secret'); });
+    broken.movieWatchProviders = vi.fn(async () => { throw new Error('boom'); });
+    mocks.getTMDBClient.mockResolvedValue(broken);
+    const { GET } = await loadRoute();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await GET(sectionsRequest());
+    const text = await res.text();
+    warn.mockRestore();
+    const body: DiscoverResponse = JSON.parse(text);
+
+    expect(res.status).toBe(200);
+    // discoverMovie feeds Popular Movies, Popular and Upcoming Movies; the providers feed one section.
+    expect(body.failedSections?.sort()).toEqual(['popular_all', 'popular_movies', 'providers', 'upcoming_movies']);
+    expect(text).not.toMatch(/themoviedb|api_key|TMDB down|boom/);
+    expect(body.sections!.find((s) => s.key === 'trending')!.items).not.toHaveLength(0);
+  });
+
+  it('asks a failing source once per short window, while Retry asks again at once', async () => {
+    vi.useFakeTimers();
+    const broken = tmdbClient();
+    broken.movieWatchProviders = vi.fn(async () => { throw new Error('timeout'); });
+    mocks.getTMDBClient.mockResolvedValue(broken);
+    const { GET } = await loadRoute();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const first: DiscoverResponse = await (await GET(sectionsRequest())).json();
+    const second: DiscoverResponse = await (await GET(sectionsRequest())).json();
+    expect(broken.movieWatchProviders).toHaveBeenCalledTimes(1);
+    expect(first.failedSections).toEqual(['providers']);
+    expect(second.failedSections).toEqual(['providers']);
+
+    await GET(sectionsRequest('&retry=1'));
+    expect(broken.movieWatchProviders).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(46 * 1000);
+    await GET(sectionsRequest());
+    warn.mockRestore();
+    expect(broken.movieWatchProviders).toHaveBeenCalledTimes(3);
+  });
+
+  it('builds the catalog once for loads that arrive together', async () => {
+    const tmdb = tmdbClient();
+    mocks.getTMDBClient.mockResolvedValue(tmdb);
+    const { GET } = await loadRoute();
+
+    const responses = await Promise.all([GET(sectionsRequest()), GET(sectionsRequest()), GET(sectionsRequest('&perSectionLimit=5'))]);
+
+    expect(responses.map((r) => r.status)).toEqual([200, 200, 200]);
+    expect(tmdb.movieWatchProviders).toHaveBeenCalledTimes(1);
+  });
+
+  it('fills a failed section from the last full catalog and does not report it', async () => {
+    vi.useFakeTimers();
+    mocks.getTMDBClient.mockResolvedValueOnce(tmdbClient());
+    const { GET } = await loadRoute();
+    await GET(sectionsRequest());
+
+    vi.advanceTimersByTime(6 * 60 * 1000);
+    const broken = tmdbClient();
+    broken.discoverMovie = vi.fn(async () => { throw new Error('down'); });
+    broken.tvWatchProviders = vi.fn(async () => { throw new Error('down'); });
+    mocks.getTMDBClient.mockResolvedValue(broken);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const body: DiscoverResponse = await (await GET(sectionsRequest())).json();
+    warn.mockRestore();
+
+    // Popular Movies comes back from the earlier catalog; the providers section was
+    // empty there too (the mock lists none), so it stays reported.
+    expect(popularMovie(body)).toMatchObject({ title: MOVIE.title });
+    expect(body.failedSections).toEqual(['providers']);
+  });
+
+  it('asks TMDB once per short window during a total outage too, serving the last full catalog', async () => {
+    vi.useFakeTimers();
+    mocks.getTMDBClient.mockResolvedValueOnce(tmdbClient());
+    const { GET } = await loadRoute();
+    await GET(sectionsRequest());
+
+    vi.advanceTimersByTime(6 * 60 * 1000);
+    const down = tmdbClient({ fail: true });
+    mocks.getTMDBClient.mockResolvedValue(down);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const first: DiscoverResponse = await (await GET(sectionsRequest())).json();
+    const askedOnce = down.trending.mock.calls.length;
+    const second: DiscoverResponse = await (await GET(sectionsRequest())).json();
+    warn.mockRestore();
+
+    expect(askedOnce).toBeGreaterThan(0);
+    // The second load inside the window builds nothing: TMDB isn't asked again.
+    expect(down.trending).toHaveBeenCalledTimes(askedOnce);
+    expect(popularMovie(first)).toMatchObject({ title: MOVIE.title });
+    expect(popularMovie(second)).toMatchObject({ title: MOVIE.title });
+  });
+
+  it('does not fill a failed section from a full catalog older than six hours', async () => {
+    vi.useFakeTimers();
+    mocks.getTMDBClient.mockResolvedValueOnce(tmdbClient());
+    const { GET } = await loadRoute();
+    await GET(sectionsRequest());
+
+    vi.advanceTimersByTime(7 * 60 * 60 * 1000);
+    const broken = tmdbClient();
+    broken.discoverMovie = vi.fn(async () => { throw new Error('down'); });
+    mocks.getTMDBClient.mockResolvedValue(broken);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const body: DiscoverResponse = await (await GET(sectionsRequest())).json();
+    warn.mockRestore();
+
+    expect(body.failedSections).toContain('popular_movies');
+    expect(body.sections!.find((s) => s.key === 'popular_movies')!.items).toHaveLength(0);
+  });
+
   it('keeps perSectionLimit between 1 and 60', async () => {
     const many = Array.from({ length: 20 }, (_, i) => ({ ...MOVIE, id: 1000 + i, title: `Movie ${i}` }));
     const tmdb = tmdbClient();
