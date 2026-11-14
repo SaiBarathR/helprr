@@ -153,6 +153,18 @@ export class JellyfinConnectRequiredError extends PlaybackFailure {
 }
 
 /**
+ * `/api/jellyfin/stream/info` could not be reached at all: the request itself
+ * failed, with no answer. A transcode would fail the same way, so the start
+ * says so at once instead of retrying.
+ */
+class StreamUnreachableError extends PlaybackFailure {
+  constructor() {
+    super("The stream couldn't be reached. Check the connection and try again.");
+    this.name = 'StreamUnreachableError';
+  }
+}
+
+/**
  * What the viewer is told when a start fails.
  *
  * Only a `PlaybackFailure` carries words meant for them. The browser's own
@@ -175,6 +187,8 @@ async function fetchStream(itemId: string, options: PlayOptions): Promise<Helprr
     isRetry: options.enableDirectPlay === false,
     enableSsaRender: options.enableSsaRender,
   });
+  // Only the request failing outright (offline, DNS, a dropped connection) is
+  // a TypeError here; an answer of any status is handled below.
   const res = await fetch('/api/jellyfin/stream/info', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -193,6 +207,9 @@ async function fetchStream(itemId: string, options: PlayOptions): Promise<Helprr
       enableDirectPlay: options.enableDirectPlay,
       enableDirectStream: options.enableDirectStream,
     }),
+  }).catch((cause: unknown) => {
+    if (cause instanceof TypeError) throw new StreamUnreachableError();
+    throw cause;
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: 'Playback failed' }));
@@ -243,6 +260,12 @@ function beaconStopped(stream: HelprrStreamInfo, positionTicks: number) {
   }
 }
 
+/**
+ * Every session report and encoder release is sent `keepalive`, so one sent
+ * as the page goes away (closing the PWA right after a failure or a Stop) still
+ * reaches the server, and its small answer is read: left unread, the request
+ * stayed open until its 10 s timeout cancelled it.
+ */
 async function report(event: 'playing' | 'progress' | 'stopped', stream: HelprrStreamInfo, extra: {
   positionTicks: number;
   isPaused: boolean;
@@ -258,6 +281,7 @@ async function report(event: 'playing' | 'progress' | 'stopped', stream: HelprrS
 }, signal?: AbortSignal) {
   await fetch('/api/jellyfin/stream/session', {
     signal,
+    keepalive: true,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -273,13 +297,14 @@ async function report(event: 'playing' | 'progress' | 'stopped', stream: HelprrS
       repeatMode: extra.repeatMode,
       ...extra,
     }),
-  }).catch(() => undefined);
+  }).then((res) => res.arrayBuffer()).catch(() => undefined);
 }
 
 async function stopEncodings(playSessionId: string, signal?: AbortSignal) {
   if (!playSessionId) return;
   await fetch('/api/jellyfin/stream/stop-encodings', {
     signal,
+    keepalive: true,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -287,7 +312,49 @@ async function stopEncodings(playSessionId: string, signal?: AbortSignal) {
       deviceId: getJellyfinPlaybackDeviceId(),
       deviceName: getJellyfinPlaybackDeviceName(),
     }),
-  }).catch(() => undefined);
+  }).then((res) => res.arrayBuffer()).catch(() => undefined);
+}
+
+const BANDWIDTH_PROBE_BYTES = 500_000;
+const BANDWIDTH_PROBE_MS = 4_000;
+
+/**
+ * Measure the link before Automatic picks its first ceiling, as jellyfin-web
+ * does (bitrateTest.ts: a timed 500 KB download, 5 s timeout).
+ *
+ * Without it Automatic started every title at a fixed 6 Mbps, which direct-
+ * played a 5 Mbps file over a 1.5 Mbps cellular link: about 20 s before the
+ * first frame. The Network Information API is no substitute: iOS Safari has
+ * none, and Chrome's estimate ignores private-network hosts, which a
+ * self-hosted Helprr usually is. Timed from the response headers, so the round
+ * trip is not counted as slowness; a slow link that runs out of time is
+ * measured on what arrived. 0 when it cannot tell.
+ */
+async function probeBandwidth(): Promise<number> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), BANDWIDTH_PROBE_MS);
+  let bytes = 0;
+  let started = 0;
+  try {
+    const res = await fetch(`/api/jellyfin/stream/bitrate-test?size=${BANDWIDTH_PROBE_BYTES}`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!res.ok || !res.body) return 0;
+    started = performance.now();
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+    }
+  } catch {
+    // Out of time (or offline): what arrived is still a measurement.
+  } finally {
+    clearTimeout(timer);
+  }
+  const elapsed = performance.now() - started;
+  return started && bytes >= 32_000 && elapsed > 0 ? bytes * 8_000 / elapsed : 0;
 }
 
 async function fetchCatalogItems(params: Record<string, string>, signal?: AbortSignal): Promise<JellyfinItem[]> {
@@ -768,11 +835,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const restartRef = useRef<((patch: PlayOptions) => Promise<void>) | null>(null);
   const streamRef = useRef<HelprrStreamInfo | null>(null);
   /**
-   * The stream a terminal failure has already reported Stopped for.
+   * The stream a terminal failure has retired: reported Stopped and released,
+   * or found to have nothing to report (Jellyfin never heard it was playing).
    *
    * It stays on the player after the failure, for Retry and its position, so
    * Stop, a switch to another title or the page going away would otherwise
-   * report it a second time.
+   * report it (again) and release its encoder a second time.
    */
   const failedStopRef = useRef<HelprrStreamInfo | null>(null);
   /**
@@ -1117,20 +1185,40 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     maxStreamingBitrate: maxBitrate || undefined,
   }), [maxBitrate, muted, playbackRate, volume]);
 
+  /**
+   * Retire the stream a terminal failure leaves on the player, returning the
+   * Stopped report to send, if any.
+   *
+   * Only a title Jellyfin was told is playing gets one: a first start that
+   * never played has nothing to end there, and its report would still write
+   * the title's resume point. The report is sent under the announced session,
+   * the one Jellyfin knows; after a failed restart that is not the fallback
+   * stream on the player, whose encoder the caller releases separately. The
+   * position is the failed stream's, taken before teardown. Either way the
+   * stream is marked, so nothing reports it or releases its encoder again.
+   */
+  const retireFailedStream = useCallback((failed: HelprrStreamInfo): Parameters<typeof report>[2] | null => {
+    if (failedStopRef.current === failed) return null;
+    failedStopRef.current = failed;
+    if (announcedRef.current?.item.Id !== failed.item.Id) return null;
+    announcedRef.current = null;
+    return stoppedReportFor(failed);
+  }, [stoppedReportFor]);
+
   const failPlayback = useCallback(async (fallbackMessage: string) => {
+    // A run of skips still gathering would restart the stream it lands on and
+    // clear this error.
+    cancelPendingSkip();
     noteRetryPosition();
     const stillFailed = reserveStart(startTokenRef);
     // Jellyfin lists the title as playing, its position frozen, until it hears
     // Stopped; jellyfin-web sends one on a playback error too (playbackmanager.js
     // `onPlaybackError`). Taken before teardown, once the clock holds the
-    // position Retry will use.
+    // position Retry will use. Sent for the session Jellyfin was told is
+    // playing (see `retireFailedStream`).
     const failed = streamRef.current;
-    const stoppedReport = failed && failedStopRef.current !== failed && announcedRef.current?.item.Id === failed.item.Id
-      ? stoppedReportFor(failed) : null;
-    if (stoppedReport) {
-      failedStopRef.current = failed;
-      announcedRef.current = null;
-    }
+    const announced = announcedRef.current;
+    const stoppedReport = failed ? retireFailedStream(failed) : null;
     expansionRef.current?.abort();
     clearTimers();
     mediaRef.current?.pause();
@@ -1139,8 +1227,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     mediaRef.current?.load();
     // Report before cleanup, as Stop does.
     void (async () => {
-      if (failed && stoppedReport) {
-        await report('stopped', failed, stoppedReport, AbortSignal.timeout(10_000));
+      if (announced && stoppedReport) {
+        await report('stopped', announced, stoppedReport, AbortSignal.timeout(10_000));
         void getQueryClient().invalidateQueries({ queryKey: ['jellyfin', 'catalog'] });
       }
       await stopEncodings(failed?.playSessionId ?? '', AbortSignal.timeout(10_000));
@@ -1159,7 +1247,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       return;
     }
     setError(fallbackMessage);
-  }, [destroyPlayers, noteRetryPosition, stoppedReportFor]);
+  }, [cancelPendingSkip, destroyPlayers, noteRetryPosition, retireFailedStream]);
 
   const attachMedia = useCallback(async (
     next: HelprrStreamInfo,
@@ -1298,7 +1386,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     await applySubtitleTrack(next, requestedSubtitleIndex ?? next.mediaSource.DefaultSubtitleStreamIndex ?? null, isCurrent);
     if (!isCurrent()) return;
 
-    return playMedia(el, isCurrent);
+    // Read now, not at the start: a pause or play pressed while this attached
+    // is what the viewer wants.
+    return playMedia(el, isCurrent, undefined, pausedIntentRef.current);
   }, [applySubtitleTrack, destroyPlayers, failPlayback, maxBitrate, muted, playbackRate, volume]);
 
   const startItem = useCallback(async (nextItem: JellyfinItem, options: PlayOptions = {}, owner?: () => boolean, releasedSession?: string) => {
@@ -1332,7 +1422,15 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     const resumeTicks = options.startTimeTicks
       ?? nextItem.UserData?.PlaybackPositionTicks
       ?? 0;
-    const ceiling = effectiveBitrate(options.maxStreamingBitrate ?? maxBitrate, bandwidthRef.current.ceiling);
+    const choice = options.maxStreamingBitrate ?? maxBitrate;
+    // Automatic measures the link before the first video it starts (and again
+    // once that measurement is old); see `probeBandwidth`. Music needs no
+    // measuring, and an explicit choice is the viewer's.
+    if (choice === 0 && nextItem.MediaType !== 'Audio' && bandwidthRef.current.needsProbe()) {
+      bandwidthRef.current.seed(await probeBandwidth());
+      if (superseded()) return;
+    }
+    const ceiling = effectiveBitrate(choice, bandwidthRef.current.ceiling);
     setEffectiveMaxBitrate(ceiling);
     const request: PlayOptions = {
       startTimeTicks: resumeTicks,
@@ -1455,9 +1553,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         setVideoExpanded(true);
       }
       // The stream could not be reached at all: network errors with no HTTP
-      // status and no data. A transcode would fail the same way, after another
-      // full wait, so say so now.
-      const unreachable = unreachableRef.current && (mediaRef.current?.readyState ?? 0) === HTMLMediaElement.HAVE_NOTHING;
+      // status and no data, or no answer to the request for one. A transcode
+      // would fail the same way, after another full wait, so say so now.
+      const unreachable = cause instanceof StreamUnreachableError
+        || (unreachableRef.current && (mediaRef.current?.readyState ?? 0) === HTMLMediaElement.HAVE_NOTHING);
       const canRetryDirect = !connectRequired && !unreachable && options.enableDirectPlay !== false && !retryingRef.current;
       if (canRetryDirect) {
         attempt.attached = false;
@@ -1489,12 +1588,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       // playback error the same way (playbackmanager.js `onPlaybackError`).
       const onPlayer = streamRef.current;
       const replaced = onPlayer && onPlayer.item.Id !== nextItem.Id ? onPlayer : null;
-      const stoppedReport = onPlayer && failedStopRef.current !== onPlayer && announcedRef.current?.item.Id === onPlayer.item.Id
-        ? stoppedReportFor(onPlayer) : null;
-      if (stoppedReport) {
-        failedStopRef.current = onPlayer;
-        announcedRef.current = null;
-      }
+      const announced = announcedRef.current;
+      const stoppedReport = onPlayer ? retireFailedStream(onPlayer) : null;
+      // As in `failPlayback`: a gathering run of skips would restart this.
+      cancelPendingSkip();
       // A visible terminal error must also end media work. Leaving hls.js
       // attached lets its network recovery keep requesting segments forever.
       // Retire callbacks before destruction so late loader events cannot retry.
@@ -1508,8 +1605,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       const failedSession = streamRef.current?.playSessionId;
       // Report before cleanup, as Stop does.
       void (async () => {
-        if (onPlayer && stoppedReport) {
-          await report('stopped', onPlayer, stoppedReport, AbortSignal.timeout(10_000));
+        if (announced && stoppedReport) {
+          await report('stopped', announced, stoppedReport, AbortSignal.timeout(10_000));
           void getQueryClient().invalidateQueries({ queryKey: ['jellyfin', 'catalog'] });
         }
         if (failedSession) await stopEncodings(failedSession, AbortSignal.timeout(10_000));
@@ -1528,7 +1625,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       setStatus('error');
       setError(unreachable ? "The stream couldn't be reached. Check the connection and try again." : message);
     }
-  }, [attachMedia, destroyPlayers, maxBitrate, muted, noteRetryPosition, playbackRate, setPositionSeconds, stoppedReportFor, volume]);
+  }, [attachMedia, cancelPendingSkip, destroyPlayers, maxBitrate, muted, noteRetryPosition, playbackRate, retireFailedStream, setPositionSeconds, stoppedReportFor, volume]);
 
   const playItems = useCallback(async (items: JellyfinItem[], startIndex = 0, options?: PlayOptions) => {
     // Starting a title, even the same one again, ends a gathering run of skips.

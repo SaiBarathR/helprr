@@ -32,6 +32,9 @@ it("keeps every slide's logo loaded and crossfades it with the slide instead of 
   expect(titleLayer('Alpha')?.getAttribute('aria-hidden')).toBe('false');
   expect(titleLayer('Black Bag')?.getAttribute('aria-hidden')).toBe('true');
   expect(titleLayer('Black Bag')?.className).toContain('opacity-0');
+  // Loaded early but behind what is on screen.
+  expect(next?.getAttribute('fetchpriority')).toBe('low');
+  expect(logo('Alpha')?.getAttribute('fetchpriority')).toBeNull();
 
   await userEvent.click(screen.getByRole('button', { name: 'Show Black Bag' }));
 

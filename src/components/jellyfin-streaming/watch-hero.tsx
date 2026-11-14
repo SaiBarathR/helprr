@@ -142,6 +142,10 @@ function ClassicHero({ items, onPlay, pending }: WatchHeroProps) {
                   <HeroTitle
                     name={slide.Name}
                     logoUrl={slide.ImageTags?.Logo ? jellyfinImageUrl(slide.Id, 'Logo', 640) : null}
+                    // Mounted, if hidden, from the first paint, where opacity
+                    // does not defer a lazy image: the later slides' logos must
+                    // not compete with the backdrop and page actually on screen.
+                    fetchPriority={slideIndex === index ? undefined : 'low'}
                     as="p"
                     frameClassName="h-16 w-56 md:h-20 md:w-72"
                     textClassName="text-3xl font-semibold tracking-tight text-balance md:text-4xl"
