@@ -93,6 +93,13 @@ describe('Poster rails in a 2×1 phone cell', () => {
     render(<ForYouWidget refreshInterval={60_000} narrow rowSpan={1} />);
     expect(screen.getByText('No suggestions yet')).toBeTruthy();
   });
+
+  it('does not claim "no suggestions" in edit mode, which loads none', () => {
+    mocks.data = [];
+    render(<ForYouWidget refreshInterval={60_000} narrow rowSpan={1} editMode />);
+    expect(screen.queryByText('No suggestions yet')).toBeNull();
+    expect(screen.getByText('Top suggestion')).toBeTruthy();
+  });
 });
 
 describe('Service Health', () => {
@@ -106,6 +113,14 @@ describe('Service Health', () => {
     expect(screen.getByText('2/3')).toBeTruthy();
     expect(container.textContent).toContain('1 down');
     expect(screen.queryByText('a')).toBeNull();
+  });
+
+  it('says None in a one-column cell when there are no services, not "0/0"', () => {
+    mocks.size = { width: 44, height: 60 };
+    mocks.data = [];
+    const { container } = render(<ServiceHealthWidget refreshInterval={60_000} narrow colSpan={1} />);
+    expect(container.textContent).not.toContain('0/0');
+    expect(screen.getByText('None')).toBeTruthy();
   });
 
   it('keeps the list of services in a wider cell', () => {

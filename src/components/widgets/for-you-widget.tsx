@@ -80,7 +80,8 @@ export function ForYouWidget({
       <CompactRailTile
         title={title}
         editMode={editMode}
-        note={loading ? 'Loading…' : 'No suggestions yet'}
+        // Edit mode doesn't load suggestions, so "none yet" would be untrue there.
+        note={loading ? 'Loading…' : editMode ? 'Top suggestion' : 'No suggestions yet'}
         item={top ? {
           href: top.href,
           title: top.title,

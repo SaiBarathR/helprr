@@ -18,12 +18,18 @@ function axisLabels(container: HTMLElement) {
 
 describe('Play Activity date axis', () => {
   it('spaces whole labels a slot apart, counted back from the last day', () => {
-    // 400px fits 8 labels: every 4th bar from the last.
+    // A 400px body leaves a 376px bar row, room for 7 labels: every 5th bar from the last.
     const { container } = render(<PlayActivityChart data={data} width={400} />);
     const labels = axisLabels(container);
     expect(labels.map((l) => l.textContent)).toEqual([
-      label(17, 9), label(21, 9), label(25, 9), label(29, 9), label(2), label(6), label(10), label(14),
+      label(20, 9), label(25, 9), label(30, 9), label(4), label(9), label(14),
     ]);
+  });
+
+  it('shows only the last label in a one-column phone cell, where two overlapped', () => {
+    // A 60px body leaves a 36px bar row: room for one ~24px label, not two.
+    const { container } = render(<PlayActivityChart data={data} width={60} />);
+    expect(axisLabels(container).map((l) => l.textContent)).toEqual([label(14)]);
   });
 
   it('pins the end labels inside the chart instead of centring them past its edge', () => {

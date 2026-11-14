@@ -66,8 +66,12 @@ export function ServiceHealthWidget({ refreshInterval, narrow = false, colSpan, 
             whiteSpace: 'nowrap',
           }}
         >
-          {services ? `${okCount}/${list.length}` : '–'}
+          {services && list.length > 0 ? `${okCount}/${list.length}` : '–'}
         </div>
+        {/* No services to check (none connected, or none this account may see): say so, not "0/0". */}
+        {services && list.length === 0 && (
+          <div style={{ marginTop: 6, fontSize: 10, color: HPR.fgMute, fontFamily: FONT_MONO }}>None</div>
+        )}
         {services && list.length > 0 && (
           <div
             style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6, fontSize: 10, color: HPR.fgMute, fontFamily: FONT_MONO }}

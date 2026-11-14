@@ -249,10 +249,12 @@ export function PlayActivityChart({ data, width = 0 }: { data: PlayActivityUser[
   const { realUsers, aggregated, totalPlays, maxVal, avgPerDay, periodLabel, labelInterval, userBars, isMonthly } =
     chartData;
 
-  // Fit axis labels to the measured width (~48px per "Jun 12" label) so they
-  // never overlap on narrow cells; falls back to the count-based interval.
+  // Fit axis labels to the bar row (the measured width less the card's 24px
+  // padding, ~48px per "Jun 12" label) so they never overlap; a one-column
+  // phone cell has room for the last label only. Falls back to the
+  // count-based interval before the first measure.
   const effectiveInterval = width > 0
-    ? Math.max(1, Math.ceil(aggregated.length / Math.max(2, Math.floor(width / 48))))
+    ? Math.max(1, Math.ceil(aggregated.length / Math.max(1, Math.floor((width - 24) / 48))))
     : labelInterval;
 
   return (
