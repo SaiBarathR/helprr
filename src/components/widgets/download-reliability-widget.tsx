@@ -11,6 +11,7 @@ import { DaysPill } from './widget-filter-controls';
 import { useWidgetFilter } from './use-widget-filter';
 import { InsightsWidgetFrame, INSIGHTS_DAYS_OPTIONS, daysToRange } from './insights-widget-frame';
 import { SuccessRing } from '@/components/insights/insights-shared';
+import { fetchOrOffline } from '@/lib/network-error';
 
 const DownloadSuccessChart = dynamic(
   () => import('@/components/insights/download-success-card').then((m) => m.DownloadSuccessChart),
@@ -33,7 +34,7 @@ function Chip({ label, value, color }: { label: string; value: number; color: st
 
 async function fetchDownloads(days: number, signal?: AbortSignal): Promise<InsightsDownloadsResponse> {
   const { from, to } = daysToRange(days);
-  const res = await fetch(`/api/insights/downloads?from=${from}&to=${to}`, { signal });
+  const res = await fetchOrOffline(`/api/insights/downloads?from=${from}&to=${to}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }

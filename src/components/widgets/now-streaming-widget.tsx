@@ -22,9 +22,10 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
+import { fetchOrOffline } from '@/lib/network-error';
 
 async function fetchSessions(signal?: AbortSignal): Promise<JellyfinSession[]> {
-  const res = await fetch('/api/jellyfin/sessions', { signal });
+  const res = await fetchOrOffline('/api/jellyfin/sessions', { signal });
   if (!res.ok) throw new Error(`Failed to fetch sessions (${res.status})`);
   const data: { sessions: JellyfinSession[] } = await res.json();
   return data.sessions;

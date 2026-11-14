@@ -18,6 +18,7 @@ import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { fetchJellyfinTasks } from '@/lib/widgets/widget-fetchers';
 import { SectionHeader, HPR } from './bento-primitives';
 import { useElementSize } from '@/lib/widgets/use-element-size';
+import { fetchOrOffline } from '@/lib/network-error';
 
 type ServerAction = 'restart' | 'shutdown' | 'scan-libraries';
 
@@ -28,7 +29,7 @@ const SERVER_ACTION_LABELS: Record<ServerAction, string> = {
 };
 
 async function fetchSystem(signal?: AbortSignal): Promise<JellyfinSystemInfo | null> {
-  const response = await fetch('/api/jellyfin/system', { signal });
+  const response = await fetchOrOffline('/api/jellyfin/system', { signal });
   if (!response.ok) return null;
   const data = await response.json();
   return data.system ?? null;

@@ -20,6 +20,7 @@ import {
 import { SectionHeader, HPR, EmptyState } from './bento-primitives';
 import { formatDurationSeconds } from '@/lib/jellyfin-helpers';
 import { formatDate, formatDateTime } from '@/lib/date-format';
+import { fetchOrOffline } from '@/lib/network-error';
 
 interface Filters {
   fromIso: string;
@@ -90,7 +91,7 @@ export function JellyfinPlayHistoryWidget({ refreshInterval, editMode = false }:
     const params = new URLSearchParams({ from, to, limit: String(PAGE_SIZE), offset: '0' });
     if (filters.userId) params.set('userId', filters.userId);
     if (filters.type) params.set('type', filters.type);
-    const res = await fetch(`/api/jellyfin/playback/custom-history?${params}`, { signal });
+    const res = await fetchOrOffline(`/api/jellyfin/playback/custom-history?${params}`, { signal });
     if (!res.ok) return { items: [], total: 0 };
     const data = await res.json();
     return { items: data.items ?? [], total: data.total ?? 0 };

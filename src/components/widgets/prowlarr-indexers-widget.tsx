@@ -8,6 +8,7 @@ import { useElementSize } from '@/lib/widgets/use-element-size';
 import { getProwlarrIndexerStatusId, isProwlarrIndexerBlocked, type ProwlarrIndexerStatus } from '@/lib/prowlarr-client';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { Dot, Eyebrow, FONT_DISPLAY, FONT_MONO, HPR, ICON_HIDE_HEIGHT_THRESHOLD, ICON_HIDE_THRESHOLD, mix } from './bento-primitives';
+import { fetchOrOffline } from '@/lib/network-error';
 
 interface ProwlarrSummary {
   total: number;
@@ -18,8 +19,8 @@ interface ProwlarrSummary {
 
 async function fetchProwlarr(signal?: AbortSignal): Promise<ProwlarrSummary | null> {
   const [indexersRes, statusRes] = await Promise.allSettled([
-    fetch('/api/prowlarr/indexers', { signal }),
-    fetch('/api/prowlarr/status', { signal }),
+    fetchOrOffline('/api/prowlarr/indexers', { signal }),
+    fetchOrOffline('/api/prowlarr/status', { signal }),
   ]);
   signal?.throwIfAborted();
   // A network failure throws, so the widget says it is offline instead of

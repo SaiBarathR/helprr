@@ -9,7 +9,7 @@ import { getBrowseFreshness } from '@/lib/browse-freshness';
 import { SNAPSHOT_STALE_HEADER, SNAPSHOT_TIME_HEADER } from '@/lib/offline-snapshot';
 import type { WidgetDefinition, WidgetProps } from '@/lib/widgets/types';
 
-const mocks = vi.hoisted(() => ({ component: null as ComponentType<WidgetProps> | null, name: '' }));
+const mocks = vi.hoisted(() => ({ component: null as ComponentType<WidgetProps> | null, name: '', interval: 30 }));
 
 vi.mock('@/lib/store', () => ({
   useUIStore: (selector: (state: { discoverLayout: null }) => unknown) => selector({ discoverLayout: null }),
@@ -27,7 +27,7 @@ vi.mock('@/lib/widgets/registry', () => ({
     category: 'overview',
     defaultDesktopSpan: { colSpan: 4, rowSpan: 1 },
     defaultMobileSpan: { colSpan: 2, rowSpan: 1 },
-    defaultRefreshIntervalSecs: 30,
+    defaultRefreshIntervalSecs: mocks.interval,
   }),
 }));
 vi.mock('../widget-loaders', () => ({
@@ -39,6 +39,8 @@ import { WidgetRenderer } from '../widget-renderer';
 import { TorrentWidget } from '../torrent-widget';
 import { ProwlarrIndexersWidget } from '../prowlarr-indexers-widget';
 import { WantedItemsWidget } from '../wanted-items-widget';
+import { fetchSectionsCached } from '../discover-section-widget';
+import { useWidgetData } from '@/lib/widgets/use-widget-data';
 
 const NOW = Date.UTC(2026, 10, 14, 12, 0, 0);
 
@@ -51,7 +53,7 @@ async function show(name: string, component: ComponentType<WidgetProps>, fetchIm
   mocks.component = component;
   vi.stubGlobal('fetch', vi.fn((url: string) => fetchImpl(String(url))));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const view = render(
     <QueryClientProvider client={client}>
       <WidgetAvailabilityProvider services={[]}>
         <WidgetRenderer instance={{ id: `${name}-1`, widgetId: name, colSpan: 4, rowSpan: 1 }} rowSpan={1} />
@@ -59,7 +61,7 @@ async function show(name: string, component: ComponentType<WidgetProps>, fetchIm
     </QueryClientProvider>,
   );
   await act(async () => vi.advanceTimersByTimeAsync(0));
-  return client;
+  return { client, view };
 }
 
 beforeEach(() => {
@@ -68,6 +70,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  mocks.interval = 30;
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -112,6 +115,76 @@ describe('dashboard widgets with Helprr out of reach', () => {
     expect(screen.queryByRole('status')).toBeNull();
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
     expect(screen.getByRole('status').textContent).toBe('WantedCan’t reach Helprr right now.');
+    expect(getBrowseFreshness()).toBe(0);
+  });
+
+  it('a live widget with data on screen survives one failed poll, and is covered after two in a row', async () => {
+    let up = true;
+    const live = { total: 3, downloading: 1, seeding: 2, paused: 0 };
+    await show('Torrents', TorrentWidget, () => (up ? Promise.resolve(json(live)) : unreachable()));
+    expect(screen.queryByRole('status')).toBeNull();
+    up = false;
+    await act(async () => vi.advanceTimersByTimeAsync(30_100));
+    expect(screen.queryByRole('status')).toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(30_100));
+    expect(screen.getByRole('status').textContent).toBe('TorrentsCan’t reach Helprr right now.');
+    up = true;
+    await act(async () => vi.advanceTimersByTimeAsync(30_100));
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it("a TypeError from the widget's own code is not taken for an unreachable Helprr", async () => {
+    // A 200 with a body the fetcher can't read: `data.transferInfo` on null.
+    await show('Torrents', TorrentWidget, async () => json(null));
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('online, an expiring saved copy is asked for once more, and a live answer keeps the widget up', async () => {
+    mocks.interval = 300;
+    const savedAt = NOW - 4 * 60_000;
+    let calls = 0;
+    await show('Wanted', WantedItemsWidget, async () => {
+      calls += 1;
+      return calls === 1
+        ? json({ missingTotal: 21, cutoffTotal: 47 }, { [SNAPSHOT_STALE_HEADER]: '1', [SNAPSHOT_TIME_HEADER]: String(savedAt) })
+        : json({ missingTotal: 22, cutoffTotal: 47 });
+    });
+    expect(getBrowseFreshness()).toBe(savedAt);
+    await act(async () => vi.advanceTimersByTimeAsync(60_100));
+    expect(calls).toBe(2);
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.body.textContent).toContain('22');
+    expect(getBrowseFreshness()).toBe(0);
+  });
+
+  it("leaving the dashboard takes the widget's saved copy out of the notice", async () => {
+    const savedAt = NOW - 60_000;
+    const { view } = await show('Wanted', WantedItemsWidget, async () =>
+      json({ missingTotal: 21, cutoffTotal: 47 }, { [SNAPSHOT_STALE_HEADER]: '1', [SNAPSHOT_TIME_HEADER]: String(savedAt) }));
+    expect(getBrowseFreshness()).toBe(savedAt);
+    view.unmount();
+    expect(getBrowseFreshness()).toBe(0);
+  });
+
+  it("Discover's reused in-memory response keeps its saved copy, so it still expires at five minutes", async () => {
+    const savedAt = NOW - 4 * 60_000;
+    function Sections({ refreshInterval }: WidgetProps) {
+      const { data } = useWidgetData({ fetchFn: (signal) => fetchSectionsCached(20, signal), refreshInterval, cacheKey: 'discover-test' });
+      return <span>{data ? 'sections' : 'none'}</span>;
+    }
+    let calls = 0;
+    const { client } = await show('Discover', Sections, async () => {
+      calls += 1;
+      return json({ sections: [] }, { [SNAPSHOT_STALE_HEADER]: '1', [SNAPSHOT_TIME_HEADER]: String(savedAt) });
+    });
+    // The pill's Retry: a second load inside Discover's 5-minute promise cache.
+    await act(async () => client.invalidateQueries({ queryKey: ['widget-data'] }));
+    expect(calls).toBe(1);
+    expect(document.body.textContent).toContain('sections');
+    expect(getBrowseFreshness()).toBe(savedAt);
+    // The expiry's own refetch reuses the cached response too, so the copy stays expired.
+    await act(async () => vi.advanceTimersByTimeAsync(60_100));
+    expect(screen.getByRole('status').textContent).toBe('DiscoverCan’t reach Helprr right now.');
     expect(getBrowseFreshness()).toBe(0);
   });
 });

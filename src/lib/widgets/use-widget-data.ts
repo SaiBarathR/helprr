@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useId, useState } from 'react';
-import { useQuery, type FetchStatus } from '@tanstack/react-query';
+import { useEffect, useId, useRef, useState } from 'react';
+import { useQuery, useQueryClient, type FetchStatus } from '@tanstack/react-query';
 import { useWidgetVisibility } from './widget-visibility-context';
 import { useReportWidgetUnavailable, type WidgetUnavailable } from './widget-unavailable-context';
 import { watchSavedCopy, type SavedCopy } from './widget-fetch';
 import { forgetBrowseFreshness } from '@/lib/browse-freshness';
-import { isOfflineError, isQueryOffline, OfflineError } from '@/lib/network-error';
+import { isQueryOffline, OfflineError } from '@/lib/network-error';
 import { SNAPSHOT_MAX_AGE_MS } from '@/lib/offline-snapshot';
 
 interface UseWidgetDataOptions<T> {
@@ -46,6 +46,8 @@ interface UseWidgetDataResult<T> {
 // The saved copy each widget query last loaded, by query key: kept beside the
 // TanStack cache rather than in it, so cached data keeps the fetcher's shape.
 const savedCopies = new Map<string, SavedCopy>();
+// The query's error count at its last success, by query key: the polls failed since.
+const errorsAtSuccess = new Map<string, number>();
 
 /**
  * Widget data hook, backed by TanStack Query. Behavior:
@@ -75,6 +77,7 @@ export function useWidgetData<T>({
   const widgetVisible = useWidgetVisibility();
   const queryEnabled = enabled && widgetVisible;
   const key = cacheKey ?? fallbackKey;
+  const queryClient = useQueryClient();
 
   const query = useQuery<T>({
     queryKey: ['widget-data', key],
@@ -85,6 +88,7 @@ export function useWidgetData<T>({
       const data = await fetchFn(signal);
       if (copy.at) savedCopies.set(key, copy);
       else savedCopies.delete(key);
+      errorsAtSuccess.set(key, queryClient.getQueryState(['widget-data', key])?.errorUpdateCount ?? 0);
       return data;
     },
     enabled: queryEnabled,
@@ -106,15 +110,36 @@ export function useWidgetData<T>({
   const copy = query.data !== undefined ? savedCopies.get(key) : undefined;
   const savedAt = copy?.at ?? 0;
   const [expiredAt, setExpiredAt] = useState(0);
+  const { refetch } = query;
+  // Keyed on the copy's time, not the object: each poll answered with the same
+  // copy makes a new object, which must not restart the timer.
   useEffect(() => {
-    if (!savedAt || !copy) return;
+    if (!savedAt) return;
+    let cancelled = false;
+    const forget = () => savedCopies.get(key)?.paths.forEach(forgetBrowseFreshness);
     const timer = setTimeout(() => {
-      copy.paths.forEach(forgetBrowseFreshness);
-      setExpiredAt(savedAt);
+      // Offline the refetch waits for the network, so the notice goes now.
+      forget();
+      // Online, a route slower than the worker's 2 s timeout is answered from
+      // the copy too: ask once more, and cover only if no newer answer came.
+      void refetch().then(() => {
+        if (cancelled || savedCopies.get(key)?.at !== savedAt) return;
+        forget();
+        setExpiredAt(savedAt);
+      });
     }, Math.max(0, savedAt + SNAPSHOT_MAX_AGE_MS - Date.now()));
-    return () => clearTimeout(timer);
-  }, [savedAt, copy]);
-  const unavailable = widgetUnavailable(query)
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [savedAt, key, refetch]);
+  // Leaving the dashboard takes this widget's saved copy out of the notice.
+  const copyRef = useRef(copy);
+  useEffect(() => {
+    copyRef.current = copy;
+  }, [copy]);
+  useEffect(() => () => copyRef.current?.paths.forEach(forgetBrowseFreshness), []);
+  const unavailable = widgetUnavailable(query, query.errorUpdateCount - (errorsAtSuccess.get(key) ?? 0))
     ?? (savedAt && expiredAt === savedAt ? (navigator.onLine ? 'unreachable' : 'offline') : null);
   useReportWidgetUnavailable(unavailable);
 
@@ -132,21 +157,27 @@ export function useWidgetData<T>({
 /**
  * Whether a widget query has nothing it can truthfully show because Helprr
  * could not be reached: data from before the failure would look live, and no
- * data would show as zeros or "Queue is empty". A server's error answer is not
- * this; the widget keeps its own message for that.
+ * data would show as zeros or "Queue is empty". Only a request that got no
+ * answer counts (fetchOrOffline's OfflineError): a server's error answer, or a
+ * bug in a widget's own code, is left to the widget's own message.
+ *
+ * `failedPolls` is how many polls in a row have failed since the last success.
+ * Data still on screen survives one, so on a patchy connection a live widget
+ * doesn't blink between its data and the cover.
  */
 export function widgetUnavailable(query: {
   isError: boolean;
   error: unknown;
   fetchStatus: FetchStatus;
   data: unknown;
-}): WidgetUnavailable | null {
-  // Waiting to retry until the device is back online.
-  if (query.fetchStatus === 'paused') return 'offline';
-  if (!query.isError) return null;
-  if (isOfflineError(query.error)) return 'offline';
-  // fetch() rejects with a TypeError when no answer came (see widgetErrorText).
-  return query.error instanceof TypeError || query.error instanceof OfflineError ? 'unreachable' : null;
+}, failedPolls: number): WidgetUnavailable | null {
+  // TanStack's online state can lag after an iOS resume; the browser's decides the wording.
+  const reason = typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'unreachable';
+  // Waiting to retry until the device is back online: no poll goes out until then.
+  if (query.fetchStatus === 'paused') return reason;
+  if (!query.isError || !(query.error instanceof OfflineError)) return null;
+  if (query.data !== undefined && failedPolls < 2) return null;
+  return reason;
 }
 
 /**
@@ -156,6 +187,6 @@ export function widgetUnavailable(query: {
  * request URL, shown in red on the Dashboard. A server's answer keeps its message.
  */
 export function widgetErrorText(error: unknown): string {
-  if (error instanceof TypeError) return 'Can’t reach Helprr right now.';
+  if (error instanceof TypeError || error instanceof OfflineError) return 'Can’t reach Helprr right now.';
   return error instanceof Error ? error.message : 'Failed to fetch';
 }

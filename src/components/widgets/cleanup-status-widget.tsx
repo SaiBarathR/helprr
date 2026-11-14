@@ -9,6 +9,7 @@ import { formatDelta } from '@/lib/cleanup/format-delta';
 import type { WidgetProps } from '@/lib/widgets/types';
 import type { AutoRunMode } from '@/lib/cleanup/types';
 import { FONT_DISPLAY, FONT_MONO, HPR, Pill, SectionHeader, mix } from './bento-primitives';
+import { fetchOrOffline } from '@/lib/network-error';
 
 interface SchedulerLeg {
   autoRunMode: AutoRunMode;
@@ -48,12 +49,12 @@ async function fetchCleanupStatus(signal?: AbortSignal): Promise<CleanupStatusDa
   // Per-request fallbacks: a single endpoint failing (network error or non-2xx)
   // degrades just its own section instead of blanking the whole widget.
   const results = await Promise.allSettled([
-    fetch('/api/cleanup/scheduler-status', { signal }),
+    fetchOrOffline('/api/cleanup/scheduler-status', { signal }),
     // Compact preview: top 5 strikes; the header count comes from the response total.
-    fetch('/api/cleanup/strikes?limit=5', { signal }),
+    fetchOrOffline('/api/cleanup/strikes?limit=5', { signal }),
     // Offset at local midnight (not now) so DST-transition days keep the
     // server's "today" boundary aligned with the user's calendar day.
-    fetch(`/api/cleanup/stats?tzOffsetMinutes=${new Date(new Date().setHours(0, 0, 0, 0)).getTimezoneOffset()}`, { signal }),
+    fetchOrOffline(`/api/cleanup/stats?tzOffsetMinutes=${new Date(new Date().setHours(0, 0, 0, 0)).getTimezoneOffset()}`, { signal }),
   ]);
   signal?.throwIfAborted();
   // None reached Helprr: say so, rather than "0 strikes" and an idle scheduler.

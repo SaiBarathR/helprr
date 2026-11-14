@@ -22,6 +22,7 @@ import {
   ViewModeToggle,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
+import { fetchOrOffline } from '@/lib/network-error';
 
 const CARD_WIDTH = 200;
 const CARD_GAP = 10;
@@ -43,7 +44,7 @@ function itemKey(item: QueueWidgetItem): string {
 }
 
 async function fetchQueue(pageSize: number, signal?: AbortSignal): Promise<QueueWidgetItem[]> {
-  const res = await fetch(`/api/activity/queue?pageSize=${pageSize}`, { signal });
+  const res = await fetchOrOffline(`/api/activity/queue?pageSize=${pageSize}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data: QueueApiResponse = await res.json();
   return data.records || [];

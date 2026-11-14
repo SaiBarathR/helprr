@@ -9,6 +9,7 @@ import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useWidgetFilter } from './use-widget-filter';
 import { daysToStartDate, DaysPill, PROWLARR_DAYS_OPTIONS } from './widget-filter-controls';
 import { SectionHeader, HPR } from './bento-primitives';
+import { fetchOrOffline } from '@/lib/network-error';
 
 export const Y_WIDTH = 96;
 export const CHART_MARGIN = { top: 2, right: 12, left: 0, bottom: 2 } as const;
@@ -26,7 +27,7 @@ export async function fetchProwlarrStats(days: number, signal?: AbortSignal): Pr
   const url = startDate
     ? `/api/prowlarr/stats?startDate=${encodeURIComponent(startDate)}`
     : '/api/prowlarr/stats';
-  const res = await fetch(url, { signal });
+  const res = await fetchOrOffline(url, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   if (data?.error) return null;

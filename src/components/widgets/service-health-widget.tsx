@@ -6,6 +6,7 @@ import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { withAppName } from '@/components/instance-filter';
 import { Dot, Eyebrow, FONT_MONO, HPR, EmptyState } from './bento-primitives';
+import { fetchOrOffline } from '@/lib/network-error';
 
 interface ServiceStatus {
   instanceId: string;
@@ -15,7 +16,7 @@ interface ServiceStatus {
 }
 
 async function fetchServiceHealth(signal?: AbortSignal): Promise<ServiceStatus[]> {
-  const res = await fetch('/api/services/health', { signal });
+  const res = await fetchOrOffline('/api/services/health', { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }
