@@ -110,6 +110,8 @@ async function verifyJellyfinPassword(
  * The delete is the one Settings -> Users makes, so it cascades the same way;
  * the cookie is cleared, and the session went with the account.
  */
+const LAST_ADMIN = 'You are the last active admin. Make someone else an admin first.';
+
 async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
@@ -198,6 +200,12 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
       { status: 403 },
     );
   }
+  if (twoStep && user.role === 'admin') {
+    // A refusal known now must not cost a code: each retry would spend another
+    // recovery code (or this TOTP step). The locked re-check below still decides.
+    const otherAdmins = await prisma.user.count({ where: { role: 'admin', status: 'active', NOT: { id: user.id } } });
+    if (otherAdmins === 0) return NextResponse.json({ error: LAST_ADMIN }, { status: 409 });
+  }
   if (twoStep) {
     const second = await confirmSecondFactor(request, user, code as string);
     if (!second.ok) return second.response;
@@ -241,10 +249,7 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: ACCOUNT_CHANGED }, { status: 409 });
     }
     if (result === 'last-admin') {
-      return NextResponse.json(
-        { error: 'You are the last active admin. Make someone else an admin first.' },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: LAST_ADMIN }, { status: 409 });
     }
   } catch (error) {
     const code = (error as { code?: unknown } | null)?.code;

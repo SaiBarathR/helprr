@@ -4,6 +4,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { libraryStatusResponse, linkLibrary } from '@/lib/archive/library-route';
 import { getTwitchSettings } from '@/lib/twitch/settings';
+import { recordSettingsUpdated } from '@/lib/security-audit';
 
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('twitch.manage');
@@ -19,6 +20,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   return linkLibrary(request, async (data) => {
     await getTwitchSettings();
     await prisma.archiveSettings.update({ where: { id: 'singleton' }, data });
+    await recordSettingsUpdated(request, auth.user, 'Twitch library', Object.keys(data));
   });
 }
 

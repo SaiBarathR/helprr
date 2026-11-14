@@ -50,6 +50,8 @@ vi.mock('@/lib/db', () => {
   };
   return {
     prisma: {
+      // A read outside the transaction: the early last-admin check before a code is spent.
+      user: { count: (...args: unknown[]) => (mocks.order.push('admin-precheck'), mocks.userCount(...args)) },
       $transaction: async (fn: (t: typeof tx) => unknown) => {
         mocks.inTransaction = true;
         try {
@@ -425,6 +427,27 @@ describe('DELETE /api/me', () => {
         action: 'MFA_RECOVERY_CODE_USED', targetId: 'user-1', fields: ['delete-account'],
       }));
       expect(mocks.userDelete).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses the last active admin before spending the code', async () => {
+      mocks.requireUser.mockResolvedValue(signedIn({ ...TWO_STEP, role: 'admin' }));
+      mocks.userCount.mockResolvedValue(0);
+      const res = await del({ currentPassword: PASSWORD, code: 'ABCD-EFGH-JKLM' });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ error: expect.stringContaining('last active admin') });
+      // No code used up, none audited as used, nothing locked or deleted.
+      expect(mocks.startMfaAttempt).not.toHaveBeenCalled();
+      expect(mocks.consumeSecondFactor).not.toHaveBeenCalled();
+      expect(mocks.recordSecurityEvent).not.toHaveBeenCalled();
+      expect(mocks.order).toEqual(['admin-precheck']);
+      expect(mocks.userDelete).not.toHaveBeenCalled();
+    });
+
+    it('an admin with two-step goes while another active admin remains', async () => {
+      mocks.requireUser.mockResolvedValue(signedIn({ ...TWO_STEP, role: 'admin' }));
+      mocks.userCount.mockResolvedValue(1);
+      expect((await del({ currentPassword: PASSWORD, code: '123456' })).status).toBe(200);
+      expect(mocks.order).toEqual(['admin-precheck', 'guard-lock', 'user-lock', 'guard-lock', 'row-lock', 'delete']);
     });
 
     it('deletes nothing when two-step changed after the check', async () => {

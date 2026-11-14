@@ -4,6 +4,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { libraryStatusResponse, linkLibrary } from '@/lib/archive/library-route';
 import { getYoutubeSettings } from '@/lib/youtube/settings';
+import { recordSettingsUpdated } from '@/lib/security-audit';
 
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('youtube.manage');
@@ -19,6 +20,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   return linkLibrary(request, async (data) => {
     await getYoutubeSettings();
     await prisma.youtubeSettings.update({ where: { id: 'singleton' }, data });
+    await recordSettingsUpdated(request, auth.user, 'YouTube library', Object.keys(data));
   });
 }
 

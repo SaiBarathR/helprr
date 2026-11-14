@@ -38,7 +38,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     if (!streamer) return NextResponse.json({ error: 'Streamer not found' }, { status: 404 });
     const data = { policy: json(sanitizeLayer(body.policy)), typePolicies: json(layerMap(body.typePolicies)) };
     await prisma.creatorPolicy.upsert({ where: { creatorId: streamer.id }, update: data, create: { creatorId: streamer.id, ...data } });
-    await recordSettingsUpdated(request, auth.user, 'Twitch retention for one streamer', ['policy', 'typePolicies']);
+    await recordSettingsUpdated(request, auth.user, 'Twitch retention for one streamer', ['policy', 'typePolicies'], streamer.id);
   } else {
     await getTwitchSettings();
     await prisma.archiveSettings.update({

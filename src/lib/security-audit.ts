@@ -109,19 +109,22 @@ function logWriteFailure(error: unknown): void {
  * One row per save of server-wide settings: who saved, what (`label`, e.g.
  * "Server settings"), and the KEYS the save wrote, sorted. Never the values:
  * some are secrets (cookies), and the audit keeps no values at all. A save that
- * wrote nothing records nothing.
+ * wrote nothing records nothing. `targetId` names the one record a save was
+ * for (a channel's or streamer's retention), when there is one.
  */
 export async function recordSettingsUpdated(
   request: NextRequest,
   actor: SecurityAuditActor,
   label: string,
   keys: readonly string[],
+  targetId?: string,
 ): Promise<void> {
   if (keys.length === 0) return;
   await recordSecurityEvent(request, {
     actor,
     action: 'SETTINGS_UPDATED',
     targetType: 'settings',
+    targetId,
     targetLabel: label,
     fields: [...keys].sort(),
   });

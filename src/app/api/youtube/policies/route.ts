@@ -41,7 +41,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     if (!channel) return NextResponse.json({ error: 'Channel not found' }, { status: 404 });
     const data = { policy: json(sanitizeLayer(body.policy)), typePolicies: json(layerMap(body.typePolicies)) };
     await prisma.creatorPolicy.upsert({ where: { creatorId: channel.id }, update: data, create: { creatorId: channel.id, ...data } });
-    await recordSettingsUpdated(request, auth.user, 'YouTube retention for one channel', ['policy', 'typePolicies']);
+    await recordSettingsUpdated(request, auth.user, 'YouTube retention for one channel', ['policy', 'typePolicies'], channel.id);
   } else {
     await getYoutubeSettings();
     await prisma.youtubeSettings.update({

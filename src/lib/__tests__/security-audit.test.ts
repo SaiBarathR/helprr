@@ -177,6 +177,13 @@ describe('recordSettingsUpdated', () => {
     });
   });
 
+  it('names the one record a save was for, when given', async () => {
+    await recordSettingsUpdated(request(), { id: 'm1', username: 'member' }, 'YouTube retention for one channel', ['policy'], 'creator-9');
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ targetId: 'creator-9', targetLabel: 'YouTube retention for one channel', fields: ['policy'] }),
+    });
+  });
+
   it('writes nothing for a save that wrote no key', async () => {
     await recordSettingsUpdated(request(), { id: 'm1', username: 'member' }, 'Server settings', []);
     expect(mocks.create).not.toHaveBeenCalled();
