@@ -64,13 +64,17 @@ describe('a linked download', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('wraps the step labels and checkmarks within their mobile grid columns', async () => {
+  it('keeps each step label on one line beside its tick, never cut', async () => {
     renderPage();
     const pipeline = await screen.findByRole('list', { name: 'Progress' });
     const label = within(pipeline).getByText('Downloading');
-    expect(label.parentElement?.classList.contains('flex-wrap')).toBe(true);
+    // "Downloading" wrapped under its tick on a 390 phone: a column grows to
+    // its one-line label instead, and the ticks go only where even that can't fit.
+    expect(pipeline.className).toContain('grid-cols-[repeat(4,minmax(min-content,1fr))]');
+    expect(label.parentElement?.classList.contains('whitespace-nowrap')).toBe(true);
+    expect(label.parentElement?.classList.contains('flex-wrap')).toBe(false);
     expect(label.classList.contains('truncate')).toBe(false);
-    expect(label.closest('li')?.classList.contains('min-w-0')).toBe(true);
+    expect(label.parentElement?.querySelector('svg')?.getAttribute('class')).toContain('@max-[299px]:hidden');
   });
 
   it('says what went wrong, how far it got, and what to do', async () => {

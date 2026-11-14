@@ -147,17 +147,22 @@ export default function LinkedDownloadPage() {
             </div>
           )}
 
-          <ol className="grid grid-cols-4 gap-1 pt-1" aria-label="Progress">
+          {/* Each step keeps its label on one line beside its tick: the columns
+              stay equal while the labels fit, and the one that doesn't
+              ("Downloading" on a 390 phone) takes the width it needs instead of
+              wrapping under its tick. Where even that can't fit (a 320 phone)
+              the ticks go; the filled bars above still show the progress. */}
+          <ol className="@container grid grid-cols-[repeat(4,minmax(min-content,1fr))] gap-2 pt-1" aria-label="Progress">
             {PIPELINE.map((step, index) => {
               const done = index <= reached;
               const stuck = troubled && index === reached + 1;
               return (
                 <li key={step} className="min-w-0 space-y-1.5">
                   <div className={`h-1 rounded-full ${done ? 'bg-primary' : stuck ? 'bg-destructive' : 'bg-muted'}`} />
-                  <div className={`flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] ${done ? 'text-foreground' : 'text-muted-foreground'}`}>
-                    {done && <Check className="h-3 w-3 shrink-0" />}
-                    {stuck && <X className="h-3 w-3 shrink-0 text-destructive" />}
-                    <span className="min-w-0 break-words">{step}</span>
+                  <div className={`flex items-center gap-x-1 whitespace-nowrap text-[11px] ${done ? 'text-foreground' : 'text-muted-foreground'}`}>
+                    {done && <Check className="h-3 w-3 shrink-0 @max-[299px]:hidden" />}
+                    {stuck && <X className="h-3 w-3 shrink-0 text-destructive @max-[299px]:hidden" />}
+                    <span>{step}</span>
                   </div>
                 </li>
               );

@@ -14,6 +14,7 @@ import { jellyfinTitleItemKey } from '@/lib/recommendations/item-keys';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
+import { JellyfinLinkPrompt } from '@/components/jellyfin-streaming/jellyfin-link-prompt';
 import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { MediaRail } from '@/components/jellyfin-streaming/media-rail';
 import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
@@ -99,6 +100,14 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
 
   if (query.isPending && !query.data) return <PageSpinner />;
   if (query.isError) return <ErrorState message="Couldn't load this title." onRetry={() => void query.refetch()} />;
+  if (query.data?.linked === false) {
+    return (
+      <div className="p-4">
+        <WatchTopBar />
+        <JellyfinLinkPrompt />
+      </div>
+    );
+  }
   if (!item) return <ErrorState message="This title isn't in your Jellyfin library." />;
 
   // Season and episode pages lead with the *series* identity, as the reference

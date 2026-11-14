@@ -42,6 +42,10 @@ export function StatsGridWidget({
   // beside an expanded sidebar at 820px), so the four become one-line rows,
   // value then label, in a single column.
   const isStacked = !isSingleRow && tileWidth > 0 && tileWidth < 92;
+  // The phone's one-row strip gives each tile ~67px at 320 and ~81px at 375:
+  // "13.8 TB", "Downloading" and "TV 5,354 eps" were cut, so the type steps
+  // down, the padding tightens and the episode count gets its own line.
+  const isTight = isSingleRow && tileWidth > 0 && tileWidth < 84;
   const hideIcon = isStacked || (tileWidth > 0 && height > 0 && (tileWidth < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD));
   const { data, loading } = useWidgetData({
     fetchFn: fetchServicesStats,
@@ -112,7 +116,7 @@ export function StatsGridWidget({
                 display: 'flex',
                 alignItems: 'center',
                 gap: isSingleRow ? 1 : compact ? 8 : 10,
-                padding: compact ? '8px 9px' : '10px 12px',
+                padding: isTight ? '6px 5px' : compact ? '8px 9px' : '10px 12px',
                 background: HPR.ink,
                 border: `1px solid ${HPR.hairline}`,
                 borderRadius: 8,
@@ -141,7 +145,7 @@ export function StatsGridWidget({
                   style={{
                     flexShrink: 0,
                     fontFamily: FONT_DISPLAY,
-                    fontSize: compact ? 16 : 18,
+                    fontSize: isTight ? 14 : compact ? 16 : 18,
                     color: HPR.fg,
                     fontWeight: 600,
                     lineHeight: 1.05,
@@ -155,13 +159,14 @@ export function StatsGridWidget({
                 </div>
                 <div
                   style={{
-                    fontSize: 10,
+                    fontSize: isTight ? 9 : 10,
                     color: HPR.fgMute,
                     marginTop: isStacked ? 0 : 2,
                     minWidth: 0,
                     display: 'flex',
-                    gap: 4,
-                    alignItems: 'baseline',
+                    flexDirection: isTight ? 'column' : 'row',
+                    gap: isTight ? 0 : 4,
+                    alignItems: isTight ? 'flex-start' : 'baseline',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -174,6 +179,9 @@ export function StatsGridWidget({
                         color: HPR.fgSubtle,
                         fontFamily: FONT_MONO,
                         fontSize: 9,
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
                       }}
                     >
                       {t.sub}

@@ -98,6 +98,9 @@ export function ProwlarrIndexersWidget({
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
+            // A 1×1 phone cell is 44px wide at 320 and 58px at 375, and the
+            // tracked caps read "INDEX…" there: tighter type fits the word.
+            ...(width > 0 && width < 64 ? { fontSize: 8, letterSpacing: '0.04em' } : null),
           }}
         >
           {compact ? (

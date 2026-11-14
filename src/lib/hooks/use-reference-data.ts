@@ -89,11 +89,12 @@ export function useMediaManagementConfig(
   });
 }
 
-export function useTags(service: ArrService, instanceId?: string) {
+export function useTags(service: ArrService, instanceId?: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.tags(service, instanceId),
     queryFn: jsonFetcher<Tag[]>(`/api/${service}/tags`, instanceId),
     staleTime: REFERENCE_STALE,
+    enabled,
     select: ensureArray,
   });
 }

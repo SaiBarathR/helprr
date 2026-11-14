@@ -118,7 +118,9 @@ export function PlaybackMethodBar({
               <span className="text-[11px] font-medium tabular-nums shrink-0">
                 {sortBy === 'duration' ? formatDurationSeconds(e.time) : e.count}
               </span>
-              <span className="text-[10px] text-muted-foreground tabular-nums w-10 text-right shrink-0">{pct}%</span>
+              {/* Under 180px (820px, sidebar expanded) the share leaves the
+                  label a few letters, so it goes too; the bar above shows it. */}
+              <span className="text-[10px] text-muted-foreground tabular-nums w-10 text-right shrink-0 @max-[179px]/cell:hidden">{pct}%</span>
               {/* Secondary metric goes on compact cells — label + primary metric keep the room. */}
               <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 @max-[259px]/cell:hidden">
                 {sortBy === 'duration' ? `${e.count} plays` : formatDurationSeconds(e.time)}

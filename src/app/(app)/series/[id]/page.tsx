@@ -63,6 +63,9 @@ export default function SeriesDetailPage() {
   // Series + episodes: TanStack's gcTime gives instant back-nav paint without a
   // bespoke snapshot, and these are shared keys (queryKeys.detail / .episodes) so
   // a monitor change on the season or episode view reflects here and vice-versa.
+  // Without Series access the page can only say so: the series' own request
+  // is the one that answers, and the reads beside it would only add more 403s.
+  const canViewSeries = useCan('series.view');
   const seriesQuery = useQuery({
     queryKey: queryKeys.detail('sonarr', seriesId, instance),
     // 404 → null (not an error) so "not found" renders, matching movies/music;
@@ -75,7 +78,7 @@ export default function SeriesDetailPage() {
   const episodesQuery = useQuery({
     queryKey: queryKeys.episodes(seriesId, instance),
     queryFn: jsonFetcher<SonarrEpisode[]>(`/api/sonarr/${seriesId}/episodes`, instance),
-    enabled: Number.isFinite(seriesId),
+    enabled: Number.isFinite(seriesId) && canViewSeries,
     select: ensureArray,
   });
   const episodes = episodesQuery.data ?? [];
@@ -115,11 +118,11 @@ export default function SeriesDetailPage() {
   const caps: SeriesCaps = { canManageActivity, canEditMonitoring, canEditSeries, canManageFiles, canDeleteSeries, canScheduleAlert, isAdmin };
 
   // Reference data — shared (and deduped) with the list / edit / add pages.
-  const { data: qualityProfiles = [] } = useQualityProfiles('sonarr', instance);
+  const { data: qualityProfiles = [] } = useQualityProfiles('sonarr', instance, canViewSeries);
   // The rootfolders route 403s without add/changePath, so skip the fetch (and
   // the Root Folder info row) for plain viewers instead of erroring.
   const { data: rootFolders = [] } = useRootFolders('sonarr', instance, canAddSeries || canChangePath);
-  const { data: tags = [] } = useTags('sonarr', instance);
+  const { data: tags = [] } = useTags('sonarr', instance, canViewSeries);
 
   const anime = useSeriesAnime({ series, seriesId, instance });
   const { animeData, animeLoading, animeEntries, animeDetail } = anime;

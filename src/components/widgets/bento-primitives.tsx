@@ -534,8 +534,10 @@ export function StatTile({
         {icon}
       </div>
       {/* Below 160px the cell stacks one tile per row, so each tile becomes a
-          single "label … value" line to keep all four inside the cell. */}
-      <div className="flex min-w-0 flex-col gap-px @max-[159px]/cell:w-full @max-[159px]/cell:flex-row-reverse @max-[159px]/cell:items-baseline @max-[159px]/cell:justify-between @max-[159px]/cell:gap-2">
+          single "label … value" line to keep all four inside the cell. Below
+          110px even that line cut "Queries 118.5K" short (820px with the
+          sidebar expanded), so the label goes back above the value there. */}
+      <div className="flex min-w-0 flex-col gap-px @max-[159px]/cell:w-full @max-[159px]/cell:flex-row-reverse @max-[159px]/cell:items-baseline @max-[159px]/cell:justify-between @max-[159px]/cell:gap-2 @max-[109px]/cell:flex-col @max-[109px]/cell:items-start @max-[109px]/cell:gap-px @max-[109px]/cell:leading-none">
         <span
           // Font size lives in classes (not inline style) so the container
           // variant can shrink it — the value must stay fully visible.

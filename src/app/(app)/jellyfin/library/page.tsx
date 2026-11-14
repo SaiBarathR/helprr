@@ -12,6 +12,7 @@ import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { WatchHero } from '@/components/jellyfin-streaming/watch-hero';
 import { UpcomingRails } from '@/components/jellyfin-streaming/upcoming-rails';
 import { RecommendationRails } from '@/components/jellyfin-streaming/recommendation-rails';
+import { JellyfinLinkPrompt } from '@/components/jellyfin-streaming/jellyfin-link-prompt';
 import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
 import type { JellyfinItem } from '@/types/jellyfin';
 
@@ -43,7 +44,7 @@ export default function WatchHomePage() {
       <div className="p-4">
         <h1 className="sr-only">Watch</h1>
         <WatchTopBar />
-        <p className="mt-8 text-sm text-muted-foreground">Link a Jellyfin account to browse and play your library here.</p>
+        <JellyfinLinkPrompt />
       </div>
     );
   }

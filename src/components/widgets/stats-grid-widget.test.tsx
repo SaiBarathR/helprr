@@ -57,6 +57,20 @@ describe('StatsGridWidget', () => {
     mocks.size = { width: 600, height: 300 };
   });
 
+  it('steps the type down in the phone strip when a tile is under 84px', () => {
+    mocks.me = { role: 'admin', capabilities: {} };
+    const value = () => [...container.querySelectorAll<HTMLElement>('div')].find((el) => el.textContent === '10' && el.children.length === 0)!;
+    // The one-row strip on a 375 phone: 333 × 66, so ~81px tiles.
+    mocks.size = { width: 333, height: 66 };
+    act(() => root.render(<StatsGridWidget refreshInterval={30_000} />));
+    expect(value().style.fontSize).toBe('14px');
+    // A 390 phone (348 wide, ~85px tiles) keeps the regular size.
+    mocks.size = { width: 348, height: 66 };
+    act(() => root.render(<StatsGridWidget refreshInterval={30_000} />));
+    expect(value().style.fontSize).toBe('16px');
+    mocks.size = { width: 600, height: 300 };
+  });
+
   it('links every tile for an admin', () => {
     mocks.me = { role: 'admin', capabilities: {} };
     act(() => root.render(<StatsGridWidget refreshInterval={30_000} />));

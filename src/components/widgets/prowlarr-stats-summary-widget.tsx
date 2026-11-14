@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import { Database, Search, Download, XCircle } from 'lucide-react';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useWidgetFilter } from './use-widget-filter';
 import { SectionHeader, StatTile, HPR } from './bento-primitives';
 import { DaysPill, PROWLARR_DAYS_OPTIONS } from './widget-filter-controls';
@@ -17,6 +18,7 @@ const DEFAULTS: Filters = { days: 30 };
 
 export function ProwlarrStatsSummaryWidget({ refreshInterval, editMode = false, narrow = false }: WidgetProps) {
   const [filters, setFilters] = useWidgetFilter<Filters>('prowlarr-stats-summary', DEFAULTS);
+  const { ref, width } = useElementSize<HTMLDivElement>();
 
   const fetchFn = useCallback((signal?: AbortSignal) => fetchProwlarrStats(filters.days, signal), [filters.days]);
   const { data, loading } = useWidgetData({
@@ -37,17 +39,20 @@ export function ProwlarrStatsSummaryWidget({ refreshInterval, editMode = false, 
       options={PROWLARR_DAYS_OPTIONS}
       onChange={(days) => setFilters({ days })}
       disabled={editMode}
-      narrow={narrow}
+      // A small desktop span (colSpan 2 beside an expanded sidebar at 820px,
+      // ~64px wide) cut "30 DAYS" off, and up to ~200px it pushed the title
+      // to "Prowlarr …", so it reads "30D" there as on phones.
+      narrow={narrow || (width > 0 && width < 200)}
     />
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div ref={ref} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <SectionHeader title="Prowlarr Stats" badge={badge} />
       {loading && indexers.length === 0 ? (
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       ) : (
-        <div className="grid flex-1 grid-cols-2 gap-2.5 @max-[239px]/cell:gap-x-1.5 @max-[159px]/cell:flex-none @max-[159px]/cell:grid-cols-1 @max-[159px]/cell:content-start @max-[159px]/cell:gap-1.5">
+        <div className="grid flex-1 grid-cols-2 gap-2.5 @max-[239px]/cell:gap-x-1.5 @max-[159px]/cell:flex-none @max-[159px]/cell:grid-cols-1 @max-[159px]/cell:content-start @max-[159px]/cell:gap-1.5 @max-[109px]/cell:gap-1">
           <StatTile
             icon={<Database size={14} />}
             label="Indexers"
