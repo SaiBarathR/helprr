@@ -83,6 +83,13 @@ describe('watch page', () => {
     expect(screen.getByRole('button', { name: 'Go back' })).toBeTruthy();
   });
 
+  it('offers Retry for a rate limit, as the app retries it too', async () => {
+    mocks.catalogStatus = 429;
+    await renderPage();
+    expect(await screen.findByText("Couldn't start playback.", {}, { timeout: 4000 })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Retry/ })).toBeTruthy();
+  });
+
   it('drops Retry when the answer is a refusal', async () => {
     mocks.catalogStatus = 403;
     await renderPage();

@@ -4,10 +4,10 @@ import { use, useEffect, useRef } from 'react';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
+import { isFinalClientError } from '@/lib/query-client';
 import { queryKeys } from '@/lib/query-keys';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
-import { ApiError } from '@/lib/query-fetch';
 import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { JellyfinLinkPrompt } from '@/components/jellyfin-streaming/jellyfin-link-prompt';
 import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
@@ -49,7 +49,7 @@ export default function WatchPage({ params }: { params: Promise<{ itemId: string
   }
   if (query.isError || !query.data?.item) {
     // A refusal or a missing title won't change on a retry.
-    const final = query.error instanceof ApiError && query.error.status >= 400 && query.error.status < 500;
+    const final = isFinalClientError(query.error);
     return (
       <div className="p-4">
         <WatchTopBar />
