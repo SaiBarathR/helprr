@@ -74,6 +74,46 @@ describe('an import with a users section', () => {
   });
 });
 
+describe('the users import mode', () => {
+  it('is passed on when it is one of the three', async () => {
+    const res = await run({ users, usersMode: 'keep-first-admin', currentPassword: 'secret' });
+    expect(res.status).toBe(200);
+    expect(mocks.apply).toHaveBeenCalledWith({ users, usersMode: 'keep-first-admin' }, 'admin-1', 'sess-admin');
+  });
+
+  it.each([['an unknown word', 'merge'], ['a wrong type', 1], ['null', null]])(
+    'is refused for %s before the step-up and before anything is written',
+    async (_label, usersMode) => {
+      const res = await run({ users, usersMode, currentPassword: 'secret' });
+      expect(res.status).toBe(400);
+      expect(mocks.stepUp).not.toHaveBeenCalled();
+      expect(mocks.apply).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not let a member past the admin check by naming a mode', async () => {
+    mocks.auth.mockResolvedValue({ ok: true, user: { id: 'm1', username: 'kid', role: 'member' }, session: { id: 's' } });
+    expect((await run({ users, usersMode: 'restore' })).status).toBe(403);
+    expect(mocks.apply).not.toHaveBeenCalled();
+  });
+
+  it('is recorded with the import, and says when the importer was signed out', async () => {
+    mocks.apply.mockResolvedValue({
+      applied: { appSettings: false, services: [], users: 1 },
+      skipped: [],
+      discoverLayoutApplied: false,
+      followUps: {},
+      jellyfinSignOut: null,
+      importerSignedOut: true,
+    });
+    const res = await run({ users, usersMode: 'restore' });
+    expect(await res.json()).toMatchObject({ importerSignedOut: true });
+    expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      action: 'SETTINGS_IMPORTED', fields: ['users', 'users mode: restore'],
+    }));
+  });
+});
+
 describe('an import with a Jellyfin connection', () => {
   it.each([
     ['another address', [jellyfin('http://evil.example:8096', 'k')]],

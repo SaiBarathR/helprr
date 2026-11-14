@@ -547,6 +547,200 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     expect(await prisma.youtubeSettings.count()).toBe(0);
   });
 
+  describe('the three ways to import user accounts', () => {
+    const FIRST_ADMIN = 'user-bootstrap-admin';
+    let hashA: string;
+    let hashB: string;
+
+    beforeAll(async () => {
+      const { hashPassword } = await import('@/lib/password');
+      [hashA, hashB] = await Promise.all([hashPassword('this-install-password-1'), hashPassword('other-install-password-2')]);
+    });
+
+    /** This install: its first admin "admin", signed in, with settings, a watchlist item and a member "bob". */
+    async function seedThisInstall() {
+      await prisma.user.create({
+        data: {
+          id: FIRST_ADMIN, username: 'admin', displayName: 'Here Admin', passwordHash: hashA, role: 'admin', template: 'admin',
+          sessions: { create: [{ id: 'first-admin-session' }] },
+          settings: { create: { timeZone: 'Asia/Kolkata' } },
+          watchlistItems: { create: [{ source: 'TMDB', externalId: '1', mediaType: 'movie', title: 'Kept' }] },
+        },
+      });
+      await prisma.user.create({ data: { id: 'here-bob', username: 'bob', displayName: 'Bob Here', role: 'member', template: 'member' } });
+    }
+
+    /** Another install's export: its first admin shares this one's fixed id. */
+    function otherInstallUsers(firstAdminName = 'owner') {
+      const account = (id: string, username: string, role: string, passwordHash?: string) => ({
+        id, username, displayName: `${username} (other)`, role, status: 'active', template: role,
+        permissions: {}, jellyfinUserId: null, seerrUserId: null, ...(passwordHash ? { passwordHash } : {}),
+        settings: { timeZone: 'Europe/Paris', upcomingNotifyMode: null, activityDigestMode: null, quietHoursEnabled: false, quietHoursStart: null, quietHoursEnd: null },
+        anilist: null,
+        watchlist: { items: [watchlistItem(9)], tags: [] }, scheduledAlerts: [], dashboardLayouts: [], notificationChannels: [],
+      });
+      return {
+        accounts: [
+          account(FIRST_ADMIN, firstAdminName, 'admin', hashB),
+          // Another install's cuid that happens to be bob's id here: never re-attached outside Restore.
+          account('here-bob', 'carol', 'member'),
+          account('other-bob', 'bob', 'member'),
+        ],
+        musicManageFiles: true as const,
+      };
+    }
+
+    const firstAdmin = () => prisma.user.findUniqueOrThrow({ where: { id: FIRST_ADMIN }, include: { settings: true } });
+    const liveSessions = (userId: string) => prisma.session.count({ where: { userId, revokedAt: null } });
+
+    it("Restore: the other install's first admin replaces this one, signing it out; the importer is told when that is them", async () => {
+      await seedThisInstall();
+      const outcome = await runImport.applySettingsImport({ users: otherInstallUsers(), usersMode: 'restore' } as never, FIRST_ADMIN);
+
+      expect(await firstAdmin()).toMatchObject({ username: 'owner', passwordHash: hashB, role: 'admin', status: 'active', settings: { timeZone: 'Europe/Paris' } });
+      expect(await liveSessions(FIRST_ADMIN)).toBe(0);
+      expect(outcome.importerSignedOut).toBe(true);
+      // Same-install semantics for everyone else: the id re-attaches bob's row as "carol".
+      expect(await prisma.user.findUniqueOrThrow({ where: { id: 'here-bob' } })).toMatchObject({ username: 'carol' });
+    });
+
+    it('Restore by another admin does not report them signed out', async () => {
+      await seedThisInstall();
+      const outcome = await runImport.applySettingsImport({ users: otherInstallUsers(), usersMode: 'restore' } as never, IMPORTER_ID);
+      expect(outcome.importerSignedOut).toBe(false);
+      expect(await liveSessions(FIRST_ADMIN)).toBe(0);
+    });
+
+    it("Restore: an entry that reaches this install's first admin by username cannot demote or disable it", async () => {
+      await seedThisInstall();
+      const users = { accounts: [{ ...otherInstallUsers().accounts[2], id: 'other-x', username: 'admin', role: 'member', status: 'disabled', template: 'member' }] };
+      await runImport.applySettingsImport({ users, usersMode: 'restore' } as never, IMPORTER_ID);
+      expect(await firstAdmin()).toMatchObject({ role: 'admin', status: 'active', template: 'admin' });
+    });
+
+    it("Match by username: the first admin stays when no file account has its username", async () => {
+      await seedThisInstall();
+      const outcome = await runImport.applySettingsImport({ users: otherInstallUsers(), usersMode: 'match-username' } as never, FIRST_ADMIN);
+
+      expect(await firstAdmin()).toMatchObject({ username: 'admin', passwordHash: hashA, settings: { timeZone: 'Asia/Kolkata' } });
+      expect(await liveSessions(FIRST_ADMIN)).toBe(1);
+      expect(outcome.importerSignedOut).toBe(false);
+      // The other first admin becomes an ordinary admin with a fresh id.
+      const owner = await prisma.user.findUniqueOrThrow({ where: { username: 'owner' } });
+      expect(owner).toMatchObject({ role: 'admin', passwordHash: hashB });
+      expect(owner.id).not.toBe(FIRST_ADMIN);
+      // bob matched by name; carol is new, not bob's row under the file's id.
+      expect(await prisma.user.findUniqueOrThrow({ where: { id: 'here-bob' } })).toMatchObject({ username: 'bob', displayName: 'bob (other)' });
+      const carol = await prisma.user.findUniqueOrThrow({ where: { username: 'carol' } });
+      expect(carol.id).not.toBe('here-bob');
+      expect(await prisma.watchlistItem.count({ where: { userId: FIRST_ADMIN } })).toBe(1);
+    });
+
+    it('Match by username: the same username updates the first admin, still pinned admin and active', async () => {
+      await seedThisInstall();
+      const users = otherInstallUsers();
+      // A non-first-admin entry named like this install's first admin, trying to demote and disable it.
+      users.accounts.push({ ...users.accounts[2], id: 'other-x', username: 'admin', role: 'member', status: 'disabled', template: 'member', passwordHash: hashB } as never);
+      const outcome = await runImport.applySettingsImport({ users, usersMode: 'match-username' } as never, FIRST_ADMIN);
+
+      expect(await firstAdmin()).toMatchObject({ username: 'admin', role: 'admin', status: 'active', template: 'admin', passwordHash: hashB });
+      expect(await liveSessions(FIRST_ADMIN)).toBe(0);
+      expect(outcome.importerSignedOut).toBe(true);
+    });
+
+    it("Keep this install's first admin: never changed, even by a file account with its username", async () => {
+      await seedThisInstall();
+      const users = otherInstallUsers('admin');
+      const outcome = await runImport.applySettingsImport({ users, usersMode: 'keep-first-admin' } as never, FIRST_ADMIN);
+
+      const kept = await firstAdmin();
+      expect(kept).toMatchObject({ username: 'admin', displayName: 'Here Admin', passwordHash: hashA, settings: { timeZone: 'Asia/Kolkata' } });
+      expect(await liveSessions(FIRST_ADMIN)).toBe(1);
+      expect(await prisma.watchlistItem.count({ where: { userId: FIRST_ADMIN } })).toBe(1);
+      expect(outcome.importerSignedOut).toBe(false);
+      expect(outcome.skipped).toContain('User "admin" skipped: this install\'s first admin is kept as it is');
+      // Everyone else is imported by username.
+      expect(outcome.applied.users).toBe(2);
+      expect(await prisma.user.findUniqueOrThrow({ where: { id: 'here-bob' } })).toMatchObject({ displayName: 'bob (other)' });
+    });
+
+    it('Keep: the first admin of the file is added as an ordinary account when its name is free', async () => {
+      await seedThisInstall();
+      await runImport.applySettingsImport({ users: otherInstallUsers('owner'), usersMode: 'keep-first-admin' } as never, IMPORTER_ID);
+      expect((await prisma.user.findUniqueOrThrow({ where: { username: 'owner' } })).id).not.toBe(FIRST_ADMIN);
+      expect(await firstAdmin()).toMatchObject({ username: 'admin', passwordHash: hashA });
+    });
+
+    it.each(['match-username', 'keep-first-admin'] as const)(
+      '%s: another admin importing is matched by username, keeps their role and is told they were signed out',
+      async (usersMode) => {
+        await seedThisInstall();
+        await prisma.session.create({ data: { id: 'importer-session', userId: IMPORTER_ID } });
+        const users = otherInstallUsers();
+        users.accounts.push({ ...users.accounts[2], id: 'other-importer', username: 'importer', role: 'member', status: 'disabled', template: 'member', passwordHash: hashB } as never);
+        const outcome = await runImport.applySettingsImport({ users, usersMode } as never, IMPORTER_ID);
+
+        expect(await prisma.user.findUniqueOrThrow({ where: { id: IMPORTER_ID } })).toMatchObject({ role: 'admin', status: 'active', passwordHash: hashB });
+        expect(await liveSessions(IMPORTER_ID)).toBe(0);
+        expect(outcome.importerSignedOut).toBe(true);
+      },
+    );
+
+    it('a username clash with another account skips the entry in every mode instead of failing the import', async () => {
+      await seedThisInstall();
+      for (const usersMode of ['restore', 'match-username', 'keep-first-admin'] as const) {
+        // Restore: the file's first admin is named like bob. Elsewhere bob is matched, so nothing clashes.
+        const outcome = await runImport.applySettingsImport({ users: otherInstallUsers('bob'), usersMode } as never, IMPORTER_ID);
+        if (usersMode === 'restore') expect(outcome.skipped).toContain('User "bob" skipped: username already belongs to another account');
+      }
+      expect(await prisma.user.count({ where: { username: 'bob' } })).toBe(1);
+    });
+
+    it.each(['restore', 'match-username', 'keep-first-admin'] as const)(
+      '%s: a failure after the first admin was written rolls every change back',
+      async (usersMode) => {
+        await seedThisInstall();
+        const store = await import('@/lib/recommendations/profile-store');
+        vi.spyOn(store, 'markTasteProfileStale').mockRejectedValueOnce(new Error('injected failure'));
+        // "admin" in the file so every mode writes an existing account before the failure.
+        const users = otherInstallUsers(usersMode === 'keep-first-admin' ? 'owner' : 'admin');
+
+        await expect(runImport.applySettingsImport({ users, usersMode, appSettings: { pollingIntervalSecs: 45 } } as never, FIRST_ADMIN))
+          .rejects.toThrow('injected failure');
+
+        expect(await firstAdmin()).toMatchObject({ username: 'admin', displayName: 'Here Admin', passwordHash: hashA, settings: { timeZone: 'Asia/Kolkata' } });
+        expect(await liveSessions(FIRST_ADMIN)).toBe(1);
+        expect(await prisma.user.findUniqueOrThrow({ where: { id: 'here-bob' } })).toMatchObject({ username: 'bob', displayName: 'Bob Here' });
+        expect(await prisma.user.count()).toBe(3);
+        expect(await prisma.appSettings.count()).toBe(0);
+      },
+    );
+
+    it.each(['restore', 'match-username', 'keep-first-admin'] as const)(
+      '%s: an old export (no per-account content, no passwords, no musicManageFiles) still imports',
+      async (usersMode) => {
+        await seedThisInstall();
+        const v1 = { accounts: [
+          { id: FIRST_ADMIN, username: 'admin', displayName: 'Old', role: 'admin', status: 'active', template: 'admin', permissions: {}, jellyfinUserId: null, seerrUserId: null, settings: null, anilist: null },
+          { id: 'old-member', username: 'dave', displayName: 'Dave', role: 'member', status: 'active', template: 'member', permissions: { 'music.delete': true }, jellyfinUserId: null, seerrUserId: null, settings: null, anilist: null },
+        ] };
+        const outcome = await runImport.applySettingsImport({ users: v1, usersMode } as never, IMPORTER_ID);
+        expect(await prisma.user.findUniqueOrThrow({ where: { username: 'dave' } })).toMatchObject({ permissions: { 'music.delete': true, 'music.manageFiles': true } });
+        expect(await firstAdmin()).toMatchObject({ passwordHash: hashA, displayName: usersMode === 'keep-first-admin' ? 'Here Admin' : 'Old' });
+        expect(await liveSessions(FIRST_ADMIN)).toBe(1);
+        expect(outcome.importerSignedOut).toBe(false);
+      },
+    );
+
+    it('refuses an unknown mode before writing anything', async () => {
+      await seedThisInstall();
+      await expect(runImport.applySettingsImport({ users: otherInstallUsers(), usersMode: 'merge', appSettings: { pollingIntervalSecs: 45 } } as never, FIRST_ADMIN))
+        .rejects.toThrow('Unknown users import mode');
+      expect(await firstAdmin()).toMatchObject({ username: 'admin', passwordHash: hashA });
+      expect(await prisma.appSettings.count()).toBe(0);
+    });
+  });
+
   it("restores a user's date and time format, treating unknown or missing values as automatic", async () => {
     const doc = fullDocument();
     doc.users.accounts[0].settings = {

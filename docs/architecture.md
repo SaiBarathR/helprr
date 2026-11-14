@@ -1374,6 +1374,20 @@ both against a disposable PostgreSQL (`SETTINGS_IMPORT_TEST_DATABASE_URL`, a
 database named `helprr_import_test`) and checks that a failure in each section
 rolls back the others.
 
+The `users` section matches accounts by the request's `usersMode`
+(`src/lib/settings-import/users-mode.ts`), which is not part of the file:
+`restore` matches the bootstrap admin by its fixed id and other accounts by id,
+then username, and creates missing ones under the file's id; `match-username` and
+`keep-first-admin` match by username only and give new accounts fresh ids, since
+every install's first admin shares `user-bootstrap-admin` and another install's
+ids mean nothing here. `keep-first-admin` skips any entry that reaches this
+install's bootstrap admin. A request without a mode is `restore`, the behaviour
+before the choice existed; an unknown one is refused before the step-up. Whatever
+entry reaches the bootstrap admin, it stays admin, active and on the admin
+template. The importer's own role and status are kept; a new password for them
+ends their sessions, and the response says so (`importerSignedOut`). The dialog
+preselects `keep-first-admin`.
+
 After the import transaction commits, `src/lib/settings-import/follow-ups.ts`
 brings the running server in line with it: loading app settings, purging the
 image cache (`purgeOlderCacheGenerations`, which fails loudly and sweeps every

@@ -8,6 +8,7 @@ import { validateImportSectionLimits } from '@/lib/settings-import/limits';
 import { runImportFollowUps, type ImportWarning } from '@/lib/settings-import/follow-ups';
 import { applySettingsImport, type ImportApplied, type ImportOutcome } from '@/lib/settings-import/run-import';
 import type { ImportRequestBody } from '@/lib/settings-import/shared';
+import { parseUsersImportMode } from '@/lib/settings-import/users-mode';
 import { recordSecurityEvent, serviceTargetLabel } from '@/lib/security-audit';
 import { confirmAdminStepUp } from '@/lib/server/confirm-password';
 import { prisma } from '@/lib/db';
@@ -31,6 +32,8 @@ interface ImportResult {
   /** Saved, but not yet in effect on this server; each can be retried. */
   warnings: ImportWarning[];
   discoverLayoutApplied: boolean;
+  /** The import gave the importer's own account another password, so this session has ended. */
+  importerSignedOut: boolean;
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
@@ -107,6 +110,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
   }
 
+  // How the file's accounts match this install's. Checked before the step-up so
+  // a bad request is refused without asking for a password.
+  const usersMode = parseUsersImportMode(body.usersMode);
+  if (!usersMode) {
+    return NextResponse.json({ error: 'Unknown way to import user accounts' }, { status: 400 });
+  }
+
   // User accounts (admins, roles, password hashes, Jellyfin links) and a new
   // Jellyfin address or key (which decides who "Sign in with Jellyfin" signs
   // in) are ways into accounts, so they need the importer's password, and a
@@ -142,6 +152,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     .filter(([, value]) => (Array.isArray(value) ? value.length > 0 : Boolean(value)))
     .map(([name]) => name);
   if (outcome.discoverLayoutApplied) sections.push('discoverLayout');
+  // Restore can replace this install's first admin; the other modes cannot, or only by username.
+  if (importsUsers) sections.push(`users mode: ${usersMode}`);
   await recordSecurityEvent(request, {
     actor: auth.user,
     action: 'SETTINGS_IMPORTED',
@@ -171,6 +183,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     skipped: outcome.skipped,
     warnings,
     discoverLayoutApplied: outcome.discoverLayoutApplied,
+    importerSignedOut: outcome.importerSignedOut,
   };
   return NextResponse.json(result);
 }

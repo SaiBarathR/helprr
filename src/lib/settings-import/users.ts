@@ -27,6 +27,7 @@ import { applyUserNotificationChannelsInTxn } from './notification-channels';
 import { applyPreparedWatchlist, prepareWatchlist, type PreparedWatchlist } from './watchlist';
 import { applyPreparedScheduledAlerts, prepareScheduledAlerts, type PreparedAlert } from './alerts';
 import { markTasteProfileStale } from '@/lib/recommendations/profile-store';
+import type { UsersImportMode } from './users-mode';
 
 export interface PreparedAccountContent {
   watchlist: PreparedWatchlist | null;
@@ -64,6 +65,10 @@ export async function applyUsersInTxn(
   content: Map<unknown, PreparedAccountContent>,
   /** Filled with the existing users this import changed, for their recommendations to recompose. */
   updatedUserIds: string[] = [],
+  /** How the file's accounts match this install's (users-mode.ts). */
+  mode: UsersImportMode = 'restore',
+  /** Set when the import ended the importer's own sessions. */
+  importer: { signedOut: boolean } = { signedOut: false },
 ): Promise<number> {
   if (!Array.isArray(data.accounts)) {
     skipped.push('Users: missing accounts array');
@@ -88,16 +93,31 @@ export async function applyUsersInTxn(
     const exportedId = typeof acc.id === 'string' && acc.id.length > 0 ? acc.id : null;
     const isBootstrap = exportedId === BOOTSTRAP_ADMIN_ID;
 
-    // Identity: the bootstrap admin matches by its fixed id; everyone else by id
-    // first (clean re-attach on a same-install restore), then by username.
+    // Identity. Restore: the bootstrap admin matches by its fixed id; everyone
+    // else by id first (clean re-attach on a same-install restore), then by
+    // username. The other modes match by username only: another install's ids
+    // mean nothing here, and its first admin shares this one's fixed id.
     let target = null as Awaited<ReturnType<typeof tx.user.findUnique>>;
-    if (isBootstrap) {
+    if (mode !== 'restore') {
+      target = await tx.user.findUnique({ where: { username } });
+    } else if (isBootstrap) {
       target = await tx.user.findUnique({ where: { id: BOOTSTRAP_ADMIN_ID } });
     } else {
       if (exportedId) target = await tx.user.findUnique({ where: { id: exportedId } });
       if (!target) target = await tx.user.findUnique({ where: { username } });
     }
-    const targetId = target?.id ?? exportedId ?? undefined;
+    if (mode === 'keep-first-admin' && target?.id === BOOTSTRAP_ADMIN_ID) {
+      skipped.push(`User "${username}" skipped: this install's first admin is kept as it is`);
+      continue;
+    }
+    // Only Restore recreates an account under the file's id. Elsewhere a new
+    // account gets a fresh one: the file's id may be another account's here,
+    // or this install's first admin's.
+    const createId = mode === 'restore' ? exportedId : null;
+    const targetId = target?.id ?? createId ?? undefined;
+    // This install's first admin, whichever file entry reached it (a username
+    // match too), or the first admin a Restore recreates under its fixed id.
+    const isFirstAdminHere = targetId === BOOTSTRAP_ADMIN_ID;
 
     let role = pickEnum(acc.role, USER_ROLE_VALUES, 'member');
     let status = pickEnum(acc.status, USER_STATUS_VALUES, 'active');
@@ -105,7 +125,7 @@ export async function applyUsersInTxn(
     // The bootstrap admin is the guaranteed recovery account — never let an import
     // file demote or disable it (a hand-edited or hostile backup could otherwise lock
     // every admin out). Force its role/status/template back to the secure defaults.
-    if (isBootstrap) {
+    if (isFirstAdminHere) {
       role = 'admin';
       status = 'active';
       template = 'admin';
@@ -193,6 +213,7 @@ export async function applyUsersInTxn(
           where: { userId: target.id, revokedAt: null },
           data: { revokedAt: new Date() },
         });
+        if (target.id === importerId) importer.signedOut = true;
       }
       // As in Settings -> Users: a restored password or status ends an
       // outstanding invite or reset link, and the calendar feed link. So does
@@ -208,7 +229,7 @@ export async function applyUsersInTxn(
       }
     } else {
       const created = await tx.user.create({
-        data: { ...(exportedId ? { id: exportedId } : {}), ...baseData },
+        data: { ...(createId ? { id: createId } : {}), ...baseData },
       });
       userId = created.id;
     }

@@ -5,7 +5,8 @@ import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('sonner', () => ({ toast: { warning: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
-vi.mock('@/components/permission-provider', () => ({ useMe: () => ({ role: 'admin' }) }));
+const signedIn = vi.hoisted(() => ({ me: { role: 'admin' } as Record<string, unknown> }));
+vi.mock('@/components/permission-provider', () => ({ useMe: () => signedIn.me }));
 const settingsFetch = vi.hoisted(() => ({ forgetAppSettingsFetch: vi.fn() }));
 vi.mock('@/lib/app-settings-fetch', () => settingsFetch);
 const store = vi.hoisted(() => ({ applyImportedUiPrefs: vi.fn(), setDiscoverLayout: vi.fn() }));
@@ -20,6 +21,7 @@ import { ImportSettingsDialog } from '../import-settings-dialog';
 type Cleaner = { enabled: boolean; autoRunMode: string };
 let current: { queue: Cleaner; download: Cleaner };
 let imports: unknown[];
+let importedCalls: unknown[];
 let configRead: 'ok' | 'fails' | 'hangs' | 'held';
 let releaseHeld: () => void;
 let root: Root;
@@ -46,7 +48,7 @@ const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: fa
 function render(isOpen: boolean, client: QueryClient) {
   return act(async () => root.render(
     <QueryClientProvider client={client}>
-      <ImportSettingsDialog open={isOpen} onOpenChange={() => {}} onImported={() => {}} />
+      <ImportSettingsDialog open={isOpen} onOpenChange={() => {}} onImported={(warnings) => { importedCalls.push(warnings); }} />
     </QueryClientProvider>,
   ));
 }
@@ -72,6 +74,8 @@ beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   current = { queue: off, download: off };
   imports = [];
+  importedCalls = [];
+  signedIn.me = { role: 'admin' };
   configRead = 'ok';
   settingsFetch.forgetAppSettingsFetch.mockClear();
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
@@ -499,5 +503,89 @@ describe('importing user accounts asks for your password, and a code while your 
     // The server's answer wins: the confirm step comes back, asking for the password only.
     await vi.waitFor(() => expect(field('Your current password')).not.toBeNull());
     expect(field('Authenticator or recovery code')).toBeNull();
+  });
+});
+
+describe('choosing how user accounts are imported', () => {
+  const FIRST_ADMIN = 'user-bootstrap-admin';
+  const withUsers = () => ({
+    ...exportFile(off, off),
+    users: { accounts: [
+      { id: FIRST_ADMIN, username: 'owner', displayName: 'Owner', role: 'admin', status: 'active', template: 'admin', permissions: {}, passwordHash: 'scrypt$hash' },
+      { id: 'other-1', username: 'admin', displayName: 'Admin', role: 'member', status: 'active', template: 'member', permissions: {} },
+    ] },
+  });
+  const radio = (title: string) =>
+    [...document.querySelectorAll('[role="radio"]')].find((el) => el.textContent?.startsWith(title)) as HTMLButtonElement;
+  const warning = () => document.querySelector('[role="radiogroup"] + div')?.textContent ?? null;
+
+  beforeEach(() => {
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) =>
+      url === '/api/me/totp' ? new Response(JSON.stringify({ available: true, enabled: false, recoveryCodesLeft: 0 })) : base(url, init)));
+  });
+
+  it("preselects keeping this install's first admin, explains each choice, and sends the mode with the users", async () => {
+    const { default: userEvent } = await import('@testing-library/user-event');
+    signedIn.me = { role: 'admin', id: FIRST_ADMIN, username: 'admin' };
+    await open(withUsers());
+    expect([...document.querySelectorAll('[role="radio"]')].map((el) => el.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false']);
+    expect(radio("Keep this install's first admin").textContent).toContain('the rest added. This install\'s first admin is never changed');
+    expect(warning()).toBeNull();
+
+    await click('Replace everything');
+    await vi.waitFor(() => expect(document.querySelector('input[aria-label="Your current password"]')).not.toBeNull());
+    expect(document.body.textContent).toContain("User accounts: Keep this install's first admin");
+    await userEvent.type(document.querySelector<HTMLInputElement>('input[aria-label="Your current password"]')!, 'pw');
+    await click('Continue');
+    await vi.waitFor(() => expect(imports).toHaveLength(1));
+    expect(imports[0]).toMatchObject({ usersMode: 'keep-first-admin', users: expect.any(Object) });
+  });
+
+  it('warns the first admin that Restore renames them, gives them the file password and signs them out', async () => {
+    signedIn.me = { role: 'admin', id: FIRST_ADMIN, username: 'admin' };
+    await open(withUsers());
+    await act(async () => { radio('Restore').click(); });
+    expect(warning()).toContain('you become “owner” with the file\'s password, and are signed out now');
+    // Matching by username reaches them through the file's "admin", which has no password.
+    await act(async () => { radio('Match by username').click(); });
+    expect(warning()).toContain('This updates your own account from the file');
+  });
+
+  it("tells another admin what Restore does to this install's first admin", async () => {
+    signedIn.me = { role: 'admin', id: 'boss-id', username: 'boss' };
+    await open(withUsers());
+    await act(async () => { radio('Restore').click(); });
+    expect(warning()).toContain('This install\'s first admin becomes “owner” with the file\'s password');
+    await act(async () => { radio('Match by username').click(); });
+    expect(warning()).toBeNull();
+  });
+
+  it('keeps the signed-out message up with a way to Sign in, instead of the page reload that would hide it', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event');
+    const { toast } = await import('sonner');
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => url === '/api/settings/import'
+      ? new Response(JSON.stringify({ skipped: [], warnings: [], importerSignedOut: true }))
+      : base(url, init)));
+    signedIn.me = { role: 'admin', id: FIRST_ADMIN, username: 'admin' };
+    await open(withUsers());
+    await act(async () => { radio('Restore').click(); });
+    await click('Replace everything');
+    await vi.waitFor(() => expect(document.querySelector('input[aria-label="Your current password"]')).not.toBeNull());
+    await userEvent.type(document.querySelector<HTMLInputElement>('input[aria-label="Your current password"]')!, 'pw');
+    await click('Continue');
+    await vi.waitFor(() => expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(
+      expect.stringContaining('you are signed out'),
+      expect.objectContaining({ duration: Infinity, action: expect.objectContaining({ label: 'Sign in' }) }),
+    ));
+    expect(importedCalls).toHaveLength(0);
+  });
+
+  it('does not send a mode when the users are left out', async () => {
+    await open(withUsers());
+    await click('Apply selected');
+    await vi.waitFor(() => expect(imports).toHaveLength(1));
+    expect(imports[0]).not.toHaveProperty('usersMode');
   });
 });

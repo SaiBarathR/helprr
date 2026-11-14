@@ -48,6 +48,13 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import { forgetAppSettingsFetch } from '@/lib/app-settings-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { formatDateTime } from '@/lib/date-format';
+import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin-id';
+import {
+  DEFAULT_USERS_IMPORT_MODE,
+  importerAccountInFile,
+  type ImporterAccountMatch,
+  type UsersImportMode,
+} from '@/lib/settings-import/users-mode';
 
 interface ImportSettingsDialogProps {
   open: boolean;
@@ -118,6 +125,37 @@ function buildMigratedUiPrefs(
   return result;
 }
 
+const USERS_MODE_OPTIONS: { mode: UsersImportMode; title: string; description: string }[] = [
+  {
+    mode: 'keep-first-admin',
+    title: "Keep this install's first admin",
+    description: "Accounts are matched by username and the rest added. This install's first admin is never changed.",
+  },
+  {
+    mode: 'match-username',
+    title: 'Match by username',
+    description: "Accounts are matched by username and the rest added. This install's first admin changes only if the file has its username.",
+  },
+  {
+    mode: 'restore',
+    title: 'Restore',
+    description: "The file's first admin replaces this install's first admin. For a backup of this same install.",
+  },
+];
+
+/** What the import does to the importer's own account, in plain words. */
+function importerWarning(match: ImporterAccountMatch, myUsername: string | undefined): string {
+  const renamed = myUsername !== undefined && match.username !== myUsername;
+  if (match.hasPassword) {
+    return renamed
+      ? `This changes your own account: you become “${match.username}” with the file's password, and are signed out now if it differs from yours.`
+      : "This changes your own account: it gets the file's password, and you are signed out now if it differs from yours.";
+  }
+  return renamed
+    ? `This changes your own account: you sign in as “${match.username}” from now on. Your password stays.`
+    : 'This updates your own account from the file. Your role and password stay.';
+}
+
 /** A push subscription lookup that failed or did not answer in time. */
 const LOOKUP_UNKNOWN = Symbol('lookup unknown');
 
@@ -125,7 +163,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   // Global sections (app settings, services, users, …) are admin-only; the
   // server enforces this too — members with settings.backup import only their
   // own watchlist, scheduled alerts, and device-local UI prefs.
-  const isAdmin = useMe()?.role === 'admin';
+  const me = useMe();
+  const isAdmin = me?.role === 'admin';
   const fileRef = useRef<HTMLInputElement>(null);
   const [parsed, setParsed] = useState<ParsedFile | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -140,6 +179,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const [selectedScheduledAlerts, setSelectedScheduledAlerts] = useState(false);
   const [selectedAnimeMappings, setSelectedAnimeMappings] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState(false);
+  const [usersMode, setUsersMode] = useState<UsersImportMode>(DEFAULT_USERS_IMPORT_MODE);
   const [selectedServices, setSelectedServices] = useState<Set<ServiceType>>(new Set());
   const [selectedSourceDevice, setSelectedSourceDevice] = useState<string>('');
   const [importing, setImporting] = useState(false);
@@ -182,6 +222,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedScheduledAlerts(false);
       setSelectedAnimeMappings(false);
       setSelectedUsers(false);
+      setUsersMode(DEFAULT_USERS_IMPORT_MODE);
       setSelectedServices(new Set());
       setSelectedSourceDevice('');
       setPendingConfirm(null);
@@ -266,6 +307,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedScheduledAlerts(false);
       setSelectedAnimeMappings(false);
       setSelectedUsers(false);
+      setUsersMode(DEFAULT_USERS_IMPORT_MODE);
       setSelectedServices(new Set(isAdmin ? availableServices : []));
       const devices = payload.notificationPrefs ?? [];
       setSelectedSourceDevice(isAdmin ? devices[0]?.deviceName ?? '' : '');
@@ -343,6 +385,24 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       || (currentEndpoint !== null && !!selectedSourceDevice && selectedSourceDevice !== '__none__' && availableNotifDevices.length > 0)
     )
   ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedTwitch, selectedYoutube, selectedDashboardLayouts, selectedWatchlist, selectedScheduledAlerts, selectedAnimeMappings, selectedUsers, selectedServices, selectedSourceDevice, availableNotifDevices, currentEndpoint]);
+
+  // What the chosen mode does to the importer's own account, and, in Restore,
+  // to this install's first admin when that is someone else.
+  const fileAccounts = parsed?.payload.users?.accounts;
+  const importerMatch = useMemo(
+    () => (me && Array.isArray(fileAccounts) ? importerAccountInFile(usersMode, fileAccounts, me) : null),
+    [me, fileAccounts, usersMode],
+  );
+  const firstAdminInFile = Array.isArray(fileAccounts)
+    ? fileAccounts.find((a) => a && typeof a === 'object' && a.id === BOOTSTRAP_ADMIN_ID && typeof a.username === 'string')
+    : undefined;
+  const usersModeWarning = importerMatch
+    ? importerWarning(importerMatch, me?.username)
+    : usersMode === 'restore' && firstAdminInFile
+      ? `This install's first admin becomes “${firstAdminInFile.username.trim()}”${typeof firstAdminInFile.passwordHash === 'string' && firstAdminInFile.passwordHash
+        ? " with the file's password, and is signed out if it differs."
+        : '.'}`
+      : null;
 
   function importsUsers(replaceAll: boolean): boolean {
     return isAdmin && !!parsed?.payload.users && (replaceAll || selectedUsers);
@@ -450,6 +510,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       //    so a server failure can't leave UI state half-applied.
       let mergedUiPrefs: Record<string, unknown> | null = null;
       let importWarnings: ImportWarning[] = [];
+      let signedOut = false;
       if (useUi.size > 0) {
         const merged: Record<string, unknown> = {};
         for (const id of useUi) {
@@ -509,6 +570,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       }
       if (useUsers && parsed.payload.users) {
         body.users = parsed.payload.users;
+        body.usersMode = usersMode;
       }
       if (body.users || stepUp.asked) Object.assign(body, stepUp.body());
 
@@ -536,13 +598,27 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         if (json?.discoverLayoutApplied && parsed.payload.discoverLayout) {
           const validatedLayout = validateDiscoverLayout(parsed.payload.discoverLayout);
           if (validatedLayout) setDiscoverLayout(validatedLayout);
-          void queryClient.invalidateQueries({ queryKey: queryKeys.discover('layout') });
+          // Signed out, the refetch would only jump to Sign in before the message below is read.
+          if (!json.importerSignedOut) void queryClient.invalidateQueries({ queryKey: queryKeys.discover('layout') });
         }
         const skipped: string[] = Array.isArray(json?.skipped) ? json.skipped : [];
         const successMsg = json?.discoverLayoutApplied
           ? 'Settings imported (incl. discover layout).'
           : 'Settings imported.';
-        if (skipped.length > 0) {
+        if (json?.importerSignedOut) {
+          signedOut = true;
+          // Your own password changed and this session has ended. The message
+          // stays until you go to Sign in, which a reload would do at once.
+          toast.warning(
+            `${successMsg} Your password changed, so you are signed out. Sign in with the imported password.${skipped.length > 0 ? ` Notes: ${skipped.join('; ')}` : ''}`,
+            {
+              duration: Infinity,
+              // A full load, as for any ended session: it drops every cached query.
+              // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+              action: { label: 'Sign in', onClick: () => window.location.assign('/login') },
+            },
+          );
+        } else if (skipped.length > 0) {
           toast.warning(`Imported with notes: ${skipped.join('; ')}`);
         } else {
           toast.success(successMsg);
@@ -555,7 +631,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         toast.info('Nothing to import.');
       }
 
-      if (onImported) onImported(importWarnings);
+      // Signed out, the page's reload would only land on Sign in and hide why.
+      if (onImported && !signedOut) onImported(importWarnings);
       else showImportWarnings(importWarnings);
       // Not a later opening's to close.
       if (lookupGeneration.current === opening) onOpenChange(false);
@@ -825,6 +902,25 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
                     </div>
                   </div>
                 </label>
+                {/* Applies to "Replace everything" too, so it shows while unticked. */}
+                <div className="mt-3 space-y-2" role="radiogroup" aria-label="How to import user accounts">
+                  {USERS_MODE_OPTIONS.map((option) => (
+                    <UsersModeOption
+                      key={option.mode}
+                      selected={usersMode === option.mode}
+                      disabled={importing}
+                      onSelect={() => setUsersMode(option.mode)}
+                      title={option.title}
+                      description={option.description}
+                    />
+                  ))}
+                </div>
+                {usersModeWarning && (
+                  <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
+                    <p className="text-xs text-amber-800 dark:text-amber-200">{usersModeWarning}</p>
+                  </div>
+                )}
               </section>
             )}
 
@@ -910,6 +1006,19 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               This will overwrite existing data with values from the import file — service connection API keys and/or user accounts (roles, status, permissions, and any included passwords). Continue?
             </DialogDescription>
           </DialogHeader>
+          {pendingConfirm && importsUsers(pendingConfirm.replaceAll) && (
+            <div className="space-y-2 text-sm">
+              <p>
+                User accounts: <span className="font-medium">{USERS_MODE_OPTIONS.find((o) => o.mode === usersMode)?.title}</span>
+              </p>
+              {usersModeWarning && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
+                  <p className="text-xs text-amber-800 dark:text-amber-200">{usersModeWarning}</p>
+                </div>
+              )}
+            </div>
+          )}
           {pendingConfirm && needsStepUp(pendingConfirm.replaceAll) && (
             <StepUpFields
               stepUp={stepUp}
@@ -947,5 +1056,33 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         />
       )}
     </Dialog>
+  );
+}
+
+// The same option card as Add torrent's destination choice.
+function UsersModeOption({ selected, disabled, onSelect, title, description }: {
+  selected: boolean;
+  disabled: boolean;
+  onSelect: () => void;
+  title: string;
+  description: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      disabled={disabled}
+      onClick={onSelect}
+      className={`press-feedback flex min-h-11 w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors disabled:opacity-60 ${selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-accent/40'}`}
+    >
+      <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-primary' : 'border-muted-foreground'}`}>
+        {selected && <span className="h-2 w-2 rounded-full bg-primary" />}
+      </span>
+      <span className="space-y-0.5">
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="block text-xs text-muted-foreground">{description}</span>
+      </span>
+    </button>
   );
 }
