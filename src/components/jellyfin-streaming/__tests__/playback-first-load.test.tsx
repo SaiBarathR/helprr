@@ -47,18 +47,23 @@ vi.mock('hls.js', () => ({
   },
 }));
 // The start bound running out, without waiting 30 s for it.
-vi.mock('@/lib/jellyfin-playback/play-media', () => ({
-  playMedia: async (el: HTMLMediaElement) => {
-    if (media.playsTo) {
-      // It gets going, then stalls before startup completes.
-      el.currentTime = media.playsTo;
-      el.dispatchEvent(new Event('timeupdate'));
-    }
-    if (media.startFails) throw new Error('Playback did not start. Try again or choose another quality.');
-    await el.play();
-    return true;
-  },
-}));
+vi.mock('@/lib/jellyfin-playback/play-media', async (importOriginal) => {
+  const { PAUSED_START, PlaybackFailure } = await importOriginal<typeof import('@/lib/jellyfin-playback/play-media')>();
+  return {
+    PAUSED_START,
+    PlaybackFailure,
+    playMedia: async (el: HTMLMediaElement) => {
+      if (media.playsTo) {
+        // It gets going, then stalls before startup completes.
+        el.currentTime = media.playsTo;
+        el.dispatchEvent(new Event('timeupdate'));
+      }
+      if (media.startFails) throw new PlaybackFailure('Playback did not start. Try again or choose another quality.');
+      await el.play();
+      return true;
+    },
+  };
+});
 
 let h: Harness;
 afterEach(() => {
