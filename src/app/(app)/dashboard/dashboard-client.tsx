@@ -240,10 +240,12 @@ function DashboardInner({ initialLayout, initialDevice, setupChecklist }: Dashbo
         // smaller top padding than the md 1.5rem.
         margin: isMobile ? '-0.5rem -0.5rem -1rem' : 'calc(-1 * var(--main-pad-top)) calc(-1 * var(--main-pad-x)) -1.5rem',
         // The bottom padding lets the last row scroll clear of the mini video
-        // player while it is up, instead of resting under it.
+        // player while it is up, instead of resting under it. While the offline
+        // pill shows, <main>'s own padding already holds that room (with the
+        // pill's), so none is added here twice.
         padding: isMobile
-          ? '0.5rem 0.75rem calc(1rem + var(--mini-player-clearance, 0px))'
-          : '1.25rem 1.75rem calc(1.5rem + var(--mini-player-clearance, 0px))',
+          ? '0.5rem 0.75rem calc(1rem + max(0px, var(--mini-player-clearance, 0px) - var(--browse-notice-clearance, 0px)))'
+          : '1.25rem 1.75rem calc(1.5rem + max(0px, var(--mini-player-clearance, 0px) - var(--browse-notice-clearance, 0px)))',
         minHeight: isMobile
           ? 'calc(100dvh - var(--header-height, 0px) - var(--footer-height, 0px))'
           : '100%',

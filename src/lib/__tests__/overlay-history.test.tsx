@@ -3,6 +3,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
+import { flushSync } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { afterOverlayHistory, isOverlayPopState, resetOverlayHistoryForTests, useBackClosableOpen } from '../overlay-history';
 
@@ -36,6 +37,8 @@ function Page({ onNavigate, refuse = false }: { onNavigate?: () => void; refuse?
         <button onClick={() => setPicker(true)}>Open picker</button>
         {/* A ⋯ action: closes the sheet and opens a confirm in one go. */}
         <button onClick={() => { setSheet(false); setConfirm(true); }}>Delete</button>
+        {/* A ⋯ menu item: Radix commits its onSelect (the confirm) at once, and closes the menu after. */}
+        <button onClick={() => { flushSync(() => setConfirm(true)); setSheet(false); }}>Delete from menu</button>
         {/* A pick that navigates: closes the sheet and leaves. */}
         <button onClick={() => { setSheet(false); afterOverlayHistory(() => onNavigate?.()); }}>Calendar</button>
         <Overlay name="picker" open={picker} onOpenChange={setPicker} />
@@ -188,6 +191,21 @@ describe('overlay history', () => {
     await back();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(window.history.state).toEqual(ROUTER_STATE);
+  });
+
+  it('hands the entry over when the confirm commits before the menu closes', async () => {
+    const go = vi.spyOn(window.history, 'go');
+    render(<Page />);
+    await userEvent.click(screen.getByText('Open sheet'));
+    await userEvent.click(screen.getByText('Delete from menu'));
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByRole('dialog', { name: 'confirm' })).toBeTruthy();
+    expect(go).not.toHaveBeenCalled();
+    expect(window.history.length).toBe(baseLength + 1);
+    await back();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(window.history.state).toEqual(ROUTER_STATE);
+    expect(go).not.toHaveBeenCalled();
   });
 
   it('runs a navigation from inside a sheet only after its entry is off history', async () => {

@@ -132,6 +132,99 @@ describe('the shared overlay roots and the system Back', () => {
     expect((window.history.state as Record<string, unknown> | null)?.__helprrOverlay).toBeUndefined();
   });
 
+  it('closes only the ⋯ menu inside a dialog; the next Back closes the dialog', async () => {
+    globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
+    render(
+      <Dialog defaultOpen>
+        <DialogContent>
+          <DialogTitle>Edit user</DialogTitle>
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger>Options</DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem>Reset</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </DialogContent>
+      </Dialog>,
+    );
+    await waitFor(() => expect((window.history.state as Record<string, unknown>).__helprrOverlay).toBeDefined());
+    await userEvent.click(screen.getByRole('button', { name: 'Options' }));
+    expect(screen.getByRole('menu')).toBeTruthy();
+    await back();
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    expect(screen.getByRole('dialog', { name: 'Edit user' })).toBeTruthy();
+    await back();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect((window.history.state as Record<string, unknown> | null)?.__helprrOverlay).toBeUndefined();
+  });
+
+  it('hands a ⋯ menu entry to the confirm one of its items opens', async () => {
+    globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
+    const go = vi.spyOn(window.history, 'go');
+    function Row() {
+      const [confirm, setConfirm] = useState(false);
+      return (
+        <>
+          <DropdownMenu>
+            <DropdownMenuTrigger>Options</DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onSelect={() => setConfirm(true)}>Delete</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Dialog open={confirm} onOpenChange={setConfirm}>
+            <DialogContent>
+              <DialogTitle>Delete Dune?</DialogTitle>
+            </DialogContent>
+          </Dialog>
+        </>
+      );
+    }
+    const before = window.history.length;
+    render(<Row />);
+    await userEvent.click(screen.getByRole('button', { name: 'Options' }));
+    await waitFor(() => expect(window.history.length).toBe(before + 1));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Delete Dune?' })).toBeTruthy());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+    // One entry, now the confirm's: no step back and forth, and one Back closes it.
+    expect(window.history.length).toBe(before + 1);
+    expect(go).not.toHaveBeenCalled();
+    await back();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect((window.history.state as Record<string, unknown> | null)?.__helprrOverlay).toBeUndefined();
+    go.mockRestore();
+  });
+
+  it('takes a popover entry off when Escape closes it, and adds none with backCloses off', async () => {
+    globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
+    const view = render(
+      <Popover>
+        <PopoverTrigger>Pick a day</PopoverTrigger>
+        <PopoverContent>Days</PopoverContent>
+      </Popover>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Pick a day' }));
+    await waitFor(() => expect((window.history.state as Record<string, unknown>).__helprrOverlay).toBeDefined());
+    const tookOff = new Promise<void>((resolve) => window.addEventListener('popstate', () => resolve(), { once: true }));
+    await userEvent.keyboard('{Escape}');
+    await act(() => tookOff);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect((window.history.state as Record<string, unknown> | null)?.__helprrOverlay).toBeUndefined();
+    view.unmount();
+
+    const before = window.history.length;
+    render(
+      <Popover backCloses={false}>
+        <PopoverTrigger>Hint</PopoverTrigger>
+        <PopoverContent>Typing suggestions</PopoverContent>
+      </Popover>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Hint' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+    expect(window.history.length).toBe(before);
+  });
+
   it('closes a popover and stays on the page', async () => {
     globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
     render(

@@ -73,6 +73,8 @@ let closing: Entry[] = [];
 /** Work waiting for the traversal to settle. */
 let waiting: Array<() => void> = [];
 let flushQueued = false;
+/** Overlays that opened and have yet to put their entry up (see openEntry). */
+let pendingOpens = 0;
 let listening = false;
 let navigateListener: { api: NavigationLike; listener: (event: Event) => void } | null = null;
 /** Which way the user's latest Back or Forward went, and the entry it left,
@@ -325,6 +327,8 @@ function queueFlush() {
   // ⋯ sheet's action) takes the closing one's entry over instead.
   queueMicrotask(() => {
     flushQueued = false;
+    // An overlay opened in the same task puts its entry up first.
+    if (pendingOpens) return queueFlush();
     whenSettled(() => {
       let closed = 0;
       while (closed < entries.length && !entries[entries.length - 1 - closed].onBack) closed++;
@@ -366,7 +370,11 @@ if (typeof window !== 'undefined') listen();
 function openEntry(onBack: () => void): Entry {
   const entry: Entry = { id: nextId++, onBack, key: null, length: 0, pathname: '' };
   listen();
-  whenSettled(() => {
+  // A microtask later, so an overlay closing in the same task hands its entry
+  // over: a ⋯ menu item that opens a confirm commits the confirm first
+  // (Radix flushes onSelect synchronously) and closes the menu after it.
+  pendingOpens++;
+  queueMicrotask(() => { pendingOpens--; whenSettled(() => {
     if (!entry.onBack) return;
     const state = { ...currentState(), [MARKER]: `${PAGE_LOAD}:${entry.id}` };
     const top = entries[entries.length - 1];
@@ -381,7 +389,7 @@ function openEntry(onBack: () => void): Entry {
     entry.length = window.history.length;
     entry.pathname = window.location.pathname;
     entries.push(entry);
-  });
+  }); });
   return entry;
 }
 
@@ -459,6 +467,7 @@ export function resetOverlayHistoryForTests() {
   bouncing = false;
   keep = null;
   flushQueued = false;
+  pendingOpens = 0;
   lastTraverse = -1;
   clearTimeout(traverseTimer);
 }

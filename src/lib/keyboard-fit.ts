@@ -184,9 +184,10 @@ export function revealFocusedField(node: HTMLElement) {
 /**
  * Keeps a centred dialog in the part of the screen the keyboard leaves
  * visible: centred in the full window, its fields and buttons sat behind the
- * keyboard. With the iOS guard, as for drawers.
+ * keyboard. `anchorTop` is the top offset of a dialog placed from the top
+ * instead (its class's value, e.g. "12%"). With the iOS guard, as for drawers.
  */
-export function keepCentredDialogAboveKeyboard(node: HTMLElement): () => void {
+export function keepCentredDialogAboveKeyboard(node: HTMLElement, anchorTop?: string): () => void {
   const stopFitting = followKeyboard(node, (covered, viewport) => {
     if (!covered) {
       node.style.removeProperty('top');
@@ -196,6 +197,16 @@ export function keepCentredDialogAboveKeyboard(node: HTMLElement): () => void {
     // In a Safari tab, Safari's floating address bar sits over the bottom of
     // what is left, and a tap there goes to Safari.
     const visible = viewport.height - (inSafariTab() ? 60 : 0);
+    if (anchorTop) {
+      // A dialog placed from the top (Search) stays there, moved only by an
+      // iOS pan, and gets shorter, so its list ends above the keyboard; moving
+      // its top edge to the middle put the list behind it. A percentage top
+      // and max-height both refer to the layout viewport, so the class's
+      // offset works here.
+      node.style.top = `calc(${anchorTop} + ${viewport.offsetTop}px)`;
+      node.style.maxHeight = `calc(${visible}px - ${anchorTop} - 0.75rem)`;
+      return;
+    }
     // Between the status bar (or a 0.75rem margin) and a 0.75rem margin.
     node.style.top = `calc(${viewport.offsetTop + visible / 2}px + (max(env(safe-area-inset-top), 0.75rem) - 0.75rem) / 2)`;
     node.style.maxHeight = `calc(${visible}px - max(env(safe-area-inset-top), 0.75rem) - 0.75rem)`;

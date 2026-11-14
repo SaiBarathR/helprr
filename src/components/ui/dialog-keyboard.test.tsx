@@ -69,6 +69,36 @@ describe('a centred dialog and the phone keyboard', () => {
     expect(panel.style.top).toBe('');
   });
 
+  it('keeps a dialog placed from the top where it is and only shortens it (Search)', () => {
+    stubViewport(500);
+    render(
+      <Dialog open>
+        <DialogContent keyboardAnchorTop="12%" className="top-[12%] translate-y-0">
+          <DialogTitle>Search</DialogTitle>
+          <input aria-label="Search" />
+        </DialogContent>
+      </Dialog>,
+    );
+    const panel = screen.getByRole('dialog', { name: 'Search' });
+    // Its own 12% (not the middle of the visible part), and only as tall as what is left above the keyboard.
+    expect(panel.style.top).toMatch(/^calc\(12% \+ 0px\)$/);
+    expect(panel.style.top).not.toContain('250px');
+    expect(panel.style.maxHeight).toContain('500px');
+    expect(panel.style.maxHeight).toContain('-12%');
+  });
+
+  it('moves a dialog placed from the top with an iOS pan', () => {
+    stubViewport(500, 80);
+    render(
+      <Dialog open>
+        <DialogContent keyboardAnchorTop="12%">
+          <DialogTitle>Search</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    );
+    expect(screen.getByRole('dialog', { name: 'Search' }).style.top).toMatch(/^calc\(12% \+ 80px\)$/);
+  });
+
   it('does the same for an alert dialog with a typed confirm', () => {
     stubViewport(400);
     render(

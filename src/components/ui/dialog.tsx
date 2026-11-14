@@ -58,24 +58,27 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  keyboardAnchorTop,
   ref,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  /** For a dialog placed from the top: its top offset, so the keyboard only shortens it. */
+  keyboardAnchorTop?: string
 }) {
   const contentRef = React.useCallback(
     (node: HTMLDivElement | null) => {
       if (typeof ref === "function") ref(node)
       else if (ref) ref.current = node
       if (!node) return
-      const stopFitting = keepCentredDialogAboveKeyboard(node)
+      const stopFitting = keepCentredDialogAboveKeyboard(node, keyboardAnchorTop)
       return () => {
         stopFitting()
         if (typeof ref === "function") ref(null)
         else if (ref) ref.current = null
       }
     },
-    [ref]
+    [ref, keyboardAnchorTop]
   )
   return (
     <DialogPortal data-slot="dialog-portal">
