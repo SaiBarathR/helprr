@@ -620,14 +620,14 @@ function EditUserDialog({
   // A reset here revokes every session of the user, so editing yourself signs this device out too.
   const me = useMe();
   const isSelf = me?.id === user.id;
-  // Making them admin, or a password or Jellyfin link for another admin, asks for your password (and code).
+  // Making them admin, or a password, Jellyfin link or username for another admin, asks for your password (and code).
   const stepUp = useStepUp(myTwoStep);
   const promoting = role === 'admin' && user.role !== 'admin';
   // Turning a disabled admin back on asks too.
   const reenablingAdmin = user.role === 'admin' && user.status === 'disabled' && status === 'active';
   const needsStepUp = promoting
     || reenablingAdmin
-    || (user.role === 'admin' && !isSelf && (password.length > 0 || jellyfinUserId !== user.jellyfinUserId))
+    || (user.role === 'admin' && !isSelf && (password.length > 0 || jellyfinUserId !== user.jellyfinUserId || username.trim() !== user.username))
     || stepUp.asked;
 
   // Permissions editor state. Seeded from the permissions query, then driven by

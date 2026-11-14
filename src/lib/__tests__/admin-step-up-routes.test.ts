@@ -212,6 +212,13 @@ const STEPS = [
     status: 200,
   },
   {
+    // Trusted-header sign-in finds the account by its username.
+    name: "renaming another admin",
+    run: (extra: Record<string, unknown>) => patch('admin-2', { username: 'eve', ...extra }),
+    written: () => expect(mocks.tx.user.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ username: 'eve' }) })),
+    status: 200,
+  },
+  {
     name: 'a reset link for another admin',
     run: (extra: Record<string, unknown>) => link('admin-2', extra),
     written: () => expect(mocks.tx.passwordLink.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ userId: 'admin-2', purpose: 'reset' }) })),
@@ -374,6 +381,8 @@ describe('members are unchanged: no password or code asked', () => {
 
   it("edits another admin's display name, or demotes them", async () => {
     expect((await patch('admin-2', { displayName: 'Other' })).status).toBe(200);
+    // Sending their username unchanged (the edit form sends every field) is no rename.
+    expect((await patch('admin-2', { username: 'admin-2', displayName: 'Other' })).status).toBe(200);
     expect((await patch('admin-2', { role: 'member' })).status).toBe(200);
     expectNoStepUp();
   });
