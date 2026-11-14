@@ -3,7 +3,7 @@ import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback, useState } from 'react';
 import Link from '@/components/ui/app-link';
-import { Disc3, Film, Tv, Calendar } from 'lucide-react';
+import { Check, Disc3, Film, Tv, Calendar } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { widgetFetch } from '@/lib/widgets/widget-fetch';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -464,10 +464,29 @@ function UpcomingRow({ ev }: { ev: UpcomingEvent }) {
         >
           {ev.title}
         </div>
-        {ev.releaseTypes && (
+        {(ev.releaseTypes || ev.hasFile) && (
           // As the Today widget: badges wrap onto extra lines on narrow cells instead of clipping.
           <div className="flex flex-wrap items-center gap-1" style={{ marginTop: 3 }}>
-            {ev.releaseTypes.map((t) => <ReleaseTypeBadge key={t} type={t} fitCell />)}
+            {ev.releaseTypes?.map((t) => <ReleaseTypeBadge key={t} type={t} fitCell />)}
+            {ev.hasFile && (
+              // "Downloaded" is the poster's check; where the poster is hidden it
+              // is a badge here, as the Today widget shows it.
+              <span
+                role="img"
+                aria-label="Downloaded"
+                className="hidden @max-[159px]/cell:inline-flex"
+                style={{
+                  alignItems: 'center',
+                  padding: '0 4px',
+                  height: 16,
+                  borderRadius: 4,
+                  background: HPR.green,
+                  color: HPR.ink,
+                }}
+              >
+                <Check size={10} strokeWidth={2.4} />
+              </span>
+            )}
           </div>
         )}
         <div

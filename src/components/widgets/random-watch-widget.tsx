@@ -84,11 +84,11 @@ export function RandomWatchWidget({
 
   const pick = data?.pick ?? null;
 
-  // A one-row cell (2×1 on a phone, any one-row desktop cell): under the
-  // header the hero had no room left at all, so it takes the Discover rails'
-  // compact tile, as For You does in a 2×1. The label opens the Random mode of
-  // For You; a new pick still lands with every poll.
-  if (rowSpan !== undefined && rowSpan <= 1) {
+  // The one-row half-width phone cell (2×1): under the header the hero had no
+  // room left at all, so it takes the Discover rails' compact tile, as For You
+  // and Upcoming do there. The label opens the Random mode of For You; a new
+  // pick still lands with every poll.
+  if (narrow && (rowSpan ?? 1) <= 1) {
     const hint = pick?.mediaType === 'movie' ? 'radarr' : 'sonarr';
     return (
       <CompactRailTile

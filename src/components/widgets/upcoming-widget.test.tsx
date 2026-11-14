@@ -92,6 +92,17 @@ describe('Upcoming widget, one row per film-day', () => {
     expect(parts).toEqual(['Nov 18', '8:30 PM', '· in 1 day']);
   });
 
+  it('shows "downloaded" as a badge where the narrow row hides the poster that carries its check', () => {
+    vi.setSystemTime(new Date(2026, 10, 17, 12, 0));
+    mocks.data = [{ ...film('Aoashi', '2026-11-18'), type: 'episode', seriesId: 4, hasFile: true }, film('Later', '2026-11-20')];
+    const { getAllByRole } = render(<UpcomingWidget refreshInterval={60_000} layoutVariant="list" />);
+    const badges = getAllByRole('img', { name: 'Downloaded' });
+    expect(badges).toHaveLength(1);
+    expect(badges[0].className).toContain('hidden @max-[159px]/cell:inline-flex');
+    // The poster wrapper hides below the same width.
+    expect(badges[0].closest('a')?.querySelector('.\\@max-\\[159px\\]\\/cell\\:hidden')).not.toBeNull();
+  });
+
   it('does not claim "nothing upcoming" in a 2×1 cell in edit mode, which loads nothing', () => {
     mocks.data = [];
     const { container } = render(<UpcomingWidget refreshInterval={60_000} narrow rowSpan={1} editMode />);

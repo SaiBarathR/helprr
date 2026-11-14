@@ -140,6 +140,11 @@ BentoCell.displayName = 'BentoCell';
 // pointer events on the `.bento-drag-handle` element and provides a SE corner
 // resize handle. Touch sizes are sized for fingers on mobile but stay
 // unobtrusive on desktop.
+/** The remove button's geometry, in px from the card's top-left corner (see BentoEditChrome). */
+export const REMOVE_BUTTON = { offset: 11, size: 22, hitArea: 44 } as const;
+// The tap area starts at the card's corner (the button's centre) and grows into the card.
+const REMOVE_BUTTON_CLASS = "after:absolute after:top-[11px] after:left-[11px] after:size-11 after:content-['']";
+
 export interface BentoEditChromeProps {
   onRemove?: () => void;
 }
@@ -164,26 +169,30 @@ export function BentoEditChrome({ onRemove }: BentoEditChromeProps) {
           border: 'none',
           padding: 0,
           cursor: 'grab',
-          zIndex: 3,
+          // Above the remove button's tap area, which reaches under it in a narrow cell.
+          zIndex: 4,
           touchAction: 'none',
         }}
       />
       {/* remove: centred on the card's top-left corner, as on a phone's home
-          screen, clear of the label the cell's padding starts at; a 44px tap area. */}
+          screen, clear of the label the cell's padding starts at. Its 44px tap
+          area grows only into its own card (REMOVE_BUTTON): centred, it reached
+          past the 8px grid gap over the resize grip of the tile up and to the
+          left. Outside the card only the round button itself takes taps. */}
       <button
         type="button"
         aria-label="Remove widget"
-        className="touch-target"
+        className={REMOVE_BUTTON_CLASS}
         onClick={(e) => {
           e.stopPropagation();
           onRemove?.();
         }}
         style={{
           position: 'absolute',
-          top: -11,
-          left: -11,
-          width: 22,
-          height: 22,
+          top: -REMOVE_BUTTON.offset,
+          left: -REMOVE_BUTTON.offset,
+          width: REMOVE_BUTTON.size,
+          height: REMOVE_BUTTON.size,
           borderRadius: '50%',
           background: HPR.rose,
           color: 'var(--hpr-fg)',

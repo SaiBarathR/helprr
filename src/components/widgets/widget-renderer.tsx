@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, Suspense, type ReactNode } from 'react';
+import { createElement, Fragment, Suspense, type ReactNode } from 'react';
 import { WifiOff } from 'lucide-react';
 import { useNearViewport } from '@/lib/hooks/use-near-viewport';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
@@ -174,7 +174,7 @@ function UnavailableCover({ name, children }: { name: string; children: ReactNod
         </div>
         {unavailable && (
           // EmptyState's look, sized for a one-cell phone widget too (about
-          // 44×60 inside the card at 320): the name takes up to two lines, and
+          // 44×60 inside the card at 320): the name takes up to two lines there, and
           // globals.css drops the icon and "right now." where they don't fit.
           <div role="status" className="widget-cover" style={{ position: 'absolute', inset: 0, container: 'widget-cover / size' }}>
             <div
@@ -196,18 +196,13 @@ function UnavailableCover({ name, children }: { name: string; children: ReactNod
               }}
             >
               <WifiOff size={18} aria-hidden="true" style={{ flexShrink: 0 }} />
-              {/* Up to two lines of whole words: a one-cell cover read "Service Hea…". */}
-              <span
-                className="line-clamp-2"
-                style={{
-                  flexShrink: 0,
-                  color: HPR.fgMute,
-                  fontWeight: 600,
-                  maxWidth: '100%',
-                  overflowWrap: 'break-word',
-                }}
-              >
-                {name}
+              {/* Whole words, each its own span, so where the name may take two
+                  lines (globals.css) a word too long for the line ends in "…"
+                  instead of being cut at the edge: a one-cell cover read "Service Hea…". */}
+              <span className="widget-cover-name" style={{ flexShrink: 0, color: HPR.fgMute, fontWeight: 600, maxWidth: '100%' }}>
+                {name.split(' ').map((word, i) => (
+                  <Fragment key={i}>{i > 0 && ' '}<span>{word}</span></Fragment>
+                ))}
               </span>
               {unavailable === 'offline'
                 ? <span>You&apos;re offline</span>

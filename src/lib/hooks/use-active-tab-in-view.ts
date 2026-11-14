@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react';
 
-/** Scrolls the scroller sideways, and only it, the least that shows the whole selected tab. */
+/**
+ * Scrolls the scroller sideways, and only it, the least that shows the whole
+ * selected tab. The first and last tabs go to the track's own end, so its
+ * padding and rounded end show too, not just the tab.
+ */
 export function scrollActiveTabIntoView(scroller: HTMLElement): void {
+  const tabs = scroller.querySelectorAll<HTMLElement>('[role="tab"]');
   const tab = scroller.querySelector<HTMLElement>('[role="tab"][data-state="active"]');
   if (!tab) return;
+  if (tab === tabs[0]) { scroller.scrollLeft = 0; return; }
+  if (tab === tabs[tabs.length - 1]) { scroller.scrollLeft = scroller.scrollWidth - scroller.clientWidth; return; }
   const box = scroller.getBoundingClientRect();
   const rect = tab.getBoundingClientRect();
   if (rect.left < box.left) scroller.scrollLeft -= box.left - rect.left;

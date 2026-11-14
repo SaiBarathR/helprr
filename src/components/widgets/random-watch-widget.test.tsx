@@ -34,9 +34,10 @@ describe('Random Pick sizes', () => {
     expect(row.textContent).toContain('2026 · Movie');
   });
 
-  it('takes the compact tile in a one-row desktop cell too (90px tall, the header left nothing)', () => {
+  it('keeps its header and filters in a wide one-row cell, as For You and Upcoming do', () => {
     render(<RandomWatchWidget refreshInterval={60_000} rowSpan={1} />);
-    expect(screen.getByRole('link', { name: 'Random Pick, view all' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Random Pick, view all' })).toBeNull();
+    expect(screen.getByRole('group', { name: 'Random pick filters' })).toBeTruthy();
   });
 
   it('does not claim "nothing matches" in a 2×1 cell in edit mode, which loads nothing', () => {

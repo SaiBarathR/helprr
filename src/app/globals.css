@@ -848,27 +848,56 @@ html {
     display: none;
   }
 }
+/* The widget's name: up to two lines of whole words, where a word too long
+   for the line ends in "…" on its own line instead of being cut at the edge. */
+.widget-cover-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.widget-cover-name > span {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: top;
+}
+/* A one-row cover wider than 100px (a 2×1 phone cell is 118×60 at 320, a
+   desktop one-row cell about 74 tall) keeps the icon, so it has room for one
+   line of name over the message: a second line pushed the message out. */
+@container widget-cover (min-width: 101px) and (max-height: 100px) {
+  .widget-cover-name {
+    display: block;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .widget-cover-name > span {
+    display: inline;
+  }
+}
 /* A one-row 2×1 phone cell (120×60 at 320, about 180×60 at 440) has room
    for one message line under the icon and name; "right now." would wrap to a
-   cut second line. The narrowest one-row tablet cover (209 wide) fits it all. */
-@container widget-cover (max-width: 200px) and (max-height: 72px) {
+   cut second line, as it would in a desktop one-row cell about 74 tall. The
+   narrowest one-row tablet cover (209 wide) fits it all. */
+@container widget-cover (max-width: 200px) and (max-height: 80px) {
   .widget-cover-tail {
     display: none;
   }
 }
-/* Up to 100 wide "Can't reach Helprr" takes two lines, so a one-row cover
-   has no room for the icon either (74×60 at 440 kept it and cut the text). */
-@container widget-cover (max-width: 100px) and (max-height: 72px) {
-  .widget-cover-body > svg {
-    display: none;
-  }
-}
-/* The name takes two lines there ("Service / Health"), and "Can't reach
-   Helprr" three: 10px type fits all five in the 46×62 one-cell cover at 320. */
-@container widget-cover (max-width: 70px) and (max-height: 72px) {
+/* Up to 100 wide "Can't reach Helprr" takes two or three lines, so a one-row
+   cover has no room for the icon either (74×60 at 440 kept it and cut the
+   text). The name takes two lines there too ("Service / Health"): 10px type
+   fits all five in the one-cell cover (44×60 at 320, 74×60 at 440). */
+@container widget-cover (max-width: 100px) and (max-height: 80px) {
   .widget-cover-body {
+    gap: 2px;
     font-size: 10px !important;
     line-height: 1.1 !important;
+  }
+  .widget-cover-body > svg {
+    display: none;
   }
 }
 @container widget-cover (max-width: 70px) {
