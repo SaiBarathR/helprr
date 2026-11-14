@@ -8,6 +8,9 @@
  * Play. So the frame on screen is drawn into a canvas laid over the element
  * first, and the canvas goes once the element presents a frame of its own.
  */
+/** The most pixels a held frame keeps: 1920×1080's worth, about 8 MB. */
+export const HOLD_PIXEL_BUDGET = 1920 * 1080;
+
 export interface FrameHold {
   release: () => void;
 }
@@ -21,36 +24,27 @@ export function holdFrame(el: HTMLVideoElement): FrameHold | null {
   const parent = el.parentElement;
   const { videoWidth: width, videoHeight: height } = el;
   if (!parent || el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !width || !height) return null;
-  // No more pixels than the screen shows: a 4K frame at full size is ~33 MB,
-  // which counts against iOS's canvas memory. Letterboxed, the whole frame is
-  // shown at the smaller of the two ratios. Cropped by Fill, only the middle
-  // that fills the box is shown, at the larger ratio: just that part is kept,
-  // so the canvas has the box's shape and Fill shows all of it.
+  // The whole frame, so it stays right however the box changes during the
+  // hold (the mini player letterboxes it, Fill crops it, a rotation reshapes
+  // it), at no more pixels than it can show: enough to cover the box at the
+  // screen's density, and never past HOLD_PIXEL_BUDGET. A 4K frame at full
+  // size is ~33 MB, which counts against iOS's canvas memory.
   const dpr = window.devicePixelRatio || 1;
-  const boxWidth = el.clientWidth;
-  const boxHeight = el.clientHeight;
-  let source = { x: 0, y: 0, width, height };
-  let shown = Math.min(boxWidth / width, boxHeight / height);
-  if (el.hasAttribute('data-fill') && boxWidth && boxHeight) {
-    shown = Math.max(boxWidth / width, boxHeight / height);
-    const cropWidth = Math.min(width, boxWidth / shown);
-    const cropHeight = Math.min(height, boxHeight / shown);
-    source = { x: (width - cropWidth) / 2, y: (height - cropHeight) / 2, width: cropWidth, height: cropHeight };
-  }
-  const scale = Math.min(1, shown * dpr || 1);
+  const cover = Math.max(el.clientWidth / width, el.clientHeight / height) * dpr;
+  const scale = Math.min(1, cover || 1, Math.sqrt(HOLD_PIXEL_BUDGET / (width * height)));
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(source.width * scale));
-  canvas.height = Math.max(1, Math.round(source.height * scale));
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
   const context = canvas.getContext('2d');
   if (!context) return null;
   try {
-    context.drawImage(el, source.x, source.y, source.width, source.height, 0, 0, canvas.width, canvas.height);
+    context.drawImage(el, 0, 0, canvas.width, canvas.height);
   } catch {
     return null;
   }
   // An all-black frame (a decoder that has not drawn yet, or a fade) holds
   // nothing the black element does not already show.
-  if (allBlack(context, canvas.width, canvas.height)) {
+  if (allBlack(canvas)) {
     canvas.width = 0;
     canvas.height = 0;
     return null;
@@ -80,21 +74,26 @@ export function holdFrame(el: HTMLVideoElement): FrameHold | null {
   };
 }
 
-/** Sixteen points across the frame, all near black. A canvas that cannot be
- *  read back counts as not black: the frame is held as before. */
-function allBlack(context: CanvasRenderingContext2D, width: number, height: number): boolean {
+/** The frame shrunk to 4×4 and read back once, all near black. A canvas that
+ *  cannot be read back counts as not black: the frame is held as before. */
+function allBlack(frame: HTMLCanvasElement): boolean {
+  const sample = document.createElement('canvas');
+  sample.width = 4;
+  sample.height = 4;
   try {
-    for (let row = 0; row < 4; row++) {
-      for (let column = 0; column < 4; column++) {
-        const x = Math.min(width - 1, Math.floor((column + 0.5) * width / 4));
-        const y = Math.min(height - 1, Math.floor((row + 0.5) * height / 4));
-        const [r, g, b] = context.getImageData(x, y, 1, 1).data;
-        if (r > 8 || g > 8 || b > 8) return false;
-      }
+    const context = sample.getContext('2d', { willReadFrequently: true });
+    if (!context) return false;
+    context.drawImage(frame, 0, 0, 4, 4);
+    const pixels = context.getImageData(0, 0, 4, 4).data;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i] > 8 || pixels[i + 1] > 8 || pixels[i + 2] > 8) return false;
     }
     return true;
   } catch {
     return false;
+  } finally {
+    sample.width = 0;
+    sample.height = 0;
   }
 }
 

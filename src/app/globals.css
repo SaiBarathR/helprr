@@ -1203,11 +1203,12 @@ video[data-fill] {
 }
 
 /* The last frame held over the player while a restart loads (frame-hold.ts):
-   fitted as the video next to it is, Fill included. */
+   fitted as the video before it is, Fill included. Any later sibling, not the
+   next one: the ASS subtitle renderer puts its layer between them. */
 [data-frame-hold] {
   object-fit: contain;
 }
-video[data-fill] + [data-frame-hold] {
+video[data-fill] ~ [data-frame-hold] {
   object-fit: cover;
 }
 

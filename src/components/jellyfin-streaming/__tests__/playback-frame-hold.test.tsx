@@ -16,7 +16,7 @@ const proto = HTMLVideoElement.prototype as unknown as Record<string, unknown>;
 beforeEach(() => {
   Object.defineProperty(proto, 'videoWidth', { configurable: true, get: () => 1920 });
   Object.defineProperty(proto, 'videoHeight', { configurable: true, get: () => 1080 });
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage, getImageData: () => ({ data: [90, 90, 90, 255] }) } as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage, getImageData: () => ({ data: Array(64).fill(90) }) } as unknown as CanvasRenderingContext2D);
 });
 afterEach(() => {
   h?.cleanup();
@@ -65,7 +65,7 @@ it('keeps the last frame and the real position over a paused track change, until
   expect(h.requests.at(-1)).toMatchObject({ audioStreamIndex: 2, startTimeTicks: 600 * 10_000_000 });
   expect(h.playback().status).toBe('paused');
   expect(held()).toBe(true);
-  expect(drawImage).toHaveBeenCalledWith(el, 0, 0, 1920, 1080, 0, 0, 1920, 1080);
+  expect(drawImage).toHaveBeenCalledWith(el, 0, 0, 1920, 1080);
 
   // The new source reads zero until it has seeked itself into place.
   await h.act(() => {
@@ -148,7 +148,8 @@ it('takes a fresh frame for a change made after the stream played, not the first
   await h.act(async () => { await h.playback().setAudioStream(1); });
   expect(held()).toBe(true);
   expect(holds()).toBe(1);
-  expect(drawImage).toHaveBeenCalledTimes(1);
+  // One frame drawn from the video (the black check's 4×4 sample draws the canvas).
+  expect(drawImage.mock.calls.filter(([source]) => source instanceof HTMLVideoElement)).toHaveLength(1);
   expect(h.requests.at(-1)?.startTimeTicks).toBe(676 * 10_000_000);
 });
 
@@ -159,7 +160,7 @@ it('keeps the first frame for a second change made while the first is still load
   drawImage.mockClear();
   await h.act(async () => { await h.playback().setAudioStream(1); });
   expect(holds()).toBe(1);
-  expect(drawImage).not.toHaveBeenCalled();
+  expect(drawImage.mock.calls.filter(([source]) => source instanceof HTMLVideoElement)).toHaveLength(0);
 });
 
 it('takes the frame down a moment after playing even if the time never seems to move', async () => {
