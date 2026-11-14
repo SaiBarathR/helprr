@@ -297,6 +297,46 @@ describe('GET /api/discover sections cache', () => {
     expect(body.failedSections).toEqual(['providers']);
   });
 
+  it('asks TMDB once per short window during a total outage too, serving the last full catalog', async () => {
+    vi.useFakeTimers();
+    mocks.getTMDBClient.mockResolvedValueOnce(tmdbClient());
+    const { GET } = await loadRoute();
+    await GET(sectionsRequest());
+
+    vi.advanceTimersByTime(6 * 60 * 1000);
+    const down = tmdbClient({ fail: true });
+    mocks.getTMDBClient.mockResolvedValue(down);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const first: DiscoverResponse = await (await GET(sectionsRequest())).json();
+    const askedOnce = down.trending.mock.calls.length;
+    const second: DiscoverResponse = await (await GET(sectionsRequest())).json();
+    warn.mockRestore();
+
+    expect(askedOnce).toBeGreaterThan(0);
+    // The second load inside the window builds nothing: TMDB isn't asked again.
+    expect(down.trending).toHaveBeenCalledTimes(askedOnce);
+    expect(popularMovie(first)).toMatchObject({ title: MOVIE.title });
+    expect(popularMovie(second)).toMatchObject({ title: MOVIE.title });
+  });
+
+  it('does not fill a failed section from a full catalog older than six hours', async () => {
+    vi.useFakeTimers();
+    mocks.getTMDBClient.mockResolvedValueOnce(tmdbClient());
+    const { GET } = await loadRoute();
+    await GET(sectionsRequest());
+
+    vi.advanceTimersByTime(7 * 60 * 60 * 1000);
+    const broken = tmdbClient();
+    broken.discoverMovie = vi.fn(async () => { throw new Error('down'); });
+    mocks.getTMDBClient.mockResolvedValue(broken);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const body: DiscoverResponse = await (await GET(sectionsRequest())).json();
+    warn.mockRestore();
+
+    expect(body.failedSections).toContain('popular_movies');
+    expect(body.sections!.find((s) => s.key === 'popular_movies')!.items).toHaveLength(0);
+  });
+
   it('keeps perSectionLimit between 1 and 60', async () => {
     const many = Array.from({ length: 20 }, (_, i) => ({ ...MOVIE, id: 1000 + i, title: `Movie ${i}` }));
     const tmdb = tmdbClient();

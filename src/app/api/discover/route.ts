@@ -81,9 +81,14 @@ function clampInt(value: string | null, min: number, max: number, fallback: numb
 let sectionsCache:
   | {
       data: DiscoverSections;
+      builtAt: number;
       expiresAt: number;
     }
   | null = null;
+
+// How old the last full catalog may be to fill a failed section: older
+// "upcoming" or "now playing" rails would be wrong, not just a little stale.
+const FILL_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 // A catalog with failed sections is kept only briefly, so a source that keeps
 // failing (a 10 s timeout, say) costs one upstream attempt per window instead of
@@ -681,12 +686,17 @@ async function getHandler(request: NextRequest) {
       const freshHasMedia = hasMediaItems(sections);
 
       // With nothing fresh to show, the last full catalog is served instead, and nothing is missing from it.
-      if (!freshHasMedia && sectionsCache?.data) return respond(sectionsCache.data);
+      // Kept for the same short window, so a total outage also costs one attempt per window.
+      if (!freshHasMedia && sectionsCache?.data) {
+        partialSectionsCache = { data: sectionsCache.data, failedSections: [], expiresAt: builtAt + PARTIAL_SECTIONS_CACHE_TTL_MS };
+        return respond(sectionsCache.data);
+      }
 
       if (failedSections.length === 0) {
         if (freshHasMedia) {
           sectionsCache = {
             data: sections,
+            builtAt,
             expiresAt: builtAt + SECTIONS_CACHE_TTL_MS,
           };
           partialSectionsCache = null;
@@ -697,7 +707,8 @@ async function getHandler(request: NextRequest) {
       console.warn(
         `[Discover] TMDB partial failures (${failedSections.length}): ${failedSections.join(', ')}`
       );
-      const partial = fillFailedSections(sections, failedSections, sectionsCache?.data);
+      const fillFrom = sectionsCache && builtAt - sectionsCache.builtAt < FILL_MAX_AGE_MS ? sectionsCache.data : undefined;
+      const partial = fillFailedSections(sections, failedSections, fillFrom);
       partialSectionsCache = {
         data: partial.sections,
         failedSections: partial.failedSections,
