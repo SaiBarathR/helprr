@@ -107,6 +107,34 @@ it('a confirmed system Back leaves to the page before, with no second press', as
   expect(nav.push).not.toHaveBeenCalled();
 });
 
+it('Forward after a confirmed Back lands on the page, and the guard entry above it steps back to it', async () => {
+  render(<Page />);
+  await waitFor(() => expect(marker()).toBeDefined());
+  await systemBack();
+  await screen.findByRole('alertdialog');
+  const landed = popstate();
+  await userEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+  await act(async () => { await landed; });
+  await waitFor(() => expect(window.location.pathname).toBe('/settings'));
+
+  // Forward: the page's own entry, not the guard's.
+  await act(async () => { window.history.forward(); await popstate(); await new Promise((resolve) => setTimeout(resolve, 5)); });
+  expect(window.location.pathname).toBe('/settings/downloads');
+  expect(marker()).toBeUndefined();
+  // Forward again reaches the dead guard entry: it steps back off it at once
+  // (nothing further to go to), without asking. Only that step's popstate
+  // reaches other listeners.
+  await act(async () => {
+    window.history.forward();
+    await popstate();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  });
+  expect(window.location.pathname).toBe('/settings/downloads');
+  expect(marker()).toBeUndefined();
+  expect(window.history.length).toBe(pageLength + 1);
+  expect(nav.back).toHaveBeenCalledTimes(1);
+});
+
 it('the confirm Back opened holds no entry, so a second Back leaves the page', async () => {
   render(<Page />);
   await waitFor(() => expect(marker()).toBeDefined());

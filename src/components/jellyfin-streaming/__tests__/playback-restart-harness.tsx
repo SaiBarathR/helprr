@@ -84,6 +84,9 @@ export interface Harness {
   encodingStops: string[];
   holdStopRequests: () => void;
   releaseStopReport: () => void;
+  /** Hold the `playing` (start) report's answer, to catch a pause while it is in flight. */
+  holdStartReport: () => void;
+  releaseStartReport: () => void;
   releaseEncodingStop: () => void;
   /** Handlers the provider registered on the Media Session. */
   mediaSession: Record<string, () => void>;
@@ -162,6 +165,8 @@ export async function mountPlayback(options: { hls?: boolean; audioIds?: string[
   let gate: Promise<void> | null = null;
   let openGate: (() => void) | null = null;
   let stopReportGate: Promise<void> | null = null;
+  let startReportGate: Promise<void> | null = null;
+  let releaseStartReport: (() => void) | null = null;
   let encodingStopGate: Promise<void> | null = null;
   let releaseStopReport: (() => void) | null = null;
   let releaseEncodingStop: (() => void) | null = null;
@@ -228,6 +233,7 @@ export async function mountPlayback(options: { hls?: boolean; audioIds?: string[
     if (url.includes('/api/jellyfin/stream/session')) {
       reports.push({ event: body.event, isPaused: Boolean(body.isPaused), positionTicks: body.positionTicks ?? 0, playSessionId: body.playSessionId });
       if (body.event === 'stopped' && stopReportGate) await waitForRequest(stopReportGate, init?.signal);
+      if (body.event === 'playing' && startReportGate) await waitForRequest(startReportGate, init?.signal);
       return ok({});
     }
     if (url.includes('/api/jellyfin/stream/stop-encodings')) {
@@ -290,6 +296,10 @@ export async function mountPlayback(options: { hls?: boolean; audioIds?: string[
       encodingStopGate = new Promise<void>((resolve) => { releaseEncodingStop = resolve; });
     },
     releaseStopReport: () => { releaseStopReport?.(); stopReportGate = null; },
+    holdStartReport: () => {
+      startReportGate = new Promise<void>((resolve) => { releaseStartReport = resolve; });
+    },
+    releaseStartReport: () => { releaseStartReport?.(); startReportGate = null; },
     releaseEncodingStop: () => { releaseEncodingStop?.(); encodingStopGate = null; },
     mediaSession,
     element: () => {

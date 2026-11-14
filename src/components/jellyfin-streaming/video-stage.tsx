@@ -192,6 +192,11 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
   const mediaRef = useJellyfinMediaRef();
   const [controlsVisible, setControlsVisible] = useState(true);
   const [panel, setPanel] = useState<'none' | 'subs' | 'quality' | 'speed' | 'chapters' | 'stats' | 'more'>('none');
+  // The control that had focus when a panel opened, for Escape to return to.
+  const panelOpenerRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (panel !== 'none' && document.activeElement instanceof HTMLElement) panelOpenerRef.current = document.activeElement;
+  }, [panel]);
   const coarse = useCoarsePointer();
   const fullscreen = useDocumentFullscreen();
   const stalled = useStalled(mediaRef, playback.stream);
@@ -329,6 +334,9 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
     if (!expanded) return undefined;
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || keyBelongsElsewhere(event.target)) return;
+      // In a panel's choice list (audio, subtitles, quality, speed) the keys
+      // pick an option; only Escape still closes the panel.
+      if (event.key !== 'Escape' && event.target instanceof HTMLElement && event.target.closest('[role="radiogroup"]')) return;
       const p = playbackRef.current;
       if (!p.item) return;
       if (event.key === ' ' || event.key === 'k') { event.preventDefault(); p.togglePause(); }
@@ -336,9 +344,17 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
       if (event.key === 'ArrowRight' || event.key === 'l') p.skip(useUIStore.getState().playerSkipForwardSeconds);
       if (event.key === 'ArrowUp') { event.preventDefault(); p.setVolume(Math.min(1, p.volume + 0.05)); }
       if (event.key === 'ArrowDown') { event.preventDefault(); p.setVolume(Math.max(0, p.volume - 0.05)); }
+      // The top-most layer first, as the system Back closes the top overlay
+      // first: the queue (drawn over the player), then an open panel, and
+      // only then the player itself.
       if (event.key === 'Escape') {
-        p.setVideoExpanded(false);
-        p.setQueueOpen(false);
+        if (p.queueOpen && p.queue.length > 0) p.setQueueOpen(false);
+        else if (panel !== 'none') {
+          setPanel('none');
+          // Back to the button that opened it, rather than lost to <body>.
+          panelOpenerRef.current?.focus();
+        }
+        else p.setVideoExpanded(false);
       }
       if (event.key === 'm') p.setMuted(!p.muted);
       if (event.key === 'f') toggleFullscreen(document.documentElement, mediaRef.current);
@@ -350,7 +366,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [expanded, mediaRef]);
+  }, [expanded, mediaRef, panel]);
 
   // Buffered range for the seek bar. Read from the element rather than the
   // context because the provider does not track it.
@@ -917,28 +933,32 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                       {audios.length > 1 && (
                         <>
                           <p className="px-3 pt-1 text-[11px] font-medium tracking-wide text-white/50 uppercase">Audio</p>
-                          {audios.map((stream) => (
-                            <PanelButton
-                              key={stream.Index}
-                              active={stream.Index === playback.audioStreamIndex}
-                              onClick={() => void playback.setAudioStream(stream.Index ?? -1)}
-                            >
-                              {stream.DisplayTitle || stream.Language || `Audio ${stream.Index}`}
-                            </PanelButton>
-                          ))}
+                          <PanelChoices label="Audio">
+                            {audios.map((stream) => (
+                              <PanelButton
+                                key={stream.Index}
+                                active={stream.Index === playback.audioStreamIndex}
+                                onClick={() => void playback.setAudioStream(stream.Index ?? -1)}
+                              >
+                                {stream.DisplayTitle || stream.Language || `Audio ${stream.Index}`}
+                              </PanelButton>
+                            ))}
+                          </PanelChoices>
                           <p className="mt-1 border-t border-white/10 px-3 pt-2 text-[11px] font-medium tracking-wide text-white/50 uppercase">Subtitles</p>
                         </>
                       )}
-                      <PanelButton active={playback.subtitleStreamIndex == null || playback.subtitleStreamIndex < 0} onClick={() => void playback.setSubtitleStream(-1)}>Off</PanelButton>
-                      {subs.map((stream) => (
-                        <PanelButton
-                          key={stream.Index}
-                          active={stream.Index === playback.subtitleStreamIndex}
-                          onClick={() => void playback.setSubtitleStream(stream.Index ?? -1)}
-                        >
-                          {stream.DisplayTitle || stream.Language || `Subtitle ${stream.Index}`}
-                        </PanelButton>
-                      ))}
+                      <PanelChoices label="Subtitles">
+                        <PanelButton active={playback.subtitleStreamIndex == null || playback.subtitleStreamIndex < 0} onClick={() => void playback.setSubtitleStream(-1)}>Off</PanelButton>
+                        {subs.map((stream) => (
+                          <PanelButton
+                            key={stream.Index}
+                            active={stream.Index === playback.subtitleStreamIndex}
+                            onClick={() => void playback.setSubtitleStream(stream.Index ?? -1)}
+                          >
+                            {stream.DisplayTitle || stream.Language || `Subtitle ${stream.Index}`}
+                          </PanelButton>
+                        ))}
+                      </PanelChoices>
                       <div className="mt-2 flex items-center justify-between gap-2 px-2 py-1 text-xs text-white/80">
                         <span>Delay {playback.subtitleOffsetSeconds.toFixed(1)}s</span>
                         <span className="flex gap-1">
@@ -960,7 +980,6 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                       {chapters.map((chapter, chapterIndex) => (
                         <PanelButton
                           key={`${chapter.StartPositionTicks}-${chapterIndex}`}
-                          active={false}
                           onClick={() => playback.seek(ticksToSeconds(chapter.StartPositionTicks))}
                         >
                           {chapter.Name || `Chapter ${chapterIndex + 1}`} · {formatClock(ticksToSeconds(chapter.StartPositionTicks))}
@@ -971,24 +990,28 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                   {panel === 'quality' && (
                     <Panel>
                       <p className="px-3 py-2 text-xs text-white/60">Current ceiling: {(playback.effectiveMaxBitrate / 1_000_000).toFixed(1)} Mbps</p>
-                      {bitrateOptions().map((option) => (
-                        <PanelButton
-                          key={option.value}
-                          active={(option.value === 0 && playback.maxBitrate === 0) || option.value === playback.maxBitrate}
-                          onClick={() => void playback.setMaxBitrate(option.value)}
-                        >
-                          {option.label}
-                        </PanelButton>
-                      ))}
+                      <PanelChoices label="Quality">
+                        {bitrateOptions().map((option) => (
+                          <PanelButton
+                            key={option.value}
+                            active={(option.value === 0 && playback.maxBitrate === 0) || option.value === playback.maxBitrate}
+                            onClick={() => void playback.setMaxBitrate(option.value)}
+                          >
+                            {option.label}
+                          </PanelButton>
+                        ))}
+                      </PanelChoices>
                     </Panel>
                   )}
                   {panel === 'speed' && (
                     <Panel>
-                      {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((rate) => (
-                        <PanelButton key={rate} active={playback.playbackRate === rate} onClick={() => playback.setPlaybackRate(rate)}>
-                          {rate}x
-                        </PanelButton>
-                      ))}
+                      <PanelChoices label="Speed">
+                        {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((rate) => (
+                          <PanelButton key={rate} active={playback.playbackRate === rate} onClick={() => playback.setPlaybackRate(rate)}>
+                            {rate}x
+                          </PanelButton>
+                        ))}
+                      </PanelChoices>
                     </Panel>
                   )}
                   {panel === 'stats' && playback.stream && (
@@ -1552,10 +1575,21 @@ function Panel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function PanelButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+/** A panel's pick-one list (audio, subtitles, quality, speed), as the app's
+ *  other pickers mark theirs: a radio group whose picked row says so, not
+ *  only by its colour. */
+function PanelChoices({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div role="radiogroup" aria-label={label} className="flex flex-col gap-1">{children}</div>;
+}
+
+/** A row in a panel: a radio in a PanelChoices list (`active` given), else a
+ *  plain action (a chapter). */
+function PanelButton({ active, onClick, children }: { active?: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
+      role={active === undefined ? undefined : 'radio'}
+      aria-checked={active}
       onClick={onClick}
       className={cn(
         'rounded-md px-3 py-2 text-left text-sm',

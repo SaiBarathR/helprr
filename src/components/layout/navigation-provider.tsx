@@ -21,6 +21,14 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   const [destination, setDestination] = useState<Destination | null>(null);
   const [historyDestination, setHistoryDestination] = useState<{ from: string; href: string } | null>(null);
   const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A route commit ends a history traversal, so drop the one that started on
+  // another path. The popstate listener below can't be relied on for that:
+  // the router renders the new route in a microtask between popstate
+  // listeners, and the effect re-running for the new path takes this
+  // listener off (and clears its timer) before it sees the event. Kept, it
+  // would show the loading view over the page for good once Forward comes
+  // back to that path (Back from a page's header or a Discard, then Forward).
+  if (historyDestination && historyDestination.from !== pathname) setHistoryDestination(null);
   const transitionNavigation = useRef<{ source: string; destination: string; sawPending: boolean } | null>(null);
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
