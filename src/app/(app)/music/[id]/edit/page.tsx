@@ -5,6 +5,7 @@ import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { PageHeader } from '@/components/layout/page-header';
+import { NotFoundState } from '@/components/ui/not-found-state';
 import {
   Select,
   SelectContent,
@@ -115,7 +116,7 @@ export default function ArtistEditPage() {
     return (
       <div>
         <PageHeader title="Edit Artist" />
-        <div className="text-center py-12 text-muted-foreground">Artist not found</div>
+        <NotFoundState message="Artist not found" />
       </div>
     );
   }

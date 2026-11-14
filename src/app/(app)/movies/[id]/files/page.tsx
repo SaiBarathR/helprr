@@ -7,6 +7,7 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { formatDateTime } from '@/lib/date-format';
 import { Copy, ExternalLink, FileStack, Info } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
+import { NotFoundState } from '@/components/ui/not-found-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useCan } from '@/components/permission-provider';
@@ -167,7 +168,7 @@ export default function MovieFilesPage() {
     return (
       <div>
         <PageHeader title="Files & information" />
-        <div className="text-center py-12 text-muted-foreground">Movie not found</div>
+        <NotFoundState message="Movie not found" />
       </div>
     );
   }

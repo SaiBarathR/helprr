@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 
-export type CommitReason = 'timer' | 'flush' | 'unmount';
+/** `pagehide`: the document is going away or into the background (a reload,
+ *  a Back that leaves it, an app switch), so the commit must start its request
+ *  right now and with `keepalive`, or the browser drops it. */
+export type CommitReason = 'timer' | 'flush' | 'unmount' | 'pagehide';
 
 /**
  * Debounce core, framework-free so it can be unit-tested with fake timers.
@@ -45,6 +48,9 @@ export function createDebouncedCommit<T>(
     unmount() {
       run('unmount');
     },
+    pagehide() {
+      run('pagehide');
+    },
     cancel() {
       pending = null;
       clear();
@@ -55,8 +61,10 @@ export function createDebouncedCommit<T>(
 /**
  * Debounced auto-save that cannot drop edits: the pending value is committed
  * (not cancelled) when the component unmounts, so a quick back-nav still
- * persists the last edit. The commit receives the trigger reason so callers
- * can e.g. skip validation toasts when committing during unmount.
+ * persists the last edit, and when the page hides (reason `pagehide`), since
+ * a reload or a Back that leaves the document never unmounts anything. The
+ * commit receives the trigger reason so callers can e.g. skip validation
+ * toasts when committing during unmount.
  *
  * The commit callback is kept in a ref — it may close over fresh state
  * without retriggering timers.
@@ -81,7 +89,19 @@ export function useDebouncedCommit<T>(
   }, [delayMs]);
 
   useEffect(() => {
-    return () => coreRef.current?.unmount();
+    const onHide = () => coreRef.current?.pagehide();
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') onHide();
+    };
+    // pagehide for unloads; visibilitychange for an iOS PWA swiped away or
+    // backgrounded, which may never get a pagehide.
+    window.addEventListener('pagehide', onHide);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      document.removeEventListener('visibilitychange', onVisibility);
+      coreRef.current?.unmount();
+    };
   }, []);
 
   return {

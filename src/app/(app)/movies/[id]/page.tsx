@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { PageHeader } from '@/components/layout/page-header';
+import { NotFoundState } from '@/components/ui/not-found-state';
 import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
 import {
   Drawer,
@@ -336,7 +337,7 @@ export default function MovieDetailPage() {
   }
 
   if (!movie) {
-    return <div className="text-center py-12 text-muted-foreground">Movie not found</div>;
+    return <><PageHeader title="Movie" /><NotFoundState message="Movie not found" /></>;
   }
 
   const poster = getImageUrl(movie.images, 'poster', 'radarr');

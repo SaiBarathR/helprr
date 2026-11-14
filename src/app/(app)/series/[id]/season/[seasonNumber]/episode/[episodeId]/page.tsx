@@ -6,6 +6,7 @@ import Link from '@/components/ui/app-link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { PageHeader } from '@/components/layout/page-header';
+import { NotFoundState } from '@/components/ui/not-found-state';
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerClose,
 } from '@/components/ui/drawer';
@@ -332,7 +333,7 @@ export default function EpisodeDetailPage() {
   }
 
   if (!series || !episode) {
-    return <div className="text-center py-12 text-muted-foreground">Episode not found</div>;
+    return <><PageHeader title="Episode" /><NotFoundState message="Episode not found" /></>;
   }
 
   const episodeFile = episode.episodeFile;

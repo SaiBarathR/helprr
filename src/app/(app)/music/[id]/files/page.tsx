@@ -10,6 +10,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { formatDate, formatTime } from '@/lib/date-format';
 import { Copy, Info, Loader2, Search, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
+import { NotFoundState } from '@/components/ui/not-found-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -192,7 +193,7 @@ export default function ArtistFilesPage() {
     return (
       <div>
         <PageHeader title="Files & information" />
-        <div className="text-center py-12 text-muted-foreground">Artist not found</div>
+        <NotFoundState message="Artist not found" />
       </div>
     );
   }

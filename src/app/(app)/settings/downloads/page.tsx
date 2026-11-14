@@ -3,12 +3,11 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
-import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { ChevronLeft, Plus, Trash2, Loader2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
+import { useLeaveConfirm, useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -85,14 +84,12 @@ function formatWindow(rule: BandwidthRule): string {
 }
 
 export default function DownloadsSettingsPage() {
-  const router = useRouter();
   const [rules, setRules] = useState<BandwidthRule[]>([]);
   const [timeZone, setTimeZone] = useState<string>('UTC');
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null);
   // Last loaded/saved rules — dirty is derived by comparison, so reverting an
   // edit back to its original value counts as clean again.
   const [baseline, setBaseline] = useState<BandwidthRule[]>([]);
-  const [confirmLeave, setConfirmLeave] = useState(false);
 
   const scheduleQuery = useQuery({
     queryKey: ['qbittorrent', 'bandwidth-schedule'],
@@ -118,6 +115,7 @@ export default function DownloadsSettingsPage() {
     [rules, baseline],
   );
   useUnsavedChangesGuard(dirty);
+  const leave = useLeaveConfirm(dirty, '/settings');
 
   const saveMutation = useMutation({
     mutationFn: async (rulesToSave: BandwidthRule[]) => {
@@ -172,7 +170,7 @@ export default function DownloadsSettingsPage() {
         {/* Guarded back-nav: unsaved rule edits confirm before discarding. */}
         <button
           type="button"
-          onClick={() => (dirty ? setConfirmLeave(true) : router.push('/settings'))}
+          onClick={leave.leave}
           className="inline-flex items-center gap-1 text-sm text-primary -ml-1 min-h-[44px] px-1"
         >
           <ChevronLeft className="h-5 w-5" />
@@ -258,14 +256,12 @@ export default function DownloadsSettingsPage() {
       )}
 
       <ConfirmDialog
-        open={confirmLeave}
-        onOpenChange={setConfirmLeave}
+        {...leave.dialog}
         title="Discard unsaved changes?"
         description="Your bandwidth rule edits haven't been saved. Leaving now will discard them."
         confirmLabel="Discard changes"
         cancelLabel="Keep editing"
         destructive
-        onConfirm={() => router.push('/settings')}
       />
     </div>
   );

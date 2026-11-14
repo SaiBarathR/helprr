@@ -166,7 +166,10 @@ export function DataTable<T>({
   const handleResizeStart = useCallback((e: React.PointerEvent<HTMLSpanElement>, col: DataTableColumn<T>) => {
     e.preventDefault();
     e.stopPropagation();
-    const startWidth = widthOf(col);
+    // Start from the width on screen: the grow column is wider than its
+    // stored minimum, and starting from that minimum made the first move
+    // snap it narrower by the leftover space.
+    const startWidth = e.currentTarget.parentElement?.getBoundingClientRect().width || widthOf(col);
     dragRef.current = { columnId: col.id, startX: e.clientX, startWidth };
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
@@ -271,21 +274,29 @@ export function DataTable<T>({
         <table ref={tableRef} className="w-full text-sm table-fixed" style={{ minWidth: totalWidth }}>
           <colgroup>
             {columns.map((col) => (
-              <col key={col.id} style={col.grow && !(col.id in widthOverrides) ? { minWidth: widthOf(col) } : { width: widthOf(col) }} />
+              // The grow column keeps no fixed width, even once resized: its
+              // width counts toward the table's min-width (so dragging it wider
+              // works) and it still absorbs the leftover space. Fixing it would
+              // hand that space to every other column instead.
+              <col key={col.id} style={col.grow ? { minWidth: widthOf(col) } : { width: widthOf(col) }} />
             ))}
           </colgroup>
           <thead>
             <tr className="border-b border-border/50 text-xs text-muted-foreground">
-              {columns.map((col) => (
+              {columns.map((col, index) => (
                 <th
                   key={col.id}
                   className={cn(
                     'relative px-3 py-2 font-medium select-none',
-                    stickyActive && 'sticky z-20 bg-card border-b border-border/50',
+                    stickyActive && 'sticky bg-card border-b border-border/50',
                     alignClass(col.align),
                     col.headerClassName,
                   )}
-                  style={stickyActive ? { top: stickyHeaderTop } : undefined}
+                  // Each sticky cell is its own stack, painted over the cell
+                  // before it, so z-index counts down (staying under the page
+                  // toolbar's 30): the resize grip that overhangs into the next
+                  // cell stays on top and grabbable.
+                  style={stickyActive ? { top: stickyHeaderTop, zIndex: 10 + columns.length - index } : undefined}
                 >
                   {col.sortKey && onSort ? (
                     <button

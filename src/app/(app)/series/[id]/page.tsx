@@ -9,6 +9,7 @@ import Link from '@/components/ui/app-link';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { PageHeader } from '@/components/layout/page-header';
+import { NotFoundState } from '@/components/ui/not-found-state';
 import { AniListRemapDrawer } from '@/components/anime/anilist-remap-drawer';
 import { getImageUrl } from '@/components/media/media-card';
 import {
@@ -230,7 +231,7 @@ export default function SeriesDetailPage() {
   }
 
   if (!series) {
-    return <div className="text-center py-12 text-muted-foreground">Series not found</div>;
+    return <><PageHeader title="Series" /><NotFoundState message="Series not found" /></>;
   }
 
   const poster = getImageUrl(series.images, 'poster', 'sonarr');

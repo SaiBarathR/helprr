@@ -65,6 +65,27 @@ it('commits a valid draft when the page unmounts', async () => {
   await type(input('log-max-file-mb'), '200');
   await act(async () => root.unmount());
 
-  expect(mocks.update).toHaveBeenCalledWith({ logMaxFileMb: 200 });
+  expect(mocks.update).toHaveBeenCalledWith({ logMaxFileMb: 200 }, undefined);
+  root = createRoot(document.getElementById('root')!);
+});
+
+it('sends a pending draft with keepalive when the page hides (a reload, a Back out)', async () => {
+  await type(input('log-max-file-mb'), '200');
+  await act(async () => { window.dispatchEvent(new Event('pagehide')); });
+
+  expect(mocks.update).toHaveBeenCalledTimes(1);
+  expect(mocks.update).toHaveBeenCalledWith({ logMaxFileMb: 200 }, { keepalive: true });
+});
+
+it('sends a pending draft with keepalive when the app goes to the background', async () => {
+  await type(input('log-retention-days'), '45');
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+  visibility.mockRestore();
+
+  expect(mocks.update).toHaveBeenCalledWith({ logRetentionDays: 45 }, { keepalive: true });
+  // Nothing left to send on unmount.
+  await act(async () => root.unmount());
+  expect(mocks.update).toHaveBeenCalledTimes(1);
   root = createRoot(document.getElementById('root')!);
 });

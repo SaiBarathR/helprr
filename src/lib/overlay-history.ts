@@ -24,6 +24,8 @@ import { useEffect, useEffectEvent, useState } from 'react';
 //   since a pushState made meanwhile would be the entry it leaves.
 // - These popstates are not navigations: listeners that act on Back (the
 //   player collapsing, the scroll restorer) skip them via isOverlayPopState.
+// - A page with unsaved edits holds one too (useBackGuard), so Back opens its
+//   "Discard unsaved changes?" confirm instead of leaving.
 
 const MARKER = '__helprrOverlay';
 const ROUTER_KEYS = ['__NA', '__PRIVATE_NEXTJS_INTERNALS_TREE'];
@@ -39,6 +41,9 @@ type Entry = {
   id: number;
   /** Closes the overlay when Back takes its entry; null once it has closed. */
   onBack: (() => void) | null;
+  /** A page's unsaved-changes guard (useBackGuard), not an overlay: an
+   *  in-app navigation takes it off without running onBack. */
+  guard: boolean;
   /** The Navigation API's key for the entry, which survives replaceState. */
   key: string | null;
   /** Without that API: history.length and the path just after the push, to
@@ -363,8 +368,8 @@ function listen() {
 
 if (typeof window !== 'undefined') listen();
 
-function openEntry(onBack: () => void): Entry {
-  const entry: Entry = { id: nextId++, onBack, key: null, length: 0, pathname: '' };
+function openEntry(onBack: () => void, guard = false): Entry {
+  const entry: Entry = { id: nextId++, onBack, guard, key: null, length: 0, pathname: '' };
   listen();
   whenSettled(() => {
     if (!entry.onBack) return;
@@ -401,7 +406,9 @@ export function afterOverlayHistory(navigate: () => void) {
   whenSettled(() => {
     if (!onTopEntry()) return navigate();
     const taken = takeEntries(0).reverse();
-    goBack(taken.length, taken);
+    // A guard's onBack asks before leaving; this navigation is the leaving
+    // (the page's own confirmed link, or one it doesn't guard).
+    goBack(taken.length, taken.filter((entry) => !entry.guard));
     waiting.unshift(navigate);
   });
 }
@@ -411,6 +418,21 @@ export function afterOverlayHistory(navigate: () => void) {
  * while it is open, and `close` when Back takes it.
  */
 export function useCloseOnBack(open: boolean, close: () => void) {
+  useBackEntry(open, close, false);
+}
+
+/**
+ * Makes the system Back ask before leaving a page with unsaved edits: one
+ * history entry while `active`, and `onBack` (which opens the page's confirm)
+ * when Back takes it, instead of leaving. The page passes `active` false
+ * while its confirm is open, so that Back closes the confirm, and once it
+ * leaves. An in-app navigation takes the entry off without asking.
+ */
+export function useBackGuard(active: boolean, onBack: () => void) {
+  useBackEntry(active, onBack, true);
+}
+
+function useBackEntry(open: boolean, close: () => void, guard: boolean) {
   // Bumped when Back takes the entry, so an overlay that refused to close
   // (a busy confirm) puts a new one up for the next Back.
   const [backs, setBacks] = useState(0);
@@ -420,19 +442,21 @@ export function useCloseOnBack(open: boolean, close: () => void) {
   });
   useEffect(() => {
     if (!open) return;
-    const entry = openEntry(onBack);
+    const entry = openEntry(onBack, guard);
     return () => closeEntry(entry);
-  }, [open, backs]);
+  }, [open, backs, guard]);
 }
 
 /**
  * The open state of a sheet or dialog that the system Back closes, for the
  * shared overlay roots: controlled when `open` is given, else held here.
+ * `closeOnBack` false holds no entry (see useLeaveConfirm).
  */
 export function useBackClosableOpen(
   open: boolean | undefined,
   defaultOpen: boolean | undefined,
   onOpenChange: ((open: boolean) => void) | undefined,
+  closeOnBack = true,
 ): [boolean, (open: boolean) => void] {
   const [ownOpen, setOwnOpen] = useState(defaultOpen ?? false);
   const isOpen = open ?? ownOpen;
@@ -440,7 +464,7 @@ export function useBackClosableOpen(
     if (open === undefined) setOwnOpen(next);
     onOpenChange?.(next);
   };
-  useCloseOnBack(isOpen, () => setOpen(false));
+  useCloseOnBack(closeOnBack && isOpen, () => setOpen(false));
   return [isOpen, setOpen];
 }
 

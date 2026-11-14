@@ -74,7 +74,7 @@ export default function LoggingSettingsPage() {
       }
       return;
     }
-    void update({ logMaxFileMb: parsed });
+    void update({ logMaxFileMb: parsed }, reason === 'pagehide' ? { keepalive: true } : undefined);
   }, 700);
 
   const retentionDaysCommit = useDebouncedCommit<string>((value, reason) => {
@@ -86,7 +86,7 @@ export default function LoggingSettingsPage() {
       }
       return;
     }
-    void update({ logRetentionDays: parsed });
+    void update({ logRetentionDays: parsed }, reason === 'pagehide' ? { keepalive: true } : undefined);
   }, 700);
 
   async function handleToggleEnabled(next: boolean) {

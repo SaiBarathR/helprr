@@ -111,6 +111,12 @@ export interface UpdateOptions {
    * to the default.
    */
   successMessage?: (state: AppSettingsState, raw: unknown) => string | undefined;
+  /**
+   * The page is going away (a debounced commit's `pagehide`): send the PUT at
+   * once with fetch keepalive, outside the mutation queue, whose request
+   * starts a tick later — too late for an unloading document. No toast.
+   */
+  keepalive?: boolean;
 }
 
 export interface UseAppSettingsResult {
@@ -169,6 +175,28 @@ export function useAppSettings(): UseAppSettingsResult {
 
   const update = useCallback<UseAppSettingsResult['update']>(
     async (patch, opts) => {
+      if (opts?.keepalive) {
+        const previous = qc.getQueryData<AppSettingsState>(SETTINGS_KEY);
+        if (previous) qc.setQueryData<AppSettingsState>(SETTINGS_KEY, { ...previous, ...patch });
+        try {
+          const res = await fetch('/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(patch),
+            keepalive: true,
+          });
+          if (!res.ok) throw new Error('Failed to save');
+          const state = normalize((await res.json().catch(() => null)) ?? {});
+          qc.setQueryData(SETTINGS_KEY, state);
+          return state;
+        } catch {
+          // Still here (a backgrounded app that came back): show what's saved.
+          void qc.invalidateQueries({ queryKey: SETTINGS_KEY });
+          return null;
+        } finally {
+          forgetAppSettingsFetch();
+        }
+      }
       const showToast = opts?.toast !== false;
       try {
         const { state, raw } = await mutateAsync(patch);
@@ -188,7 +216,7 @@ export function useAppSettings(): UseAppSettingsResult {
         return null;
       }
     },
-    [mutateAsync],
+    [mutateAsync, qc],
   );
 
   const reload = useCallback(async () => {

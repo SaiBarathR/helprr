@@ -2202,11 +2202,18 @@ html[data-watch-skin='cinematic'] .hpr-watch
 
    Applied at the root so it covers the document scrollbar as well as every
    pane inside the section; .hpr-cine-scroll opts an individual container in
-   (the detail overlay is portalled out of .hpr-watch and needs it by name). */
-html[data-watch-skin='cinematic']:has(.hpr-watch),
-html[data-watch-skin='cinematic'] .hpr-cine-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+   (the detail overlay is portalled out of .hpr-watch and needs it by name).
+
+   The standard properties are for Firefox only: Chromium ignores every
+   ::-webkit-scrollbar rule on an element that sets either of them, and its
+   own thin scrollbar draws grey arrow buttons at both ends on Linux and
+   Windows. */
+@supports not selector(::-webkit-scrollbar) {
+  html[data-watch-skin='cinematic']:has(.hpr-watch),
+  html[data-watch-skin='cinematic'] .hpr-cine-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+  }
 }
 
 html[data-watch-skin='cinematic']:has(.hpr-watch) ::-webkit-scrollbar,
@@ -2239,6 +2246,11 @@ html[data-watch-skin='cinematic'] .hpr-cine-scroll::-webkit-scrollbar-thumb:hove
 html[data-watch-skin='cinematic']:has(.hpr-watch) ::-webkit-scrollbar-corner,
 html[data-watch-skin='cinematic'] .hpr-cine-scroll::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+html[data-watch-skin='cinematic']:has(.hpr-watch) ::-webkit-scrollbar-button,
+html[data-watch-skin='cinematic'] .hpr-cine-scroll::-webkit-scrollbar-button {
+  display: none;
 }
 
 /* ── Player scroll lock ────────────────────────────────────────────────

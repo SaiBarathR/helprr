@@ -80,3 +80,45 @@ describe('DataTable sticky header', () => {
     expect(screen.getByRole('columnheader').style.top).toBe('');
   });
 });
+
+describe('DataTable column resize', () => {
+  const columns = [
+    { id: 'title', label: 'Title', width: 200, grow: true, cell: (row: string) => row },
+    { id: 'year', label: 'Year', width: 80, cell: () => '1979' },
+    { id: 'size', label: 'Size', width: 90, cell: () => '4 GB' },
+  ];
+  const cols = () => [...document.querySelectorAll('col')] as HTMLTableColElement[];
+  const drag = (grip: Element, from: number, to: number) => act(() => {
+    grip.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: from }));
+    grip.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: to }));
+    grip.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: to }));
+  });
+
+  beforeEach(() => {
+    HTMLElement.prototype.setPointerCapture = vi.fn();
+  });
+
+  it('paints each sticky header cell over the next, so a grip overhanging the next cell stays grabbable', () => {
+    render(<DataTable tableId="resize-test" columns={columns} rows={['Alien']} rowKey={String} stickyHeader />);
+    const z = screen.getAllByRole('columnheader').map((th) => Number(th.style.zIndex));
+    expect(z[0]).toBeGreaterThan(z[1]);
+    expect(z[1]).toBeGreaterThan(z[2]);
+    // Still under the sticky page toolbar (z-index 30).
+    expect(Math.max(...z)).toBeLessThan(30);
+  });
+
+  it('resizes the grow column from its width on screen and keeps it absorbing the leftover space', () => {
+    // The grow column shows 500px wide: well over its 200px minimum.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { width: this.tagName === 'TH' ? 500 : tableWidth } as DOMRect;
+    });
+    render(<DataTable tableId="resize-test" columns={columns} rows={['Alien']} rowKey={String} />);
+    drag(screen.getAllByRole('separator')[0], 100, 160);
+    // 500 + 60, not 200 + 60; still a minimum (no fixed width handing the
+    // leftover to Year and Size).
+    expect(cols()[0].style.minWidth).toBe('560px');
+    expect(cols()[0].style.width).toBe('');
+    expect(cols()[1].style.width).toBe('80px');
+    expect(JSON.parse(localStorage.getItem('helprr-table:resize-test') ?? '{}').widths).toEqual({ title: 560 });
+  });
+});
