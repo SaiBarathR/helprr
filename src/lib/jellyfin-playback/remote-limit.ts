@@ -45,16 +45,20 @@ type Subnet = { address: string; prefix: number; type: Family };
 /**
  * One `LocalNetworkSubnets` entry as .NET's `IPNetwork.TryParse` reads it: an
  * address, or an address and a prefix within its size with no bits set past
- * it. `'refused'` for an entry .NET refuses too (Jellyfin skips it).
- * `'unknown'` when Node cannot read what .NET may: .NET also takes IPv4 in
- * short, hex and octal forms (`10.0`, `0x0a.0.0.5`, `192.168.1.010`) and
- * bracketed IPv6 (`[fe80::5]`), so Helprr cannot tell what Jellyfin made of it.
+ * it. `'refused'` for an entry .NET refuses too (Jellyfin skips it): no
+ * address, an empty, signed or otherwise non-digit prefix, a prefix past the
+ * address size, bits set past the prefix. `'unknown'` when Node cannot read
+ * what .NET may: .NET also takes IPv4 in short, hex and octal forms (`10.0`,
+ * `0x0a.0.0.5`, `192.168.1.010`), bracketed IPv6 (`[fe80::5]`) and scoped IPv6
+ * (`fe80::1%eth0`, which a Node rule would match without its scope), so Helprr
+ * cannot tell what Jellyfin made of it.
  */
 function parseSubnet(entry: string): Subnet | 'refused' | 'unknown' {
   const [address, prefixText, extra] = entry.split('/');
+  if (address === '') return 'refused';
+  if (prefixText !== undefined && !/^\d+$/.test(prefixText)) return 'refused';
   const family = isIP(address);
-  if (!family) return 'unknown';
-  if (prefixText !== undefined && !/^\d+$/.test(prefixText)) return 'unknown';
+  if (!family || address.includes('%')) return 'unknown';
   if (extra !== undefined) return 'refused';
   const size = family === 6 ? 128 : 32;
   // A bare 0.0.0.0 or :: is "any" to Jellyfin (IPv4Any, IPv6Any), not one address.
@@ -125,17 +129,13 @@ export function lanFromSubnets(subnets: readonly unknown[], families: Families =
     // Not trimmed again after the '!': Jellyfin parses the rest as it stands.
     const subnet = parseSubnet(negated ? entry.slice(1) : entry);
     if (subnet === 'refused') continue;
-    if (subnet !== 'unknown') {
-      try {
-        lan[subnet.type][negated ? 'exclude' : 'include'].addSubnet(subnet.address, subnet.prefix, subnet.type);
-        if (!negated) included++;
-        continue;
-      } catch {
-        // An address Node reads but cannot use in a rule (a zone id): unknown.
-      }
+    if (subnet === 'unknown') {
+      if (negated) return emptyLan();
+      unknownInclude = true;
+      continue;
     }
-    if (negated) return emptyLan();
-    unknownInclude = true;
+    lan[subnet.type][negated ? 'exclude' : 'include'].addSubnet(subnet.address, subnet.prefix, subnet.type);
+    if (!negated) included++;
   }
   if (!included) {
     if (unknownInclude) return emptyLan();

@@ -56,9 +56,91 @@ describe('Jellyfin\'s LAN', () => {
     expect(isLanAddress('203.0.113.9', lan('::'))).toBe(false);
   });
 
-  it('trims only the whole entry, not the space after the !', () => {
-    expect(isLanAddress('192.168.0.66', lan(' !192.168.0.66 ', '192.168.0.0/16'))).toBe(false);
-    expect(isLanAddress('192.168.0.67', lan(' !192.168.0.66 ', '192.168.0.0/16'))).toBe(true);
+  it('honours ! exclusions, with the defaults and with its own subnets', () => {
+    const own = lan('192.168.0.0/16', '!192.168.0.66', '!192.168.9.0/24');
+    expect(isLanAddress('192.168.0.50', own)).toBe(true);
+    expect(isLanAddress('192.168.0.66', own)).toBe(false);
+    expect(isLanAddress('192.168.9.4', own)).toBe(false);
+    // Only exclusions: the defaults, minus them.
+    const onlyExclusions = lan('!10.0.0.5');
+    expect(isLanAddress('10.0.0.6', onlyExclusions)).toBe(true);
+    expect(isLanAddress('10.0.0.5', onlyExclusions)).toBe(false);
+  });
+
+  it('always counts loopback as local, even when its own subnets leave it out', () => {
+    const own = lan('192.168.5.0/24', '!127.0.0.0/8');
+    expect(isLanAddress('127.0.0.1', own)).toBe(true);
+    expect(isLanAddress('::1', own)).toBe(true);
+    expect(isLanAddress('10.0.0.1', own)).toBe(false); // not on this list
+  });
+
+  it('skips entries .NET refuses, without failing, and falls back to the defaults when nothing usable is left', () => {
+    const refused = ['10.0.0.0/33', 'fd00::/129', '10.0.0.0/8/1', '192.168.1.5/24', '', '!', '10.0.0.0/', '10.0.0.0/ 8', '10.0.0.0/+8', '/8'];
+    expect(() => lan(...refused)).not.toThrow();
+    // Bits set past the prefix: refused by IPNetwork.TryParse, so skipped.
+    const skipped = lan('192.168.1.5/24', '100.64.0.0/10');
+    expect(isLanAddress('192.168.1.9', skipped)).toBe(false);
+    expect(isLanAddress('100.100.1.2', skipped)).toBe(true);
+    // Only refused entries: Jellyfin's defaults, as Jellyfin does.
+    for (const list of [refused, ['10.0.0.0/33'], ['', '!']]) {
+      expect(isLanAddress('192.168.0.50', lan(...list)), JSON.stringify(list)).toBe(true);
+      expect(isLanAddress('203.0.113.9', lan(...list)), JSON.stringify(list)).toBe(false);
+    }
+  });
+
+  it('ignores a lone or malformed ! that Jellyfin ignores, instead of capping everyone', () => {
+    for (const exclusion of ['!', '!/8', '!10.0.0.0/', '!10.0.0.0/ 8', '!10.0.0.0/+8', '!10.0.0.0/33']) {
+      const own = lan('192.168.0.0/16', exclusion);
+      expect(isLanAddress('192.168.0.50', own), exclusion).toBe(true);
+      expect(isLanAddress('10.0.0.1', own), exclusion).toBe(false); // the list's own subnets still decide
+    }
+  });
+
+  it('reads a single address as that address only', () => {
+    const own = lan('192.168.5.7', 'fd00::7');
+    expect(isLanAddress('192.168.5.7', own)).toBe(true);
+    expect(isLanAddress('192.168.5.8', own)).toBe(false);
+    expect(isLanAddress('fd00::7', own)).toBe(true);
+    expect(isLanAddress('fd00::8', own)).toBe(false);
+  });
+
+  it('fails closed on "! address" with a space after the mark, and trims only the whole entry', () => {
+    // .NET may or may not read " 192.168.0.66": Helprr cannot tell, so only loopback stays local.
+    const own = lan('192.168.0.0/16', '! 192.168.0.66', '!192.168.0.77');
+    expect(isLanAddress('192.168.0.50', own)).toBe(false);
+    expect(isLanAddress('192.168.0.66', own)).toBe(false);
+    expect(isLanAddress('127.0.0.1', own)).toBe(true);
+    const trimmed = lan(' !192.168.0.66 ', '192.168.0.0/16');
+    expect(isLanAddress('192.168.0.66', trimmed)).toBe(false);
+    expect(isLanAddress('192.168.0.67', trimmed)).toBe(true);
+  });
+
+  it('leaves only loopback local when an exclusion is written in a form .NET reads and Node cannot', () => {
+    // Jellyfin excludes 192.168.1.8 for "!192.168.1.010" (octal); skipping it would make that host local.
+    for (const exclusion of ['!0xc0.168.0.66', '!192.168.1.010', '!10.0', '![fe80::5]', '!fe80::1%eth0', '!nonsense']) {
+      const own = lan('192.168.0.0/16', exclusion);
+      expect(isLanAddress('192.168.0.50', own), exclusion).toBe(false);
+      expect(isLanAddress('10.1.2.3', lan(exclusion)), exclusion).toBe(false);
+      expect(isLanAddress('127.0.0.1', own), exclusion).toBe(true);
+      expect(isLanAddress('::1', own), exclusion).toBe(true);
+    }
+  });
+
+  it('does not widen to the defaults when every include is in a form Node cannot read', () => {
+    for (const include of ['10.0/16', '192.168.1', '0x0a.0.0.0/8', '[fe80::]/10', 'fe80::%eth0/10', 'nonsense']) {
+      const own = lan(include);
+      expect(isLanAddress('192.168.0.50', own), include).toBe(false);
+      expect(isLanAddress('10.1.2.3', own), include).toBe(false);
+      expect(isLanAddress('127.0.0.1', own), include).toBe(true);
+    }
+  });
+
+  it('skips an unreadable include beside readable ones, which only narrows the LAN', () => {
+    const mixed = lan('10.0/16', '192.168.1.0/24', 'fe80::1%eth0');
+    expect(isLanAddress('192.168.1.5', mixed)).toBe(true);
+    expect(isLanAddress('192.168.2.5', mixed)).toBe(false);
+    expect(isLanAddress('10.0.0.5', mixed)).toBe(false);
+    expect(isLanAddress('fe80::1', mixed)).toBe(false); // the scoped entry gave no rule
   });
 });
 
