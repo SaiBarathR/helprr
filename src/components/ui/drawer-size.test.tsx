@@ -44,6 +44,7 @@ describe('DrawerContent above the keyboard', () => {
     return {
       viewport,
       fire: () => listeners.forEach((listener) => listener()),
+      listening: () => listeners.size,
     };
   }
 
@@ -115,9 +116,7 @@ describe('DrawerContent above the keyboard', () => {
 
   // vaul composes refs without passing a ref's cleanup on: the content must stop on its ref(null).
   it('takes its keyboard listeners and measuring box away when it unmounts', () => {
-    stubViewport(window.innerHeight - 300);
-    const add = vi.spyOn(window, 'addEventListener');
-    const remove = vi.spyOn(window, 'removeEventListener');
+    const { listening } = stubViewport(window.innerHeight - 300);
     const boxes = () => [...document.body.querySelectorAll<HTMLElement>('div[aria-hidden="true"]')]
       .filter((box) => box.style.position === 'fixed' && box.style.visibility === 'hidden').length;
     const view = render(
@@ -128,12 +127,11 @@ describe('DrawerContent above the keyboard', () => {
       </Drawer>,
     );
     expect(boxes()).toBe(1);
-    const onResize = add.mock.calls.find(([type]) => type === 'resize')?.[1];
+    expect(listening()).toBeGreaterThan(0);
     view.unmount();
     expect(boxes()).toBe(0);
-    expect(remove).toHaveBeenCalledWith('resize', onResize);
-    add.mockRestore();
-    remove.mockRestore();
+    // Its visualViewport listeners (and vaul's own) are all gone.
+    expect(listening()).toBe(0);
   });
 
   it('leaves a drawer alone while no keyboard is open', () => {
