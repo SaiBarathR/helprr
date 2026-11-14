@@ -176,7 +176,7 @@ function EnableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenCh
         onOpenChange(o);
       }}
     >
-      <DrawerContent size="content">
+      <DrawerContent size="content" scrollTogether>
         <DrawerHeader className="text-center">
           <DrawerTitle>{recoveryCodes ? 'Save your recovery codes' : 'Turn on two-step sign-in'}</DrawerTitle>
           <DrawerDescription>
@@ -366,7 +366,7 @@ function DisableTwoFactorDrawer({ open, onOpenChange }: { open: boolean; onOpenC
         onOpenChange(o);
       }}
     >
-      <DrawerContent size="content">
+      <DrawerContent size="content" scrollTogether>
         <DrawerHeader className="text-center">
           <DrawerTitle>Turn off two-step sign-in</DrawerTitle>
           <DrawerDescription>Sign-in will ask for your password only. Your recovery codes stop working.</DrawerDescription>
