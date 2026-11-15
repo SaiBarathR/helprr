@@ -20,6 +20,9 @@ title's **Manage files** permission, and for music the **Manage music files**
 permission. Polling, refresh intervals, Region and the server time zone in
 **Settings → Preferences** are shown only to admins. The Jellyfin connection's default user
 and custom headers are admin-only too, like its address and key.
+**Logging settings** also lets a member delete all log files, and **Storage / cache**
+lets them clear the cleanup history. Only an admin can turn failed request and response
+bodies on or off in **Settings → Logging**, because those bodies can hold other people's data.
 
 Giving someone admin asks you to confirm it is you: adding an admin, making someone
 admin, setting another admin's password or Jellyfin account, and making a reset or invite

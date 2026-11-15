@@ -7,6 +7,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-11-15
+
+A polish release: a full pass over the app on iPhone, Android and desktop, a choice of
+how user accounts are imported, a smarter Automatic quality in the player, and tighter
+permissions. The update makes two small database changes, so back up first (see **For
+admins** below).
+
+### Added
+
+- **Choose how user accounts are imported**: importing a backup with **Users & accounts**
+  now asks how to treat this install's first admin. The options are **Keep this install's
+  first admin** (the default), **Match by username**, or **Restore** the file's first
+  admin. Helprr warns before an import that would rename you, change your password or
+  sign you out.
+- **Settings changes in the security log**: every save of server-wide settings is
+  recorded, with who saved and which settings changed (never the values).
+- **Automatic quality works like Jellyfin's own web app**: a quick speed test sets the
+  starting quality. It now raises the quality on a fast network (up to 120 Mbps at home)
+  as well as lowering it on a slow one, and tests again after a network change or when you
+  come back after 10 minutes.
+- **Jellyfin's Internet streaming limits now apply through Helprr**: people watching away
+  from home are capped at the bitrate limit set in Jellyfin (theirs, or the server's).
+  Helprr can only tell home from away behind a trusted reverse proxy; see **For admins**.
+- Members given **Logging settings**, **Storage / cache** or **Download settings** can save
+  those pages. Settings → Preferences → Region has a search box. A cancelled scheduled
+  alert can be deleted.
+
+### Changed
+
+- **Deleting your own account** asks for a code from your authenticator app (or a recovery
+  code) when two-step sign-in is on.
+- **Logging settings** now lets a member delete all log files, and **Storage / cache** lets
+  them clear cleanup history. Logging failed request and response bodies is admin-only.
+- **Dashboard on phones**: Recently Added, For You, Upcoming and Random Pick show one whole
+  title in small cells instead of cut-off rows. Labels and charts fit narrow cells. Offline,
+  widgets keep their saved data with the amber notice, or say **You're offline** / **Can't
+  reach Helprr right now** instead of zeros. Upcoming shows a film once when its digital and
+  physical releases fall on the same day.
+- **iPhone home-screen app**: with the tabs at the top, they sit a little lower, out of the
+  strip iOS blurs (iPad mini too). On small phones, form sheets scroll with their buttons so
+  the keyboard's ⌄ / ⌃ reach every field.
+- **Player**:
+  - Changing the audio or subtitles while paused keeps the picture until you press **Play**.
+  - **Back** closes the queue and the player panels before it minimizes the player.
+  - The Audio and Subtitles lists work with the arrow keys.
+  - A title that can't play says so in plain words.
+  - When Jellyfin rejects Helprr's key, the player says so and shows admins how to fix it.
+- **Back on Android** closes menus, pop-ups and long-press menus first. **Discard** on a
+  page with unsaved changes leaves in one step.
+- Film and album **before it airs** notifications now count to midnight in your own time
+  zone.
+- The Insights tabs look like the other pages' tabs, and the long-press menu no longer has a
+  Forward button.
+- The app no longer repeats a request the server refused, so refused pages load faster.
+
+#### For admins
+
+- **The update applies 2 database changes. Back up first.** The Compose file is unchanged.
+- **Jellyfin devices**: each Jellyfin-linked person gets a new device row in Jellyfin's
+  Dashboard → Devices, one per Helprr install. Two installs (for example a test copy) no
+  longer sign each other out. Delete the old `helprr-user-…` rows only after signing in
+  again on each install, because deleting a device signs it out.
+- **Internet streaming limits**: Helprr sees a viewer's address only behind a trusted
+  reverse proxy, with `TRUST_FORWARDED_PROTO=true`. Bind the app port to the proxy only,
+  for example `HELPRR_PORT=127.0.0.1:3050`. Without that, once you set an Internet
+  bitrate limit in Jellyfin, every viewer counts as remote, at home too. With no limit set,
+  nothing changes. The HTTPS guide has the setup for Tailscale Serve, Caddy and Cloudflare
+  Tunnel.
+- If you chose your own `JWT_SECRET`, make sure it is long and random; generated secrets
+  are. Helprr now derives its Jellyfin device names from it.
+
+### Security
+
+- Disabled and pending accounts no longer receive push notifications.
+- Deleting your own account needs your two-step code when two-step sign-in is on.
+- Only admins can turn on logging of failed request and response bodies.
+- Deleting log files or cleanup history is recorded in the security log: who did it, which
+  records and how many.
+
+### Fixed
+
+- **Calendar**:
+  - West of UTC, film and album days were shown a day early.
+  - East of UTC+9, a reminder and its film showed as two rows.
+  - A reminder you add now shows **Scheduled** at once.
+  - Toasts no longer cover the Calendar's toolbar.
+- **Discover** shows **Open in library** or **Add** at once after you add or delete a title,
+  and names a section that failed to load, with **Retry**.
+- A download where you chose some of the files shows the chosen files' size.
+- Opening and closing a sheet on a phone no longer leaves hidden work running in the
+  background.
+- Notifications says **You're offline** instead of **No notifications yet** when it can't
+  load.
+- A broken saved setting (a view, sort or Liquid Glass mode) no longer stops a page from
+  opening; it goes back to the default.
+- The long-press menu's **Reload** works on a real tap, and its buttons are easier to hit.
+- Many layout fixes for phones (down to 320 px), tablets and desktop: whole labels, no
+  clipped badges or chips, table columns that fit the screen, and keyboard-safe dialogs.
+
 ## [1.15.0] - 2026-11-14
 
 A big release: two-step sign-in, invite links, database backups from inside Helprr,
