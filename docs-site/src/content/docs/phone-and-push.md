@@ -46,6 +46,15 @@ setup** has a **Quiet hours** row that says when they are on now. Other notifica
 not sent during quiet hours (they still show in Notifications), except health warnings,
 a service going down or coming back, and security alerts.
 
+A disabled account, or one whose invite isn't accepted yet, gets no notifications. Its
+devices are kept, so notifications come back when an admin turns the account on again.
+
+Films and albums are released on a day, not at a time. With **Settings → Notifications
+→ Upcoming releases → Timing** set to **Before air time**, Helprr counts down to midnight
+at the start of that day in each person's time zone. With the default 60 minutes, the
+notification comes at about 23:00 the evening before. During quiet hours it isn't sent,
+like any other notification, but it still shows in Notifications.
+
 If a device stops getting notifications, turn them off and on again in **Settings →
 Notifications**. **Settings → Notifications → Devices** lists only your own devices,
 admins included, and **Revoke all** turns off push only on them.

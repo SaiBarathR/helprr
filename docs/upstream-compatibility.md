@@ -542,6 +542,23 @@ Each line says how it was checked: "source" means read from the upstream source 
   the series provider ids (Tvdb, Tmdb); library cleanup and the "New episode"
   notification both use it.
 
+### Calls added in 1.16.0
+
+- **Jellyfin remote bitrate limits** (live, Jellyfin `12.4.0`, #727): Helprr reads
+  `RemoteClientBitrateLimit` from `GET /System/Configuration`, `LocalNetworkSubnets`
+  from `GET /System/Configuration/network` (both admin key, read only) and the user's
+  `Policy.RemoteClientBitrateLimit` from `GET /Users/{id}`. A user limit above 0 wins
+  over the server's, as in `MediaInfoHelper.GetMaxBitrate`. Live check: with the test
+  user's limit at 3 Mbps, Jellyfin still granted a 120 Mbps transcode through Helprr,
+  because it saw Helprr's LAN address. So Helprr applies the limit itself. The test
+  user's policy was restored afterwards; the server settings were only read.
+- **Jellyfin bitrate test** (source, jellyfin-web `utils/bitrateTest.ts`): Helprr serves
+  its own random-byte test at `/api/jellyfin/stream/bitrate-test` instead of proxying
+  `/Playback/BitrateTest`. The sizes and the 70% rule follow jellyfin-web.
+- **Jellyfin sign-in DeviceId** (live, Jellyfin `12.4.0`, #710): signing the same user in
+  again with the same `DeviceId` revokes the token issued before, so each install now
+  keys its DeviceId with its own secret.
+
 ## Before reporting an upstream compatibility problem
 
 1. In **Settings → Instances**, re-test the affected connection and record the exact
