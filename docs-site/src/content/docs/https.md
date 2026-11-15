@@ -45,7 +45,9 @@ Each recipe uses Helprr's default port, 3050; use yours if you changed it. After
   in `.env`: change the `HELPRR_PORT` line (the installer adds one at the end if you
   chose a port; the last one wins), or add one, to `127.0.0.1:` followed by your port,
   such as `HELPRR_PORT=127.0.0.1:3050`. Then the first admin is created at the proxy's
-  address (with `APP_ORIGIN` set).
+  address (with `APP_ORIGIN` set). A port bound to `127.0.0.1` is closed to other
+  machines only on Docker 28 or later. Older versions let machines on the same local
+  network segment (on a VPS, the provider's) reach it; `docker version` shows yours.
 
   A proxy or app that runs in Docker itself (Nginx Proxy Manager, `cloudflared` in a
   container, Sonarr, Radarr) cannot reach the host's `127.0.0.1`. Add Helprr's Docker
@@ -134,7 +136,11 @@ applies the limit itself; Helprr applies it, by the viewer's address:
   only if IPv6 is enabled there). A Tailscale address (`100.64.0.0/10`, or
   `fd7a:115c:a1e0::/48` over IPv6) counts as remote unless you add that range there.
 - Make Helprr's port answer the proxy only (see above): anyone who reaches the port
-  directly can send a made-up address.
+  directly can send a made-up address. Containers on Helprr's Docker network (Sonarr,
+  qBittorrent or `cloudflared` in the same stack) reach it directly too, so trust them
+  as much as the proxy.
+- The limit sets the quality Helprr's player asks for. It is not a hard cap: someone who
+  edits a stream's address by hand can still ask Jellyfin for more.
 
 ## Cloudflare Tunnel
 
@@ -168,7 +174,8 @@ You need a domain whose DNS is on Cloudflare.
    a visitor sends but adds the visitor's real address after it, and Helprr reads it from
    the end, so leave `TRUSTED_PROXY_HOPS` at its default of 1. The port setting makes
    Helprr answer `cloudflared` only: otherwise anyone who reaches the port directly can
-   send a made-up address. Restart Helprr.
+   send a made-up address. That needs Docker 28 or later (see
+   [above](#what-helprr-needs-from-it)). Restart Helprr.
 
    What that costs: Helprr no longer answers at its address on your network, so open it at
    `https://helprr.example.com`, at home too. Sonarr and Radarr fetch `.torrent` files at
@@ -260,9 +267,9 @@ Two things are required, or anyone can sign in as anyone:
   header only from its own sign-in, and replace (not add to) the secret header. Each
   example below does.
 - **Helprr's port must not be reachable except through the proxy.** Put the proxy on
-  the same machine or Docker network, and the port on `127.0.0.1` (see
-  [What Helprr needs from it](#what-helprr-needs-from-it)). The secret travels in plain
-  HTTP between the proxy and Helprr.
+  the same machine or Docker network, and the port on `127.0.0.1`, which needs Docker 28
+  or later (see [What Helprr needs from it](#what-helprr-needs-from-it)). The secret
+  travels in plain HTTP between the proxy and Helprr.
 
 - **Every proxy route that adds the secret header must also run the proxy's sign-in.**
   A second router or `location` (for `/api`, say) that skips the sign-in but still adds

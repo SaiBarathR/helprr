@@ -33,6 +33,7 @@ import {
   recordFailedLinkAttempt,
   recordFailedSignIn,
   recordSecurityEvent,
+  recordRecordsDeleted,
   recordSettingsUpdated,
   serviceTargetLabel,
 } from '@/lib/security-audit';
@@ -186,6 +187,39 @@ describe('recordSettingsUpdated', () => {
 
   it('writes nothing for a save that wrote no key', async () => {
     await recordSettingsUpdated(request(), { id: 'm1', username: 'member' }, 'Server settings', []);
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('recordRecordsDeleted', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.clientIp.mockReturnValue('203.0.113.77');
+    mocks.create.mockResolvedValue({});
+  });
+
+  it('writes who deleted which records, the scope and how many', async () => {
+    await recordRecordsDeleted(request(), { id: 'm1', username: 'member' }, 'cleanup-history', 'older than 30 days', 120);
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: 'm1',
+        actorUsername: 'member',
+        action: 'RECORDS_DELETED',
+        targetType: 'records',
+        targetId: 'cleanup-history',
+        targetLabel: 'Cleanup history',
+        fields: ['older than 30 days'],
+        count: 120,
+      }),
+    });
+    await recordRecordsDeleted(request(), { id: 'm1', username: 'member' }, 'logs', 'all', 3);
+    expect(mocks.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({ targetId: 'logs', targetLabel: 'Log files', fields: ['all'], count: 3 }),
+    });
+  });
+
+  it('writes nothing when nothing was deleted', async () => {
+    await recordRecordsDeleted(request(), { id: 'm1', username: 'member' }, 'logs', 'all', 0);
     expect(mocks.create).not.toHaveBeenCalled();
   });
 });

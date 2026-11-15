@@ -16,7 +16,8 @@ import {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Security and admin audit trail: account, permission, session, service
-// connection, server-settings and settings-import changes, database backups, and sign-ins. Each row says who did
+// connection, server-settings and settings-import changes, database backups,
+// deleted log files and cleanup history, and sign-ins. Each row says who did
 // what to which target, and which FIELD NAMES changed: never a value, a hash, a
 // key or a password (the one value kept is a new role, as "made admin"; a failed
 // sign-in keeps the username as typed). Writes are fail-soft, made after the action, and never
@@ -32,7 +33,7 @@ export interface SecurityAuditActor {
   username: string;
 }
 
-export type SecurityAuditTargetType = 'user' | 'session' | 'service' | 'settings' | 'backup' | 'api-token';
+export type SecurityAuditTargetType = 'user' | 'session' | 'service' | 'settings' | 'backup' | 'api-token' | 'records';
 
 export interface SecurityAuditInput {
   /**
@@ -127,6 +128,30 @@ export async function recordSettingsUpdated(
     targetId,
     targetLabel: label,
     fields: [...keys].sort(),
+  });
+}
+
+/**
+ * Who deleted log files or cleanup history, so the records of what happened
+ * can't go without a trace. scope says which: 'all', 'older than N days',
+ * 'filtered' or one log file's name. Nothing is recorded when nothing went.
+ */
+export async function recordRecordsDeleted(
+  request: NextRequest,
+  actor: SecurityAuditActor,
+  kind: 'logs' | 'cleanup-history',
+  scope: string,
+  count: number,
+): Promise<void> {
+  if (count <= 0) return;
+  await recordSecurityEvent(request, {
+    actor,
+    action: 'RECORDS_DELETED',
+    targetType: 'records',
+    targetId: kind,
+    targetLabel: kind === 'logs' ? 'Log files' : 'Cleanup history',
+    fields: [scope],
+    count,
   });
 }
 

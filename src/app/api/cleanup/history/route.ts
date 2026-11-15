@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { requireUserAnyCapability, requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { parsePageParams } from '@/lib/pagination';
+import { recordRecordsDeleted } from '@/lib/security-audit';
 
 const VALID_CLEANER = new Set(['queue', 'download', 'library']);
 const VALID_STRIKE_TYPE = new Set(['stall', 'slow', 'failedImport', 'downloadingMetadata']);
@@ -129,6 +130,7 @@ async function deleteHandler(req: NextRequest) {
   if (!auth.ok) return auth.response;
   if (all) {
     const r = await prisma.cleanupHistory.deleteMany({});
+    await recordRecordsDeleted(req, auth.user, 'cleanup-history', 'all', r.count);
     return NextResponse.json({ deleted: r.count });
   }
 
@@ -139,6 +141,7 @@ async function deleteHandler(req: NextRequest) {
     }
     const cutoff = new Date(Date.now() - Math.floor(days) * 86_400_000);
     const r = await prisma.cleanupHistory.deleteMany({ where: { createdAt: { lt: cutoff } } });
+    await recordRecordsDeleted(req, auth.user, 'cleanup-history', `older than ${Math.floor(days)} days`, r.count);
     return NextResponse.json({ deleted: r.count, cutoff: cutoff.toISOString() });
   }
 
@@ -150,6 +153,7 @@ async function deleteHandler(req: NextRequest) {
     return NextResponse.json({ error: 'refusing to delete all without ?all=true' }, { status: 400 });
   }
   const r = await prisma.cleanupHistory.deleteMany({ where: whereResult.where });
+  await recordRecordsDeleted(req, auth.user, 'cleanup-history', 'filtered', r.count);
   return NextResponse.json({ deleted: r.count });
 }
 
