@@ -106,6 +106,8 @@ describe('DELETE /api/logs/files', () => {
     mocks.user = member('logs.manage');
     mocks.deleteLogFile.mockRejectedValueOnce(Object.assign(new Error('gone'), { code: 'ENOENT' }));
     expect((await deleteLogs(req('/api/logs/files?file=a.jsonl', 'DELETE'))).status).toBe(404);
+    mocks.deleteLogFile.mockRejectedValueOnce(Object.assign(new Error('busy'), { code: 'EBUSY' }));
+    expect((await deleteLogs(req('/api/logs/files?file=a.jsonl', 'DELETE'))).status).toBe(500);
     expect(mocks.recordRecordsDeleted).not.toHaveBeenCalled();
   });
 
@@ -146,6 +148,14 @@ describe('/api/cleanup/history', () => {
     mocks.user = member('cleanup.manage');
     await deleteHistory(req('/api/cleanup/history?cleaner=queue', 'DELETE'));
     expect(mocks.recordRecordsDeleted).toHaveBeenLastCalledWith(expect.any(NextRequest), mocks.user, 'cleanup-history', 'filtered', 3);
+  });
+
+  it('records nothing for a refused cleanup-history delete', async () => {
+    mocks.user = member('cleanup.manage');
+    expect((await deleteHistory(req('/api/cleanup/history?olderThanDays=0', 'DELETE'))).status).toBe(400);
+    expect((await deleteHistory(req('/api/cleanup/history?all=false', 'DELETE'))).status).toBe(400);
+    expect(mocks.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.recordRecordsDeleted).not.toHaveBeenCalled();
   });
 
   it('keeps a filtered delete (the Cleanup page) to cleanup.manage', async () => {
