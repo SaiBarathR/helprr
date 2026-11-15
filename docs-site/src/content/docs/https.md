@@ -134,7 +134,11 @@ applies the limit itself; Helprr applies it, by the viewer's address:
   only if IPv6 is enabled there). A Tailscale address (`100.64.0.0/10`, or
   `fd7a:115c:a1e0::/48` over IPv6) counts as remote unless you add that range there.
 - Make Helprr's port answer the proxy only (see above): anyone who reaches the port
-  directly can send a made-up address.
+  directly can send a made-up address. Containers on Helprr's Docker network (Sonarr,
+  qBittorrent or `cloudflared` in the same stack) reach it directly too, so trust them
+  as much as the proxy.
+- The limit sets the quality Helprr's player asks for. It is not a hard cap: someone who
+  edits a stream's address by hand can still ask Jellyfin for more.
 
 ## Cloudflare Tunnel
 
@@ -168,7 +172,9 @@ You need a domain whose DNS is on Cloudflare.
    a visitor sends but adds the visitor's real address after it, and Helprr reads it from
    the end, so leave `TRUSTED_PROXY_HOPS` at its default of 1. The port setting makes
    Helprr answer `cloudflared` only: otherwise anyone who reaches the port directly can
-   send a made-up address. Restart Helprr.
+   send a made-up address. That needs Docker 28 or later: older versions let other
+   devices on your network reach a port bound to `127.0.0.1` (`docker version` shows
+   yours). Restart Helprr.
 
    What that costs: Helprr no longer answers at its address on your network, so open it at
    `https://helprr.example.com`, at home too. Sonarr and Radarr fetch `.torrent` files at

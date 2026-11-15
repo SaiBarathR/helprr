@@ -41,7 +41,8 @@ type SecurityAction =
   | 'DATABASE_BACKUP_FAILED'
   | 'API_TOKEN_CREATED'
   | 'API_TOKEN_REVOKED'
-  | 'API_TOKEN_NEW_NETWORK';
+  | 'API_TOKEN_NEW_NETWORK'
+  | 'RECORDS_DELETED';
 
 export interface SecurityAuditRecord {
   id: string;
@@ -91,6 +92,7 @@ const ACTION_BADGE: Record<SecurityAction, { label: string; variant: 'default' |
   API_TOKEN_CREATED: { label: 'API TOKEN', variant: 'default' },
   API_TOKEN_REVOKED: { label: 'API TOKEN OFF', variant: 'secondary' },
   API_TOKEN_NEW_NETWORK: { label: 'API TOKEN NEW NETWORK', variant: 'secondary' },
+  RECORDS_DELETED: { label: 'RECORDS DELETED', variant: 'destructive' },
 };
 
 const SIGN_IN_METHOD: Record<string, string> = {
@@ -183,6 +185,13 @@ function summary(record: SecurityAuditRecord): string {
     case 'INVITE_LINK_FAILED':
       parts.push(`${plural(record.count, 'attempt')} with a link that does not work`);
       break;
+    case 'RECORDS_DELETED': {
+      // fields[0]: 'all', 'older than N days', 'filtered', or the one log file's name.
+      const noun = record.targetId === 'logs' ? 'file' : 'record';
+      const scope = record.fields?.[0];
+      parts.push(scope ? `${plural(record.count, noun)} (${scope === 'filtered' ? 'by filter' : scope})` : plural(record.count, noun));
+      break;
+    }
     case 'DATABASE_BACKUP_CREATED':
     case 'DATABASE_BACKUP_FAILED':
       // fields: the trigger, then the size or the reason it failed.

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserAnyCapability, requireUserCapability } from '@/lib/auth';
 import { deleteLogFile, listLogFiles } from '@/lib/logger';
 import { withApiLogging } from '@/lib/api-logger';
+import { recordRecordsDeleted } from '@/lib/security-audit';
 
 async function getHandler() {
   const auth = await requireUserCapability('logs.view');
@@ -29,6 +30,7 @@ async function deleteHandler(request: NextRequest) {
       } catch (error) {
         const code = (error as NodeJS.ErrnoException).code;
         if (code !== 'ENOENT') {
+          await recordRecordsDeleted(request, auth.user, 'logs', 'all', deleted);
           return NextResponse.json(
             { error: 'Failed to delete log files', deleted },
             { status: 500 }
@@ -36,6 +38,7 @@ async function deleteHandler(request: NextRequest) {
         }
       }
     }
+    await recordRecordsDeleted(request, auth.user, 'logs', 'all', deleted);
     return NextResponse.json({ success: true, deleted });
   }
 
@@ -46,6 +49,7 @@ async function deleteHandler(request: NextRequest) {
 
   try {
     await deleteLogFile(file);
+    await recordRecordsDeleted(request, auth.user, 'logs', file, 1);
     return NextResponse.json({ success: true });
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;

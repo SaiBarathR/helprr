@@ -116,4 +116,26 @@ describe('SecurityAuditList', () => {
     expect(container.textContent).toContain('“Homepage” turned off by an admin · by boss');
     expect(container.textContent).toContain('to make a reset link for themselves · by boss');
   });
+
+  it('says how many log files or history records someone deleted, and which', async () => {
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({
+      page: 1,
+      total: 3,
+      records: [
+        row('d1', 'RECORDS_DELETED', { targetType: 'records', targetId: 'logs', targetLabel: 'Log files', actorUsername: 'iso', fields: ['all'], count: 3 }),
+        row('d2', 'RECORDS_DELETED', { targetType: 'records', targetId: 'cleanup-history', targetLabel: 'Cleanup history', actorUsername: 'iso', fields: ['older than 30 days'], count: 120 }),
+        row('d3', 'RECORDS_DELETED', { targetType: 'records', targetId: 'cleanup-history', targetLabel: 'Cleanup history', actorUsername: 'boss', fields: ['filtered'], count: 1 }),
+      ],
+    })));
+    act(() => root.unmount());
+    root = createRoot(container);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    act(() => root.render(<QueryClientProvider client={client}><SecurityAuditList /></QueryClientProvider>));
+    await flush();
+    expect(titles()).toEqual(['Log files', 'Cleanup history', 'Cleanup history']);
+    expect(container.textContent).toContain('RECORDS DELETED');
+    expect(container.textContent).toContain('3 files (all) · by iso');
+    expect(container.textContent).toContain('120 records (older than 30 days) · by iso');
+    expect(container.textContent).toContain('1 record (by filter) · by boss');
+  });
 });

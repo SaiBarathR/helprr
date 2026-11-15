@@ -9,7 +9,7 @@ import type { Capability } from '@/lib/capabilities';
 // file from the Logs viewer, the rows and filtered deletes from the Cleanup
 // page) keep their own capabilities.
 
-type TestUser = { id: string; role: 'admin' | 'member'; template: string; permissions: Record<string, boolean> };
+type TestUser = { id: string; username: string; role: 'admin' | 'member'; template: string; permissions: Record<string, boolean> };
 
 const mocks = vi.hoisted(() => ({
   user: null as unknown as TestUser,
@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   count: vi.fn(),
   deleteMany: vi.fn(),
+  recordRecordsDeleted: vi.fn(),
 }));
 
 const forbidden = () => ({ ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) });
@@ -39,6 +40,7 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
+vi.mock('@/lib/security-audit', () => ({ recordRecordsDeleted: mocks.recordRecordsDeleted }));
 
 const logs = await import('@/app/api/logs/files/route');
 const history = await import('@/app/api/cleanup/history/route');
@@ -49,9 +51,9 @@ const getHistory = history.GET as unknown as Handler;
 const deleteHistory = history.DELETE as unknown as Handler;
 
 function member(...caps: Capability[]): TestUser {
-  return { id: 'm1', role: 'member', template: 'member', permissions: Object.fromEntries(caps.map((cap) => [cap, true])) };
+  return { id: 'm1', username: 'member', role: 'member', template: 'member', permissions: Object.fromEntries(caps.map((cap) => [cap, true])) };
 }
-const admin: TestUser = { id: 'a1', role: 'admin', template: 'admin', permissions: {} };
+const admin: TestUser = { id: 'a1', username: 'admin', role: 'admin', template: 'admin', permissions: {} };
 
 const req = (path: string, method = 'GET') => new NextRequest(`http://localhost${path}`, { method });
 
@@ -81,6 +83,32 @@ describe('DELETE /api/logs/files', () => {
     expect((await deleteLogs(req('/api/logs/files?file=helprr-2026-11-14.jsonl', 'DELETE'))).status).toBe(200);
   });
 
+  it('records who deleted log files in the security log, even when a later file fails', async () => {
+    mocks.user = member('settings.logging');
+    mocks.listLogFiles.mockResolvedValue([{ name: 'a.jsonl' }, { name: 'b.jsonl' }, { name: 'c.jsonl' }]);
+    await deleteLogs(req('/api/logs/files?all=true', 'DELETE'));
+    expect(mocks.recordRecordsDeleted).toHaveBeenLastCalledWith(expect.any(NextRequest), mocks.user, 'logs', 'all', 3);
+
+    mocks.deleteLogFile
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(Object.assign(new Error('busy'), { code: 'EBUSY' }));
+    expect((await deleteLogs(req('/api/logs/files?all=true', 'DELETE'))).status).toBe(500);
+    expect(mocks.recordRecordsDeleted).toHaveBeenLastCalledWith(expect.any(NextRequest), mocks.user, 'logs', 'all', 1);
+
+    mocks.user = member('logs.manage');
+    await deleteLogs(req('/api/logs/files?file=a.jsonl', 'DELETE'));
+    expect(mocks.recordRecordsDeleted).toHaveBeenLastCalledWith(expect.any(NextRequest), mocks.user, 'logs', 'a.jsonl', 1);
+  });
+
+  it('records nothing when a refused or failed delete removed nothing', async () => {
+    mocks.user = member();
+    await deleteLogs(req('/api/logs/files?all=true', 'DELETE'));
+    mocks.user = member('logs.manage');
+    mocks.deleteLogFile.mockRejectedValueOnce(Object.assign(new Error('gone'), { code: 'ENOENT' }));
+    expect((await deleteLogs(req('/api/logs/files?file=a.jsonl', 'DELETE'))).status).toBe(404);
+    expect(mocks.recordRecordsDeleted).not.toHaveBeenCalled();
+  });
+
   it('refuses a member with neither, or with only a neighbouring page, and deletes nothing', async () => {
     for (const user of [member(), member('settings.storage'), member('logs.view')]) {
       mocks.user = user;
@@ -107,6 +135,17 @@ describe('/api/cleanup/history', () => {
     expect(mocks.deleteMany).toHaveBeenLastCalledWith({});
     expect((await deleteHistory(req('/api/cleanup/history?olderThanDays=30', 'DELETE'))).status).toBe(200);
     expect(mocks.deleteMany).toHaveBeenLastCalledWith({ where: { createdAt: { lt: expect.any(Date) } } });
+  });
+
+  it('records who cleared cleanup history, and how', async () => {
+    mocks.user = member('settings.storage');
+    await deleteHistory(req('/api/cleanup/history?all=true', 'DELETE'));
+    expect(mocks.recordRecordsDeleted).toHaveBeenLastCalledWith(expect.any(NextRequest), mocks.user, 'cleanup-history', 'all', 3);
+    await deleteHistory(req('/api/cleanup/history?olderThanDays=30', 'DELETE'));
+    expect(mocks.recordRecordsDeleted).toHaveBeenLastCalledWith(expect.any(NextRequest), mocks.user, 'cleanup-history', 'older than 30 days', 3);
+    mocks.user = member('cleanup.manage');
+    await deleteHistory(req('/api/cleanup/history?cleaner=queue', 'DELETE'));
+    expect(mocks.recordRecordsDeleted).toHaveBeenLastCalledWith(expect.any(NextRequest), mocks.user, 'cleanup-history', 'filtered', 3);
   });
 
   it('keeps a filtered delete (the Cleanup page) to cleanup.manage', async () => {
