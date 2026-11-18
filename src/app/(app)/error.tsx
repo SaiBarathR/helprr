@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { reloadForChunkLoadError } from '@/lib/chunk-load-recovery';
+import { reloadForChunkLoadError, reloadWhenServerAnswers } from '@/lib/chunk-load-recovery';
 
 // Segment error boundary for the authenticated app shell: an unhandled render
 // error in a page replaces only the page content — sidebar and nav stay up.
@@ -16,12 +16,16 @@ export default function AppError({
 }) {
   useEffect(() => {
     console.error('[App] Unhandled page error:', error);
-    reloadForChunkLoadError(error, { automatic: true });
+    reloadForChunkLoadError(error);
   }, [error]);
 
-  // Retrying a stale-deploy chunk re-imports the same missing file; reload instead.
+  // Retrying a stale-deploy chunk re-imports the same missing file, so reload
+  // instead, but only once the server answers: on Wi-Fi with no route to it a
+  // reload would drop the saved pages. Otherwise try the page again here.
   const retry = () => {
-    if (!reloadForChunkLoadError(error)) reset();
+    void reloadWhenServerAnswers(error).then((reloading) => {
+      if (!reloading) reset();
+    });
   };
 
   return (

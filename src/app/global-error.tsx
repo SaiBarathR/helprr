@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { reloadForChunkLoadError } from '@/lib/chunk-load-recovery';
+import { reloadForChunkLoadError, reloadWhenServerAnswers } from '@/lib/chunk-load-recovery';
 
 // Last-resort boundary: replaces the root layout when it (or an error boundary
 // above a page) throws. globals.css is not loaded here, so styles are inline.
@@ -14,12 +14,16 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error('[App] Unhandled root-layout error:', error);
-    reloadForChunkLoadError(error, { automatic: true });
+    reloadForChunkLoadError(error);
   }, [error]);
 
-  // Retrying a stale-deploy chunk re-imports the same missing file; reload instead.
+  // Retrying a stale-deploy chunk re-imports the same missing file, so reload
+  // instead, but only once the server answers: on Wi-Fi with no route to it a
+  // reload would drop the saved pages. Otherwise try the page again here.
   const retry = () => {
-    if (!reloadForChunkLoadError(error)) reset();
+    void reloadWhenServerAnswers(error).then((reloading) => {
+      if (!reloading) reset();
+    });
   };
 
   return (

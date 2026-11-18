@@ -67,15 +67,21 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
+const retryButton = () => [...document.querySelectorAll('button')]
+  .find((button) => button.textContent?.includes('Retry'));
+
 async function renderWidget({
   editMode = false,
   services = ['JELLYFIN', 'PROWLARR', 'QBITTORRENT', 'TMDB', 'SEERR'],
+  health = async () => new Response('{}'),
 }: {
   editMode?: boolean;
   services?: Array<'JELLYFIN' | 'PROWLARR' | 'QBITTORRENT' | 'TMDB' | 'SEERR'>;
+  /** What /api/health answers: whether the server can be reached. */
+  health?: () => Promise<Response>;
 } = {}) {
-  vi.stubGlobal('fetch', vi.fn(async () =>
-    new Response(JSON.stringify({ services }))));
+  vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+    (url === '/api/health' ? health() : new Response(JSON.stringify({ services })))));
   await act(async () => {
     root.render(
       createElement(
@@ -124,7 +130,9 @@ describe('WidgetRenderer lazy states', () => {
 
     await renderWidget();
 
-    expect(document.body.textContent).toContain('Widget stats-grid-1 failed to load');
+    // Named by its title, not the layout's internal id.
+    expect(document.body.textContent).toContain('Stats Overview failed to load');
+    expect(document.body.textContent).not.toContain('stats-grid-1');
     const retry = [...document.querySelectorAll('button')]
       .find((button) => button.textContent?.includes('Retry'));
     await act(async () => {
@@ -146,18 +154,105 @@ describe('WidgetRenderer lazy states', () => {
     const deleteCache = vi.fn().mockResolvedValue(true);
     vi.stubGlobal('location', { reload });
     vi.stubGlobal('caches', { delete: deleteCache });
+    sessionStorage.clear();
 
+    // The server answers, so the chunk is gone after a deploy.
     await renderWidget();
 
-    const retry = [...document.querySelectorAll('button')]
-      .find((button) => button.textContent?.includes('Retry'));
+    // A widget whose code didn't load says so as the offline cover does, and
+    // reloads by itself once, as the page boundaries do.
+    expect(document.querySelector('[role="status"]')?.textContent).toContain('Stats Overview');
+    expect(document.body.textContent).toContain('Can’t reach Helprr');
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+    expect(deleteCache).toHaveBeenCalledWith('pages');
+
+    // Retry reloads too, past the automatic reload's once-a-window guard.
     await act(async () => {
-      retry?.click();
+      retryButton()?.click();
+    });
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(2));
+  });
+
+  it('retries a widget whose code failed offline, without reloading, and again by itself when back online', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const chunkError = new Error('Loading chunk 123 failed');
+    chunkError.name = 'ChunkLoadError';
+    const LoadedWidget: ComponentType<WidgetProps> = () => createElement('div', null, 'Back online widget');
+    mocks.getWidgetComponent
+      .mockReturnValueOnce(lazy(async () => { throw chunkError; }))
+      .mockReturnValueOnce(lazy(async () => { throw chunkError; }))
+      .mockReturnValue(lazy(async () => ({ default: LoadedWidget })));
+    const reload = vi.fn();
+    vi.stubGlobal('location', { reload });
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+
+    await renderWidget();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+
+    expect(document.body.textContent).toContain('Stats Overview');
+    expect(document.body.textContent).toContain('You\'re offline');
+    await act(async () => {
+      retryButton()?.click();
+    });
+    // Offline, Retry tries the widget again and never reloads the page.
+    expect(mocks.resetWidgetComponent).toHaveBeenCalledWith('stats-grid');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('You\'re offline');
+
+    onLine.mockReturnValue(true);
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    expect(document.body.textContent).toContain('Back online widget');
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('keeps the saved pages when Retry finds the server unreachable', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const chunkError = new Error('Failed to fetch dynamically imported module');
+    mocks.getWidgetComponent.mockReturnValue(lazy(async () => { throw chunkError; }));
+    const reload = vi.fn();
+    const deleteCache = vi.fn().mockResolvedValue(true);
+    vi.stubGlobal('location', { reload });
+    vi.stubGlobal('caches', { delete: deleteCache });
+    sessionStorage.clear();
+
+    const health = vi.fn(async (): Promise<Response> => { throw new TypeError('Failed to fetch'); });
+    await renderWidget({ health });
+    await vi.waitFor(() => expect(health).toHaveBeenCalledOnce());
+    await act(async () => {
+      retryButton()?.click();
     });
 
-    expect(deleteCache).toHaveBeenCalledWith('pages');
-    expect(reload).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(health).toHaveBeenCalledTimes(2));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(deleteCache).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+    expect(mocks.resetWidgetComponent).toHaveBeenCalledWith('stats-grid');
+  });
+
+  it('keeps the cover\'s offline label current and stops listening once unmounted', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const chunkError = new Error('Importing a module script failed.');
+    mocks.getWidgetComponent.mockReturnValue(lazy(async () => { throw chunkError; }));
+    const health = vi.fn(async (): Promise<Response> => { throw new TypeError('Failed to fetch'); });
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    await renderWidget({ health });
+    expect(document.body.textContent).toContain('Can’t reach Helprr');
+
+    onLine.mockReturnValue(false);
+    await act(async () => {
+      window.dispatchEvent(new Event('offline'));
+    });
+    expect(document.body.textContent).toContain('You\'re offline');
+
+    await act(async () => root.unmount());
+    mocks.resetWidgetComponent.mockClear();
+    window.dispatchEvent(new Event('online'));
     expect(mocks.resetWidgetComponent).not.toHaveBeenCalled();
+    root = createRoot(document.getElementById('root')!);
   });
 
   it('preserves the unknown-widget fallback', async () => {

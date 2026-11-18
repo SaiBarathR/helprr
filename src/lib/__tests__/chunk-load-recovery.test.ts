@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isChunkLoadError, reloadForChunkLoadError } from '@/lib/chunk-load-recovery';
+import { isChunkLoadError, reloadForChunkLoadError, reloadWhenServerAnswers } from '@/lib/chunk-load-recovery';
 
 function chunkError(message = 'Loading chunk 123 failed.\n(error: /_next/static/chunks/123.js)') {
   const error = new Error(message);
@@ -32,7 +32,7 @@ describe('isChunkLoadError', () => {
   });
 });
 
-describe('reloadForChunkLoadError', () => {
+describe('chunk load recovery', () => {
   const reload = vi.fn();
   const deleteCache = vi.fn();
   const fetchHealth = vi.fn();
@@ -56,56 +56,68 @@ describe('reloadForChunkLoadError', () => {
     vi.restoreAllMocks();
   });
 
-  it('clears the cached page shell, then reloads', async () => {
-    expect(reloadForChunkLoadError(chunkError())).toBe(true);
+  it('on a tap, clears the cached page shell and reloads once the server answers', async () => {
+    await expect(reloadWhenServerAnswers(chunkError())).resolves.toBe(true);
+    expect(fetchHealth).toHaveBeenCalledWith('/api/health', expect.objectContaining({ cache: 'no-store' }));
     expect(deleteCache).toHaveBeenCalledWith('pages');
     await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
   });
 
   it('still reloads when clearing the cache fails', async () => {
     deleteCache.mockRejectedValue(new Error('SecurityError'));
-    expect(reloadForChunkLoadError(chunkError())).toBe(true);
+    await expect(reloadWhenServerAnswers(chunkError())).resolves.toBe(true);
     await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
   });
 
   it('reloads without the Cache API', async () => {
     vi.stubGlobal('caches', undefined);
     Reflect.deleteProperty(globalThis, 'caches');
-    expect(reloadForChunkLoadError(chunkError())).toBe(true);
+    await expect(reloadWhenServerAnswers(chunkError())).resolves.toBe(true);
     expect(reload).toHaveBeenCalledOnce();
   });
 
-  it('leaves other errors to the normal retry', () => {
+  it('leaves other errors to the normal retry', async () => {
+    await expect(reloadWhenServerAnswers(new Error('boom'))).resolves.toBe(false);
     expect(reloadForChunkLoadError(new Error('boom'))).toBe(false);
-    expect(reloadForChunkLoadError(new Error('boom'), { automatic: true })).toBe(false);
+    expect(fetchHealth).not.toHaveBeenCalled();
     expect(deleteCache).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it('does not reload while offline', () => {
+  it('does not reload while offline', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await expect(reloadWhenServerAnswers(chunkError())).resolves.toBe(false);
     expect(reloadForChunkLoadError(chunkError())).toBe(false);
-    expect(reloadForChunkLoadError(chunkError(), { automatic: true })).toBe(false);
+    expect(fetchHealth).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('on a tap, keeps the saved pages and retries in place when the server does not answer', async () => {
+    fetchHealth.mockRejectedValue(new TypeError('Failed to fetch'));
+    await expect(reloadWhenServerAnswers(chunkError())).resolves.toBe(false);
+    fetchHealth.mockResolvedValue(new Response('', { status: 502 }));
+    await expect(reloadWhenServerAnswers(chunkError())).resolves.toBe(false);
+    expect(deleteCache).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
   });
 
   it('reloads automatically only once within the window, on any path', async () => {
-    expect(reloadForChunkLoadError(chunkError(), { automatic: true })).toBe(true);
-    expect(reloadForChunkLoadError(chunkError(), { automatic: true })).toBe(false);
+    expect(reloadForChunkLoadError(chunkError())).toBe(true);
+    expect(reloadForChunkLoadError(chunkError())).toBe(false);
     await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
     expect(fetchHealth).toHaveBeenCalledWith('/api/health', expect.objectContaining({ cache: 'no-store' }));
 
     vi.stubGlobal('location', { pathname: '/series', reload });
-    expect(reloadForChunkLoadError(chunkError(), { automatic: true })).toBe(false);
+    expect(reloadForChunkLoadError(chunkError())).toBe(false);
 
     vi.advanceTimersByTime(30_000);
-    expect(reloadForChunkLoadError(chunkError(), { automatic: true })).toBe(true);
+    expect(reloadForChunkLoadError(chunkError())).toBe(true);
     await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(2));
   });
 
   it('keeps the saved pages when the server does not answer', async () => {
     fetchHealth.mockRejectedValue(new TypeError('Failed to fetch'));
-    reloadForChunkLoadError(chunkError(), { automatic: true });
+    reloadForChunkLoadError(chunkError());
     await vi.waitFor(() => expect(fetchHealth).toHaveBeenCalledOnce());
     await Promise.resolve();
     expect(deleteCache).not.toHaveBeenCalled();
@@ -113,24 +125,25 @@ describe('reloadForChunkLoadError', () => {
 
     vi.advanceTimersByTime(30_000);
     fetchHealth.mockResolvedValue(new Response('', { status: 502 }));
-    reloadForChunkLoadError(chunkError(), { automatic: true });
+    reloadForChunkLoadError(chunkError());
     await vi.waitFor(() => expect(fetchHealth).toHaveBeenCalledTimes(2));
     await Promise.resolve();
     expect(deleteCache).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it('lets a tap reload even after the automatic reload was used', () => {
-    expect(reloadForChunkLoadError(chunkError(), { automatic: true })).toBe(true);
+  it('lets a tap reload even after the automatic reload was used', async () => {
     expect(reloadForChunkLoadError(chunkError())).toBe(true);
+    expect(reloadForChunkLoadError(chunkError())).toBe(false);
+    await expect(reloadWhenServerAnswers(chunkError())).resolves.toBe(true);
   });
 
-  it('skips the automatic reload when session storage is unavailable', () => {
+  it('skips the automatic reload when session storage is unavailable', async () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('QuotaExceededError');
     });
-    expect(reloadForChunkLoadError(chunkError(), { automatic: true })).toBe(false);
+    expect(reloadForChunkLoadError(chunkError())).toBe(false);
     expect(deleteCache).not.toHaveBeenCalled();
-    expect(reloadForChunkLoadError(chunkError())).toBe(true);
+    await expect(reloadWhenServerAnswers(chunkError())).resolves.toBe(true);
   });
 });
