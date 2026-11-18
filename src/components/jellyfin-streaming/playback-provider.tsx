@@ -569,6 +569,20 @@ async function resolvePlayable(item: JellyfinItem, signal?: AbortSignal): Promis
 
 /** How long "add to queue" waits for a container's contents before giving up on it. */
 const QUEUE_LOOKUP_TIMEOUT_MS = 15_000;
+/**
+ * How long Play may spin on a stream that has loaded nothing yet before it
+ * fails as a start that never began (with Retry). A paused start on an iPhone
+ * is ready without loading (play-media.ts, `native`), so Play is what loads
+ * it, and one that then never loads and never errors would otherwise spin for
+ * good. 45 s: the owner judged 30 s too short for a first load (2026-10-19),
+ * and a 4K transcode restart took about 20 s.
+ */
+const PLAY_LOAD_LIMIT_MS = 45_000;
+
+function clearPlayDeadline(ref: { current: ReturnType<typeof setTimeout> | null }): void {
+  if (ref.current) clearTimeout(ref.current);
+  ref.current = null;
+}
 
 const CONTAINER_TYPES = ['Series', 'Season', 'BoxSet', 'MusicAlbum', 'MusicArtist', 'Playlist', 'Folder', 'CollectionFolder'];
 
@@ -912,6 +926,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   // assigns the queue again as its container expands, and has to put these back.
   const queueAddedRef = useRef<JellyfinItem[]>([]);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const playDeadlineRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryingRef = useRef(false);
   /**
    * Which start attempt is current.
@@ -2052,6 +2067,28 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     }
   }, [cancelPendingSkip, destroyPlayers, maxBitrate, muted, playbackRate, releaseEncodings, setPositionSeconds, volume]);
 
+  // Play on a stream that has loaded nothing: fail it if it is still loading
+  // nothing after PLAY_LOAD_LIMIT_MS. `playing` and a pause clear it.
+  const armPlayDeadline = useCallback(() => {
+    clearPlayDeadline(playDeadlineRef);
+    const el = mediaRef.current;
+    if (!el || el.readyState >= 3) return;
+    const session = streamRef.current?.playSessionId;
+    playDeadlineRef.current = setTimeout(() => {
+      playDeadlineRef.current = null;
+      const media = mediaRef.current;
+      if (media && !media.paused && media.readyState < 3 && streamRef.current?.playSessionId === session) {
+        void failPlayback('Playback did not start. Try again or choose another quality.');
+      }
+    }, PLAY_LOAD_LIMIT_MS);
+  }, [failPlayback]);
+  const armPlayDeadlineRef = useRef(armPlayDeadline);
+  useEffect(() => { armPlayDeadlineRef.current = armPlayDeadline; }, [armPlayDeadline]);
+  // Not in clearTimers: that runs on every status change, Play's own "loading"
+  // included. A Stop, another title or a restart changes the session, which
+  // the deadline checks; only unmounting has to clear it.
+  useEffect(() => () => clearPlayDeadline(playDeadlineRef), []);
+
   const togglePause = useCallback(() => {
     const el = mediaRef.current;
     if (!el || !streamRef.current || lastRequestRef.current?.token !== startTokenRef.current) return;
@@ -2059,6 +2096,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       pausedIntentRef.current = false;
       void el.play();
       setStatus(el.readyState >= 3 ? 'playing' : 'loading');
+      armPlayDeadlineRef.current();
     } else {
       pausedIntentRef.current = true;
       el.pause();
@@ -2390,8 +2428,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       }, 3_000);
     };
     const onPlay = () => { if (isCurrent() && streamRef.current) setStatus(el.readyState >= 3 ? 'playing' : 'loading'); };
-    const onPlaying = () => { clearStall(); onPlay(); };
+    const onPlaying = () => { clearStall(); clearPlayDeadline(playDeadlineRef); onPlay(); };
     const onPause = () => {
+      clearPlayDeadline(playDeadlineRef);
       if (isCurrent() && streamRef.current) setStatus('paused');
     };
     const onEnded = () => { if (isCurrent()) void next(); };
@@ -2597,6 +2636,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     navigator.mediaSession.setActionHandler('play', () => {
       pausedIntentRef.current = false;
       void mediaRef.current?.play();
+      armPlayDeadlineRef.current();
     });
     navigator.mediaSession.setActionHandler('pause', () => {
       pausedIntentRef.current = true;

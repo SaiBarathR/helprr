@@ -146,3 +146,46 @@ it('keeps a paused seek made before the slow new stream has its metadata', async
   expect(el.currentTime).toBe(900);
   expect(h.playback().positionSeconds).toBe(900);
 });
+
+it('fails Play on a paused change whose stream never loads, after the 45 s limit', async () => {
+  await pausedAt600();
+  const el = h.element();
+  slowSource(el);
+  vi.useFakeTimers();
+  await h.act(async () => {
+    const change = h.playback().setAudioStream(2);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await change;
+  });
+  expect(h.playback().status).toBe('paused');
+
+  await h.act(() => { h.playback().togglePause(); });
+  expect(h.playback().status).toBe('loading');
+  await h.act(async () => { await vi.advanceTimersByTimeAsync(44_000); });
+  expect(h.playback().error).toBeNull();
+
+  await h.act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+  expect(h.playback().status).toBe('error');
+  expect(h.playback().error).toBe('Playback did not start. Try again or choose another quality.');
+});
+
+it('leaves a Play alone once the new stream starts playing within the limit', async () => {
+  await pausedAt600();
+  const el = h.element();
+  slowSource(el);
+  vi.useFakeTimers();
+  await h.act(async () => {
+    const change = h.playback().setAudioStream(2);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await change;
+  });
+
+  await h.act(() => { h.playback().togglePause(); });
+  await h.act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+  Object.defineProperty(el, 'readyState', { configurable: true, get: () => 4 });
+  await h.act(() => { el.dispatchEvent(new Event('playing')); });
+  await h.act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+
+  expect(h.playback().error).toBeNull();
+  expect(h.playback().status).toBe('playing');
+});
