@@ -29,9 +29,9 @@ up first (see **For admins** below).
 ### Fixed
 
 - **Dashboard offline**: widgets you hadn't scrolled to before losing the connection showed
-  **Widget … failed to load**. Helprr now fetches every widget's code ahead, and a widget
-  that still can't load shows its name with **You're offline** or **Can't reach Helprr**,
-  and tries again when the connection returns.
+  **Widget … failed to load**. While online, Helprr now fetches the code of the Dashboard's
+  widgets ahead, and a widget that still can't load shows its name with **You're offline**
+  or **Can't reach Helprr**, and tries again when the connection returns.
 - **Retry** on a widget, and **Try again** on an error page, no longer drop the pages saved
   for offline use when Helprr can't be reached (for example on Wi-Fi without internet).
 - **Player on iPhone**: changing the audio or subtitles while paused keeps the picture until

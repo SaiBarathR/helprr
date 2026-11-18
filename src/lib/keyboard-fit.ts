@@ -17,6 +17,8 @@ export function isTextField(target: EventTarget | null): target is HTMLInputElem
 
 /** Focus that brings up the on-screen keyboard (or, for a select, iOS's picker). */
 export function opensKeyboard(target: EventTarget | null) {
+  // A read-only field takes focus but opens no keyboard.
+  if ((target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && target.readOnly) return false;
   return isTextField(target) || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable === true);
 }
 

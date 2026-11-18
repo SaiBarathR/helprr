@@ -40,14 +40,19 @@ describe('API JSON is left for Next to compress', () => {
     expect(await response.json()).toEqual(big);
   });
 
-  it('still answers 304 to the ETag it sent', async () => {
-    const handler = withApiLogging(async (request: Request) => etagJson(request, big, { 'Cache-Control': 'private, no-cache' }));
+  it('sends a weak ETag that still answers 304, with Accept-Encoding in Vary on the 200 and the 304', async () => {
+    const handler = withApiLogging(async (request: Request) => etagJson(request, big, { 'Cache-Control': 'private, no-cache', Vary: 'Cookie' }));
     const first = await handler(get('gzip'));
     const etag = first.headers.get('ETag')!;
-    expect(etag).toBeTruthy();
+    // Next compresses the 200 and keeps the tag: one tag for both encodings must be weak.
+    expect(etag).toMatch(/^W\/"[0-9a-f]{40}"$/);
     expect(first.headers.get('Content-Encoding')).toBeNull();
+    expect(first.headers.get('Vary')).toBe('Cookie, Accept-Encoding');
 
-    expect((await handler(get('gzip', { 'If-None-Match': etag }))).status).toBe(304);
-    expect((await handler(get(undefined, { 'If-None-Match': etag }))).status).toBe(304);
+    const revalidated = await handler(get('gzip', { 'If-None-Match': etag }));
+    expect(revalidated.status).toBe(304);
+    expect(revalidated.headers.get('ETag')).toBe(etag);
+    expect(revalidated.headers.get('Vary')).toBe('Cookie, Accept-Encoding');
+    expect((await handler(get(undefined, { 'If-None-Match': etag.slice(2) }))).status).toBe(304);
   });
 });

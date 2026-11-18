@@ -1529,7 +1529,14 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         const applyStart = () => {
           if (!isCurrent()) return;
           const at = loadStartRef.current;
-          if (Number.isFinite(el.duration) && at < el.duration) el.currentTime = at;
+          if (Number.isFinite(el.duration) && at < el.duration) {
+            el.currentTime = at;
+            // Where the viewer is now, a seek to 0 before metadata included: the
+            // clock and Stop's report no longer read the start the stream was
+            // opened at (only a reading above 0 counted before). Not if the
+            // browser dropped the seek (nothing seekable yet).
+            if (el.currentTime === at) reachedStartRef.current = true;
+          }
         };
         el.addEventListener('loadedmetadata', applyStart, { once: true });
         if (!isHls) el.currentTime = start;
@@ -1725,7 +1732,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       reportChainRef.current = started.catch(() => undefined);
       await started;
       if (superseded()) return;
-      setStatus(pausedIntentRef.current ? 'paused' : 'playing');
+      // Play pressed during a paused start: the start is ready without loading
+      // (play-media.ts), so the element may have nothing to play yet. "Loading"
+      // until it does (its `playing` event), bounded by the Play limit.
+      setStatus(pausedIntentRef.current ? 'paused' : (mediaRef.current?.readyState ?? 4) >= 3 ? 'playing' : 'loading');
       fetch(`/api/jellyfin/catalog/items/${nextItem.Id}?expand=segments`)
         .then((res) => res.ok ? res.json() : null)
         .then((data: { segments?: MediaSegment[] } | null) => { if (stillCurrent()) setSegments(data?.segments ?? []); })
@@ -2076,10 +2086,17 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // No stream (a lock-screen Play after Stop) or one without a session id:
     // nothing to fail, and an undefined or empty id would match the next.
     if (!el || el.readyState >= 3 || !session) return;
+    // A lock-screen Play on the old stream after another title was picked: that
+    // start owns the player, not this stream.
+    if (lastRequestRef.current?.token !== startTokenRef.current) return;
+    // A newer title picked meanwhile owns the player while its stream is still
+    // being prepared (streamRef is still this one): failing then would cancel it.
+    const token = startTokenRef.current;
     playDeadlineRef.current = setTimeout(() => {
       playDeadlineRef.current = null;
       const media = mediaRef.current;
-      if (media && !media.paused && media.readyState < 3 && streamRef.current?.playSessionId === session) {
+      if (media && !media.paused && media.readyState < 3
+        && startTokenRef.current === token && streamRef.current?.playSessionId === session) {
         void failPlayback('Playback did not start. Try again or choose another quality.');
       }
     }, PLAY_LOAD_LIMIT_MS);

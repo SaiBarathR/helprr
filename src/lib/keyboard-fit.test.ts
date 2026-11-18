@@ -520,3 +520,17 @@ describe('followKeyboard when only the visible part moves', () => {
     expect(place.mock.calls.length).toBe(calls);
   });
 });
+
+describe('opensKeyboard and read-only fields', () => {
+  it('does not count a read-only input or textarea, but does an editable one and a select', async () => {
+    const { opensKeyboard } = await import('./keyboard-fit');
+    const input = document.createElement('input');
+    expect(opensKeyboard(input)).toBe(true);
+    input.readOnly = true;
+    expect(opensKeyboard(input)).toBe(false);
+    const area = document.createElement('textarea');
+    area.readOnly = true;
+    expect(opensKeyboard(area)).toBe(false);
+    expect(opensKeyboard(document.createElement('select'))).toBe(true);
+  });
+});

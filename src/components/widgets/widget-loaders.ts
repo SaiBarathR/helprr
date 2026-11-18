@@ -193,7 +193,8 @@ export const STATIC_WIDGET_LOADER_IDS = Object.freeze(Object.keys(widgetLoaders)
 const componentCache = new Map<string, LazyExoticComponent<WidgetComponent>>();
 
 function loaderFor(widgetId: string): WidgetLoader | undefined {
-  const loader = widgetLoaders[widgetId];
+  // Own names only: `constructor` and the rest of Object's are not widgets.
+  const loader = Object.hasOwn(widgetLoaders, widgetId) ? widgetLoaders[widgetId] : undefined;
   if (loader || !widgetId.startsWith('discover-')) return loader;
   const sectionId = widgetId.slice('discover-'.length);
   if (!sectionId) return undefined;

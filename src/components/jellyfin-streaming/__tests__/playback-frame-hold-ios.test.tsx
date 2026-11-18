@@ -226,3 +226,76 @@ it('never puts a stopped player into an error from a lock-screen Play', async ()
   expect(h.playback().error).toBeNull();
   expect(h.playback().status).not.toBe('error');
 });
+
+it("never lets a stalled Play's limit cancel another title picked while its stream is being prepared", async () => {
+  await pausedAt600();
+  const el = h.element();
+  slowSource(el);
+  vi.useFakeTimers();
+  await h.act(async () => {
+    const change = h.playback().setAudioStream(2);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await change;
+  });
+  await h.act(() => { h.playback().togglePause(); });
+  await h.act(async () => { await vi.advanceTimersByTimeAsync(40_000); });
+
+  // Another title, its stream still being prepared when the first one's limit runs out.
+  h.holdStreamInfo();
+  let picked: Promise<void> | undefined;
+  await h.act(async () => { picked = h.playback().playItem({ ...ITEM, Id: 'item-b', Name: 'Other' }); });
+  await h.act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+  expect(h.playback().error).toBeNull();
+
+  Object.defineProperty(el, 'readyState', { configurable: true, get: () => 4 });
+  h.releaseStreamInfo();
+  await h.act(async () => { await vi.advanceTimersByTimeAsync(1_000); await picked; });
+  expect(h.playback().error).toBeNull();
+  expect(h.requests.at(-1)?.itemId).toBe('item-b');
+});
+
+it('reports a seek to the start made before the new stream has its metadata, not the old start', async () => {
+  await pausedAt600();
+  const el = h.element();
+  const source = slowSource(el);
+  vi.useFakeTimers();
+  await h.act(async () => {
+    const change = h.playback().setAudioStream(2);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await change;
+  });
+
+  await h.act(() => { h.playback().seek(0); });
+  await h.act(() => { source.loadMetadata(); });
+  expect(el.currentTime).toBe(0);
+
+  await h.act(async () => { await h.playback().stop(); });
+  const stopped = h.reports.filter((report) => report.event === 'stopped').at(-1);
+  expect(stopped?.positionTicks).toBe(0);
+});
+
+it('keeps a Play pressed during a slow paused change loading, not playing, and gives it the 45 s limit', async () => {
+  await pausedAt600();
+  const el = h.element();
+  slowSource(el);
+  vi.useFakeTimers();
+  let change: Promise<void> | undefined;
+  await h.act(async () => {
+    change = h.playback().setAudioStream(2);
+    await vi.advanceTimersByTimeAsync(1_000);
+  });
+  await h.act(() => { h.playback().togglePause(); });
+  await h.act(async () => { await vi.advanceTimersByTimeAsync(5_000); await change; });
+
+  // Nothing loaded yet: not "playing".
+  expect(h.playback().status).toBe('loading');
+  // Not failed by the start's own 30 s either.
+  await h.act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+  expect(h.playback().error).toBeNull();
+
+  Object.defineProperty(el, 'readyState', { configurable: true, get: () => 4 });
+  await h.act(() => { el.dispatchEvent(new Event('playing')); });
+  expect(h.playback().status).toBe('playing');
+  await h.act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  expect(h.playback().error).toBeNull();
+});
