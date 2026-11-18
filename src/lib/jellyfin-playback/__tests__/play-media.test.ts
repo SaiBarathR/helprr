@@ -5,10 +5,11 @@ import { PAUSED_START, playMedia } from '../play-media';
 function fakeElement(readyState: number) {
   return {
     readyState,
+    paused: true,
     muted: false,
     play: vi.fn(() => Promise.resolve()),
     pause: vi.fn(),
-  } as unknown as HTMLMediaElement & { readyState: number; muted: boolean; play: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn> };
+  } as unknown as HTMLMediaElement & { readyState: number; paused: boolean; muted: boolean; play: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn> };
 }
 
 beforeEach(() => { vi.useFakeTimers(); });
@@ -73,6 +74,17 @@ describe('a paused start', () => {
     el.readyState = 2;
     await vi.advanceTimersByTimeAsync(250);
     expect(ready).toBe(true);
+  });
+
+  it('leaves alone a buffered stream the viewer has already pressed Play on', async () => {
+    const el = fakeElement(0);
+    el.paused = false;
+    let ready: boolean | undefined;
+    void playMedia(el, () => true, 30_000, PAUSED_START.buffered).then((value) => { ready = value; });
+    await vi.advanceTimersByTimeAsync(PAUSED_START.buffered.fallbackMs);
+    expect(ready).toBe(true);
+    expect(el.play).not.toHaveBeenCalled();
+    expect(el.pause).not.toHaveBeenCalled();
   });
 
   it('hands back a mute that was already on', async () => {

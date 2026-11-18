@@ -109,14 +109,15 @@ export const PLAYING_RELEASE_MS = 1_200;
  * Call `onFrame` once `el` shows a frame of the source it was just given, on
  * the first sign of one:
  * - a presented frame (`requestVideoFrameCallback`), where the browser
- *   reports them; Safari's own HLS never did, and an element under the
- *   held frame may not be composited at all;
+ *   reports them; Safari's own HLS may not report them while it plays (an
+ *   element under the held frame may not be composited at all), and may
+ *   report one while paused that it does not show (see `afterPlay`);
  * - playback moving: `playing`, then the time advancing past where it began;
  * - `PLAYING_RELEASE_MS` after `playing`, in case neither of those comes;
  * - the first loaded frame, where presented frames cannot be reported.
  *
  * `afterPlay`: Safari's own HLS. A paused element of it shows no frame of a
- * new stream until Play, yet WebKit can still report one presented, or
+ * new stream until Play, yet WebKit may still report one presented, or
  * loaded, while the picture stays black. So for it a frame only counts once
  * the element plays; one reported while paused waits for the next. Returns a
  * cancel.

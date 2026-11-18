@@ -968,6 +968,13 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    */
   const reachedStartRef = useRef(false);
   /**
+   * Where a new `el.src` stream is put once its metadata arrives (see
+   * `attachMedia`). A seek before then moves it: Safari's own HLS can sit
+   * paused without metadata for a whole 4K reload, and the start would
+   * otherwise put the element back where the restart began.
+   */
+  const loadStartRef = useRef(0);
+  /**
    * hls.js could not reach the current attempt's stream: its latest network
    * event was a connection failure (no HTTP status, not a timeout) and nothing
    * has loaded since. Reset by every start attempt.
@@ -1502,10 +1509,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       }
     } else {
       el.src = next.mediaUrl;
+      loadStartRef.current = start;
       if (start > 0) {
         const applyStart = () => {
           if (!isCurrent()) return;
-          if (Number.isFinite(el.duration) && start < el.duration) el.currentTime = start;
+          const at = loadStartRef.current;
+          if (Number.isFinite(el.duration) && at < el.duration) el.currentTime = at;
         };
         el.addEventListener('loadedmetadata', applyStart, { once: true });
         if (!isHls) el.currentTime = start;
@@ -2098,6 +2107,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     }
     // The held frame is of where the viewer was, not where they are going.
     releaseFrameHold();
+    if (el.readyState === HTMLMediaElement.HAVE_NOTHING) loadStartRef.current = seconds;
     el.currentTime = seconds;
     setPositionSeconds(seconds);
   }, [cancelPendingSkip, maxBitrate, releaseEncodings, releaseFrameHold, setPositionSeconds, startItem]);

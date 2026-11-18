@@ -107,7 +107,9 @@ export function playMedia(
     };
     const fallback = paused ? setTimeout(() => {
       if (!isCurrent()) finish(false);
-      else if (el.readyState >= 1 || !paused.nudge) finish(true);
+      // Play pressed meanwhile: the viewer's own play() loads it, and a nudge
+      // would pause it again.
+      else if (el.readyState >= 1 || !paused.nudge || !el.paused) finish(true);
       else nudge();
     }, paused.fallbackMs) : undefined;
     if (paused) check();

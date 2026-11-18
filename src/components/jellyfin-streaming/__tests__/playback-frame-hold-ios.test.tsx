@@ -52,6 +52,23 @@ afterEach(() => {
 const RESUME = { ...ITEM, UserData: { PlaybackPositionTicks: 600 * 10_000_000 } } as typeof ITEM;
 const held = () => h.element().nextElementSibling?.tagName === 'CANVAS';
 
+/** A 4K transcode restart: each new source loads nothing until `load()`. */
+function slowSource(el: HTMLVideoElement) {
+  let readyState = 4;
+  Object.defineProperty(el, 'readyState', { configurable: true, get: () => readyState });
+  Object.defineProperty(el, 'src', {
+    configurable: true,
+    get: () => el.getAttribute('src') ?? '',
+    set: (url: string) => { readyState = 0; el.setAttribute('src', url); },
+  });
+  return {
+    loadMetadata: () => {
+      readyState = 1;
+      el.dispatchEvent(new Event('loadedmetadata'));
+    },
+  };
+}
+
 async function pausedAt600() {
   h = await mountPlayback({ hls: true });
   await h.act(async () => { await h.playback().playItem(RESUME); });
@@ -62,7 +79,7 @@ async function pausedAt600() {
   expect(h.playback().status).toBe('paused');
 }
 
-it('keeps the paused picture through a frame and a load WebKit reports but does not show, until Play draws one', async () => {
+it('keeps the paused picture through frames WebKit reports but does not show, until Play draws one', async () => {
   await pausedAt600();
   const el = h.element();
   const play = vi.spyOn(el, 'play');
@@ -71,10 +88,7 @@ it('keeps the paused picture through a frame and a load WebKit reports but does 
   expect(h.playback().status).toBe('paused');
   expect(held()).toBe(true);
 
-  await h.act(() => {
-    el.dispatchEvent(new Event('loadeddata'));
-    presentFrame();
-  });
+  await h.act(() => { presentFrame(); });
   expect(held()).toBe(true);
   // Reported again while still paused: still nothing on screen.
   await h.act(() => { presentFrame(); });
@@ -92,14 +106,7 @@ it('keeps the paused picture through a frame and a load WebKit reports but does 
 it('never plays a paused change by itself, however long the new stream takes to load', async () => {
   await pausedAt600();
   const el = h.element();
-  // A 4K transcode restart: the new source loads nothing for a minute.
-  let readyState = 4;
-  Object.defineProperty(el, 'readyState', { configurable: true, get: () => readyState });
-  Object.defineProperty(el, 'src', {
-    configurable: true,
-    get: () => el.getAttribute('src') ?? '',
-    set: (url: string) => { readyState = 0; el.setAttribute('src', url); },
-  });
+  slowSource(el);
   const play = vi.spyOn(el, 'play');
   const before = h.reports.length;
   vi.useFakeTimers();
@@ -118,4 +125,24 @@ it('never plays a paused change by itself, however long the new stream takes to 
   expect(h.reports.slice(before)).toEqual([
     expect.objectContaining({ event: 'playing', isPaused: true }),
   ]);
+});
+
+it('keeps a paused seek made before the slow new stream has its metadata', async () => {
+  await pausedAt600();
+  const el = h.element();
+  const source = slowSource(el);
+  vi.useFakeTimers();
+  await h.act(async () => {
+    const change = h.playback().setAudioStream(2);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await change;
+  });
+  expect(h.playback().status).toBe('paused');
+
+  await h.act(() => { h.playback().seek(900); });
+  await h.act(() => { source.loadMetadata(); });
+
+  // Not back at 600 s, where the restart began.
+  expect(el.currentTime).toBe(900);
+  expect(h.playback().positionSeconds).toBe(900);
 });
