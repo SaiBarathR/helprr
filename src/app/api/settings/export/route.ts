@@ -218,6 +218,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         activityDigestHour: settings.activityDigestHour,
         activityDigestDayOfWeek: settings.activityDigestDayOfWeek,
         notificationGroupingEnabled: settings.notificationGroupingEnabled,
+        serviceDownAlertDelaySecs: settings.serviceDownAlertDelaySecs,
         animeAutoMapEnabled: settings.animeAutoMapEnabled,
         animeAutoMapHour: settings.animeAutoMapHour,
         updateCheckEnabled: settings.updateCheckEnabled,

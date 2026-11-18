@@ -129,7 +129,7 @@ describe('migration readiness', () => {
     expect(names).toContain('20261108090000_update_check_toggle_music_manage_files');
     expect(names).not.toContain('migration_lock.toml');
     expect(names).toContain('20261114120000_settings_updated_audit');
-    expect(names).toContain('20261115120000_records_deleted_audit');
-    expect(names).toHaveLength(46);
+    expect(names).toContain('20261118120000_service_down_alert_delay');
+    expect(names).toHaveLength(47);
   });
 });

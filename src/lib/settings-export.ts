@@ -173,6 +173,8 @@ export interface ExportedAppSettings {
   activityDigestHour: number;
   activityDigestDayOfWeek: number;
   notificationGroupingEnabled: boolean;
+  // Optional: absent in exports made before the service-down alert delay existed.
+  serviceDownAlertDelaySecs?: number;
   animeAutoMapEnabled: boolean;
   animeAutoMapHour: number;
   // Optional: absent in exports made before the update-check switch existed.

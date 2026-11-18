@@ -295,7 +295,7 @@ export class PollingService {
         sourceTask('pollManualDownloads', () => this.pollManualDownloads()),
         sourceTask('pollTwitch', () => pollTwitch()),
         sourceTask('pollYoutube', () => pollYoutube()),
-        sourceTask('pollServiceReachability', () => this.pollServiceReachability()),
+        sourceTask('pollServiceReachability', () => this.pollServiceReachability(context)),
         sourceTask('checkDiskSpace', () => this.checkDiskSpace(context)),
         sourceTask('snapshotDiskUsage', async () => {
           if (await this.shouldSnapshotDiskUsage(context)) {
@@ -757,8 +757,8 @@ export class PollingService {
     });
   }
 
-  private pollServiceReachability() {
-    return pollServiceReachabilityPoller();
+  private pollServiceReachability(context: CycleContext) {
+    return pollServiceReachabilityPoller(context);
   }
 
   private checkDiskSpace(context: CycleContext) {

@@ -46,6 +46,12 @@ setup** has a **Quiet hours** row that says when they are on now. Other notifica
 not sent during quiet hours (they still show in Notifications), except health warnings,
 a service going down or coming back, and security alerts.
 
+**Settings → Notifications → Service outages → Alert after** sets how long a service
+must stay unreachable before the "is unreachable" notification (2 minutes by default;
+Immediately, or up to 30 minutes). A shorter blip, such as the internet dropping for a
+few seconds, sends nothing, and "is back online" comes only after an "is unreachable".
+The check runs about every 15 seconds. The wait starts again when Helprr restarts.
+
 A disabled account, or one whose invite isn't accepted yet, gets no notifications. Its
 devices are kept, so notifications come back when an admin turns the account on again.
 
