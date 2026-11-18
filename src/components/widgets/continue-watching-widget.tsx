@@ -20,12 +20,20 @@ import {
   HPR,
   LIST_ROW_HEIGHT,
   Poster,
+  SECTION_HEADER_HEIGHT,
   SectionHeader,
   ViewModeToggle,
   toneFromString,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { fetchOrOffline } from '@/lib/network-error';
+
+// The header plus a carousel card: its poster (with the progress bar), title
+// and S·E or year line. A shorter cell, such as the phone's two-row member
+// default, cut the posters and hid the bar and both lines, so it shows the
+// list, which scrolls (as Today does). The sum is the 243 px the carousel
+// measured in a browser (2026-11-18), not a per-part breakdown.
+const CAROUSEL_FIT_HEIGHT = SECTION_HEADER_HEIGHT + CAROUSEL_CARD_HEIGHT + 46;
 
 async function fetchResumeItems(limit: number, signal?: AbortSignal): Promise<JellyfinItem[]> {
   const res = await fetchOrOffline(`/api/jellyfin/resume?limit=${limit}`, { signal });
@@ -64,8 +72,9 @@ export function ContinueWatchingWidget({
   });
 
   const list = items ?? [];
-  const useList = narrow || layoutVariant === 'list';
-  const toggleNode = !narrow && instanceId ? (
+  const carouselFits = height === 0 || height >= CAROUSEL_FIT_HEIGHT;
+  const useList = narrow || layoutVariant === 'list' || !carouselFits;
+  const toggleNode = !narrow && carouselFits && instanceId ? (
     <ViewModeToggle
       value={useList ? 'list' : 'carousel'}
       onChange={(next) => setWidgetLayoutOverride(instanceId, next, { mobile: mobileGrid })}
@@ -207,7 +216,9 @@ export function ContinueWatchingWidget({
   }
 
   return (
-    <div ref={ref}>
+    // The cell's height, not the cards', so a cell too short for them shows
+    // the list instead.
+    <div ref={ref} style={{ height: '100%', minHeight: 0 }}>
       <SectionHeader
         title="Continue Watching"
         right={
