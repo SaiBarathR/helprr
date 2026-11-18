@@ -238,8 +238,10 @@ function buildLayout(positions: DefaultPosition[]): WidgetInstance[] {
 const DEFAULT_MEMBER_POSITIONS: DefaultPosition[] = [
   { id: 'm-stats-grid-1', widgetId: 'stats-grid', x: 0, y: 0, colSpan: 4, rowSpan: 2,
     mobileX: 0, mobileY: 0, mobileColSpan: 4, mobileRowSpan: 1, layoutOverride: 'default' },
+  // Two rows on a phone fit the list, not a carousel card (the widget would
+  // show the list there anyway).
   { id: 'm-continue-watching-1', widgetId: 'continue-watching', x: 4, y: 0, colSpan: 8, rowSpan: 2,
-    mobileX: 0, mobileY: 1, mobileColSpan: 4, mobileRowSpan: 2, layoutOverride: 'carousel' },
+    mobileX: 0, mobileY: 1, mobileColSpan: 4, mobileRowSpan: 2, layoutOverride: 'carousel', mobileLayoutOverride: 'list' },
   { id: 'm-seerr-recent-requests-1', widgetId: 'seerr-recent-requests', x: 0, y: 2, colSpan: 6, rowSpan: 3,
     mobileX: 0, mobileY: 3, mobileColSpan: 4, mobileRowSpan: 3, layoutOverride: 'list' },
   { id: 'm-activity-history-1', widgetId: 'activity-history', x: 6, y: 2, colSpan: 6, rowSpan: 3,
