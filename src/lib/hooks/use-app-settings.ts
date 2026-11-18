@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { ApiError } from '@/lib/query-fetch';
 import { fetchAppSettings, forgetAppSettingsFetch } from '@/lib/app-settings-fetch';
 import { normalizeRegionCode } from '@/lib/region';
+import { DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS } from '@/lib/service-down-alert-delay';
 
 export interface AppSettingsState {
   pollingIntervalSecs: number;
@@ -30,6 +31,7 @@ export interface AppSettingsState {
   activityDigestHour: number;
   activityDigestDayOfWeek: number;
   notificationGroupingEnabled: boolean;
+  serviceDownAlertDelaySecs: number;
   animeAutoMapEnabled: boolean;
   animeAutoMapHour: number;
   updateCheckEnabled: boolean;
@@ -90,6 +92,7 @@ function normalize(raw: Record<string, unknown>): AppSettingsState {
     activityDigestHour: numberOr(raw.activityDigestHour, 8),
     activityDigestDayOfWeek: numberOr(raw.activityDigestDayOfWeek, 1),
     notificationGroupingEnabled: raw.notificationGroupingEnabled !== false,
+    serviceDownAlertDelaySecs: numberOr(raw.serviceDownAlertDelaySecs, DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS),
     animeAutoMapEnabled: raw.animeAutoMapEnabled !== false,
     animeAutoMapHour: numberOr(raw.animeAutoMapHour, 0),
     updateCheckEnabled: raw.updateCheckEnabled !== false,

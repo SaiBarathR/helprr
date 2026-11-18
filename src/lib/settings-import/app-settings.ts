@@ -5,6 +5,7 @@ import { isValidTimeZone, getEnvTimeZone } from '@/lib/timezone';
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { parseDiskThresholds } from '@/lib/disk-space';
 import { normalizeRegionCode } from '@/lib/region';
+import { DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS, MAX_SERVICE_DOWN_ALERT_DELAY_SECS } from '@/lib/service-down-alert-delay';
 import type { ExportedAppSettings } from '@/lib/settings-export';
 import {
   LOG_LEVELS,
@@ -62,6 +63,10 @@ export function buildAppSettingsUpdate(
     out.activityDigestDayOfWeek = clampInt(input.activityDigestDayOfWeek, 0, 6, 1);
   if (input.notificationGroupingEnabled !== undefined)
     out.notificationGroupingEnabled = Boolean(input.notificationGroupingEnabled);
+  if (input.serviceDownAlertDelaySecs !== undefined)
+    out.serviceDownAlertDelaySecs = clampInt(
+      input.serviceDownAlertDelaySecs, 0, MAX_SERVICE_DOWN_ALERT_DELAY_SECS, DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS,
+    );
   if (input.animeAutoMapEnabled !== undefined)
     out.animeAutoMapEnabled = Boolean(input.animeAutoMapEnabled);
   if (input.animeAutoMapHour !== undefined)
@@ -129,6 +134,8 @@ export async function applyAppSettingsInTxn(
       activityDigestHour: (data.activityDigestHour as number | undefined) ?? 8,
       activityDigestDayOfWeek: (data.activityDigestDayOfWeek as number | undefined) ?? 1,
       notificationGroupingEnabled: (data.notificationGroupingEnabled as boolean | undefined) ?? true,
+      serviceDownAlertDelaySecs:
+        (data.serviceDownAlertDelaySecs as number | undefined) ?? DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS,
       animeAutoMapEnabled: (data.animeAutoMapEnabled as boolean | undefined) ?? true,
       animeAutoMapHour: (data.animeAutoMapHour as number | undefined) ?? 0,
       updateCheckEnabled: (data.updateCheckEnabled as boolean | undefined) ?? true,

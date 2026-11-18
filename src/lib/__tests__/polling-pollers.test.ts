@@ -388,7 +388,8 @@ describe('pollers on fixed fixtures (golden)', () => {
     ];
     for (const [id, lastReachable] of [['c1', true], ['c2', false], ['c3', true]] as const) mocks.states.set(id, { serviceConnectionId: id, lastReachable });
     mocks.probe = (connection) => (connection.id === 'c1' ? { ok: false, error: 'ECONNREFUSED' } : { ok: true });
-    expectGolden('pollServiceReachability', await run('pollServiceReachability'));
+    // No delay: the down alert goes out at the first failed check, as it always did.
+    expectGolden('pollServiceReachability', await run('pollServiceReachability', { ...SETTINGS, serviceDownAlertDelaySecs: 0 } as typeof SETTINGS));
   });
 
   it('checkDiskSpace: a new drop, a reminder after the cooldown, one inside it, a recovery, and a disk gone', async () => {

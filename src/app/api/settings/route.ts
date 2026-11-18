@@ -7,6 +7,7 @@ import { pollingService } from '@/lib/polling-service';
 import { disableCachingAndPurgeCaches } from '@/lib/cache/admin';
 import { setCachedAnilistTtlSettings, setCachedCacheImagesEnabled } from '@/lib/cache/state';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
+import { DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS, MAX_SERVICE_DOWN_ALERT_DELAY_SECS } from '@/lib/service-down-alert-delay';
 import { configureLogger } from '@/lib/logger';
 import { configureApiLogging, withApiLogging } from '@/lib/api-logger';
 import { getEnvTimeZone, isValidTimeZone, setAppTimeZone } from '@/lib/timezone';
@@ -146,6 +147,7 @@ async function putHandler(request: NextRequest) {
       watchProviderRegion,
       activityDigestMode, activityDigestHour, activityDigestDayOfWeek,
       notificationGroupingEnabled,
+      serviceDownAlertDelaySecs,
       animeAutoMapEnabled, animeAutoMapHour,
       updateCheckEnabled,
       anilistSectionsTtlMin, anilistBrowseTtlMin, anilistDetailTtlMin, anilistAiringTtlMin,
@@ -294,6 +296,11 @@ async function putHandler(request: NextRequest) {
       }
       data.notificationGroupingEnabled = notificationGroupingEnabled;
     }
+    if (serviceDownAlertDelaySecs !== undefined) {
+      const parsed = parseIntegerSetting(serviceDownAlertDelaySecs, 'Service down alert delay', 0, MAX_SERVICE_DOWN_ALERT_DELAY_SECS);
+      if ('error' in parsed) return parsed.error;
+      data.serviceDownAlertDelaySecs = parsed.value;
+    }
     if (animeAutoMapEnabled !== undefined) {
       // Strict check — Boolean('false') would silently enable the nightly job.
       if (typeof animeAutoMapEnabled !== 'boolean') {
@@ -368,6 +375,8 @@ async function putHandler(request: NextRequest) {
         activityDigestHour: (data.activityDigestHour as number | undefined) ?? 8,
         activityDigestDayOfWeek: (data.activityDigestDayOfWeek as number | undefined) ?? 1,
         notificationGroupingEnabled: (data.notificationGroupingEnabled as boolean | undefined) ?? true,
+        serviceDownAlertDelaySecs:
+          (data.serviceDownAlertDelaySecs as number | undefined) ?? DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS,
         animeAutoMapEnabled: (data.animeAutoMapEnabled as boolean | undefined) ?? true,
         animeAutoMapHour: (data.animeAutoMapHour as number | undefined) ?? 0,
         updateCheckEnabled: (data.updateCheckEnabled as boolean | undefined) ?? true,

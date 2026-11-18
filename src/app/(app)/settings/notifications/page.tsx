@@ -24,6 +24,7 @@ import { DiskLowSpaceAlerts } from '@/components/settings/disk-low-space-alerts'
 import { useMe } from '@/components/permission-provider';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { isIosDevice, pushUnavailableReason } from '@/lib/push-availability';
+import { DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS } from '@/lib/service-down-alert-delay';
 
 const TIMING_OPTIONS = [
   { value: 'before_air', label: 'Before air time' },
@@ -55,6 +56,16 @@ const NOTIFY_BEFORE_OPTIONS = [
   { value: '360', label: '6 hours' },
   { value: '720', label: '12 hours' },
   { value: '1440', label: '24 hours' },
+];
+
+const DOWN_ALERT_DELAY_OPTIONS = [
+  { value: '0', label: 'Immediately' },
+  { value: '60', label: '1 minute' },
+  { value: '120', label: '2 minutes' },
+  { value: '300', label: '5 minutes' },
+  { value: '600', label: '10 minutes' },
+  { value: '900', label: '15 minutes' },
+  { value: '1800', label: '30 minutes' },
 ];
 
 const HISTORY_RETENTION_OPTIONS = [
@@ -480,6 +491,31 @@ export default function NotificationsSettingsPage() {
             disabled={loading}
             aria-label="Group bursts of notifications"
           />
+        </div>
+      </GroupedSection>
+      )}
+
+      {isAdmin && (
+      <GroupedSection
+        title="Service outages"
+        footer="How long a service must stay unreachable before the down alert. Shorter blips, like a router or internet hiccup, send nothing, and a back-online alert only follows a down alert."
+      >
+        <div className="grouped-row">
+          <span className="text-sm">Alert after</span>
+          <Select
+            value={String(settings?.serviceDownAlertDelaySecs ?? DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS)}
+            onValueChange={(v) => void update({ serviceDownAlertDelaySecs: parseInt(v, 10) })}
+            disabled={loading}
+          >
+            <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DOWN_ALERT_DELAY_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </GroupedSection>
       )}

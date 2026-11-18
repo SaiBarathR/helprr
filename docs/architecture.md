@@ -150,6 +150,13 @@ send and one history row, and one instant is one broadcast. A send's row keeps
 its recipients, so a zone change does not send it again; quiet hours hold the
 push but the row still claims it, as for every event
 (`src/lib/polling/upcoming.ts`). Episodes count down to their airing.
+Service reachability (`src/lib/polling/service-reachability.ts`) keeps
+`PollingState.lastReachable` as the state the alerts last reported: a failing
+probe flips it to down, with a `serviceDown` alert, only after the service has
+failed every probe for `AppSettings.serviceDownAlertDelaySecs` (default 120,
+0 = the first failure). So `serviceRestored` follows only a sent `serviceDown`,
+apart from a service that was already down when it was first seen. When the
+run of failures began is kept in memory, so a restart starts the wait again.
 One upstream failure must not cancel every other source. Sonarr, Radarr, and
 Lidarr instances share two polling slots per cycle; an instance that fails twice
 in a row is skipped (without taking a slot) for 30 seconds, doubling to 5
