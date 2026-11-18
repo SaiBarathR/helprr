@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { arrowRoomNeeded, followKeyboard, formRoomTooShort, PAN_HOLD_MS, PAN_STILL_MS, revealFocusedField } from './keyboard-fit';
+import { arrowRoomNeeded, followKeyboard, formRoomTooShort, opensKeyboard, PAN_HOLD_MS, PAN_STILL_MS, revealFocusedField } from './keyboard-fit';
 
 // A scroll box showing 100–300 px of a column of 36 px fields, 80 px apart,
 // laid out as if scrolled by `box.scrollTop`. iOS's ⌃ / ⌄ arrows skip a field
@@ -135,6 +135,31 @@ const CHANGE_PASSWORD = [
   { top: 80, bottom: 124 },
   { top: 184, bottom: 228 },
 ];
+
+describe('opensKeyboard', () => {
+  const make = (html: string) => {
+    const host = document.createElement('div');
+    host.innerHTML = html;
+    return host.firstElementChild;
+  };
+
+  it('is true for text fields, selects and editable text', () => {
+    expect(opensKeyboard(make('<input type="password">'))).toBe(true);
+    expect(opensKeyboard(make('<textarea></textarea>'))).toBe(true);
+    expect(opensKeyboard(make('<select><option>a</option></select>'))).toBe(true);
+    const editable = make('<div contenteditable="true"></div>')!;
+    Object.defineProperty(editable, 'isContentEditable', { value: true });
+    expect(opensKeyboard(editable)).toBe(true);
+  });
+
+  it('is false for buttons, links, checkboxes and no focus', () => {
+    expect(opensKeyboard(make('<button>More</button>'))).toBe(false);
+    expect(opensKeyboard(make('<a href="/settings">Settings</a>'))).toBe(false);
+    expect(opensKeyboard(make('<input type="checkbox">'))).toBe(false);
+    expect(opensKeyboard(document.body)).toBe(false);
+    expect(opensKeyboard(null)).toBe(false);
+  });
+});
 
 describe('arrowRoomNeeded', () => {
   it('is a field and the centres of the fields either side, 4 px inside, for the field needing most', () => {

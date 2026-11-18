@@ -110,18 +110,91 @@ describe('DrawerContent above the keyboard', () => {
     }
   });
 
-  it('in a Safari tab, keeps clear of the address bar and scrolls as one column', () => {
-    stubViewport(window.innerHeight - 300);
+  it('in a Safari tab, keeps clear of the address bar and scrolls as one column', async () => {
+    const { fire } = stubViewport(window.innerHeight - 300);
     vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
-    const panel = open('content');
-    expect(panel.style.paddingBottom).toBe('3.75rem');
+    const panel = openFormSheet();
+    screen.getByRole('textbox', { name: 'Current password' }).focus();
+    fire();
+    await waitFor(() => expect(panel.style.paddingBottom).toBe('3.75rem'));
+    expect(panel.style.bottom).toBe('300px');
     expect(panel.hasAttribute('data-scroll-together')).toBe(true);
+  });
+
+  // Safari's own bars leave the visible part shorter than the layout viewport
+  // with no keyboard up. Taken for a keyboard, they lifted the More sheet and
+  // capped its list to about four rows on an iPhone SE.
+  it('in a Safari tab, takes a shorter visible part with no field focused for Safari\'s bars, not a keyboard', async () => {
+    const { fire } = stubViewport(window.innerHeight - 250);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
+    const panel = openFormSheet();
+    expect(panel.style.bottom).toBe('');
+    expect(panel.style.maxHeight).toBe('');
+    expect(panel.style.paddingBottom).toBe('');
+    expect(panel.hasAttribute('data-scroll-together')).toBe(false);
+    // The keyboard comes up for a field, and goes back down once it is left.
+    const field = screen.getByRole('textbox', { name: 'Current password' });
+    field.focus();
+    fire();
+    await waitFor(() => expect(panel.style.bottom).toBe('250px'));
+    field.blur();
+    fire();
+    await waitFor(() => expect(panel.style.bottom).toBe(''));
+    expect(panel.style.maxHeight).toBe('');
+    expect(panel.hasAttribute('data-scroll-together')).toBe(false);
+  });
+
+  it('in a Safari tab, lets go once focus moves from the field to a button', async () => {
+    const { fire } = stubViewport(window.innerHeight - 250);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
+    render(
+      <Drawer open>
+        <DrawerContent size="content">
+          <DrawerTitle>Rename</DrawerTitle>
+          <input aria-label="Name" />
+          <button type="button">Save</button>
+        </DrawerContent>
+      </Drawer>,
+    );
+    const panel = screen.getByRole('dialog', { name: 'Rename' });
+    screen.getByRole('textbox', { name: 'Name' }).focus();
+    fire();
+    await waitFor(() => expect(panel.style.bottom).toBe('250px'));
+    // The visible part still short (Safari's bars), but nothing to type in.
+    screen.getByRole('button', { name: 'Save' }).focus();
+    fire();
+    await waitFor(() => expect(panel.style.bottom).toBe(''));
+    expect(panel.style.paddingBottom).toBe('');
+  });
+
+  it('in a Safari tab, still places itself for a focused select (iOS\'s picker)', async () => {
+    const { fire } = stubViewport(window.innerHeight - 250);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
+    render(
+      <Drawer open>
+        <DrawerContent size="content">
+          <DrawerTitle>Pick</DrawerTitle>
+          <select aria-label="Calendar"><option>One</option></select>
+        </DrawerContent>
+      </Drawer>,
+    );
+    const panel = screen.getByRole('dialog', { name: 'Pick' });
+    screen.getByRole('combobox', { name: 'Calendar' }).focus();
+    fire();
+    await waitFor(() => expect(panel.style.bottom).toBe('250px'));
+  });
+
+  it('in the Home Screen app, still takes a shorter visible part for the keyboard', () => {
+    stubViewport(window.innerHeight - 300);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)', standalone: true });
+    const panel = open('content');
+    expect(panel.style.bottom).toBe('300px');
   });
 
   // vaul's sheet has touch-action: none and a ::after that runs on below it,
   // so the sheet itself must not be the box that scrolls (a finger couldn't
   // scroll it, and the ::after added blank space and covered the buttons).
-  it('in a Safari tab, scrolls a form sheet inside the sheet, not the sheet itself', () => {
+  it('in a Safari tab, scrolls a form sheet inside the sheet, not the sheet itself', async () => {
     const css = readFileSync('src/app/globals.css', 'utf8');
     const rules = css.slice(css.indexOf('/* A sheet holding a form'), css.indexOf('/* Floating overlays'));
     expect(rules).toContain("[data-slot='drawer-scroll']");
@@ -129,7 +202,7 @@ describe('DrawerContent above the keyboard', () => {
     style.textContent = rules;
     document.head.appendChild(style);
     try {
-      stubViewport(window.innerHeight - 300);
+      const { fire } = stubViewport(window.innerHeight - 300);
       vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
       render(
         <Drawer open>
@@ -144,6 +217,9 @@ describe('DrawerContent above the keyboard', () => {
         </Drawer>,
       );
       const panel = screen.getByRole('dialog', { name: 'Change password' });
+      screen.getByRole('textbox', { name: 'Current password' }).focus();
+      fire();
+      await waitFor(() => expect(panel.hasAttribute('data-scroll-together')).toBe(true));
       const scroller = panel.querySelector<HTMLElement>(':scope > [data-slot="drawer-scroll"]')!;
       // Header and form both in the one box, so they scroll together.
       expect(scroller.contains(screen.getByText('Change password'))).toBe(true);
@@ -383,11 +459,13 @@ describe('DrawerContent on iOS', () => {
     }
   });
 
-  it('in a Safari tab, keeps the sheet\'s content above Safari\'s floating address bar', () => {
+  it('in a Safari tab, keeps the sheet\'s content above Safari\'s floating address bar', async () => {
     vi.stubGlobal('navigator', { ...navigator, userAgent: iPhone });
     vi.stubGlobal('visualViewport', { height: window.innerHeight - 300, scale: 1, offsetTop: 0, addEventListener() {}, removeEventListener() {} });
-    openForm();
-    expect(screen.getByRole('dialog', { name: 'Form' }).style.paddingBottom).toBe('3.75rem');
+    openForm().focus();
+    // followKeyboard also follows the window's resize.
+    window.dispatchEvent(new Event('resize'));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Form' }).style.paddingBottom).toBe('3.75rem'));
   });
 
   it('in the Home Screen app, needs no room for an address bar', () => {
