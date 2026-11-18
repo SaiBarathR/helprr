@@ -17,15 +17,20 @@ export class PlaybackFailure extends Error {
  * `buffered`: a frame is loaded (readyState 2); hls.js and progressive files
  * get there on a paused element. `native`: metadata (readyState 1) is enough,
  * because Safari's own HLS — every iPhone — usually stops there until `play()`,
- * and waiting for a frame only ran the fallback. Either way, a stream that has
- * loaded nothing after `fallbackMs` is played to make the browser load it:
- * muted, and paused the moment it plays. 4 s for both: on iOS cellular a fresh
- * transcode's playlist alone can take 2–4 s, and metadata arriving any time
- * before that is still taken at once.
+ * and waiting for a frame only ran the fallback. 4 s for both: on iOS cellular
+ * a fresh transcode's playlist alone can take 2–4 s, and metadata arriving any
+ * time before that is still taken at once.
+ *
+ * A `buffered` stream that has loaded nothing after `fallbackMs` is played to
+ * make the browser load it: muted, and paused the moment it plays. A `native`
+ * one is never played (`nudge: false`): it is ready, paused, at its fallback,
+ * and keeps loading, or loads on Play. Safari applies a play and a pause to
+ * its own HLS asynchronously, and a 4K transcode restart takes far longer
+ * than 4 s, so a nudge there could leave the title playing by itself.
  */
 export const PAUSED_START = {
-  buffered: { readyState: 2, fallbackMs: 4_000 },
-  native: { readyState: 1, fallbackMs: 4_000 },
+  buffered: { readyState: 2, fallbackMs: 4_000, nudge: true },
+  native: { readyState: 1, fallbackMs: 4_000, nudge: false },
 } as const;
 type PausedStart = (typeof PAUSED_START)[keyof typeof PAUSED_START];
 
@@ -37,8 +42,8 @@ type PausedStart = (typeof PAUSED_START)[keyof typeof PAUSED_START];
  * the element read as playing for the seconds the new stream took to load.
  * Ready at the readiness `paused` names; with metadata alone if the browser
  * will not buffer further by its fallback; and only if it has loaded nothing
- * at all is it played, without sound and only until `play()` resolves, then
- * waited on paused like the rest.
+ * at all, and `paused` allows a nudge, is it played, without sound and only
+ * until `play()` resolves, then waited on paused like the rest.
  */
 export function playMedia(
   el: HTMLMediaElement,
@@ -102,7 +107,9 @@ export function playMedia(
     };
     const fallback = paused ? setTimeout(() => {
       if (!isCurrent()) finish(false);
-      else if (el.readyState >= 1) finish(true);
+      // Play pressed meanwhile: the viewer's own play() loads it, and a nudge
+      // would pause it again.
+      else if (el.readyState >= 1 || !paused.nudge || !el.paused) finish(true);
       else nudge();
     }, paused.fallbackMs) : undefined;
     if (paused) check();

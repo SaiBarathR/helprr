@@ -14,7 +14,7 @@
  * subtitle, so a DirectPlay MP4 with no subtitle tracks stays on the plain
  * `el.src` path and neither is ever loaded.
  */
-import { act, useEffect } from 'react';
+import { act, useEffect, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { vi } from 'vitest';
 import {
@@ -136,7 +136,13 @@ function installMediaElement(state: { paused: boolean; currentTime: number }) {
  * audio index each restart actually asked Jellyfin for, and every session
  * report is recorded, so it can see the `isPaused` each start announced.
  */
-export async function mountPlayback(options: { hls?: boolean; audioIds?: string[]; progressive?: boolean } = {}): Promise<Harness> {
+export async function mountPlayback(options: {
+  hls?: boolean;
+  audioIds?: string[];
+  progressive?: boolean;
+  /** Rendered inside the provider, for a test of the player's own UI. */
+  children?: ReactNode;
+} = {}): Promise<Harness> {
   const state = { paused: true, currentTime: 0 };
   installMediaElement(state);
 
@@ -270,7 +276,7 @@ export async function mountPlayback(options: { hls?: boolean; audioIds?: string[
   };
 
   await run(() => {
-    root.render(<JellyfinPlaybackProvider><Probe /><StateProbe /></JellyfinPlaybackProvider>);
+    root.render(<JellyfinPlaybackProvider><Probe /><StateProbe />{options.children}</JellyfinPlaybackProvider>);
   });
 
   return {
