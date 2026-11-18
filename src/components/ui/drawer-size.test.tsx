@@ -144,6 +144,29 @@ describe('DrawerContent above the keyboard', () => {
     expect(panel.hasAttribute('data-scroll-together')).toBe(false);
   });
 
+  it('in a Safari tab, lets go once focus moves from the field to a button', async () => {
+    const { fire } = stubViewport(window.innerHeight - 250);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
+    render(
+      <Drawer open>
+        <DrawerContent size="content">
+          <DrawerTitle>Rename</DrawerTitle>
+          <input aria-label="Name" />
+          <button type="button">Save</button>
+        </DrawerContent>
+      </Drawer>,
+    );
+    const panel = screen.getByRole('dialog', { name: 'Rename' });
+    screen.getByRole('textbox', { name: 'Name' }).focus();
+    fire();
+    await waitFor(() => expect(panel.style.bottom).toBe('250px'));
+    // The visible part still short (Safari's bars), but nothing to type in.
+    screen.getByRole('button', { name: 'Save' }).focus();
+    fire();
+    await waitFor(() => expect(panel.style.bottom).toBe(''));
+    expect(panel.style.paddingBottom).toBe('');
+  });
+
   it('in a Safari tab, still places itself for a focused select (iOS\'s picker)', async () => {
     const { fire } = stubViewport(window.innerHeight - 250);
     vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });

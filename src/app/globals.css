@@ -387,7 +387,7 @@
    Glass's muted label is rgba) drew lighter where two strokes cross, as on
    Film. Draw the strokes opaque and apply the colour's alpha once, to the
    whole icon, through a mask of that colour. An opaque colour looks the same. */
-@supports (color: rgb(from red r g b)) {
+@supports (stroke: rgb(from currentColor r g b / 1)) {
   .nav-icon {
     stroke: rgb(from currentColor r g b / 1);
     mask-image: linear-gradient(currentColor, currentColor);
