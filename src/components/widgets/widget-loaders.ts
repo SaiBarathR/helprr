@@ -192,23 +192,36 @@ export const STATIC_WIDGET_LOADER_IDS = Object.freeze(Object.keys(widgetLoaders)
 
 const componentCache = new Map<string, LazyExoticComponent<WidgetComponent>>();
 
+function loaderFor(widgetId: string): WidgetLoader | undefined {
+  const loader = widgetLoaders[widgetId];
+  if (loader || !widgetId.startsWith('discover-')) return loader;
+  const sectionId = widgetId.slice('discover-'.length);
+  if (!sectionId) return undefined;
+  return () =>
+    import('./discover-section-widget').then(({ DiscoverSectionWidget }) =>
+      asWidgetModule((props) => createElement(DiscoverSectionWidget, { sectionId, ...props })));
+}
+
 export function getWidgetComponent(widgetId: string): LazyExoticComponent<WidgetComponent> | undefined {
   const cached = componentCache.get(widgetId);
   if (cached) return cached;
 
-  let loader = widgetLoaders[widgetId];
-  if (!loader && widgetId.startsWith('discover-')) {
-    const sectionId = widgetId.slice('discover-'.length);
-    if (!sectionId) return undefined;
-    loader = () =>
-      import('./discover-section-widget').then(({ DiscoverSectionWidget }) =>
-        asWidgetModule((props) => createElement(DiscoverSectionWidget, { sectionId, ...props })));
-  }
+  const loader = loaderFor(widgetId);
   if (!loader) return undefined;
 
   const component = lazy(loader);
   componentCache.set(widgetId, component);
   return component;
+}
+
+/**
+ * Fetches a widget's code without showing it. Widgets load their code only
+ * when scrolled to, and the service worker keeps a chunk only once it has been
+ * fetched, so a widget never shown online had no code offline. A failure is
+ * ignored: the widget loads (or says why not) when it is shown.
+ */
+export function preloadWidgetCode(widgetId: string): void {
+  void loaderFor(widgetId)?.().catch(() => {});
 }
 
 export function resetWidgetComponent(widgetId: string): void {

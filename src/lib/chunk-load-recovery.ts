@@ -52,21 +52,29 @@ async function serverAnswers(): Promise<boolean> {
 }
 
 /**
- * Drops the cached page shell and reloads when `error` is a chunk load failure
- * and the device is online. Returns true when a reload was started; otherwise
- * the caller shows its normal retry. Pass `automatic` when no user tapped
- * anything: that applies the reload-loop guard and reloads only once the
- * server answers.
+ * For an error boundary to call on its own (no tap): when `error` is a chunk
+ * load failure and the device is online, drops the cached page shell and
+ * reloads once the server answers, at most once per window in this tab.
+ * Returns true when that check was started.
  */
-export function reloadForChunkLoadError(error: unknown, { automatic = false } = {}): boolean {
+export function reloadForChunkLoadError(error: unknown): boolean {
   if (!isChunkLoadError(error) || !globalThis.navigator.onLine) return false;
-  if (!automatic) {
-    clearPagesAndReload();
-    return true;
-  }
   if (!claimAutoReload()) return false;
   void serverAnswers().then((answers) => {
     if (answers) clearPagesAndReload();
   });
+  return true;
+}
+
+/**
+ * For a tap on Retry: reloads (dropping the cached page shell) when `error` is a
+ * chunk load failure, the device is online and the server answers, which picks
+ * up a new deploy's chunks. Resolves false otherwise, so the caller retries in
+ * place. No loop guard: it only runs when tapped.
+ */
+export async function reloadWhenServerAnswers(error: unknown): Promise<boolean> {
+  if (!isChunkLoadError(error) || !globalThis.navigator.onLine) return false;
+  if (!(await serverAnswers())) return false;
+  clearPagesAndReload();
   return true;
 }

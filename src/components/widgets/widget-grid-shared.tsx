@@ -1,13 +1,16 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Settings2, TimerReset, Trash2 } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
+import { hasRequiredWidgetServices } from '@/lib/widgets/availability';
+import { useConfiguredWidgetServices } from '@/lib/widgets/widget-availability-context';
 import type { WidgetInstance } from '@/lib/widgets/types';
 import { useMe, useCan, hasCapabilities } from '@/components/permission-provider';
 import { BentoCell, BentoEditChrome } from './bento-cell';
 import { WidgetRenderer } from './widget-renderer';
+import { preloadWidgetCode } from './widget-loaders';
 import { HPR, mix } from './bento-primitives';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
@@ -23,8 +26,9 @@ export const WIDGET_HUE: Record<string, string> = {
 export function useVisibleDashboardWidgets(dashboardLayout: WidgetInstance[]) {
   const discoverLayout = useUIStore((s) => s.discoverLayout);
   const me = useMe();
+  const configuredServices = useConfiguredWidgetServices();
 
-  return useMemo(
+  const visible = useMemo(
     () =>
       dashboardLayout.filter((instance) => {
         const def = getWidgetDefinition(instance.widgetId, discoverLayout);
@@ -36,6 +40,48 @@ export function useVisibleDashboardWidgets(dashboardLayout: WidgetInstance[]) {
       }),
     [dashboardLayout, discoverLayout, me],
   );
+
+  // Once the page is idle, fetch the code of every widget on it that will
+  // mount, so the service worker has it if the connection drops before the
+  // user scrolls to them. Without it a widget below the fold showed an error
+  // offline. Offline (a cold start from the saved shell), it waits for the
+  // network; each time the network returns it fetches again, which costs
+  // nothing for code the page already has.
+  const preloadKey = JSON.stringify([...new Set(visible
+    .filter((instance) => {
+      const def = getWidgetDefinition(instance.widgetId, discoverLayout);
+      return !!def && hasRequiredWidgetServices(def, configuredServices);
+    })
+    .map((instance) => instance.widgetId))].sort());
+  useEffect(() => {
+    const ids: string[] = JSON.parse(preloadKey);
+    if (ids.length === 0) return;
+    const idle = globalThis as typeof globalThis & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    let cancel = () => {};
+    const schedule = () => {
+      cancel();
+      const preload = () => { for (const id of ids) preloadWidgetCode(id); };
+      if (idle.requestIdleCallback) {
+        const handle = idle.requestIdleCallback(preload, { timeout: 5_000 });
+        cancel = () => idle.cancelIdleCallback?.(handle);
+      } else {
+        // Safari has no requestIdleCallback.
+        const timer = setTimeout(preload, 2_000);
+        cancel = () => clearTimeout(timer);
+      }
+    };
+    if (globalThis.navigator.onLine) schedule();
+    window.addEventListener('online', schedule);
+    return () => {
+      cancel();
+      window.removeEventListener('online', schedule);
+    };
+  }, [preloadKey]);
+
+  return visible;
 }
 
 export function WidgetGridItem({

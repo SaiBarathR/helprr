@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STATIC_WIDGET_LOADER_IDS, getWidgetComponent } from '@/components/widgets/widget-loaders';
+import { STATIC_WIDGET_LOADER_IDS, getWidgetComponent, preloadWidgetCode } from '@/components/widgets/widget-loaders';
 import { ALL_WIDGET_DEFINITIONS } from './definitions';
 import {
   DEFAULT_DESKTOP_LAYOUT,
@@ -53,5 +53,12 @@ describe('widget loader registry', () => {
     expect(definition?.id).toBe('discover-custom-example');
     expect(getWidgetComponent('discover-custom-example')).toBeDefined();
     expect(STATIC_WIDGET_LOADER_IDS).not.toContain('discover-custom-example');
+  });
+});
+
+describe('preloadWidgetCode', () => {
+  it('ignores an unknown widget and never throws', () => {
+    expect(() => preloadWidgetCode('no-such-widget')).not.toThrow();
+    expect(() => preloadWidgetCode('discover-')).not.toThrow();
   });
 });

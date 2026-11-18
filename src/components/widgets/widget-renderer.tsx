@@ -1,7 +1,6 @@
 'use client';
 
-import { createElement, Fragment, Suspense, type ReactNode } from 'react';
-import { WifiOff } from 'lucide-react';
+import { createElement, Suspense, type ReactNode } from 'react';
 import { useNearViewport } from '@/lib/hooks/use-near-viewport';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
 import {
@@ -15,10 +14,10 @@ import { useConfiguredWidgetServices } from '@/lib/widgets/widget-availability-c
 import { WidgetVisibilityProvider } from '@/lib/widgets/widget-visibility-context';
 import { useWidgetUnavailableReports, WidgetUnavailableProvider } from '@/lib/widgets/widget-unavailable-context';
 import { getWidgetComponent, resetWidgetComponent } from './widget-loaders';
-import { WidgetWrapper, WidgetSkeleton } from './widget-wrapper';
+import { WidgetCover, WidgetWrapper, WidgetSkeleton } from './widget-wrapper';
 import { useUIStore } from '@/lib/store';
 import type { WidgetInstance, WidgetLayoutVariant, WidgetProps } from '@/lib/widgets/types';
-import { FONT_BODY, HPR } from './bento-primitives';
+import { HPR } from './bento-primitives';
 
 interface WidgetRendererProps {
   instance: WidgetInstance;
@@ -92,6 +91,7 @@ export function WidgetRenderer({
           <UnavailableCover name={definition.name}>
           <WidgetWrapper
             widgetId={instance.id}
+            name={definition.name}
             onRetry={() => resetWidgetComponent(instance.widgetId)}
           >
             {() => {
@@ -172,44 +172,7 @@ function UnavailableCover({ name, children }: { name: string; children: ReactNod
         <div style={{ height: '100%', minHeight: 0, visibility: unavailable ? 'hidden' : undefined }}>
           {children}
         </div>
-        {unavailable && (
-          // EmptyState's look, sized for a one-cell phone widget too (about
-          // 44×60 inside the card at 320): the name takes up to two lines there, and
-          // globals.css drops the icon and "right now." where they don't fit.
-          <div role="status" className="widget-cover" style={{ position: 'absolute', inset: 0, container: 'widget-cover / size' }}>
-            <div
-              className="widget-cover-body"
-              style={{
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                // Anything that still doesn't fit is cut at the bottom, never the name at the top.
-                justifyContent: 'safe center',
-                overflow: 'hidden',
-                color: HPR.fgSubtle,
-                fontSize: 11,
-                // Four 11px lines (name + three of message) fit a 60px one-cell cover.
-                lineHeight: 1.25,
-                fontFamily: FONT_BODY,
-                textAlign: 'center',
-              }}
-            >
-              <WifiOff size={18} aria-hidden="true" style={{ flexShrink: 0 }} />
-              {/* Whole words, each its own span, so where the name may take two
-                  lines (globals.css) a word too long for the line ends in "…"
-                  instead of being cut at the edge: a one-cell cover read "Service Hea…". */}
-              <span className="widget-cover-name" style={{ flexShrink: 0, color: HPR.fgMute, fontWeight: 600, maxWidth: '100%' }}>
-                {name.split(' ').map((word, i) => (
-                  <Fragment key={i}>{i > 0 && ' '}<span>{word}</span></Fragment>
-                ))}
-              </span>
-              {unavailable === 'offline'
-                ? <span>You&apos;re offline</span>
-                : <span>Can’t reach Helprr<span className="widget-cover-tail"> right now.</span></span>}
-            </div>
-          </div>
-        )}
+        {unavailable && <WidgetCover name={name} offline={unavailable === 'offline'} />}
       </div>
     </WidgetUnavailableProvider>
   );

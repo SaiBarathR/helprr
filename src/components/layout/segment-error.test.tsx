@@ -64,7 +64,7 @@ describe.each(boundaries)('%s error boundary', (_name, renderBoundary) => {
     const reset = vi.fn();
     render(renderBoundary(new Error('boom'), reset));
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(reset).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(reset).toHaveBeenCalledOnce());
     expect(reload).not.toHaveBeenCalled();
   });
 
@@ -73,7 +73,19 @@ describe.each(boundaries)('%s error boundary', (_name, renderBoundary) => {
     const reset = vi.fn();
     render(renderBoundary(chunkError(), reset));
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(reset).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(reset).toHaveBeenCalledOnce());
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('keeps the saved pages and tries again in place when the server does not answer', async () => {
+    const deleteCache = vi.fn().mockResolvedValue(true);
+    vi.stubGlobal('caches', { delete: deleteCache });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    const reset = vi.fn();
+    render(renderBoundary(chunkError(), reset));
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await vi.waitFor(() => expect(reset).toHaveBeenCalledOnce());
+    expect(deleteCache).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
   });
 });
