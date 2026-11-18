@@ -2072,8 +2072,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const armPlayDeadline = useCallback(() => {
     clearPlayDeadline(playDeadlineRef);
     const el = mediaRef.current;
-    if (!el || el.readyState >= 3) return;
     const session = streamRef.current?.playSessionId;
+    // No stream (a lock-screen Play after Stop) or one without a session id:
+    // nothing to fail, and an undefined or empty id would match the next.
+    if (!el || el.readyState >= 3 || !session) return;
     playDeadlineRef.current = setTimeout(() => {
       playDeadlineRef.current = null;
       const media = mediaRef.current;

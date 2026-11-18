@@ -189,3 +189,40 @@ it('leaves a Play alone once the new stream starts playing within the limit', as
   expect(h.playback().error).toBeNull();
   expect(h.playback().status).toBe('playing');
 });
+
+it('leaves a Play alone that the viewer pauses again before the limit', async () => {
+  await pausedAt600();
+  const el = h.element();
+  slowSource(el);
+  vi.useFakeTimers();
+  await h.act(async () => {
+    const change = h.playback().setAudioStream(2);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await change;
+  });
+
+  await h.act(() => { h.playback().togglePause(); });
+  await h.act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+  await h.act(() => { h.playback().togglePause(); });
+  await h.act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+
+  expect(h.playback().error).toBeNull();
+  expect(h.playback().status).toBe('paused');
+});
+
+it('never puts a stopped player into an error from a lock-screen Play', async () => {
+  await pausedAt600();
+  const el = h.element();
+  await h.act(async () => { await h.playback().stop(); });
+  // Stopped: no source, so nothing loaded.
+  Object.defineProperty(el, 'readyState', { configurable: true, get: () => 0 });
+  vi.useFakeTimers();
+
+  // iOS keeps the Now Playing controls for a while after Stop.
+  await h.act(() => { h.mediaSession.play?.(); });
+  expect(h.media.paused()).toBe(false);
+  await h.act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+
+  expect(h.playback().error).toBeNull();
+  expect(h.playback().status).not.toBe('error');
+});
