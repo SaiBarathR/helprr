@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-11-18
+
+Quieter outage alerts, a Dashboard that works offline, and fixes from a full test of
+1.16.0 on iPhone, Android and desktop. The update makes one small database change, so back
+up first (see **For admins** below).
+
+### Added
+
+- **Wait before a service-down alert**: Settings → Notifications → Service outages →
+  **Alert after** (2 minutes by default; Immediately, or up to 30 minutes). A short blip,
+  such as the internet dropping for a few seconds, no longer sends an "is unreachable" and
+  "is back online" pair; "is back online" now follows only an "is unreachable".
+
+### Changed
+
+- **Continue Watching** on the Dashboard shows its list where a cell is too short for its
+  posters (the member default on phones, tablets and desktop), as Today does, instead of
+  cutting the posters and titles off.
+
+### Fixed
+
+- **Dashboard offline**: widgets you hadn't scrolled to before losing the connection showed
+  **Widget … failed to load**. Helprr now fetches every widget's code ahead, and a widget
+  that still can't load shows its name with **You're offline** or **Can't reach Helprr**,
+  and tries again when the connection returns.
+- **Retry** on a widget, and **Try again** on an error page, no longer drop the pages saved
+  for offline use when Helprr can't be reached (for example on Wi-Fi without internet).
+- **Player on iPhone**: changing the audio or subtitles while paused keeps the picture until
+  you press **Play**, and never starts playback by itself. A stream that never loads after
+  **Play** now stops after 45 seconds with **Retry**, instead of spinning.
+- On an iPhone in a Safari tab, the **More** sheet's list fills the sheet again instead of
+  showing about four rows.
+- Tab icons no longer show darker or lighter spots where their lines cross.
+
+#### For admins
+
+- **The update applies 1 database change** (the Alert after setting). **Back up first.** The
+  Compose file is unchanged.
+- Next.js is updated to 16.4.6 (two moderate advisories in 16.4.2; Helprr didn't use the
+  affected feature).
+
 ## [1.16.0] - 2026-11-15
 
 A polish release: a full pass over the app on iPhone, Android and desktop, a choice of
