@@ -134,7 +134,7 @@ export function Sidebar() {
           sidebarCollapsed && 'justify-center px-2 pointer-coarse:min-h-11'
         )}
       >
-        {isPending ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-primary')} />}
+        {isPending ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Icon className={cn('nav-icon h-4 w-4 shrink-0', isActive && 'text-primary')} />}
         {!sidebarCollapsed && label}
         {!sidebarCollapsed && <NavBadge slice={slice} className="ml-auto" />}
         {/* Pinned to the icon's top-right corner, so it stays put however tall the row is. */}

@@ -5,7 +5,7 @@ import { Drawer as DrawerPrimitive } from "vaul"
 
 import { cn } from "@/lib/utils"
 import { useBackClosableOpen } from "@/lib/overlay-history"
-import { followKeyboard, formRoomTooShort, inSafariTab, isIOS, keepIosFromScrolling, revealFocusedField } from "@/lib/keyboard-fit"
+import { followKeyboard, formRoomTooShort, inSafariTab, isIOS, keepIosFromScrolling, opensKeyboard, revealFocusedField } from "@/lib/keyboard-fit"
 
 function Drawer({
   open: openProp,
@@ -45,7 +45,13 @@ function Drawer({
 function fitAboveKeyboard(node: HTMLElement): () => void {
   return followKeyboard(node, (covered, viewport) => {
     if (node.getAttribute("data-vaul-drawer-direction") !== "bottom") return
-    if (!covered) {
+    const tab = inSafariTab()
+    // In a Safari tab the visible part is shorter than the layout viewport
+    // with no keyboard up too, by Safari's own bars. Lifted by that, a sheet
+    // that hugs its rows (More) was capped to about four of them on an iPhone
+    // SE, with vaul's ::after filling the space below it. Only a focused
+    // field brings the keyboard up.
+    if (!covered || (tab && !opensKeyboard(document.activeElement))) {
       node.style.removeProperty("bottom")
       node.style.removeProperty("max-height")
       node.style.removeProperty("padding-bottom")
@@ -58,7 +64,6 @@ function fitAboveKeyboard(node: HTMLElement): () => void {
     // Safari tab, Safari's floating address bar sits over the bottom of what
     // is left, and a tap there goes to Safari, so keep the sheet's content
     // above it.
-    const tab = inSafariTab()
     node.style.paddingBottom = tab ? "3.75rem" : "0px"
     // That leaves a form's body too short to show more than the field being
     // typed in, and Safari's ⌄ / ⌃ keyboard arrows skip a field whose centre

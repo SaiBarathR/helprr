@@ -15,6 +15,11 @@ export function isTextField(target: EventTarget | null): target is HTMLInputElem
   );
 }
 
+/** Focus that brings up the on-screen keyboard (or, for a select, iOS's picker). */
+export function opensKeyboard(target: EventTarget | null) {
+  return isTextField(target) || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable === true);
+}
+
 export function isIOS() {
   return /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }

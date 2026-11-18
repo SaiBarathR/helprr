@@ -111,7 +111,7 @@ export function BottomNav() {
                   {isPending ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
                   ) : (
-                    <Icon className={cn('h-5 w-5', isActive && 'text-primary')} strokeWidth={isActive ? 2.5 : 2} />
+                    <Icon className={cn('nav-icon h-5 w-5', isActive && 'text-primary')} strokeWidth={isActive ? 2.5 : 2} />
                   )}
                   <NavBadge slice={slice} className={SLOT_BADGE} />
                 </span>
@@ -134,7 +134,7 @@ export function BottomNav() {
                   )}
                 >
                   <span className="relative">
-                    <MoreHorizontal className={cn('h-5 w-5', isMoreActive && 'text-primary')} strokeWidth={isMoreActive ? 2.5 : 2} />
+                    <MoreHorizontal className={cn('nav-icon h-5 w-5', isMoreActive && 'text-primary')} strokeWidth={isMoreActive ? 2.5 : 2} />
                     <NavBadge slice={moreBadge} className={SLOT_BADGE} />
                   </span>
                   <span className={SLOT_LABEL}>More</span>
@@ -202,7 +202,7 @@ export function BottomNav() {
           onClick={() => openSearch(true)}
           className={cn('app-tab-search app-tab-surface', SLOT, 'text-muted-foreground')}
         >
-          <Search className="h-5 w-5" />
+          <Search className="nav-icon h-5 w-5" />
           <span className={cn('app-tab-search-label', SLOT_LABEL)}>Search</span>
         </button>
       </div>
