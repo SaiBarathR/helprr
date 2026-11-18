@@ -98,6 +98,22 @@ describe('pollServiceReachability down-alert delay', () => {
     expect(sentEvents()).toEqual(['serviceDown', 'serviceRestored']);
   });
 
+  it('uses a changed delay for a failure that is already pending', async () => {
+    await probeAt(0, false);
+    await probeAt(15, false);
+    expect(sentEvents()).toEqual([]);
+    await probeAt(30, false, 0);
+    expect(sentEvents()).toEqual(['serviceDown']);
+  });
+
+  it('sends nothing more while a service already reported down keeps failing', async () => {
+    mocks.reachable = new Map([['yt', false]]);
+    await probeAt(0, false);
+    await probeAt(600, false);
+    expect(sentEvents()).toEqual([]);
+    expect(mocks.reachable.get('yt')).toBe(false);
+  });
+
   it('records a first-seen failing service as down without alerting', async () => {
     mocks.reachable = new Map();
     await probeAt(0, false);
