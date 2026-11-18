@@ -1,4 +1,5 @@
 import { getCacheGeneration } from '@/lib/cache/state';
+import { conditionalJsonHeaders } from '@/lib/etag-json';
 import { createHash } from 'crypto';
 import { NextResponse } from 'next/server';
 import { getCachedJson, setCachedJson, deleteCachedJson } from '@/lib/cache/json-cache';
@@ -100,12 +101,12 @@ function serializedJsonResponse(
     ?.split(',')
     .some((candidate) => candidate.trim().replace(/^W\//, '') === projection.etag);
   if (matches) {
-    return new NextResponse(null, { status: 304, headers: { ...headers, ETag: projection.etag } });
+    return new NextResponse(null, { status: 304, headers: conditionalJsonHeaders(headers, projection.etag) });
   }
 
   return new NextResponse(projection.body, {
     status: 200,
-    headers: { ...headers, ETag: projection.etag, 'Content-Type': 'application/json' },
+    headers: { ...conditionalJsonHeaders(headers, projection.etag), 'Content-Type': 'application/json' },
   });
 }
 

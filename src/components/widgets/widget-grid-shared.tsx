@@ -63,7 +63,8 @@ export function useVisibleDashboardWidgets(dashboardLayout: WidgetInstance[]) {
     let cancel = () => {};
     const schedule = () => {
       cancel();
-      const preload = () => { for (const id of ids) preloadWidgetCode(id); };
+      // Offline by the time it runs: the `online` listener tries again.
+      const preload = () => { if (globalThis.navigator.onLine) for (const id of ids) preloadWidgetCode(id); };
       if (idle.requestIdleCallback) {
         const handle = idle.requestIdleCallback(preload, { timeout: 5_000 });
         cancel = () => idle.cancelIdleCallback?.(handle);

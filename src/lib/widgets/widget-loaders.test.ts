@@ -60,5 +60,9 @@ describe('preloadWidgetCode', () => {
   it('ignores an unknown widget and never throws', () => {
     expect(() => preloadWidgetCode('no-such-widget')).not.toThrow();
     expect(() => preloadWidgetCode('discover-')).not.toThrow();
+    // Object's own names are not widgets.
+    expect(() => preloadWidgetCode('constructor')).not.toThrow();
+    expect(getWidgetComponent('constructor')).toBeUndefined();
+    expect(getWidgetComponent('toString')).toBeUndefined();
   });
 });
