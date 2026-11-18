@@ -54,7 +54,9 @@ jobs:
         run: npm ci
 
       - name: Audit dependencies
-        run: npm audit --audit-level=high
+        # npm audit --audit-level=high, with a dated list of advisories that have no
+        # fixed release yet (scripts/audit.mjs says why each is accepted).
+        run: node scripts/audit.mjs
 
       - name: Build and check links
         run: npm run build
