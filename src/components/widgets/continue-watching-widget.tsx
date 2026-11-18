@@ -31,7 +31,8 @@ import { fetchOrOffline } from '@/lib/network-error';
 // The header plus a carousel card: its poster (with the progress bar), title
 // and S·E or year line. A shorter cell, such as the phone's two-row member
 // default, cut the posters and hid the bar and both lines, so it shows the
-// list, which scrolls (as Today does).
+// list, which scrolls (as Today does). The sum is the 243 px the carousel
+// measured in a browser (2026-11-18), not a per-part breakdown.
 const CAROUSEL_FIT_HEIGHT = SECTION_HEADER_HEIGHT + CAROUSEL_CARD_HEIGHT + 46;
 
 async function fetchResumeItems(limit: number, signal?: AbortSignal): Promise<JellyfinItem[]> {

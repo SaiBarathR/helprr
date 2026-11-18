@@ -44,8 +44,8 @@ beforeEach(() => {
 // The carousel card is a 165px poster (with the progress bar), a title line
 // and an S·E or year line under the header: 243px in all.
 describe('Continue Watching in a carousel cell', () => {
-  it('keeps the carousel where a whole card fits (a three-row phone cell, 252px)', () => {
-    mocks.height = 252;
+  it('keeps the carousel where a whole card fits (a three-row phone cell, 268px)', () => {
+    mocks.height = 268;
     renderCarousel();
     expect(screen.getByRole('button', { name: 'Carousel view' })).toBeTruthy();
     expect(document.querySelector('[style*="overflow-x: auto"]')).not.toBeNull();
