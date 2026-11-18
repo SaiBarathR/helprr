@@ -183,6 +183,54 @@ describe('whenFramePresented', () => {
     expect(PLAYING_RELEASE_MS).toBeLessThanOrEqual(1_500);
   });
 
+  describe("on Safari's own HLS (afterPlay)", () => {
+    /** An element whose presented frames are reported, as WebKit may while paused and black. */
+    function reportedFrames() {
+      const { el, play, advance } = silentFrames();
+      let presented: (() => void) | undefined;
+      const requestVideoFrameCallback = vi.fn((callback: () => void) => { presented = callback; return 1; });
+      Object.assign(el, { requestVideoFrameCallback });
+      const present = () => { const callback = presented; presented = undefined; callback?.(); };
+      return { el, play, advance, present, requestVideoFrameCallback };
+    }
+
+    it('ignores a frame or a load reported while paused, and goes on the first frame after Play', () => {
+      const { el, play, present, requestVideoFrameCallback } = reportedFrames();
+      const onFrame = vi.fn();
+      whenFramePresented(el, onFrame, { afterPlay: true });
+      present();
+      el.dispatchEvent(new Event('loadeddata'));
+      present();
+      expect(onFrame).not.toHaveBeenCalled();
+      // Still waiting on the next one.
+      expect(requestVideoFrameCallback).toHaveBeenCalledTimes(3);
+      play();
+      present();
+      expect(onFrame).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores a paused load where frames are not reported, and goes once playback moves', () => {
+      const { el, play, advance } = silentFrames();
+      Object.assign(el, { requestVideoFrameCallback: undefined });
+      const onFrame = vi.fn();
+      whenFramePresented(el, onFrame, { afterPlay: true });
+      el.dispatchEvent(new Event('loadeddata'));
+      expect(onFrame).not.toHaveBeenCalled();
+      play();
+      advance(30.25);
+      expect(onFrame).toHaveBeenCalledTimes(1);
+    });
+
+    it('takes a frame at once while playing', () => {
+      const { el, play, present } = reportedFrames();
+      play();
+      const onFrame = vi.fn();
+      whenFramePresented(el, onFrame, { afterPlay: true });
+      present();
+      expect(onFrame).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('stops listening once cancelled, timer included', () => {
     vi.useFakeTimers();
     const { el, play, advance } = silentFrames();

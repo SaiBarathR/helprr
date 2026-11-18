@@ -1516,10 +1516,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // the subtitle engine is loading. It must not resume the shared element.
     if (!isCurrent()) return;
     // The new source is on the element: its first frame replaces the one held.
+    // On Safari's own HLS only one after Play: paused, it shows nothing of the
+    // new stream, even once it reports a frame.
     const held = frameHoldRef.current;
     if (held) {
       held.cancel?.();
-      held.cancel = whenFramePresented(el, () => { if (frameHoldRef.current === held) releaseFrameHold(); });
+      held.cancel = whenFramePresented(el, () => { if (frameHoldRef.current === held) releaseFrameHold(); }, { afterPlay: useNative });
     }
     await applySubtitleTrack(next, requestedSubtitleIndex ?? next.mediaSource.DefaultSubtitleStreamIndex ?? null, isCurrent);
     if (!isCurrent()) return;

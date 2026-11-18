@@ -36,24 +36,41 @@ describe('a paused start', () => {
     expect(el.play).not.toHaveBeenCalled();
   });
 
-  it('waits out a slow native transcode without playing, then nudges it muted and leaves it paused', async () => {
+  it('never plays a slow native transcode: it is ready, paused, at its fallback', async () => {
     const el = fakeElement(0);
-    let mutedAtPlay: boolean | undefined;
-    el.play.mockImplementation(() => { mutedAtPlay = el.muted; return Promise.resolve(); });
     let ready: boolean | undefined;
     void playMedia(el, () => true, 30_000, PAUSED_START.native).then((value) => { ready = value; });
 
     // A fresh transcode's playlist can take seconds on cellular: no play() yet.
     await vi.advanceTimersByTimeAsync(1_500);
     expect(el.play).not.toHaveBeenCalled();
+    expect(ready).toBeUndefined();
     await vi.advanceTimersByTimeAsync(PAUSED_START.native.fallbackMs - 1_500);
+    expect(ready).toBe(true);
+
+    // Nor later, however long the reload takes (a 4K restart runs past the 30 s ceiling).
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(el.play).not.toHaveBeenCalled();
+    expect(el.pause).not.toHaveBeenCalled();
+  });
+
+  it('waits out a slow buffered stream without playing, then nudges it muted and leaves it paused', async () => {
+    const el = fakeElement(0);
+    let mutedAtPlay: boolean | undefined;
+    el.play.mockImplementation(() => { mutedAtPlay = el.muted; return Promise.resolve(); });
+    let ready: boolean | undefined;
+    void playMedia(el, () => true, 30_000, PAUSED_START.buffered).then((value) => { ready = value; });
+
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(el.play).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(PAUSED_START.buffered.fallbackMs - 1_500);
 
     expect(el.play).toHaveBeenCalledTimes(1);
     expect(mutedAtPlay).toBe(true);
     expect(el.pause).toHaveBeenCalledTimes(1);
     expect(el.muted).toBe(false);
     expect(ready).toBeUndefined();
-    el.readyState = 1;
+    el.readyState = 2;
     await vi.advanceTimersByTimeAsync(250);
     expect(ready).toBe(true);
   });
@@ -61,8 +78,8 @@ describe('a paused start', () => {
   it('hands back a mute that was already on', async () => {
     const el = fakeElement(0);
     el.muted = true;
-    void playMedia(el, () => true, 30_000, PAUSED_START.native);
-    await vi.advanceTimersByTimeAsync(PAUSED_START.native.fallbackMs);
+    void playMedia(el, () => true, 30_000, PAUSED_START.buffered);
+    await vi.advanceTimersByTimeAsync(PAUSED_START.buffered.fallbackMs);
     expect(el.play).toHaveBeenCalledTimes(1);
     expect(el.muted).toBe(true);
   });
