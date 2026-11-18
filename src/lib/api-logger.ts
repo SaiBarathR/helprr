@@ -1,5 +1,3 @@
-import { gzip } from 'node:zlib';
-import { promisify } from 'node:util';
 import { withPerformanceScope } from '@/lib/server-perf';
 import { runWithRequestContext } from '@/lib/request-context';
 import { NextResponse } from 'next/server';
@@ -103,52 +101,6 @@ function withDefaultCacheControl(response: Response, request: Request | null): R
   return response;
 }
 
-const gzipAsync = promisify(gzip);
-const MIN_COMPRESS_BYTES = 1024;
-
-function acceptsGzip(acceptEncoding: string | null): boolean {
-  let wildcard = false;
-  for (const part of (acceptEncoding ?? '').split(',')) {
-    const [coding, ...params] = part.split(';').map((value) => value.trim().toLowerCase());
-    const q = params.find((param) => param.startsWith('q='));
-    const accepted = q === undefined || Number(q.slice(2)) > 0;
-    if (coding === 'gzip' || coding === 'x-gzip') return accepted;
-    if (coding === '*') wildcard = accepted;
-  }
-  return wildcard;
-}
-
-// Next's own compression never reaches route handlers (it copies their headers
-// with appendHeader, so its filter sees Content-Type as an array and skips it),
-// leaving library JSON uncompressed for a client that reaches Helprr directly.
-async function withJsonCompression(response: Response, request: Request | null): Promise<Response> {
-  const type = response.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase();
-  if (
-    !request
-    || request.method === 'HEAD'
-    || !response.body
-    || type !== 'application/json'
-    || response.headers.has('Content-Encoding')
-  ) return response;
-
-  const vary = response.headers.get('Vary');
-  if (!vary) response.headers.set('Vary', 'Accept-Encoding');
-  else if (!/(^|,)\s*(accept-encoding|\*)\s*(,|$)/i.test(vary)) response.headers.set('Vary', `${vary}, Accept-Encoding`);
-  if (!acceptsGzip(request.headers.get('Accept-Encoding'))) return response;
-
-  const init = { status: response.status, statusText: response.statusText, headers: response.headers };
-  const body = new Uint8Array(await response.arrayBuffer());
-  if (body.byteLength < MIN_COMPRESS_BYTES) return new Response(body, init);
-
-  response.headers.set('Content-Encoding', 'gzip');
-  response.headers.delete('Content-Length');
-  // A strong validator names exact bytes; every If-None-Match check here
-  // compares weakly, so the gzipped body still revalidates to a 304.
-  const etag = response.headers.get('ETag');
-  if (etag && !etag.startsWith('W/')) response.headers.set('ETag', `W/${etag}`);
-  return new Response(new Uint8Array(await gzipAsync(body)), init);
-}
-
 export function withApiLogging<T extends (...args: never[]) => Promise<Response> | Response>(
   handler: T,
   scope?: string,
@@ -176,7 +128,10 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
       );
       if (!prefs.enabled) {
         response.headers.set('x-request-id', requestId);
-        return await withJsonCompression(withDefaultCacheControl(response, request), request);
+        // No compression here: Next (16.4.6 and later) compresses route handler
+        // responses itself and drops a Content-Encoding set here, so a body gzipped
+        // here reached the browser gzipped twice under one header.
+        return withDefaultCacheControl(response, request);
       }
       const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
       const status = response.status;
@@ -200,7 +155,7 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
         requestId,
       });
       response.headers.set('x-request-id', requestId);
-      return await withJsonCompression(withDefaultCacheControl(response, request), request);
+      return withDefaultCacheControl(response, request);
     } catch (error) {
       const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
       if (prefs.enabled) {
