@@ -621,7 +621,7 @@ export default function NotificationsPage() {
         onRefresh={() => Promise.all([notificationsQuery.refetch(), refreshBadges()])}
       />
       <PageTitle>Notifications</PageTitle>
-      <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div className="page-toolbar page-toolbar-flush [--flush-pb:0.5rem] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         {/* Search and the actions share one row, as on Movies and Discover. */}
         <div className="flex items-center gap-1">
           <div className="relative min-w-0 flex-1">

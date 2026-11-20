@@ -1623,7 +1623,7 @@ export default function CalendarPage() {
     >
       <PullToRefresh onRefresh={refetch} />
       <PageTitle>Calendar</PageTitle>
-      <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-1 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-1">
+      <div ref={toolbarRef} className="page-toolbar page-toolbar-flush [--flush-pb:0.25rem] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-1">
         {/* Phones: view tabs and filters share one row (CompactFilters folds
             its toggles into a ⋯ menu below xl). */}
         <div className="flex items-center justify-between gap-2 md:hidden">

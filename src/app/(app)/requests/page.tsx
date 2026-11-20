@@ -94,7 +94,7 @@ export default function RequestsPage() {
       <PullToRefresh onRefresh={handleRefresh} />
       <PageTitle>Requests</PageTitle>
       <div
-        className="page-toolbar page-toolbar-flush flex items-center gap-3 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
+        className="page-toolbar page-toolbar-flush flex items-center gap-3 app-chrome-bar bg-background/95 [--flush-pb:0.5rem] backdrop-blur supports-[backdrop-filter]:bg-background/80"
       >
         {/* Radix Tabs: same segmented look, plus roving focus + arrow-key nav.
             A switch with one option switches nothing, so it shows only with two. */}

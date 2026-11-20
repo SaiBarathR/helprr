@@ -541,10 +541,16 @@
 }
 
 /* For toolbars that are the first thing on the page: absorb the main top
-   padding into the bar so its background reaches the very top edge. */
+   padding into the bar so its background reaches the very top edge.
+   That padding and the bar's own bottom padding (--flush-pb) are split evenly
+   above and below the content, so it sits centred at the same total height
+   instead of 24px down a desktop bar. Give a flush bar its bottom padding with
+   [--flush-pb:…], not pb-*: this unlayered rule overrides Tailwind padding. */
 .page-toolbar-flush {
+  --flush-pad-y: calc((var(--main-pad-top) + var(--flush-pb, 0px)) / 2);
   margin-top: calc(-1 * var(--main-pad-top));
-  padding-top: var(--main-pad-top);
+  padding-top: var(--flush-pad-y);
+  padding-bottom: var(--flush-pad-y);
 }
 
 /* Full-bleed margins only — for bars that manage their own positioning

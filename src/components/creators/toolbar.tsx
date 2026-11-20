@@ -56,7 +56,7 @@ export function CreatorToolbar({ active, actions, trailing, children }: {
   children: ReactNode;
 }) {
   return (
-    <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
+    <div className="page-toolbar page-toolbar-flush [--flush-pb:0.5rem] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
       <div className="flex w-full items-center overflow-x-auto scrollbar-hide md:gap-2">
         {actions}
         <div className="flex-1" />

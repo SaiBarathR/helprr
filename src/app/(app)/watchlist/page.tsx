@@ -710,7 +710,7 @@ export default function WatchlistPage() {
       <PullToRefresh onRefresh={refresh} disabled={selectionMode} />
       <PageTitle>Watchlist</PageTitle>
       <div
-        className="page-toolbar page-toolbar-flush space-y-2 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
+        className="page-toolbar page-toolbar-flush space-y-2 app-chrome-bar bg-background/95 [--flush-pb:0.5rem] backdrop-blur supports-[backdrop-filter]:bg-background/80"
       >
         {/* No gaps on phones, as on Movies and Series, so the row fits at 320px. */}
         <div className="flex items-center md:gap-2 flex-wrap">

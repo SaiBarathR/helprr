@@ -262,7 +262,7 @@ export default function ActivityPage() {
       <PageTitle>Activity</PageTitle>
       {/* One row on phones too: History, Blocklist and Refresh fold into a ⋯
           menu below md. From md up the row may wrap rather than clip. */}
-      <div className="page-toolbar page-toolbar-flush flex md:flex-wrap items-center gap-2 pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div className="page-toolbar page-toolbar-flush flex md:flex-wrap items-center gap-2 [--flush-pb:0.5rem] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         {/* Segmented control tabs — Radix for tab semantics + arrow-key nav */}
         <Tabs value={tab} onValueChange={(v) => isTabKey(v) && handleTabChange(v)} className="min-w-0 flex-1 gap-0 sm:flex-none">
           <TabsList variant="segmented">

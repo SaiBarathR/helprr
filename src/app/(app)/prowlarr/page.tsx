@@ -1395,7 +1395,7 @@ export default function ProwlarrPage() {
       <PageTitle>Prowlarr</PageTitle>
       {/* Tabs */}
       <Tabs defaultValue="indexers">
-        <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="page-toolbar page-toolbar-flush [--flush-pb:0.5rem] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <TabsList variant="segmented">
             <TabsTrigger value="indexers">Indexers</TabsTrigger>
             <TabsTrigger value="stats">Stats</TabsTrigger>

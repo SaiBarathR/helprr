@@ -65,7 +65,7 @@ export function LogsToolbar({
 
   return (
     <div
-      className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80"
+      className="page-toolbar page-toolbar-flush [--flush-pb:0.5rem] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80"
     >
       {/* The bar's background spans the page; its controls keep to the log list's width. */}
       <div className="readable-column-wide space-y-2">

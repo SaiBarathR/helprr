@@ -734,7 +734,7 @@ export default function SeriesPage() {
     <div className="space-y-3 animate-content-in" style={toolbarStyle}>
       <PullToRefresh onRefresh={() => refetchSeries()} disabled={selectionMode} />
       <PageTitle>Series</PageTitle>
-      <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
+      <div ref={toolbarRef} className="page-toolbar page-toolbar-flush [--flush-pb:0.5rem] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
         {/* Phones: 4px wider, with the 4px as padding, so the last button's
             44px tap area isn't clipped by the scrolling row and the button
             still lines up with the search field below. */}
