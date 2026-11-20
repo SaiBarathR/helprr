@@ -151,7 +151,7 @@ export default function InsightsPage() {
       />
       <PageTitle>Insights</PageTitle>
       <div
-        className="page-toolbar page-toolbar-flush pb-3 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 flex items-center justify-between gap-3"
+        className="page-toolbar page-toolbar-flush [--flush-pb:0.75rem] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 flex items-center justify-between gap-3"
       >
         <div className="w-full sm:w-56">
           <DateRangeSelect value={calendarValue} onChange={handleRangeChange} />

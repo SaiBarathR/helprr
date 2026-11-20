@@ -57,7 +57,7 @@ export function TorrentsToolbar({
   setSearch: (search: string) => void;
 }) {
   return (
-    <div ref={ref} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
+    <div ref={ref} className="page-toolbar page-toolbar-flush [--flush-pb:0.5rem] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
       {/* No gaps on phones, as on Movies and Series: seven 44px buttons and
           their gaps were wider than a 375px phone. */}
       <div className="flex items-center md:gap-2">

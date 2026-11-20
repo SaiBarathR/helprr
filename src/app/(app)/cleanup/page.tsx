@@ -60,7 +60,7 @@ export default function CleanupPage() {
       <PageTitle>Cleanup</PageTitle>
       <Tabs value={activeTab} onValueChange={(v) => setTab(v as typeof tab)}>
         <div
-          className="page-toolbar page-toolbar-flush mb-4 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
+          className="page-toolbar page-toolbar-flush mb-4 app-chrome-bar bg-background/95 [--flush-pb:0.5rem] backdrop-blur supports-[backdrop-filter]:bg-background/80"
         >
           {/* The scroller wraps the track with 4px above and below, so it doesn't
               clip the tabs' 44px hit areas to the 36px track, and keeps the

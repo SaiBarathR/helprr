@@ -232,7 +232,7 @@ export default function MovieCollectionsPage() {
     <div className="space-y-3 animate-content-in">
       <PageTitle>Collections</PageTitle>
       <div
-        className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2"
+        className="page-toolbar page-toolbar-flush [--flush-pb:0.5rem] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2"
       >
         <div className="flex items-center gap-2">
           <MoviesSubNav active="collections" />

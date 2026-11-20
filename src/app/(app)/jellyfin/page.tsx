@@ -52,7 +52,7 @@ export default function JellyfinPage() {
         className="flex flex-1 min-h-0 flex-col gap-0"
       >
         <PageTitle>Jellyfin</PageTitle>
-        <div className="page-toolbar page-toolbar-flush pb-3 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="page-toolbar page-toolbar-flush [--flush-pb:0.75rem] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <TabsList aria-label="Jellyfin sections" variant="segmented">
             {visibleTabs.map((t) => (
               <TabsTrigger key={t.key} value={t.key}>
