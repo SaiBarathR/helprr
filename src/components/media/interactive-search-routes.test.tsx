@@ -42,6 +42,7 @@ describe('interactive search routes', () => {
       service: 'radarr',
       subtitle: 'The Sheep Detectives',
       searchParams: { movieId: '11', instanceId: 'rad-1' },
+      searchedItem: { movieId: '11' },
     });
   });
 
@@ -50,6 +51,7 @@ describe('interactive search routes', () => {
       service: 'sonarr',
       subtitle: 'Show - Specials',
       searchParams: { seriesId: '3', seasonNumber: '0', instanceId: 'son-2' },
+      searchedItem: { seriesId: '3', seasonNumber: '0' },
       showSeasonPackFilter: true,
     });
   });
@@ -59,6 +61,7 @@ describe('interactive search routes', () => {
       service: 'sonarr',
       subtitle: 'Show - S01E01',
       searchParams: { episodeId: '22', instanceId: 'son-2' },
+      searchedItem: { seriesId: '3', seasonNumber: '1', episodeId: '22' },
     });
   });
 

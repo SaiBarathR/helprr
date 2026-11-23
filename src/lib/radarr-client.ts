@@ -23,6 +23,7 @@ import type {
   HealthCheck,
   RadarrLookupResult,
   Release,
+  RadarrGrabRequest,
   ArrFolderListing,
   ArrRemotePathMapping,
   DownloadClient,
@@ -168,10 +169,9 @@ export class RadarrClient {
     return this.get<Release[]>('/api/v3/release', { movieId }, { timeout: ARR_RELEASE_TIMEOUT_MS });
   }
 
-  async grabRelease(guid: string, indexerId: number, downloadClientId?: number): Promise<void> {
-    const body: Record<string, unknown> = { guid, indexerId };
-    if (downloadClientId !== undefined) body.downloadClientId = downloadClientId;
-    await this.post('/api/v3/release', body, { timeout: ARR_RELEASE_TIMEOUT_MS });
+  /** The route builds `request` from validated fields only (see arr-grab.ts). */
+  async grabRelease(request: RadarrGrabRequest): Promise<void> {
+    await this.post('/api/v3/release', request, { timeout: ARR_RELEASE_TIMEOUT_MS });
   }
 
   /** Arr's own reading of a release title: what it would map the release to. Read-only. */

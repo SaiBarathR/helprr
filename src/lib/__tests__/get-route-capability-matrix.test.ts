@@ -170,8 +170,6 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/logs/search',
   ],
   'cap:movies.manageFiles': [
-    'GET /api/radarr/languages',
-    'GET /api/radarr/qualitydefinitions',
     'GET /api/radarr/config',
     'GET /api/radarr/manualimport/scan',
   ],
@@ -243,8 +241,6 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/scheduled-alerts',
   ],
   'cap:series.manageFiles': [
-    'GET /api/sonarr/languages',
-    'GET /api/sonarr/qualitydefinitions',
     'GET /api/sonarr/config',
     'GET /api/sonarr/manualimport/scan',
   ],
@@ -368,6 +364,15 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/lidarr/tags',
     'GET /api/lidarr/metadataprofiles',
     'GET /api/lidarr/qualityprofiles',
+  ],
+  // Quality and language names: Manage files, and Manual grab in interactive search.
+  'any:movies.manageFiles|activity.manage': [
+    'GET /api/radarr/languages',
+    'GET /api/radarr/qualitydefinitions',
+  ],
+  'any:series.manageFiles|activity.manage': [
+    'GET /api/sonarr/languages',
+    'GET /api/sonarr/qualitydefinitions',
   ],
   'any:series.view|activity.manage|series.manageFiles': [
     'GET /api/sonarr/[id]/episodes',

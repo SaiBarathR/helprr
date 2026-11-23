@@ -1014,6 +1014,23 @@ the old one.
   Settings travel in the settings export's `cleanup.libraryConfig`; marked
   titles do not.
 
+## Interactive search grabs (Sonarr/Radarr)
+
+`POST /api/{sonarr,radarr}/release` (`activity.manage`) grabs a release from the
+*arr's own search cache (indexerId + guid, about 30 minutes). `src/lib/arr-grab.ts`
+accepts three bodies, rebuilt from validated fields only, as Sonarr's and Radarr's
+own UIs send them: plain; with the searched item (`episodeId`, or `seriesId` and
+`seasonNumber`, or `movieId`), which the *arr uses only for a release it couldn't
+match; and Manual grab (`shouldOverride` with `seriesId` + `episodeIds` or
+`movieId`, `quality`, `languages`). A release with `downloadAllowed: false` asks
+before a plain grab (Grab anyway / Choose manually). The *arr's refusals are
+recognised by their `message` only and answered in Helprr's words with a `code`
+(`expired`, `unmatched`, `indexer`, `client`); the message and its stack trace
+are never passed on. Manual grab's quality and language lists also accept
+`activity.manage`; the library list keeps `series.view` / `movies.view`, and
+without it the sheet keeps the searched series or movie. Lidarr keeps its plain
+grab and download-client override.
+
 ## Manual Downloads (Sonarr/Radarr)
 
 Add Torrent can send a magnet or `.torrent` to Sonarr or Radarr for one title

@@ -106,21 +106,6 @@ describe('InteractiveSearch page', () => {
     expect(JSON.parse(String(post[1].body))).toEqual({ guid: 'a', indexerId: 3 });
   });
 
-  it('grabs with another download client from the override dialog', async () => {
-    const user = userEvent.setup();
-    renderSearch();
-    const row = (await screen.findByText('Movie.2026.2160p.Big')).closest('.rounded-lg') as HTMLElement;
-    await user.click(within(row).getByRole('button', { name: 'Override and add to download queue' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Override Download Client' });
-    await user.click(await within(dialog).findByRole('button', { name: /qBittorrent/ }));
-    expect(within(dialog).queryByText('Disabled')).toBeNull();
-    await user.click(within(dialog).getByRole('button', { name: 'Grab with Override' }));
-    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Added to download queue'));
-    const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!;
-    expect(JSON.parse(String(post[1].body))).toEqual({ guid: 'b', indexerId: 3, downloadClientId: 1 });
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Override Download Client' })).toBeNull());
-  });
-
   it('says when the search failed, and Try again searches again', async () => {
     const user = userEvent.setup();
     searchResponse = () => new Response('{}', { status: 500 });

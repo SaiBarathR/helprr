@@ -1,0 +1,105 @@
+[
+  {
+    "guid": "magnet:?xt=urn:btih:CF86A83D47A3AFF4D55CC733E5E9FF25A175BC57&dn=Us%202019.MULTi.UHD.BluRay.2160p.HEVC.HDR.Atmos.7.1-DDR&tr=http%3a%2f%2ftracker.opentrackr.org%3a1337%2fannounce&tr=udp%3a%2f%2ftracker.auctor.tv%3a6969%2fannounce&tr=udp%3a%2f%2fopentracker.i2p.rocks%3a6969%2fannounce&tr=https%3a%2f%2fopentracker.i2p.rocks%3a443%2fannounce&tr=udp%3a%2f%2fopen.demonii.com%3a1337%2fannounce&tr=udp%3a%2f%2ftracker.openbittorrent.com%3a6969%2fannounce&tr=http%3a%2f%2ftracker.openbittorrent.com%3a80%2fannounce&tr=udp%3a%2f%2fopen.stealth.si%3a80%2fannounce&tr=udp%3a%2f%2ftracker.torrent.eu.org%3a451%2fannounce&tr=udp%3a%2f%2ftracker.moeking.me%3a6969%2fannounce&tr=udp%3a%2f%2fexplodie.org%3a6969%2fannounce&tr=udp%3a%2f%2fexodus.desync.com%3a6969%2fannounce&tr=udp%3a%2f%2fuploads.gamecoast.net%3a6969%2fannounce&tr=udp%3a%2f%2ftracker1.bt.moack.co.kr%3a80%2fannounce&tr=udp%3a%2f%2ftracker.tiny-vps.com%3a6969%2fannounce&tr=udp%3a%2f%2ftracker.theoks.net%3a6969%2fannounce&tr=udp%3a%2f%2ftracker.skyts.net%3a6969%2fannounce&tr=udp%3a%2f%2ftracker-udp.gbitt.info%3a80%2fannounce&tr=udp%3a%2f%2fopen.tracker.ink%3a6969%2fannounce&tr=udp%3a%2f%2fmovies.zsw.ca%3a6969%2fannounce",
+    "quality": {
+      "quality": {
+        "id": 22,
+        "name": "BR-DISK",
+        "source": "bluray",
+        "resolution": 1080,
+        "modifier": "brdisk"
+      },
+      "revision": {
+        "version": 1,
+        "real": 0,
+        "isRepack": false
+      }
+    },
+    "qualityWeight": 2401,
+    "age": 2714,
+    "ageHours": 65154.37529964714,
+    "ageMinutes": 3909262.5179788335,
+    "size": 18139236584,
+    "indexerId": 5,
+    "indexer": "The Pirate Bay (Prowlarr)",
+    "releaseGroup": "DDR",
+    "title": "Us 2019.MULTi.UHD.BluRay.2160p.HEVC.HDR.Atmos.7.1-DDR",
+    "movieTitles": [
+      "Us"
+    ],
+    "languages": [
+      {
+        "id": 1,
+        "name": "English"
+      }
+    ],
+    "mappedMovieId": 116,
+    "movieRequested": true,
+    "approved": true,
+    "rejected": false,
+    "rejections": [],
+    "infoUrl": "https://thepiratebay.org/description.php?id=33531220",
+    "downloadAllowed": true,
+    "customFormats": [],
+    "customFormatScore": 0,
+    "seeders": 11,
+    "leechers": 3,
+    "protocol": "torrent",
+    "indexerFlags": [
+      "G_Freeleech"
+    ],
+    "downloadUrl": ""
+  },
+  {
+    "guid": "magnet:?xt=urn:btih:ECD5862EB38708604192FDF4467E5CAA36EAB193&dn=Fix%20Us%202019%201080p%20WEBRip%20DDP%202%200%2010bit%20H%20265-iVy&tr=http%3a%2f%2ftracker.opentrackr.org%3a1337%2fannounce&tr=udp%3a%2f%2ftracker.auctor.tv%3a6969%2fannounce&tr=udp%3a%2f%2fopentracker.i2p.rocks%3a6969%2fannounce&tr=https%3a%2f%2fopentracker.i2p.rocks%3a443%2fannounce&tr=udp%3a%2f%2fopen.demonii.com%3a1337%2fannounce&tr=udp%3a%2f%2ftracker.openbittorrent.com%3a6969%2fannounce&tr=http%3a%2f%2ftracker.openbittorrent.com%3a80%2fannounce&tr=udp%3a%2f%2fopen.stealth.si%3a80%2fannounce&tr=udp%3a%2f%2ftracker.torrent.eu.org%3a451%2fannounce&tr=udp%3a%2f%2ftracker.moeking.me%3a6969%2fannounce&tr=udp%3a%2f%2fexplodie.org%3a6969%2fannounce&tr=udp%3a%2f%2fexodus.desync.com%3a6969%2fannounce&tr=udp%3a%2f%2fuploads.gamecoast.net%3a6969%2fannounce&tr=udp%3a%2f%2ftracker1.bt.moack.co.kr%3a80%2fannounce&tr=udp%3a%2f%2ftracker.tiny-vps.com%3a6969%2fannounce&tr=udp%3a%2f%2ftracker.theoks.net%3a6969%2fannounce&tr=udp%3a%2f%2ftracker.skyts.net%3a6969%2fannounce&tr=udp%3a%2f%2ftracker-udp.gbitt.info%3a80%2fannounce&tr=udp%3a%2f%2fopen.tracker.ink%3a6969%2fannounce&tr=udp%3a%2f%2fmovies.zsw.ca%3a6969%2fannounce",
+    "quality": {
+      "quality": {
+        "id": 15,
+        "name": "WEBRip-1080p",
+        "source": "webrip",
+        "resolution": 1080,
+        "modifier": "none"
+      },
+      "revision": {
+        "version": 1,
+        "real": 0,
+        "isRepack": false
+      }
+    },
+    "qualityWeight": 1701,
+    "age": 557,
+    "ageHours": 13390.563355231194,
+    "ageMinutes": 803433.8013138716,
+    "size": 1472443695,
+    "indexerId": 5,
+    "indexer": "The Pirate Bay (Prowlarr)",
+    "releaseGroup": "iVy",
+    "title": "Fix Us 2019 1080p WEBRip DDP 2 0 10bit H 265-iVy",
+    "movieTitles": [
+      "Fix Us"
+    ],
+    "languages": [
+      {
+        "id": 0,
+        "name": "Unknown"
+      }
+    ],
+    "movieRequested": false,
+    "approved": false,
+    "rejected": true,
+    "rejections": [
+      "Unknown Movie. Unable to match to correct movie using release title."
+    ],
+    "infoUrl": "https://thepiratebay.org/description.php?id=79155410",
+    "downloadAllowed": false,
+    "customFormats": [],
+    "customFormatScore": 0,
+    "seeders": 5,
+    "leechers": 3,
+    "protocol": "torrent",
+    "indexerFlags": [
+      "G_Freeleech"
+    ],
+    "downloadUrl": ""
+  }
+]

@@ -47,10 +47,10 @@ describe('Arr interactive-search timeout', () => {
       timeout: ARR_RELEASE_TIMEOUT_MS,
     });
 
-    await client.grabRelease('guid', 12, 3);
+    await client.grabRelease({ guid: 'guid', indexerId: 12, downloadClientId: 3, movieId: 540 });
     expect(mocks.post).toHaveBeenCalledWith(
       '/api/v3/release',
-      { guid: 'guid', indexerId: 12, downloadClientId: 3 },
+      { guid: 'guid', indexerId: 12, downloadClientId: 3, movieId: 540 },
       { timeout: ARR_RELEASE_TIMEOUT_MS },
     );
 
@@ -69,10 +69,10 @@ describe('Arr interactive-search timeout', () => {
       timeout: ARR_RELEASE_TIMEOUT_MS,
     });
 
-    await client.grabRelease('guid', 4);
+    await client.grabRelease({ guid: 'guid', indexerId: 4, episodeId: 88 });
     expect(mocks.post).toHaveBeenCalledWith(
       '/api/v3/release',
-      { guid: 'guid', indexerId: 4 },
+      { guid: 'guid', indexerId: 4, episodeId: 88 },
       { timeout: ARR_RELEASE_TIMEOUT_MS },
     );
 

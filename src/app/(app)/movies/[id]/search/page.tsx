@@ -12,6 +12,7 @@ export default function MovieInteractiveSearchPage() {
       service="radarr"
       subtitle={sp.get('title') ?? 'Movie'}
       searchParams={{ movieId: id, ...(instance ? { instanceId: instance } : {}) }}
+      searchedItem={{ movieId: id }}
     />
   );
 }

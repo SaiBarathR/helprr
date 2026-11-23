@@ -150,6 +150,24 @@ While no one has signed in, the last lines Helprr logs as it starts
   characters) and `HELPRR_ADMIN_PASSWORD_RESET=true`, restart, sign in, then remove
   `HELPRR_ADMIN_PASSWORD_RESET`.
 
+## Interactive search
+
+### Grab release? Sonarr couldn't tell which series and episode
+
+Sonarr (or Radarr) read the release's title and couldn't match it to anything in your
+library; it lists it as **Unknown Series** or **Unknown Movie**. Helprr asks before
+grabbing it, as their own search does:
+
+- **Grab anyway** grabs it for the episode, season or movie you searched for. Sonarr may
+  not import it by itself afterwards; if it doesn't, use **Activity → Manual import**.
+- **Choose manually** opens **Manual grab**, where you choose the series, season and
+  episodes (or the movie), the quality and the languages. It starts from what you
+  searched for. The same sheet opens from the **Override** button on any release.
+
+### This result has expired
+
+Sonarr and Radarr keep a search's results for about 30 minutes. Search again, then grab.
+
 ## Push notifications
 
 **Settings → Notifications → Check push setup** checks each thing push needs on that

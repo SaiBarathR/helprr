@@ -12,6 +12,7 @@ export default function SeasonInteractiveSearchPage() {
       service="sonarr"
       subtitle={sp.get('title') ?? `Season ${seasonNumber}`}
       searchParams={{ seriesId: id, seasonNumber, ...(instance ? { instanceId: instance } : {}) }}
+      searchedItem={{ seriesId: id, seasonNumber }}
       showSeasonPackFilter
     />
   );

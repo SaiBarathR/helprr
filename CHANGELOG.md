@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Manual grab in interactive search** (Sonarr and Radarr): the Override button on a
+  release now opens a sheet, as in Sonarr's and Radarr's own search, to choose the series,
+  season and episodes (or the movie), the quality, the languages and, when there is more
+  than one for that kind of release, the download client. For a release they couldn't
+  match, it starts from what you searched for.
+
+### Fixed
+
+- **A release Sonarr or Radarr couldn't match** ("Unknown Series", "Unknown Movie") no
+  longer fails with "Not found" in interactive search. Grab now asks first, as their own
+  search does, then grabs it for the episode, season or movie you searched for, or lets
+  you choose in Manual grab.
+- Grab errors say what happened: results that have expired (with **Search again**), an
+  indexer that didn't hand over the release, or a download client that refused it. Each
+  row shows whether its release was added or why it failed.
+
 ## [1.17.0] - 2026-11-18
 
 Quieter outage alerts, a Dashboard that works offline, and fixes from a full test of
