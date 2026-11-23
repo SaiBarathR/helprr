@@ -204,6 +204,43 @@ describe('across apps', () => {
   });
 });
 
+describe('Lidarr grab body', () => {
+  const grabLidarr = (body: unknown) => lidarrGrab(new NextRequest('http://localhost/api/lidarr/release?instanceId=lid-1', {
+    method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body),
+  }));
+  const token = async () => (await (await get(lidarrSearch, '/api/lidarr/release?albumId=5&instanceId=lid-1')).json())[0].guid as string;
+
+  it.each([
+    ['a download client that is not an id', (guid: string) => ({ guid, indexerId: 8, downloadClientId: 'qbit' }), 'Invalid download client'],
+    ['a negative download client', (guid: string) => ({ guid, indexerId: 8, downloadClientId: -1 }), 'Invalid download client'],
+    ['an over-long guid', () => ({ guid: 'x'.repeat(16_385), indexerId: 8 }), 'Invalid release'],
+    ['a fractional indexer', (guid: string) => ({ guid, indexerId: 1.5 }), 'Invalid release'],
+    ['no guid', () => ({ indexerId: 8 }), 'guid and indexerId are required'],
+  ] as const)('refuses %s with 400, without reading a token or calling Lidarr', async (_label, body, error) => {
+    const guid = await token();
+    mocks.redis.get.mockClear();
+    const res = await grabLidarr(body(guid));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error });
+    expect(mocks.redis.get).not.toHaveBeenCalled();
+    expect(mocks.lidarr.grabRelease).not.toHaveBeenCalled();
+  });
+
+  it('refuses a body that is not JSON with 400', async () => {
+    const res = await grabLidarr('{not json');
+    expect(res.status).toBe(400);
+    expect(mocks.lidarr.grabRelease).not.toHaveBeenCalled();
+  });
+
+  it('forwards another download client, and none for the default (null)', async () => {
+    const guid = await token();
+    expect((await grabLidarr({ guid, indexerId: 8, downloadClientId: 3 })).status).toBe(200);
+    expect(mocks.lidarr.grabRelease).toHaveBeenLastCalledWith(PASSKEY_GUID, 8, 3);
+    expect((await grabLidarr({ guid, indexerId: 8, downloadClientId: null })).status).toBe(200);
+    expect(mocks.lidarr.grabRelease).toHaveBeenLastCalledWith(PASSKEY_GUID, 8, undefined);
+  });
+});
+
 describe('download clients', () => {
   it.each([
     ['Sonarr', sonarrClients, mocks.sonarr],
