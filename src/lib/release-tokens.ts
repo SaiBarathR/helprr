@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import { getRedisClient } from '@/lib/redis';
 import { sha256Hex } from '@/lib/cache/keys';
+import { resolveConnection } from '@/lib/arr-instances';
 
 // Prowlarr, Sonarr, Radarr and Lidarr keep a searched release for 30 minutes.
 const TOKEN_TTL_SECONDS = 30 * 60;
@@ -13,9 +14,18 @@ export interface ReleaseRef {
 /** Prowlarr's own search. Its keys predate the other scopes and keep their form. */
 export const PROWLARR_SCOPE = 'prowlarr-release';
 
-/** One Sonarr/Radarr/Lidarr instance's interactive search ('default' without an instance id). */
-export function arrReleaseScope(service: 'sonarr' | 'radarr' | 'lidarr', instanceId?: string): string {
-  return `arr-release:${service}:${sha256Hex(instanceId ?? 'default')}`;
+const SERVICE_TYPE = { sonarr: 'SONARR', radarr: 'RADARR', lidarr: 'LIDARR' } as const;
+
+/**
+ * One Sonarr/Radarr/Lidarr instance's interactive search, by its connection id
+ * (no instance id means the default instance). A token then works whether or
+ * not the request names the default instance, and never on another instance
+ * after the default changes. Throws as `resolveConnection` does for an unknown
+ * instance, before any token is read.
+ */
+export async function arrReleaseScope(service: keyof typeof SERVICE_TYPE, instanceId?: string): Promise<string> {
+  const { id } = await resolveConnection(SERVICE_TYPE[service], instanceId);
+  return `arr-release:${service}:${sha256Hex(id)}`;
 }
 
 function tokenKey(scope: string, userId: string, token: string): string {

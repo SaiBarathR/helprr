@@ -25,6 +25,9 @@ vi.mock('@/lib/auth', () => ({
   },
 }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
+vi.mock('@/lib/arr-instances', () => ({
+  resolveConnection: async (type: string, instanceId?: string | null) => ({ id: instanceId || `default-${type}` }),
+}));
 vi.mock('@/lib/service-helpers', () => ({
   getSonarrClient: mocks.getSonarrClient,
   getRadarrClient: mocks.getRadarrClient,
@@ -180,7 +183,7 @@ describe('release tokens', () => {
   it.each([['sonarr', grabSonarr, 'son-2'], ['radarr', grabRadarr, 'rad-3']] as const)(
     '%s resolves the token in its own instance and user scope', async (service, grab, instanceId) => {
       await grab({ guid: 'tok', indexerId: 1 }, instanceId);
-      expect(tokens.resolve).toHaveBeenCalledWith(arrReleaseScope(service, instanceId), MANAGER.id, 'tok');
+      expect(tokens.resolve).toHaveBeenCalledWith(await arrReleaseScope(service, instanceId), MANAGER.id, 'tok');
     },
   );
 

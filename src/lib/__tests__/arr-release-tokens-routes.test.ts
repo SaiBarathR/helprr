@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => {
     ttls,
     release,
     user: { id: 'alice' },
+    // The default instance of each app, which resolveConnection returns without an instance id.
+    defaults: {} as Record<string, string>,
     sonarr: client(),
     radarr: client(),
     lidarr: client(),
@@ -40,6 +42,12 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('@/lib/redis', () => ({ getRedisClient: vi.fn(async () => mocks.redis) }));
+vi.mock('@/lib/arr-instances', () => ({
+  resolveConnection: vi.fn(async (type: string, instanceId?: string | null) => {
+    if (instanceId === 'missing') throw new Error(`No ${type} instance found for id "missing".`);
+    return { id: instanceId || mocks.defaults[type] };
+  }),
+}));
 vi.mock('@/lib/auth', () => {
   const ok = async () => ({ ok: true, user: mocks.user, session: {} });
   return { requireUserCapability: vi.fn(ok), requireUserAllCapabilities: vi.fn(ok) };
@@ -72,6 +80,7 @@ beforeEach(() => {
   mocks.store.clear();
   mocks.ttls.clear();
   mocks.user = { id: 'alice' };
+  mocks.defaults = { SONARR: 'son-1', RADARR: 'rad-1', LIDARR: 'lid-1' };
   for (const c of [mocks.sonarr, mocks.radarr, mocks.lidarr]) {
     c.getReleases.mockResolvedValue([mocks.release(PASSKEY_GUID), mocks.release(MAGNET_GUID)]);
     c.grabRelease.mockResolvedValue(undefined);
@@ -136,11 +145,33 @@ describe('the token store', () => {
     expect([...mocks.ttls.values()]).toEqual([1800, 1800]);
   });
 
-  it('works on the default instance, and keeps it apart from a named one', async () => {
+  it('works on the default instance, whether or not the grab names it, and on no other', async () => {
     const [first, second] = await (await get(sonarrSearch, '/api/sonarr/release?episodeId=5')).json();
     expect((await post(sonarrGrab, '/api/sonarr/release', { guid: first.guid, indexerId: 8 })).status).toBe(200);
     expect(mocks.sonarr.grabRelease).toHaveBeenCalledWith({ guid: PASSKEY_GUID, indexerId: 8 });
-    expect((await post(sonarrGrab, '/api/sonarr/release?instanceId=son-1', { guid: second.guid, indexerId: 8 })).status).toBe(410);
+    expect((await post(sonarrGrab, '/api/sonarr/release?instanceId=son-2', { guid: second.guid, indexerId: 8 })).status).toBe(410);
+    expect((await post(sonarrGrab, '/api/sonarr/release?instanceId=son-1', { guid: second.guid, indexerId: 8 })).status).toBe(200);
+    expect(mocks.sonarr.grabRelease).toHaveBeenLastCalledWith({ guid: MAGNET_GUID, indexerId: 8 });
+  });
+
+  it('a named search resolves when the grab leaves out that (default) instance', async () => {
+    const [first] = await (await get(radarrSearch, '/api/radarr/release?movieId=5&instanceId=rad-1')).json();
+    expect((await post(radarrGrab, '/api/radarr/release', { guid: first.guid, indexerId: 8 })).status).toBe(200);
+  });
+
+  it('a default-instance token stops working when another instance becomes the default', async () => {
+    const [first] = await (await get(sonarrSearch, '/api/sonarr/release?episodeId=5')).json();
+    mocks.defaults.SONARR = 'son-2';
+    const res = await post(sonarrGrab, '/api/sonarr/release', { guid: first.guid, indexerId: 8 });
+    expect(res.status).toBe(410);
+    expect(mocks.sonarr.grabRelease).not.toHaveBeenCalled();
+  });
+
+  it('an unknown instance fails before any token is read', async () => {
+    const res = await post(sonarrGrab, '/api/sonarr/release?instanceId=missing', { guid: 'tok', indexerId: 8 });
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(mocks.redis.get).not.toHaveBeenCalled();
+    expect(mocks.sonarr.grabRelease).not.toHaveBeenCalled();
   });
 
   it('keeps Prowlarr search tokens in the key form they had (tokens issued before an update still resolve)', async () => {

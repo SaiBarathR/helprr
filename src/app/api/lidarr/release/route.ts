@@ -43,7 +43,7 @@ async function getHandler(request: NextRequest) {
     const client = await getLidarrClient(instanceId);
     const releases = await client.getReleases(params);
     // The browser gets a token per release, not its guid: a guid can be a download link with a passkey.
-    return NextResponse.json(await withReleaseTokens(arrReleaseScope('lidarr', instanceId), auth.user.id, releases));
+    return NextResponse.json(await withReleaseTokens(await arrReleaseScope('lidarr', instanceId), auth.user.id, releases));
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to search releases');
   }
@@ -68,7 +68,7 @@ async function postHandler(request: NextRequest) {
 
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     // A token from this user's search here (release-tokens); gone after 30 minutes, like the *arr's own cache.
-    const release = await resolveReleaseToken(arrReleaseScope('lidarr', instanceId), auth.user.id, guid);
+    const release = await resolveReleaseToken(await arrReleaseScope('lidarr', instanceId), auth.user.id, guid);
     if (!release) return NextResponse.json({ error: 'This result has expired. Search again.', code: 'expired' }, { status: 410 });
     const client = await getLidarrClient(instanceId);
     await client.grabRelease(release.guid, release.indexerId, downloadClientId);

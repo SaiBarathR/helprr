@@ -32,7 +32,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const client = await getRadarrClient(instanceId);
     const releases = await client.getReleases(movieIdNum);
     // The browser gets a token per release, not its guid: a guid can be a download link with a passkey.
-    return NextResponse.json(await withReleaseTokens(arrReleaseScope('radarr', instanceId), auth.user.id, releases));
+    return NextResponse.json(await withReleaseTokens(await arrReleaseScope('radarr', instanceId), auth.user.id, releases));
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to search releases');
   }
@@ -62,7 +62,7 @@ async function postHandler(request: NextRequest) {
   try {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     // A token from this user's search here (release-tokens); gone after 30 minutes, like the *arr's own cache.
-    const release = await resolveReleaseToken(arrReleaseScope('radarr', instanceId), auth.user.id, parsed.request.guid);
+    const release = await resolveReleaseToken(await arrReleaseScope('radarr', instanceId), auth.user.id, parsed.request.guid);
     if (!release) return NextResponse.json({ error: 'This result has expired. Search again.', code: 'expired' }, { status: 410 });
     const client = await getRadarrClient(instanceId);
     await client.grabRelease({ ...parsed.request, guid: release.guid, indexerId: release.indexerId });
