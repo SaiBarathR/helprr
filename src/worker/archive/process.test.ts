@@ -27,6 +27,14 @@ describe('run', () => {
     expect(lines).toHaveLength(200);
   });
 
+  it('never keeps the signature of a link the kept output starts inside', async () => {
+    const link = `https://rr1.example.com/api/timedtext?${'a'.repeat(1500)}&signature=SECRET&${'b'.repeat(100)}`;
+    const failure = run('node', ['-e', `console.error(${JSON.stringify(link)}); console.error('ERROR: real reason'); process.exitCode = 1`]);
+    const message = await failure.catch((error: Error) => error.message);
+    expect(message).toContain('ERROR: real reason');
+    expect(message).not.toContain('SECRET');
+  });
+
   it('passes arguments without a shell', async () => {
     const hostile = '$(touch /tmp/pwned); `id` | cat';
     const output = await run('node', ['-e', 'console.log(process.argv[1])', hostile], { captureStdout: true });
