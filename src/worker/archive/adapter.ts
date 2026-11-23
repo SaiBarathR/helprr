@@ -62,7 +62,7 @@ export interface PlatformAdapter<Info = unknown> {
   /** Returns the finished MKV in staging. */
   download(ctx: DownloadContext, staging: string, prepared: PreparedDownload<Info>): Promise<string>;
   /** Files beyond the video. Losing one of these never costs the video. */
-  extras(ctx: DownloadContext, staging: string): Promise<Sidecar[]>;
+  extras(ctx: DownloadContext, staging: string, prepared: PreparedDownload<Info>): Promise<Sidecar[]>;
   layout(ctx: DownloadContext, prepared: PreparedDownload<Info>, duration: number): Promise<EpisodeLayout>;
   /** The worker fetches these URLs, so each platform names its own image hosts. */
   isArtworkUrl(url: string): boolean;

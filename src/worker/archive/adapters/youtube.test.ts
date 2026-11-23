@@ -9,10 +9,12 @@ vi.mock('node:fs/promises', async (original) => ({
   readdir: vi.fn(async () => ['video.info.json', 'video.mkv']),
 }));
 
-import { stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { encryptTwitchToken } from '@/lib/twitch/token-cipher';
 import mkbhd from '@/lib/youtube/fixtures/mkbhd-2-1.json';
-import type { DownloadContext } from '../adapter';
+import type { DownloadContext, PreparedDownload } from '../adapter';
 import { youtubeAdapter, youtubeVideoArgs } from './youtube';
 
 const date = new Date(2026, 9, 31, 17, 0);
@@ -36,6 +38,12 @@ const context = (extra: Record<string, unknown> = {}) => ({
   cookiesFile: null,
   ...extra,
 }) as unknown as DownloadContext;
+
+// What `prepare` read: here a video like the ones production lost captions on, whose plain
+// "en" is a machine translation and only en-orig is YouTube's own English.
+const withCaptions = (info: Record<string, unknown> = { automatic_captions: { en: [{}], 'en-orig': [{}] } }) =>
+  ({ info, duration: 3600, expectedBytes: 1, audioOnly: false }) as PreparedDownload<never>;
+const VTT = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello there\n';
 
 describe('the YouTube adapter', () => {
   beforeEach(() => {
@@ -142,7 +150,7 @@ describe('the YouTube adapter', () => {
   });
 
   it('asks for captions only when wanted', async () => {
-    expect(await youtubeAdapter.extras(context({ options: { ...options, captions: false } }), '/staging/x')).toEqual([]);
+    expect(await youtubeAdapter.extras(context({ options: { ...options, captions: false } }), '/staging/x', withCaptions())).toEqual([]);
     expect(run).not.toHaveBeenCalled();
   });
 
@@ -150,7 +158,7 @@ describe('the YouTube adapter', () => {
     const note = vi.fn(async () => undefined);
     run.mockRejectedValue(new Error('HTTP Error 429: Too Many Requests'));
     const wanted = context({ options: { ...options, captions: true }, setStage: vi.fn(async () => undefined), note });
-    expect(await youtubeAdapter.extras(wanted, '/staging/x')).toEqual([]);
+    expect(await youtubeAdapter.extras(wanted, '/staging/x', withCaptions())).toEqual([]);
     expect(note).toHaveBeenCalledWith(expect.stringContaining('Captions skipped'));
   });
 
@@ -161,7 +169,7 @@ describe('the YouTube adapter', () => {
     }));
     const note = vi.fn(async () => undefined);
     const wanted = context({ options: { ...options, captions: true }, setStage: vi.fn(async () => undefined), note });
-    const pending = youtubeAdapter.extras(wanted, '/staging/x');
+    const pending = youtubeAdapter.extras(wanted, '/staging/x', withCaptions());
     await vi.advanceTimersByTimeAsync(2 * 60_000 + 1);
     expect(await pending).toEqual([]);
     expect(note).toHaveBeenCalledWith(expect.stringContaining('Reading the captions took over 2 minutes'));
@@ -186,15 +194,71 @@ describe('the YouTube adapter', () => {
     abort.abort();
     run.mockRejectedValue(new Error('cancelled'));
     const wanted = context({ options: { ...options, captions: true }, signal: abort.signal, setStage: vi.fn(async () => undefined), note: vi.fn() });
-    await expect(youtubeAdapter.extras(wanted, '/staging/x')).rejects.toThrow('cancelled');
+    await expect(youtubeAdapter.extras(wanted, '/staging/x', withCaptions())).rejects.toThrow('cancelled');
   });
 
-  it('says so when a video has no captions yet', async () => {
+  it('says so when a listed track leaves no file', async () => {
     run.mockResolvedValue('');
     const note = vi.fn(async () => undefined);
     const wanted = context({ options: { ...options, captions: true }, setStage: vi.fn(async () => undefined), note });
-    expect(await youtubeAdapter.extras(wanted, '/staging/x')).toEqual([]);
+    expect(await youtubeAdapter.extras(wanted, '/staging/x', withCaptions())).toEqual([]);
     expect(note).toHaveBeenCalledWith('YouTube has no English captions for this video yet');
+  });
+
+  it('says so without asking YouTube when the video lists no English track', async () => {
+    const note = vi.fn(async () => undefined);
+    const wanted = context({ options: { ...options, captions: true }, setStage: vi.fn(async () => undefined), note });
+    const none = withCaptions({ subtitles: { 'live_chat': [{}] }, automatic_captions: { fr: [{}] } });
+    expect(await youtubeAdapter.extras(wanted, '/staging/x', none)).toEqual([]);
+    expect(run).not.toHaveBeenCalled();
+    expect(note).toHaveBeenCalledWith('YouTube has no English captions for this video yet');
+  });
+
+  it.each([
+    ['YouTube’s own English over a machine translation', withCaptions(), ['--write-auto-subs', 'en-orig']],
+    ['a person’s captions over YouTube’s', withCaptions({ subtitles: { 'en-GB': [{}] }, automatic_captions: { 'en-orig': [{}] } }), ['--write-subs', 'en-GB']],
+    ['the translation only when nothing else is there', withCaptions({ automatic_captions: { en: [{}], fr: [{}] } }), ['--write-auto-subs', 'en']],
+  ])('asks for one track: %s', async (_label, prepared, [flag, language]) => {
+    run.mockResolvedValue('');
+    const wanted = context({ options: { ...options, captions: true }, setStage: vi.fn(async () => undefined), note: vi.fn(async () => undefined) });
+    await youtubeAdapter.extras(wanted, '/staging/x', prepared);
+    const args = run.mock.calls[0][1] as string[];
+    expect(args).toContain(flag);
+    expect(args).not.toContain(flag === '--write-subs' ? '--write-auto-subs' : '--write-subs');
+    expect(args[args.indexOf('--sub-langs') + 1]).toBe(language);
+  });
+
+  it('keeps a track yt-dlp wrote even when it then exits with an error', async () => {
+    const staging = await mkdtemp(path.join(os.tmpdir(), 'helprr-captions-'));
+    try {
+      run.mockImplementation(async () => {
+        await writeFile(path.join(staging, 'captions.en-orig.vtt'), VTT);
+        throw new Error('/tools/ytdlpYoutube exited with 1: ERROR: something after the captions');
+      });
+      const note = vi.fn(async () => undefined);
+      const wanted = context({ options: { ...options, captions: true }, setStage: vi.fn(async () => undefined), note });
+      const saved = await youtubeAdapter.extras(wanted, staging, withCaptions());
+      expect(saved).toEqual([{ stagedPath: path.join(staging, 'captions.srt'), suffix: '.en.srt' }]);
+      expect(await readFile(saved[0].stagedPath, 'utf8')).toContain('Hello there');
+      expect(note).not.toHaveBeenCalled();
+    } finally {
+      await rm(staging, { recursive: true, force: true });
+    }
+  });
+
+  it('notes the end of what yt-dlp said, where its error is, bounded and without signatures', async () => {
+    const banner = Array.from({ length: 12 }, (_, i) => `[youtube] ZoZ7m020aJQ: Downloading player API JSON ${i}`).join('\n');
+    run.mockRejectedValue(new Error(`/tools/ytdlpYoutube exited with 1: [youtube] Extracting URL: https://www.youtube.com/watch?v=ZoZ7m020aJQ\n${banner}\n`
+      + `ERROR: Unable to download video subtitles for 'en': HTTP Error 429: Too Many Requests (https://www.youtube.com/api/timedtext?v=ZoZ7m020aJQ&signature=SECRET)`));
+    const note = vi.fn<(message: string) => Promise<void>>(async () => undefined);
+    const wanted = context({ options: { ...options, captions: true }, setStage: vi.fn(async () => undefined), note });
+    expect(await youtubeAdapter.extras(wanted, '/staging/x', withCaptions())).toEqual([]);
+    const [message] = note.mock.calls[0];
+    expect(message).toMatch(/^Captions skipped: …/);
+    expect(message).toContain("Unable to download video subtitles for 'en': HTTP Error 429");
+    expect(message).toContain('https://www.youtube.com/api/timedtext?[removed]');
+    expect(message).not.toContain('SECRET');
+    expect(message.length).toBeLessThanOrEqual('Captions skipped: …'.length + 300);
   });
 
   describe('the spare account', () => {

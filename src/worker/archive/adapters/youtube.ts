@@ -5,6 +5,7 @@ import type { CreatorVideoType, Prisma } from '@prisma/client';
 import { archiveEpisode, localDate, safeFilenameTitle } from '@/lib/archive/naming';
 import { seasonNfo } from '@/lib/archive/nfo';
 import { parseProgressLine, trackStreams, YT_DLP_PROGRESS_TEMPLATE } from '@/lib/archive/progress';
+import { withoutSignedLinks } from '@/lib/archive/redact-links';
 import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
 import { vttToSrt } from '@/lib/youtube/captions';
 import { codecLabelOf, pickDownload, qualityLabel, summarizeFormats } from '@/lib/youtube/formats';
@@ -55,6 +56,9 @@ interface YoutubeInfo {
   duration?: number;
   formats?: Parameters<typeof summarizeFormats>[0];
   chapters?: Array<{ start_time: number; title?: string }> | null;
+  /** Caption tracks by language. Only the keys are read. */
+  subtitles?: Record<string, unknown> | null;
+  automatic_captions?: Record<string, unknown> | null;
 }
 
 interface YoutubePrepared extends PreparedDownload<YoutubeInfo> {
@@ -78,23 +82,59 @@ function sponsorblockArgs(mode: string | undefined): string[] {
   return mode === 'mark' ? ['--sponsorblock-mark', 'all'] : [];
 }
 
-const CAPTION_LANGUAGES = ['en', 'en-US', 'en-GB', 'en-orig'];
+// A person's captions first, then YouTube's own speech recognition, which yt-dlp calls en-orig.
+// Its plain "en" can be a machine translation of another track, and YouTube refuses those with
+// 429 (seen on production): asking for one stopped yt-dlp before it reached en-orig.
+const MANUAL_LANGUAGES = ['en', 'en-US', 'en-GB'];
+const AUTO_LANGUAGES = ['en-orig', 'en'];
+const NOTE_CHARS = 300;
+
+/** One track, from what `prepare` already read, so YouTube is asked for nothing else. */
+function pickCaptions({ subtitles, automatic_captions }: YoutubeInfo): [flag: string, language: string] | null {
+  const manual = MANUAL_LANGUAGES.find((language) => subtitles?.[language]);
+  if (manual) return ['--write-subs', manual];
+  const auto = AUTO_LANGUAGES.find((language) => automatic_captions?.[language]);
+  return auto ? ['--write-auto-subs', auto] : null;
+}
+
+/**
+ * yt-dlp prints its banner first and its ERROR last, so the end is what explains a failure.
+ * Redacted before it is cut, so no link can lose the part that marks it as one.
+ */
+function failureNote(error: unknown): string {
+  const text = withoutSignedLinks(error instanceof Error ? error.message : String(error));
+  return text.length > NOTE_CHARS ? `…${text.slice(-NOTE_CHARS)}` : text;
+}
 
 // Captions are a bonus, and a new video may have none yet. Asked for in a separate run so
 // that a refused caption request can never fail the video.
-async function saveCaptions(ctx: DownloadContext, staging: string): Promise<Sidecar[]> {
+async function saveCaptions(ctx: DownloadContext, staging: string, info: YoutubeInfo): Promise<Sidecar[]> {
   const { video, signal } = ctx;
+  const track = pickCaptions(info);
   try {
-    await runWithin([
-      ...BASE_ARGS, '--skip-download', '--write-subs', '--write-auto-subs',
-      '--sub-langs', CAPTION_LANGUAGES.join(','), '--sub-format', 'vtt', ...cookieArgs(ctx),
-      '-o', path.join(staging, 'captions.%(ext)s'),
-      videoUrl(video.externalId),
-    ], { signal }, CAPTIONS_MS, 'Reading the captions');
-    const files = await readdir(staging);
-    const name = CAPTION_LANGUAGES.map((language) => `captions.${language}.vtt`).find((file) => files.includes(file));
-    const srt = name ? vttToSrt(await readFile(path.join(staging, name), 'utf8')) : '';
+    if (!track) {
+      await ctx.note('YouTube has no English captions for this video yet');
+      return [];
+    }
+    const [flag, language] = track;
+    let failure: unknown = null;
+    try {
+      await runWithin([
+        ...BASE_ARGS, '--skip-download', flag,
+        '--sub-langs', language, '--sub-format', 'vtt', ...cookieArgs(ctx),
+        '-o', path.join(staging, 'captions.%(ext)s'),
+        videoUrl(video.externalId),
+      ], { signal }, CAPTIONS_MS, 'Reading the captions');
+    } catch (error) {
+      if (signal.aborted) throw error;
+      failure = error;
+    }
+    // yt-dlp gives a track its name only once it is whole, so one that is here is kept,
+    // whatever failed after it.
+    const vtt = await readFile(path.join(staging, `captions.${language}.vtt`), 'utf8').catch(() => '');
+    const srt = vtt && vttToSrt(vtt);
     if (!srt) {
+      if (failure) throw failure;
       await ctx.note('YouTube has no English captions for this video yet');
       return [];
     }
@@ -103,7 +143,7 @@ async function saveCaptions(ctx: DownloadContext, staging: string): Promise<Side
     return [{ stagedPath, suffix: '.en.srt' }];
   } catch (error) {
     if (signal.aborted) throw error;
-    await ctx.note(`Captions skipped: ${error instanceof Error ? error.message.slice(0, 300) : String(error)}`);
+    await ctx.note(`Captions skipped: ${failureNote(error)}`);
     return [];
   }
 }
@@ -251,10 +291,10 @@ export const youtubeAdapter: PlatformAdapter<YoutubeInfo> = {
     return downloadVideo(ctx, staging, prepared as YoutubePrepared);
   },
 
-  async extras(ctx, staging) {
+  async extras(ctx, staging, prepared) {
     if (!ctx.options.captions) return [];
     await ctx.setStage('saving captions');
-    return saveCaptions(ctx, staging);
+    return saveCaptions(ctx, staging, prepared.info);
   },
 
   async layout(ctx, prepared, duration): Promise<EpisodeLayout> {

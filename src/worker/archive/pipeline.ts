@@ -190,7 +190,7 @@ export async function runDownload(ctx: DownloadContext, adapter: PlatformAdapter
   if (probed.video !== (prepared.audioOnly ? 0 : 1) || probed.audio !== 1) throw new Error('validation failed: unexpected streams');
   if (!validateDuration(probed.duration, prepared.duration, prepared.mayBeShorter)) throw new Error(`validation failed: duration mismatch ${probed.duration} vs ${prepared.duration}`);
 
-  const extras = await adapter.extras(ctx, staging);
+  const extras = await adapter.extras(ctx, staging, prepared);
 
   await ctx.assertLease();
   await ctx.setStage('publishing');
