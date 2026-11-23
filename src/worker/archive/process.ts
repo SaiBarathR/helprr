@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
+import { withoutSignedLinks } from '@/lib/archive/redact-links';
 
 const KILL_GRACE_MS = 5_000;
 const MAX_KEPT_OUTPUT = 8_000;
@@ -18,7 +19,8 @@ export interface RunOptions {
 
 export class ProcessFailedError extends Error {
   constructor(command: string, code: number | null, output: string) {
-    super(`${command} exited with ${code ?? 'a signal'}: ${output.slice(-1000)}`);
+    // Redacted before it is cut: a link cut short loses the scheme that marks it as one.
+    super(`${command} exited with ${code ?? 'a signal'}: ${withoutSignedLinks(output).slice(-1000)}`);
     this.name = 'ProcessFailedError';
   }
 }
