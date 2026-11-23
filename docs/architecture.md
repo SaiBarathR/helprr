@@ -1014,6 +1014,24 @@ the old one.
   Settings travel in the settings export's `cleanup.libraryConfig`; marked
   titles do not.
 
+## Release links stay on the server
+
+Sonarr, Radarr and Lidarr return each release's `downloadUrl` (and `magnetUrl`)
+in search results and in history (`data.downloadUrl`, `data.guid`). For an
+indexer behind Prowlarr the link is Prowlarr's proxy, `…/download?apikey=<key>`;
+an indexer's own link can carry its key or a tracker passkey. Helprr reads none
+of them (a grab sends indexerId + the release's own guid), so the three Arr
+clients drop them as they arrive (`src/lib/arr-release-links.ts`), and no route,
+cache or search provider can pass them on. A search result's own `guid` can be
+the same download link, and the grab needs it, so it stays on the server too:
+the search routes hand the browser a per-user token for it
+(`src/lib/release-tokens.ts`, one Redis entry per result for 30 minutes,
+scoped to the app and instance, as Prowlarr's search already did), and the grab
+routes resolve it; a token from
+another user, instance or app, or an expired one, is an expired result. The
+download-client routes return only what the choice shows, not each client's
+settings (host, port, user name).
+
 ## Interactive search grabs (Sonarr/Radarr)
 
 `POST /api/{sonarr,radarr}/release` (`activity.manage`) grabs a release from the

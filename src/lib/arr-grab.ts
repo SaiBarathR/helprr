@@ -14,8 +14,8 @@ import type { ArrLanguage, ArrQualityModel, RadarrGrabRequest, SonarrGrabRequest
 type Parsed<T> = { ok: true; request: T } | { ok: false; error: string };
 type Body = Record<string, unknown>;
 
-// Guids are the indexer's page URL or a whole magnet link with its trackers
-// (about 1.5 KB seen from public trackers); the *arrs set no limit.
+// The browser sends the token its search was given for the guid (release-tokens);
+// the route resolves it. This only bounds what is read.
 const MAX_GUID = 16_384;
 // Whole seasons of long-running anime stay under this; more is not a real release.
 const MAX_EPISODES = 500;

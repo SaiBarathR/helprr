@@ -18,7 +18,11 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getSonarrClient(instanceId);
     const clients = await client.getDownloadClients();
-    return NextResponse.json(clients);
+    // What the download-client choice shows, not the settings: `fields` holds the
+    // client's host, port and user name.
+    return NextResponse.json((Array.isArray(clients) ? clients : []).map(
+      ({ id, name, enable, protocol, priority, implementation, tags }) => ({ id, name, enable, protocol, priority, implementation, tags }),
+    ));
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to fetch download clients');
   }

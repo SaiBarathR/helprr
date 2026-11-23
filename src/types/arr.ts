@@ -315,7 +315,8 @@ export interface Release {
   seeders: number;
   leechers: number;
   protocol: string;
-  downloadUrl: string;
+  // No downloadUrl / magnetUrl: the Arr clients drop them (Prowlarr's link
+  // carries its API key; see arr-release-links). Grabs go by indexerId + guid.
   infoUrl: string;
   indexerFlags: number;
   // Present on the /api/v3/release payload; power the interactive-search

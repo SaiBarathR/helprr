@@ -23,7 +23,7 @@ function release(guid: string, title: string, size: number, extra: Partial<Relea
   return {
     guid, title, size, indexerId: 3, indexer: 'Nyaa', protocol: 'torrent', seeders: 10, leechers: 1, age: 2,
     ageHours: 48, ageMinutes: 2880, quality: { quality: { id: 1, name: 'Bluray-1080p' } }, qualityWeight: 10,
-    releaseGroup: 'GRP', approved: true, rejected: false, rejections: [], downloadUrl: '', infoUrl: '', indexerFlags: 0,
+    releaseGroup: 'GRP', approved: true, rejected: false, rejections: [], infoUrl: '', indexerFlags: 0,
     ...extra,
   };
 }

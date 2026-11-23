@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { ARR_RELEASE_TIMEOUT_MS } from '@/lib/arr-release-timeout';
+import { historyPageWithoutLinks, withoutHistoryLinks, withoutReleaseLinks } from '@/lib/arr-release-links';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import type {
@@ -294,7 +295,8 @@ export class SonarrClient {
 
   // Release (Interactive Search)
   async getReleases(params: { episodeId?: number; seriesId?: number; seasonNumber?: number }): Promise<Release[]> {
-    return this.get<Release[]>('/api/v3/release', params, { timeout: ARR_RELEASE_TIMEOUT_MS });
+    // Without download links: Prowlarr's carries its API key (see arr-release-links).
+    return withoutReleaseLinks(await this.get<Release[]>('/api/v3/release', params, { timeout: ARR_RELEASE_TIMEOUT_MS }));
   }
 
   /** The route builds `request` from validated fields only (see arr-grab.ts). */
@@ -436,14 +438,14 @@ export class SonarrClient {
     if (filters?.seriesId) params.seriesId = filters.seriesId;
     if (filters?.eventType !== undefined) params.eventType = filters.eventType;
     if (filters?.downloadId) params.downloadId = filters.downloadId;
-    return this.get<HistoryResponse>('/api/v3/history', params);
+    return historyPageWithoutLinks(await this.get<HistoryResponse>('/api/v3/history', params));
   }
 
   /** One series' history, unpaged (/history ignores a series filter). eventType 3 = downloadFolderImported. */
   async getSeriesHistory(seriesId: number, eventType?: number): Promise<HistoryItem[]> {
     const params: Record<string, unknown> = { seriesId };
     if (eventType !== undefined) params.eventType = eventType;
-    return this.get<HistoryItem[]>('/api/v3/history/series', params);
+    return withoutHistoryLinks(await this.get<HistoryItem[]>('/api/v3/history/series', params));
   }
 
   async getEpisodesByIds(episodeIds: number[]): Promise<SonarrEpisode[]> {
