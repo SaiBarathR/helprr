@@ -1,13 +1,5 @@
 import { serializeVideoRow, type VideoRow } from '@/lib/archive/serialize-video';
 
-/**
- * A tab left open across a release keeps its old JavaScript, which reads these names and
- * would crash on a refetch. Remove this one release after the names changed.
- */
-export function previousVideoNames(video: { externalId: string; creator: unknown }) {
-  return { twitchVideoId: video.externalId, streamer: video.creator };
-}
-
 /** Helix thumbnail URLs carry %{width}x%{height} placeholders. */
 export function sizeThumbnail(url: string | null, width = 640, height = 360): string | null {
   if (!url || url.includes('/_404/')) return null;
@@ -18,8 +10,6 @@ export function serializeVideo(video: VideoRow, seenAt?: Date | null) {
   const row = serializeVideoRow(video, seenAt);
   return {
     ...row,
-    ...previousVideoNames(row),
-    twitchCreatedAt: row.sourceCreatedAt,
     thumbnailUrl: sizeThumbnail(row.thumbnailUrl),
   };
 }

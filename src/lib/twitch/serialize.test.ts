@@ -19,7 +19,10 @@ describe('serializeVideo', () => {
     expect(result).toMatchObject({ externalId: '100', sourceCreatedAt: createdAt, creator: video.creator });
   });
 
-  it('keeps the previous names for a tab left open across the release', () => {
-    expect(serializeVideo(video)).toMatchObject({ twitchVideoId: '100', twitchCreatedAt: createdAt, streamer: video.creator });
+  it('no longer sends the names from before 1.13', () => {
+    const result = serializeVideo(video);
+    expect(result).not.toHaveProperty('twitchVideoId');
+    expect(result).not.toHaveProperty('twitchCreatedAt');
+    expect(result).not.toHaveProperty('streamer');
   });
 });

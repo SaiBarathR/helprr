@@ -40,12 +40,12 @@ const row = {
   createdAt: new Date(),
   video: {
     id: 'v',
-    twitchVideoId: '100',
+    externalId: '100',
     type: 'ARCHIVE',
     title: 'A stream',
     thumbnailUrl: null,
-    twitchCreatedAt: new Date(),
-    streamer: { id: 's', displayName: 'Gigguk', profileImageUrl: null },
+    sourceCreatedAt: new Date(),
+    creator: { id: 's', displayName: 'Gigguk', profileImageUrl: null },
   },
   jobs: [],
 } as unknown as FileRow;
