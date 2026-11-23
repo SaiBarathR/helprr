@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-11-23
+
+Manual grab in interactive search, indexer keys kept off the browser, YouTube captions that
+no longer go missing, and fixes from testing 1.17.0 on iPhone. There is no database change,
+but admins who use Prowlarr should reset its API key after updating (see **Security**).
+
 ### Security
 
 - **Indexer keys no longer reach the browser.** Interactive search results and Sonarr,
@@ -38,6 +44,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Grab errors say what happened: results that have expired (with **Search again**), or a
   release that couldn't be fetched or that the download client refused. Each row shows
   when its release was added, or that its grab failed.
+- **YouTube captions**: some downloads saved no captions when YouTube refused its
+  machine-translated English track, which stopped yt-dlp before YouTube's own English one.
+  Helprr now asks for one track (a person's English first, the translated one last), keeps a
+  caption file that was already written, and the download's note shows yt-dlp's real error.
+- **Dashboard widgets** whose data can't be loaded now say **Couldn't load its data.** with
+  **Retry**, instead of showing their empty state or raw error text.
+- **Player on iPhone**: **Playback did not start** and **Retry** no longer sit over the Play
+  and ±10 s buttons. In the Home Screen app, the player's, Queue's and the audio player's top
+  rows sit below iOS's blurred strip, so they're sharp.
+- On an iPhone SE in a Safari tab, a sheet with the keyboard up now reaches almost to the
+  keyboard instead of leaving a gap about the height of Safari's toolbar.
+- Toolbars at the top of pages are centred in their bar instead of sitting low on tablets and
+  desktop.
+
+#### For admins
+
+- **No database change**, and the Compose file and environment variables are unchanged.
+- After updating, reset Prowlarr's API key and renew private-tracker passkeys, as described
+  under **Security**.
+- The Twitch API no longer sends the pre-1.13 field names `twitchVideoId`, `twitchCreatedAt`
+  and `streamer`; use `externalId`, `sourceCreatedAt` and `creator`.
+- The image's Node.js is 24.22.3, and the `effect` library is pinned to 3.22.4 for
+  GHSA-7589-6fvf-x4pw.
 
 ## [1.17.0] - 2026-11-18
 
