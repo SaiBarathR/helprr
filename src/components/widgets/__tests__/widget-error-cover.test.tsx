@@ -43,6 +43,7 @@ import { NotificationsWidget } from '../notifications-widget';
 import { RecentlyAddedWidget } from '../recently-added-widget';
 import { ActivityHistoryWidget } from '../activity-history-widget';
 import { UpcomingWidget } from '../upcoming-widget';
+import { StorageUsageWidget } from '../storage-usage-widget';
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -110,6 +111,19 @@ describe('dashboard widgets whose data failed to load', () => {
     });
     expect(screen.queryByRole('status')).toBeNull();
     expect(document.body.textContent).toContain('No recent notifications');
+  });
+
+  it("an optional load's failure leaves the widget up: Storage Usage without its trend", async () => {
+    await show('Storage Usage', StorageUsageWidget, async (url) => (url.startsWith('/api/storage/trend')
+      ? serverError()
+      : json({ diskSpace: [{ path: '/data', label: 'data', freeSpace: 400, totalSpace: 1000 }] })));
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.body.textContent).toContain('/data');
+  });
+
+  it('Storage Usage is still covered when its main load fails', async () => {
+    await show('Storage Usage', StorageUsageWidget, async (url) => (url.startsWith('/api/storage/trend') ? json({ trends: {} }) : serverError()));
+    expect(screen.getByRole('status').textContent).toBe('Storage UsageCouldn’t load its data.Retry');
   });
 
   it('keeps data already on screen through failed loads', async () => {

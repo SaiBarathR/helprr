@@ -72,6 +72,7 @@ export function StorageUsageWidget({ refreshInterval, narrow = false, editMode =
     refreshInterval,
     enabled: !editMode,
     cacheKey: 'storage-trend',
+    optional: true,
   });
   const list = stats?.diskSpace ?? [];
   const trendMap = trends ?? {};

@@ -49,6 +49,7 @@ export function JellyfinServerWidget({ refreshInterval, editMode = false }: Widg
     refreshInterval,
     enabled: !editMode,
     cacheKey: 'jellyfin-tasks',
+    optional: true,
     staleTime: refreshInterval,
   });
 

@@ -33,6 +33,12 @@ interface UseWidgetDataOptions<T> {
    * (calendar, upcoming, stats, …) leave it off and wait for the next interval.
    */
   refetchOnFocus?: boolean;
+  /**
+   * Secondary data the widget draws without (a trend arrow, a "scan running"
+   * hint): its failure never covers the widget as "couldn't load". Being
+   * offline or unable to reach Helprr still does, as for every load.
+   */
+  optional?: boolean;
 }
 
 interface UseWidgetDataResult<T> {
@@ -73,6 +79,7 @@ export function useWidgetData<T>({
   cacheKey,
   staleTime,
   refetchOnFocus = false,
+  optional = false,
 }: UseWidgetDataOptions<T>): UseWidgetDataResult<T> {
   // No cacheKey → a stable per-instance key so instances don't share (matches the
   // old behavior where keyless callers each fetched independently).
@@ -140,8 +147,11 @@ export function useWidgetData<T>({
     copyRef.current = copy;
   }, [copy]);
   useEffect(() => () => copyRef.current?.paths.forEach(forgetBrowseFreshness), []);
-  const unavailable = widgetUnavailable(query, query.errorUpdateCount - (errorsAtSuccess.get(key) ?? 0), refreshInterval)
+  const state = widgetUnavailable(query, query.errorUpdateCount - (errorsAtSuccess.get(key) ?? 0), refreshInterval)
     ?? (savedAt && expiredAt === savedAt ? (navigator.onLine ? 'unreachable' : 'offline') : null);
+  const unavailable = optional && state === 'error' ? null : state;
+  // Retry's refetch puts a load with no data back to pending, so the widget
+  // shows its own loading state at once until the answer comes.
   useReportWidgetUnavailable(unavailable, () => void refetch());
   // The saved copy leaves the notice only once the cover hides it (a live
   // answer replacing it clears it in recordBrowseFreshness): a failed request
