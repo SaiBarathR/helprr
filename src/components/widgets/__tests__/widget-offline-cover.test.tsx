@@ -187,7 +187,7 @@ describe('dashboard widgets with Helprr out of reach', () => {
   it("a TypeError from the widget's own code is not taken for an unreachable Helprr", async () => {
     // A 200 with a body the fetcher can't read: `data.transferInfo` on null.
     await show('Torrents', TorrentWidget, async () => json(null));
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('TorrentsCouldn’t load its data.Retry');
   });
 
   it('online, an expiring saved copy is asked for once more, and a live answer keeps the widget up', async () => {

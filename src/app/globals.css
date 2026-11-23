@@ -934,6 +934,14 @@ html {
     display: none;
   }
 }
+/* A failed load's Retry needs about 110px under the name and message; a
+   one-row cover (60–100 tall on a phone) would cut it, so it drops it there
+   and its polling tries again by itself. */
+@container widget-cover (max-height: 120px) {
+  .widget-cover-retry {
+    display: none;
+  }
+}
 
 /* Random Pick's hero (random-watch-widget.tsx): its text sits at the bottom
    of a box only as tall as the cell leaves it, so a short box (a one-row 4×1

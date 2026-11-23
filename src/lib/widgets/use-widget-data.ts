@@ -7,6 +7,7 @@ import { useReportWidgetUnavailable, type WidgetUnavailable } from './widget-una
 import { watchSavedCopy, type SavedCopy } from './widget-fetch';
 import { forgetBrowseFreshness } from '@/lib/browse-freshness';
 import { isQueryOffline, OfflineError } from '@/lib/network-error';
+import { ApiError } from '@/lib/query-fetch';
 import { SNAPSHOT_MAX_AGE_MS } from '@/lib/offline-snapshot';
 
 interface UseWidgetDataOptions<T> {
@@ -141,7 +142,7 @@ export function useWidgetData<T>({
   useEffect(() => () => copyRef.current?.paths.forEach(forgetBrowseFreshness), []);
   const unavailable = widgetUnavailable(query, query.errorUpdateCount - (errorsAtSuccess.get(key) ?? 0), refreshInterval)
     ?? (savedAt && expiredAt === savedAt ? (navigator.onLine ? 'unreachable' : 'offline') : null);
-  useReportWidgetUnavailable(unavailable);
+  useReportWidgetUnavailable(unavailable, () => void refetch());
   // The saved copy leaves the notice only once the cover hides it (a live
   // answer replacing it clears it in recordBrowseFreshness): a failed request
   // or the expiry re-check still leaves it on screen until then.
@@ -161,11 +162,14 @@ export function useWidgetData<T>({
 }
 
 /**
- * Whether a widget query has nothing it can truthfully show because Helprr
- * could not be reached: data from before the failure would look live, and no
- * data would show as zeros or "Queue is empty". Only a request that got no
- * answer counts (fetchOrOffline's OfflineError): a server's error answer, or a
- * bug in a widget's own code, is left to the widget's own message.
+ * Whether a widget query has nothing it can truthfully show: Helprr could not
+ * be reached (data from before the failure would look live, and no data would
+ * show as zeros or "Queue is empty"), or the load failed some other way with
+ * nothing loaded yet ('error': an HTTP error, an answer that isn't JSON, a bug
+ * in the fetcher), which would otherwise show the widget's empty state. Data
+ * already on screen stays through such a failure, as it did before.
+ * "Unreachable" is only a request that got no answer (fetchOrOffline's
+ * OfflineError).
  *
  * `failedPolls` is how many polls in a row have failed since the last success.
  * On a fast poller data still on screen survives one, so on a patchy
@@ -183,7 +187,8 @@ export function widgetUnavailable(query: {
   const reason = typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'unreachable';
   // Waiting to retry until the device is back online: no poll goes out until then.
   if (query.fetchStatus === 'paused') return reason;
-  if (!query.isError || !(query.error instanceof OfflineError)) return null;
+  if (!query.isError) return null;
+  if (!(query.error instanceof OfflineError)) return query.data === undefined ? 'error' : null;
   const grace = refreshInterval > 0 && refreshInterval < FAST_POLL_MS ? 2 : 1;
   if (query.data !== undefined && failedPolls < grace) return null;
   return reason;
@@ -193,9 +198,13 @@ export function widgetUnavailable(query: {
  * What a widget says when its fetch fails. A network failure (fetch throws a
  * TypeError) carries the browser's own words, on iOS offline the service
  * worker's "FetchEvent.respondWith received an error: no-response …" with the
- * request URL, shown in red on the Dashboard. A server's answer keeps its message.
+ * request URL, shown in red on the Dashboard. A message a fetcher wrote itself
+ * (a plain Error or ApiError, often the server's own words) is kept; any other
+ * exception's text is the engine's (WebKit's JSON parse error reads "The
+ * string did not match the expected pattern."), so it gets plain words.
  */
 export function widgetErrorText(error: unknown): string {
   if (error instanceof TypeError || error instanceof OfflineError) return 'Can’t reach Helprr right now.';
-  return error instanceof Error ? error.message : 'Failed to fetch';
+  if (error instanceof ApiError || (error instanceof Error && error.constructor === Error)) return error.message;
+  return 'Couldn’t load.';
 }
