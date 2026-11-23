@@ -25,6 +25,9 @@ vi.mock('@/lib/auth', () => ({
   },
 }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
+vi.mock('@/lib/arr-instances', () => ({
+  resolveConnection: async (type: string, instanceId?: string | null) => ({ id: instanceId || `default-${type}` }),
+}));
 vi.mock('@/lib/service-helpers', () => ({
   getSonarrClient: mocks.getSonarrClient,
   getRadarrClient: mocks.getRadarrClient,

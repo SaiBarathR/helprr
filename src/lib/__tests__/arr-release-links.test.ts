@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), create: vi.fn() }));
 vi.mock('axios', () => ({ default: { create: mocks.create.mockImplementation(() => ({ get: mocks.get })) } }));
 
-import { historyPageWithoutLinks, withoutHistoryLinks, withoutReleaseLinks } from '@/lib/arr-release-links';
+import { historyPageWithoutLinks, pageLinkWithoutKeys, withoutHistoryLinks, withoutReleaseLinks } from '@/lib/arr-release-links';
 import { LidarrClient } from '@/lib/lidarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
 import { SonarrClient } from '@/lib/sonarr-client';
@@ -105,5 +105,54 @@ describe('the strip helpers', () => {
     const input = [release()];
     withoutReleaseLinks(input);
     expect(input[0].downloadUrl).toContain(KEY);
+  });
+});
+
+describe('indexer page links keep working without keys', () => {
+  it('drop key-named query parameters and user info, and keep the rest', () => {
+    expect(pageLinkWithoutKeys(`https://tracker.example/details.php?id=42&passkey=${KEY}&hit=1`)).toBe('https://tracker.example/details.php?id=42&hit=1');
+    expect(pageLinkWithoutKeys(`https://u:${KEY}@tracker.example/t/42?apikey=${KEY}&api_key=${KEY}&API-KEY=${KEY}`)).toBe('https://tracker.example/t/42');
+    expect(pageLinkWithoutKeys(`http://indexer.example/api?t=details&id=9&authkey=${KEY}&torrent_pass=${KEY}&rsskey=${KEY}&token=${KEY}&secret=${KEY}&password=${KEY}&sid=${KEY}`))
+      .toBe('http://indexer.example/api?t=details&id=9');
+    expect(pageLinkWithoutKeys('https://tracker.example/details/42#comments')).toBe('https://tracker.example/details/42#comments');
+  });
+
+  it.each([
+    ['a ;-separated key', `https://t.example/d?id=1;passkey=${KEY}`, 'https://t.example/d'],
+    ['a key with []', `https://t.example/d?id=1&passkey[]=${KEY}`, 'https://t.example/d?id=1'],
+    ['an encoded name', `https://t.example/d?id=1&pass%6Bey=${KEY}`, 'https://t.example/d?id=1'],
+    ['a name with a space', `https://t.example/d?id=1&%20passkey=${KEY}`, 'https://t.example/d?id=1'],
+    ['a name with a NUL', `https://t.example/d?id=1&passkey%00=${KEY}`, 'https://t.example/d?id=1'],
+    ['other key names', `https://t.example/d?id=1&rss_key=${KEY}&api_token=${KEY}&access_token=${KEY}&auth_key=${KEY}&key=${KEY}&pid=${KEY}&sig=${KEY}&signature=${KEY}&pass-key=${KEY}`, 'https://t.example/d?id=1'],
+    ['a fragment with a value', `https://t.example/d?id=1#passkey=${KEY}`, 'https://t.example/d?id=1'],
+    ['the rest kept as written', `https://t.example/d?q=a%20b~c/d&flag&passkey=${KEY}&x=1+2`, 'https://t.example/d?q=a%20b~c/d&flag&x=1+2'],
+  ])('drop %s', (_label, link, kept) => {
+    expect(pageLinkWithoutKeys(link)).toBe(kept);
+  });
+
+  it('leave a link with no key exactly as it was', () => {
+    for (const link of ['https://t.example/d?q=a%20b~c/d&flag&x=1+2', 'https://t.example/details/42#comments', 'https://t.example/d?id=1&&p=2']) {
+      expect(pageLinkWithoutKeys(link)).toBe(link);
+    }
+  });
+
+  it('drop what is not an http(s) link', () => {
+    for (const value of ['magnet:?xt=urn:btih:ABC', 'javascript:alert(1)', 'not a link', '', 42, null, undefined]) {
+      expect(pageLinkWithoutKeys(value)).toBeNull();
+    }
+  });
+
+  it('apply to search results and history as they arrive', async () => {
+    mocks.get.mockResolvedValue({ data: [{ ...release(), infoUrl: `https://tracker.example/details.php?id=42&passkey=${KEY}`, commentUrl: 'javascript:alert(1)' }] });
+    const [r] = await new SonarrClient('http://s', 'k').getReleases({ episodeId: 1 }) as unknown as Record<string, unknown>[];
+    expect(r.infoUrl).toBe('https://tracker.example/details.php?id=42');
+    expect(r).not.toHaveProperty('commentUrl');
+    expectClean(r);
+
+    const record = { ...historyRecord(), data: { ...historyRecord().data, nzbInfoUrl: `https://indexer.example/details/42?apikey=${KEY}` } };
+    mocks.get.mockResolvedValue({ data: [record] });
+    const [h] = await new RadarrClient('http://r', 'k').getMovieHistory(5) as unknown as { data: Record<string, unknown> }[];
+    expect(h.data.nzbInfoUrl).toBe('https://indexer.example/details/42');
+    expectClean(h);
   });
 });

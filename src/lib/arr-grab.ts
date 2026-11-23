@@ -121,6 +121,12 @@ export function parseRadarrGrab(body: unknown): Parsed<RadarrGrabRequest> {
   return { ok: true, request: base };
 }
 
+/** Lidarr's grab (POST /api/v1/release): the release and, optionally, another download client. */
+export function parseLidarrGrab(body: unknown): Parsed<{ guid: string; indexerId: number; downloadClientId?: number }> {
+  const parsed = parseBase(body);
+  return parsed.ok ? { ok: true, request: parsed.base } : parsed;
+}
+
 /** What a failed grab means to the user; the UI acts on `code`. */
 export type GrabErrorCode = 'expired' | 'unmatched' | 'indexer' | 'client';
 

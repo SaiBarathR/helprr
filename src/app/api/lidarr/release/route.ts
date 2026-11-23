@@ -3,7 +3,8 @@ import { getLidarrClient } from '@/lib/service-helpers';
 import { requireUserAllCapabilities } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
-import { arrReleaseScope, resolveReleaseToken, withReleaseTokens } from '@/lib/release-tokens';
+import { parseLidarrGrab } from '@/lib/arr-grab';
+import { arrReleaseInstance, resolveReleaseToken, withReleaseTokens } from '@/lib/release-tokens';
 
 function toPositiveInt(value: unknown): number | null {
   const n = Number(value);
@@ -39,11 +40,12 @@ async function getHandler(request: NextRequest) {
       params.artistId = parsed;
     }
 
-    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
-    const client = await getLidarrClient(instanceId);
+    // Resolved once, so the tokens are scoped to the instance that was searched.
+    const instance = await arrReleaseInstance('lidarr', request.nextUrl.searchParams.get('instanceId') ?? undefined);
+    const client = await getLidarrClient(instance.id);
     const releases = await client.getReleases(params);
     // The browser gets a token per release, not its guid: a guid can be a download link with a passkey.
-    return NextResponse.json(await withReleaseTokens(arrReleaseScope('lidarr', instanceId), auth.user.id, releases));
+    return NextResponse.json(await withReleaseTokens(instance.scope, auth.user.id, releases));
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to search releases');
   }
@@ -54,24 +56,23 @@ async function postHandler(request: NextRequest) {
   const auth = await requireUserAllCapabilities(['activity.manage', 'music.view']);
   if (!auth.ok) return auth.response;
 
+  let body: unknown;
   try {
-    const body = await request.json();
-    const { guid, indexerId, downloadClientId } = body;
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+  // The same checks as Sonarr's and Radarr's grabs: a bounded token, ids that are whole numbers.
+  const parsed = parseLidarrGrab(body);
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
-    if (!guid || typeof guid !== 'string') {
-      return NextResponse.json({ error: 'guid is required' }, { status: 400 });
-    }
-    const parsedIndexerId = toPositiveInt(indexerId);
-    if (parsedIndexerId === null) {
-      return NextResponse.json({ error: 'indexerId must be a positive integer' }, { status: 400 });
-    }
-
-    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+  try {
+    const instance = await arrReleaseInstance('lidarr', request.nextUrl.searchParams.get('instanceId') ?? undefined);
     // A token from this user's search here (release-tokens); gone after 30 minutes, like the *arr's own cache.
-    const release = await resolveReleaseToken(arrReleaseScope('lidarr', instanceId), auth.user.id, guid);
+    const release = await resolveReleaseToken(instance.scope, auth.user.id, parsed.request.guid);
     if (!release) return NextResponse.json({ error: 'This result has expired. Search again.', code: 'expired' }, { status: 410 });
-    const client = await getLidarrClient(instanceId);
-    await client.grabRelease(release.guid, release.indexerId, downloadClientId);
+    const client = await getLidarrClient(instance.id);
+    await client.grabRelease(release.guid, release.indexerId, parsed.request.downloadClientId);
     return NextResponse.json({ success: true });
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to grab release');

@@ -30,6 +30,7 @@ vi.mock('@/lib/auth', () => {
 });
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
 vi.mock('@/lib/service-helpers', () => ({ getLidarrClient: async () => mocks.lidarr }));
+vi.mock('@/lib/arr-instances', () => ({ resolveConnection: async (_type: string, instanceId?: string | null) => ({ id: instanceId || 'default' }) }));
 vi.mock('@/lib/cache/tagged-library', () => ({ invalidateOnCommandComplete: vi.fn(), MUTATING_COMMANDS: new Set() }));
 // Release tokens have their own tests (arr-release-tokens-routes); here only who may call.
 vi.mock('@/lib/release-tokens', async (importOriginal) => ({
