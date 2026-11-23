@@ -14,8 +14,9 @@ import type { ArrLanguage, ArrQualityModel, RadarrGrabRequest, SonarrGrabRequest
 type Parsed<T> = { ok: true; request: T } | { ok: false; error: string };
 type Body = Record<string, unknown>;
 
-// Guids are often the indexer's page URL; Sonarr's own limit is far above any real one.
-const MAX_GUID = 2048;
+// Guids are the indexer's page URL or a whole magnet link with its trackers
+// (about 1.5 KB seen from public trackers); the *arrs set no limit.
+const MAX_GUID = 16_384;
 // Whole seasons of long-running anime stay under this; more is not a real release.
 const MAX_EPISODES = 500;
 const MAX_LANGUAGES = 50;
@@ -149,7 +150,8 @@ export function grabErrorResponse(error: unknown, service: 'sonarr' | 'radarr'):
       return reply('unmatched', "Sonarr couldn't tell which episodes this release is for. Choose them in Manual grab.", 422);
     }
     if (status === 409 && /getting release from indexer failed/i.test(message)) {
-      return reply('indexer', "The indexer didn't hand over this release. Try another one.", 502);
+      // Also a download client's or the blocklist's refusal: the *arr sends all three as this.
+      return reply('indexer', "The release couldn't be fetched, or the download client refused it. Try another one.", 502);
     }
     if (/download client/i.test(message)) {
       return reply('client', "The download client didn't take this release. Check it, or try another release.", 502);

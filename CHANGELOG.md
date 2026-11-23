@@ -21,9 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer fails with "Not found" in interactive search. Grab now asks first, as their own
   search does, then grabs it for the episode, season or movie you searched for, or lets
   you choose in Manual grab.
-- Grab errors say what happened: results that have expired (with **Search again**), an
-  indexer that didn't hand over the release, or a download client that refused it. Each
-  row shows whether its release was added or why it failed.
+- Grab errors say what happened: results that have expired (with **Search again**), or a
+  release that couldn't be fetched or that the download client refused. Each row shows
+  when its release was added, or that its grab failed.
 
 ## [1.17.0] - 2026-11-18
 

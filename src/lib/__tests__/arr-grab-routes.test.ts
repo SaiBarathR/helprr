@@ -89,6 +89,8 @@ describe('who may grab', () => {
 describe('Sonarr grab bodies', () => {
   it.each([
     ['plain', { guid: 'g', indexerId: 5 }, { guid: 'g', indexerId: 5 }],
+    ['a magnet guid with many trackers', { guid: `magnet:?xt=urn:btih:${'A'.repeat(40)}${'&tr=udp%3a%2f%2ftracker.example%3a6969%2fannounce'.repeat(60)}`, indexerId: 5 },
+      { guid: `magnet:?xt=urn:btih:${'A'.repeat(40)}${'&tr=udp%3a%2f%2ftracker.example%3a6969%2fannounce'.repeat(60)}`, indexerId: 5 }],
     ['plain, another client', { guid: 'g', indexerId: 5, downloadClientId: 2 }, { guid: 'g', indexerId: 5, downloadClientId: 2 }],
     ['the default client (null)', { guid: 'g', indexerId: 5, downloadClientId: null }, { guid: 'g', indexerId: 5 }],
     ['the searched episode', { guid: 'g', indexerId: 5, episodeId: 2477 }, { guid: 'g', indexerId: 5, episodeId: 2477 }],
@@ -112,7 +114,7 @@ describe('Sonarr grab bodies', () => {
     ['no guid', { indexerId: 1 }, 'guid and indexerId are required'],
     ['no indexer', { guid: 'g' }, 'guid and indexerId are required'],
     ['a zero indexer', { guid: 'g', indexerId: 0 }, 'Invalid release'],
-    ['a giant guid', { guid: 'x'.repeat(2049), indexerId: 1 }, 'Invalid release'],
+    ['a giant guid', { guid: 'x'.repeat(16_385), indexerId: 1 }, 'Invalid release'],
     ['a text client id', { guid: 'g', indexerId: 1, downloadClientId: '1' }, 'Invalid download client'],
     ['a fractional episode', { guid: 'g', indexerId: 1, episodeId: 1.5 }, 'Invalid episode'],
     ['episode and season at once', { guid: 'g', indexerId: 1, episodeId: 3, seriesId: 2, seasonNumber: 1 }, 'Invalid episode'],
@@ -168,7 +170,7 @@ describe('refusals from the *arr', () => {
     ['sonarr', 404, 'Unable to find matching series and episodes, will need to be manually provided', 422, 'unmatched', "Sonarr couldn't tell which series and episodes this release is for. Choose them in Manual grab."],
     ['sonarr', 404, 'Unable to parse episodes in the release, will need to be manually provided', 422, 'unmatched', "Sonarr couldn't tell which episodes this release is for. Choose them in Manual grab."],
     ['radarr', 404, 'Unable to find matching movie, will need to be manually provided', 422, 'unmatched', "Radarr couldn't tell which movie this release is for. Choose it in Manual grab."],
-    ['radarr', 409, 'Getting release from indexer failed', 502, 'indexer', "The indexer didn't hand over this release. Try another one."],
+    ['radarr', 409, 'Getting release from indexer failed', 502, 'indexer', "The release couldn't be fetched, or the download client refused it. Try another one."],
     ['sonarr', 500, 'Download client failed to add torrent by url', 502, 'client', "The download client didn't take this release. Check it, or try another release."],
   ] as const)('%s %i "%s" → %i %s', async (service, upstream, message, status, code, error) => {
     const client = service === 'sonarr' ? mocks.sonarr : mocks.radarr;

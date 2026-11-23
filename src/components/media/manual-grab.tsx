@@ -18,6 +18,7 @@ import {
 import { EpisodePicker, LanguagePicker, MediaPicker, QualityPicker, SeasonPicker, type MediaOption } from '@/components/media/arr-pickers';
 import { useCan } from '@/components/permission-provider';
 import { useLanguages, useQualityDefinitions } from '@/lib/hooks/use-reference-data';
+import { useCloseOnBack } from '@/lib/overlay-history';
 import { ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
@@ -175,12 +176,24 @@ export function ManualGrabSheet({
     setScreen(next);
     onFullScreenChange(next !== 'sheet');
   };
+  // The system Back (an edge swipe) on a full-screen list returns to the sheet, not off the page.
+  useCloseOnBack(screen !== 'sheet', () => go('sheet'));
 
+  // A page opened without ?instance= grabs on the default instance, so its
+  // library is the one to choose from: the merged list's ids are per instance.
+  const instancesQuery = useQuery({
+    queryKey: queryKeys.arrInstances(),
+    queryFn: jsonFetcher<Array<{ id: string; type: string; isDefault: boolean }>>('/api/instances'),
+    enabled: open && canBrowse && !instanceId,
+    select: ensureArray,
+  });
+  const libraryInstance = instanceId
+    ?? instancesQuery.data?.find((i) => i.type === (isSonarr ? 'SONARR' : 'RADARR') && i.isDefault)?.id;
   // The library list names the chosen series or movie and is what the user picks from.
   const mediaQuery = useQuery({
-    queryKey: queryKeys.library(service, { instanceId }),
-    queryFn: jsonFetcher<MediaOption[]>(withInstanceQuery(isSonarr ? '/api/sonarr' : '/api/radarr', instanceId)),
-    enabled: open && canBrowse,
+    queryKey: queryKeys.library(service, { instanceId: libraryInstance }),
+    queryFn: jsonFetcher<MediaOption[]>(withInstanceQuery(isSonarr ? '/api/sonarr' : '/api/radarr', libraryInstance)),
+    enabled: open && canBrowse && libraryInstance !== undefined,
     staleTime: 60_000,
     select: ensureArray,
   });
@@ -216,9 +229,9 @@ export function ManualGrabSheet({
     ? chosen.title
     : chosenId === undefined
       ? undefined
-      : canBrowse && mediaQuery.isLoading
+      : canBrowse && (mediaQuery.isLoading || instancesQuery.isLoading)
         ? 'Loading…'
-        : draft.fromSearch
+        : chosenId === (isSonarr ? searched.seriesId : searched.movieId)
           ? (isSonarr ? 'The series you searched for' : 'The movie you searched for')
           : (isSonarr ? release.seriesTitle : release.movieTitles?.[0]) || `#${chosenId}`;
 
@@ -256,41 +269,38 @@ export function ManualGrabSheet({
     else setError({ text: outcome.error, code: outcome.code });
   }
 
-  if (screen === 'media') {
-    return (
-      <MediaPicker
-        kind={isSonarr ? 'series' : 'movie'}
-        subtitle={release.title}
-        options={mediaQuery.data ?? []}
-        loading={mediaQuery.isLoading}
-        error={mediaQuery.isError}
-        selectedId={chosenId}
-        historyKey="manual-grab-media"
-        onBack={() => go('sheet')}
-        onSelect={(option) => {
-          edit(isSonarr
-            ? { seriesId: option.id, seasonNumber: undefined, episodeIds: [], pendingEpisodes: undefined, fromSearch: false }
-            : { movieId: option.id, fromSearch: false });
-          go('sheet');
-        }}
-      />
-    );
-  }
-  if (screen === 'episodes') {
-    return (
-      <EpisodePicker
-        episodes={seasonEpisodes}
-        initial={episodeIds.map((id) => ({ id }))}
-        isAnime={isAnime}
-        onCancel={() => go('sheet')}
-        onConfirm={(eps) => { edit({ episodeIds: eps.map((e) => e.id), pendingEpisodes: undefined, fromSearch: false }); go('sheet'); }}
-      />
-    );
-  }
-
   return (
     <>
-      <Drawer open={open} onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
+      {/* The series and episode lists take the page's place; the sheet closes
+          (not unmounts, so vaul unlocks the page as usual) and opens again after. */}
+      {screen === 'media' && (
+        <MediaPicker
+          kind={isSonarr ? 'series' : 'movie'}
+          subtitle={release.title}
+          options={mediaQuery.data ?? []}
+          loading={mediaQuery.isLoading}
+          error={mediaQuery.isError}
+          selectedId={chosenId}
+          historyKey="manual-grab-media"
+          onBack={() => go('sheet')}
+          onSelect={(option) => {
+            edit(isSonarr
+              ? { seriesId: option.id, seasonNumber: undefined, episodeIds: [], pendingEpisodes: undefined, fromSearch: false }
+              : { movieId: option.id, fromSearch: false });
+            go('sheet');
+          }}
+        />
+      )}
+      {screen === 'episodes' && (
+        <EpisodePicker
+          episodes={seasonEpisodes}
+          initial={episodeIds.map((id) => ({ id }))}
+          isAnime={isAnime}
+          onCancel={() => go('sheet')}
+          onConfirm={(eps) => { edit({ episodeIds: eps.map((e) => e.id), pendingEpisodes: undefined, fromSearch: false }); go('sheet'); }}
+        />
+      )}
+      <Drawer open={open && screen === 'sheet'} onOpenChange={(o) => { if (!o && !busy && screen === 'sheet') onClose(); }}>
         {/* A short form: only as tall as its rows, and no wider than a phone on tablets and desktops. */}
         <DrawerContent size="content">
           <DrawerHeader className="text-center">
@@ -303,11 +313,11 @@ export function ManualGrabSheet({
                 <>
                   <SheetRow
                     label="Series" value={chosenTitle} placeholder="Choose a series"
-                    onPress={canBrowse ? () => go('media') : undefined}
+                    disabled={busy} onPress={canBrowse ? () => go('media') : undefined}
                   />
                   <SheetRow
                     label="Season" value={seasonLabel(draft.seasonNumber)} placeholder="Choose a season"
-                    disabled={draft.seriesId === undefined} onPress={() => setDialog('season')}
+                    disabled={busy || draft.seriesId === undefined} onPress={() => setDialog('season')}
                   />
                   <SheetRow
                     label="Episodes"
@@ -315,23 +325,24 @@ export function ManualGrabSheet({
                       ? <span className="flex flex-col">{episodeLabels.map((e) => <span key={e.id}>{e.text}</span>)}</span>
                       : draft.episodeIds === null && episodesQuery.isLoading ? 'Loading…' : undefined}
                     placeholder="Choose episodes"
-                    disabled={draft.seriesId === undefined || draft.seasonNumber === undefined}
+                    // The list opens on the season's episodes, so it waits for them.
+                    disabled={busy || draft.seriesId === undefined || draft.seasonNumber === undefined || episodesQuery.isLoading}
                     onPress={() => go('episodes')}
                   />
                 </>
               ) : (
                 <SheetRow
                   label="Movie" value={chosenTitle} placeholder="Choose a movie"
-                  onPress={canBrowse ? () => go('media') : undefined}
+                  disabled={busy} onPress={canBrowse ? () => go('media') : undefined}
                 />
               )}
-              <SheetRow label="Quality" value={qualityLabel} placeholder="Choose a quality" onPress={() => setDialog('quality')} />
+              <SheetRow label="Quality" value={qualityLabel} placeholder="Choose a quality" disabled={busy} onPress={() => setDialog('quality')} />
               <SheetRow
                 label="Languages" value={draft.languages.map((l) => l.name).join(', ')} placeholder="Choose languages"
-                onPress={() => setDialog('language')}
+                disabled={busy} onPress={() => setDialog('language')}
               />
               {protocolClients.length > 1 && (
-                <SheetRow label="Download client" value={clientName} placeholder="Default" onPress={() => setDialog('client')} />
+                <SheetRow label="Download client" value={clientName} placeholder="Default" disabled={busy} onPress={() => setDialog('client')} />
               )}
               {draft.fromSearch && (
                 <p className="pt-3 text-xs text-muted-foreground">

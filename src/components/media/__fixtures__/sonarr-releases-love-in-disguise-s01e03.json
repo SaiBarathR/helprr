@@ -1,6 +1,6 @@
 [
   {
-    "guid": "magnet:?xt=urn:btih:8F8B5CAACBC408631A02485AAF88AE6D35869E6F&dn=Love%20in%20Disguise%20S01E03%201080p%20WEB%20H264-KBBQ&tr=http%3a%2f%2ftracker.opentrackr.org%3a1337%2fannounce&tr=udp%3a%2f%2ftracker.auctor.tv%3a6969%2fannounce&tr=udp%3a%2f%2fopentracker.i2p.rocks%3a6969%2fannounce&tr=https%3a%2f%2fopentracker.i2p.rocks%3a443%2fannounce&tr=udp%3a%2f%2fopen.demonii.com%3a1337%2fannounce&tr=udp%3a%2f%2ftracker.openbittorrent.com%3a6969%2fannounce&tr=http%3a%2f%2ftracker.openbittorrent.com%3a80%2fannounce&tr=udp%3a%2f%2fopen.stealth.si%3a80%2fannounce&tr=udp%3a%2f%2ftracker.torrent.eu.org%3a451%2fannounce&tr=udp%3a%2f%2ftracker.moeking.me%3a6969%2fannounce&tr=udp%3a%2f%2fexplodie.org%3a6969%2fannounce&tr=udp%3a%2f%2fexodus.desync.com%3a6969%2fannounce&tr=udp%3a%2f%2fuploads.gamecoast.net%3a6969%2fannounce&tr=udp%3a%2f%2ftracker1.bt.moack.co.kr%3a80%2fannounce&tr=udp%3a%2f%2ftracker.tiny-vps.com%3a6969%2fannounce&tr=udp%3a%2f%2ftracker.theoks.net%3a6969%2fannounce&tr=udp%3a%2f%2ftracker.skyts.net%3a6969%2fannounce&tr=udp%3a%2f%2ftracker-udp.gbitt.info%3a80%2fannounce&tr=udp%3a%2f%2fopen.tracker.ink%3a6969%2fannounce&tr=udp%3a%2f%2fmovies.zsw.ca%3a6969%2fannounce",
+    "guid": "https://indexer.example/release/s1",
     "quality": {
       "quality": {
         "id": 3,
@@ -20,7 +20,7 @@
     "ageMinutes": 39948.26404273333,
     "size": 2446977134,
     "indexerId": 8,
-    "indexer": "The Pirate Bay (Prowlarr)",
+    "indexer": "Indexer A (Prowlarr)",
     "releaseGroup": "KBBQ",
     "title": "Love in Disguise S01E03 1080p WEB H264-KBBQ",
     "fullSeason": false,
@@ -49,7 +49,7 @@
     "approved": true,
     "rejected": false,
     "rejections": [],
-    "infoUrl": "https://thepiratebay.org/description.php?id=84853951",
+    "infoUrl": "https://indexer.example/details/s1",
     "downloadAllowed": true,
     "customFormats": [],
     "customFormatScore": 0,
@@ -60,7 +60,7 @@
     "downloadUrl": ""
   },
   {
-    "guid": "https://knaben.xyz/thepiratebay/description.php?id=85015659",
+    "guid": "https://indexer.example/release/s2",
     "quality": {
       "quality": {
         "id": 5,
@@ -80,7 +80,7 @@
     "ageMinutes": 16808.264063883333,
     "size": 1108190080,
     "indexerId": 2,
-    "indexer": "Knaben (Prowlarr)",
+    "indexer": "Indexer B (Prowlarr)",
     "releaseGroup": "SKYFiRE",
     "title": "Love In Disguise S01E03 720p WEB H264-SKYFiRE",
     "fullSeason": false,
@@ -102,7 +102,7 @@
     "rejections": [
       "Unknown Series"
     ],
-    "infoUrl": "https://knaben.xyz/thepiratebay/description.php?id=85015659",
+    "infoUrl": "https://indexer.example/details/s2",
     "downloadAllowed": false,
     "customFormats": [],
     "customFormatScore": 0,

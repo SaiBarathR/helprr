@@ -149,9 +149,10 @@ export function InteractiveSearch({
   const [confirmRelease, setConfirmRelease] = useState<Release | null>(null);
   const [manual, setManual] = useState<{ release: Release; key: number } | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
-  // The sheet's series and episode lists open full screen in place of the page.
+  // The sheet's series and episode lists open full screen in place of the page;
+  // back on it, the list is where the user left it (null: nothing to restore).
   const [fullScreen, setFullScreen] = useState(false);
-  const pageScroll = useRef(0);
+  const pageScroll = useRef<number | null>(null);
 
   const searchQueryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -179,22 +180,21 @@ export function InteractiveSearch({
   const loading = releasesQuery.isFetching;
 
   // Per-row grab state, for the results it was made on: a new search starts clean.
+  // Read through a ref, so a grab that ends after a new search doesn't reset it.
   const [grabs, setGrabs] = useState<{ at: number; rows: Record<string, RowGrab> }>({ at: 0, rows: {} });
+  const resultsAt = useRef(releasesQuery.dataUpdatedAt);
+  useEffect(() => { resultsAt.current = releasesQuery.dataUpdatedAt; }, [releasesQuery.dataUpdatedAt]);
   const rowGrabs = grabs.at === releasesQuery.dataUpdatedAt ? grabs.rows : {};
   const setRowGrab = (guid: string, grab: RowGrab) => setGrabs((prev) => ({
-    at: releasesQuery.dataUpdatedAt,
-    rows: { ...(prev.at === releasesQuery.dataUpdatedAt ? prev.rows : {}), [guid]: grab },
+    at: resultsAt.current,
+    rows: { ...(prev.at === resultsAt.current ? prev.rows : {}), [guid]: grab },
   }));
 
   // The page's own item, in numbers: what Manual grab starts from.
-  const searched = useMemo<SearchedItem>(
-    () => Object.fromEntries(Object.entries(searchedItem).map(([k, v]) => [k, Number(v)])),
-    [searchedItem],
-  );
+  const searched: SearchedItem = Object.fromEntries(Object.entries(searchedItem).map(([k, v]) => [k, Number(v)]));
   // What "Grab anyway" sends, as Sonarr's own UI does: the search's episode, season or movie.
-  const searchContext = useMemo(
-    () => Object.fromEntries(Object.entries(searchParams).filter(([k]) => k !== 'instanceId').map(([k, v]) => [k, Number(v)])),
-    [searchParams],
+  const searchContext = Object.fromEntries(
+    Object.entries(searchParams).filter(([k]) => k !== 'instanceId').map(([k, v]) => [k, Number(v)]),
   );
   const instanceId = searchParams.instanceId !== undefined ? String(searchParams.instanceId) : undefined;
 
@@ -283,13 +283,16 @@ export function InteractiveSearch({
         throw new ApiError(res.status, data?.error || 'Grab failed');
       }
     },
-    onSuccess: () => {
+    // Lidarr's override marks its row as a plain grab does.
+    onSuccess: (_data, { release }) => {
+      setRowGrab(release.guid, { status: 'grabbed' });
       toast.success('Added to download queue');
       setOverrideRelease(null);
       void expireSearches();
     },
-    onError: (err) => {
+    onError: (err, { release }) => {
       if (err instanceof ApiError && err.status === 401) return;
+      setRowGrab(release.guid, { status: 'failed', error: err instanceof Error ? err.message : 'Grab failed' });
       toast.error(err instanceof Error ? err.message : 'Grab failed');
     },
   });
@@ -340,6 +343,8 @@ export function InteractiveSearch({
   }
 
   function openManual(release: Release) {
+    // Taken now: while the sheet is open, a Safari tab's scroll lock reads 0.
+    pageScroll.current = window.scrollY;
     setManual((prev) => ({ release, key: (prev?.key ?? 0) + 1 }));
     setManualOpen(true);
   }
@@ -353,13 +358,9 @@ export function InteractiveSearch({
     setSelectedClientId(null);
   }
 
-  function showFullScreen(on: boolean) {
-    if (on) pageScroll.current = window.scrollY;
-    setFullScreen(on);
-  }
-  // Back on the page where the user left it, once it shows again.
+  // Back on the page where the user left it, once it shows again after a full-screen list.
   useEffect(() => {
-    if (!fullScreen) window.scrollTo(0, pageScroll.current);
+    if (!fullScreen && pageScroll.current !== null) window.scrollTo(0, pageScroll.current);
   }, [fullScreen]);
 
   function handleOverrideGrab() {
@@ -693,7 +694,9 @@ export function InteractiveSearch({
                                 : 'Add to download queue'}
                             onClick={() => handleGrab(release)}
                             disabled={rowGrab?.status === 'grabbing' || rowGrab?.status === 'grabbed'}
-                            aria-label={rowGrab?.status === 'grabbed' ? 'Added to download queue' : 'Add to download queue'}
+                            aria-label={rowGrab?.status === 'grabbed' ? 'Added to download queue'
+                              : rowGrab?.status === 'failed' ? `Grab failed: ${rowGrab.error ?? 'Grab failed'}. Add to download queue`
+                                : 'Add to download queue'}
                           >
                             {rowGrab?.status === 'grabbing' ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -855,7 +858,7 @@ export function InteractiveSearch({
         downloadClients={downloadClients}
         onClose={() => setManualOpen(false)}
         onGrab={postGrab}
-        onFullScreenChange={showFullScreen}
+        onFullScreenChange={setFullScreen}
         onSearchAgain={doSearch}
       />
     )}

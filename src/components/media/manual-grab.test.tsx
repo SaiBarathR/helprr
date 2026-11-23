@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PermissionProvider, type MePayload } from '@/components/permission-provider';
 import type { Release } from '@/types';
-// Real search results, trimmed (Prowlarr's download links, which carry its key, removed):
+// Real search results, trimmed, with example links and indexer names in place of the real ones:
 // Sonarr matched the first release to S01E03 and couldn't match the second (Unknown Series).
 import sonarrFixture from './__fixtures__/sonarr-releases-love-in-disguise-s01e03.json';
 // Radarr matched the first and couldn't match the second (Unknown Movie).
@@ -147,14 +147,17 @@ describe('a release Sonarr matched', () => {
 
   it('marks a failed grab on its row and lets it be tried again', async () => {
     const user = userEvent.setup();
-    grabResponse = () => Response.json({ error: "The indexer didn't hand over this release. Try another one.", code: 'indexer' }, { status: 502 });
+    const why = "The release couldn't be fetched, or the download client refused it. Try another one.";
+    grabResponse = () => Response.json({ error: why, code: 'indexer' }, { status: 502 });
     renderEpisodeSearch();
     const row = await rowWith(MATCHED.title);
     await user.click(within(row).getByRole('button', { name: 'Add to download queue' }));
-    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith("The indexer didn't hand over this release. Try another one."));
-    const retry = within(row).getByRole('button', { name: 'Add to download queue' }) as HTMLButtonElement;
-    expect(retry.title).toBe("The indexer didn't hand over this release. Try another one.. Try again");
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith(why));
+    // Said to screen readers too: a phone shows no tooltip.
+    const retry = within(row).getByRole('button', { name: `Grab failed: ${why}. Add to download queue` }) as HTMLButtonElement;
     expect(retry.disabled).toBe(false);
+    await user.click(retry);
+    await waitFor(() => expect(posts()).toHaveLength(2));
   });
 
   it('offers a new search when the result has expired', async () => {
@@ -305,6 +308,32 @@ describe('Manual grab', () => {
     ).toBe(searchesBefore + 1));
   });
 
+  it('without ?instance=, offers the default instance’s library: the grab goes there', async () => {
+    const user = userEvent.setup();
+    const base = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<Response>;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => (url === '/api/instances'
+      ? Response.json([
+        { id: 'son-other', type: 'SONARR', label: 'Anime', isDefault: false },
+        { id: 'son-main', type: 'SONARR', label: 'Main', isDefault: true },
+        { id: 'rad-main', type: 'RADARR', label: 'Main', isDefault: true },
+      ])
+      : base(url, init)));
+    render(
+      <PermissionProvider value={me({ 'activity.manage': true, 'series.view': true })}>
+        <QueryClientProvider client={client}>
+          <InteractiveSearch
+            service="sonarr" subtitle="Love in Disguise - S01E03"
+            searchParams={{ episodeId: '2477' }} searchedItem={{ seriesId: '22', seasonNumber: '1', episodeId: '2477' }}
+          />
+        </QueryClientProvider>
+      </PermissionProvider>,
+    );
+    const sheet = await openManualGrab(user, UNMATCHED.title);
+    expect(await within(sheet).findByText('Love in Disguise (2026)')).toBeTruthy();
+    const libraryCalls = fetchMock.mock.calls.map(([url]) => String(url)).filter((url) => url.split('?')[0] === '/api/sonarr');
+    expect(libraryCalls).toEqual(['/api/sonarr?instanceId=son-main']);
+  });
+
   it('without library access, keeps the searched series fixed but the rest editable', async () => {
     const user = userEvent.setup();
     renderEpisodeSearch(me({ 'activity.manage': true, 'series.view': false }));
@@ -315,9 +344,15 @@ describe('Manual grab', () => {
     expect(seriesRow.textContent).toContain('The series you searched for');
     expect(fetchMock.mock.calls.some(([url]) => String(url).split('?')[0] === '/api/sonarr')).toBe(false);
     expect(await within(sheet).findByText('3 – Episode 3')).toBeTruthy();
-    await user.click(within(sheet).getByRole('button', { name: 'Grab release' }));
+    // Editing the episodes keeps the series named for what it is.
+    await user.click(within(sheet).getByRole('button', { name: /^Episodes/ }));
+    await user.click(await screen.findByRole('button', { name: /Episode 4/ }));
+    await user.click(screen.getByRole('button', { name: 'Select (2)' }));
+    const back = await screen.findByRole('dialog', { name: 'Manual grab' });
+    expect(within(back).getByRole('button', { name: /^Series/ }).textContent).toContain('The series you searched for');
+    await user.click(within(back).getByRole('button', { name: 'Grab release' }));
     await waitFor(() => expect(posts()).toHaveLength(1));
-    expect(lastBody()).toMatchObject({ shouldOverride: true, seriesId: 22, episodeIds: [2477] });
+    expect(lastBody()).toMatchObject({ shouldOverride: true, seriesId: 22, episodeIds: [2477, 2478] });
   });
 });
 
@@ -356,7 +391,7 @@ describe('Radarr', () => {
   });
 });
 
-describe('Lidarr, unchanged', () => {
+describe('Lidarr: plain grab and download-client override, as before', () => {
   function renderAlbumSearch() {
     return render(
       <PermissionProvider value={me({ 'activity.manage': true, 'music.view': true })}>
