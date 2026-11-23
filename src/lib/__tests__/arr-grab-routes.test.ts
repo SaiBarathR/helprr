@@ -29,8 +29,18 @@ vi.mock('@/lib/service-helpers', () => ({
   getSonarrClient: mocks.getSonarrClient,
   getRadarrClient: mocks.getRadarrClient,
 }));
+// The browser sends its search's token for the guid; the route grabs with what it stands for.
+const tokens = vi.hoisted(() => ({ resolve: vi.fn() }));
+vi.mock('@/lib/release-tokens', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/release-tokens')>()),
+  resolveReleaseToken: tokens.resolve,
+}));
+const REAL = { guid: 'https://tracker.example/details/42', indexerId: 77 };
+/** What reaches the *arr: the body as sent, with the token's own guid and indexer. */
+const resolved = (sent: Record<string, unknown>) => ({ ...sent, ...REAL });
 
 import { POST as sonarrGrab } from '@/app/api/sonarr/release/route';
+import { arrReleaseScope } from '@/lib/release-tokens';
 import { POST as radarrGrab } from '@/app/api/radarr/release/route';
 
 const ADMIN = { id: 'admin', role: 'admin', template: 'admin', permissions: {} };
@@ -64,6 +74,7 @@ beforeEach(() => {
   mocks.radarr.grabRelease.mockResolvedValue(undefined);
   mocks.getSonarrClient.mockResolvedValue(mocks.sonarr);
   mocks.getRadarrClient.mockResolvedValue(mocks.radarr);
+  tokens.resolve.mockImplementation(async (_scope: string, _user: string, token: string) => (token === 'stale' ? null : REAL));
 });
 
 describe('who may grab', () => {
@@ -74,6 +85,7 @@ describe('who may grab', () => {
     expect((await grab({ guid: 'g', indexerId: 1 })).status).toBe(403);
     expect(mocks.getSonarrClient).not.toHaveBeenCalled();
     expect(mocks.getRadarrClient).not.toHaveBeenCalled();
+    expect(tokens.resolve).not.toHaveBeenCalled();
   });
 
   it('lets an admin and a manager grab, on the instance in the query', async () => {
@@ -105,7 +117,7 @@ describe('Sonarr grab bodies', () => {
   ])('forwards %s exactly', async (_label, body, sent) => {
     const res = await grabSonarr({ ...body, unknownField: 'x' });
     expect(res.status).toBe(200);
-    expect(mocks.sonarr.grabRelease).toHaveBeenCalledWith(sent);
+    expect(mocks.sonarr.grabRelease).toHaveBeenCalledWith(resolved(sent));
   });
 
   it.each([
@@ -148,7 +160,7 @@ describe('Radarr grab bodies', () => {
       { guid: 'g', indexerId: 5, shouldOverride: true, movieId: 12, quality: QUALITY, languages: LANGUAGES }],
   ])('forwards %s exactly', async (_label, body, sent) => {
     expect((await grabRadarr(body)).status).toBe(200);
-    expect(mocks.radarr.grabRelease).toHaveBeenCalledWith(sent);
+    expect(mocks.radarr.grabRelease).toHaveBeenCalledWith(resolved(sent));
   });
 
   it.each([
@@ -162,6 +174,25 @@ describe('Radarr grab bodies', () => {
     expect(await res.json()).toEqual({ error });
     expect(mocks.radarr.grabRelease).not.toHaveBeenCalled();
   });
+});
+
+describe('release tokens', () => {
+  it.each([['sonarr', grabSonarr, 'son-2'], ['radarr', grabRadarr, 'rad-3']] as const)(
+    '%s resolves the token in its own instance and user scope', async (service, grab, instanceId) => {
+      await grab({ guid: 'tok', indexerId: 1 }, instanceId);
+      expect(tokens.resolve).toHaveBeenCalledWith(arrReleaseScope(service, instanceId), MANAGER.id, 'tok');
+    },
+  );
+
+  it.each([['sonarr', grabSonarr], ['radarr', grabRadarr]] as const)(
+    '%s: a token it never issued (or one past 30 minutes) is an expired result, with no call upstream', async (_s, grab) => {
+      const res = await grab({ guid: 'stale', indexerId: 1 });
+      expect(res.status).toBe(410);
+      expect(await res.json()).toEqual({ error: 'This result has expired. Search again.', code: 'expired' });
+      expect(mocks.getSonarrClient).not.toHaveBeenCalled();
+      expect(mocks.getRadarrClient).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('refusals from the *arr', () => {

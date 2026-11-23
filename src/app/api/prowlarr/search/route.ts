@@ -4,7 +4,7 @@ import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
-import { issueReleaseTokens } from '@/lib/prowlarr-release-tokens';
+import { issueReleaseTokens, PROWLARR_SCOPE } from '@/lib/release-tokens';
 import { redactProwlarrText } from '@/lib/prowlarr-redact';
 import type { ProwlarrRelease } from '@/lib/prowlarr-client';
 
@@ -51,6 +51,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       .sort((a, b) => (b.seeders ?? 0) - (a.seeders ?? 0))
       .slice(0, MAX_RESULTS);
     const tokens = await issueReleaseTokens(
+      PROWLARR_SCOPE,
       auth.user.id,
       releases.map(({ guid, indexerId }) => ({ guid, indexerId })),
     );

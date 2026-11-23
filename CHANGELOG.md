@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Indexer keys no longer reach the browser.** Interactive search results and Sonarr,
+  Radarr and Lidarr history included each release's download link. For an indexer added
+  through Prowlarr, that link carries Prowlarr's API key; an indexer's own link or a
+  private tracker's release id can carry its key or passkey. Any user allowed to search,
+  read history or see a movie's history could read them. Helprr now drops those links as
+  they arrive (it never used them), and search results carry a short-lived token in place
+  of each release's id. The download-client list a search offers no longer includes each
+  client's host and user name either. After updating, reset Prowlarr's API key (Settings
+  → General → Security), put the new key in Helprr's Prowlarr connection and let Prowlarr
+  sync its apps; if you use private trackers or indexers added straight to Sonarr, Radarr
+  or Lidarr, renew their passkeys or API keys too.
+
 ### Added
 
 - **Manual grab in interactive search** (Sonarr and Radarr): the Override button on a

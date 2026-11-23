@@ -56,8 +56,7 @@
     "seeders": 46,
     "leechers": 53,
     "protocol": "torrent",
-    "indexerFlags": 1,
-    "downloadUrl": ""
+    "indexerFlags": 1
   },
   {
     "guid": "https://indexer.example/release/s2",
@@ -109,7 +108,6 @@
     "seeders": 6,
     "leechers": 12,
     "protocol": "torrent",
-    "indexerFlags": 1,
-    "downloadUrl": ""
+    "indexerFlags": 1
   }
 ]

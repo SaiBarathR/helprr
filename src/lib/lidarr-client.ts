@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { ARR_RELEASE_TIMEOUT_MS } from '@/lib/arr-release-timeout';
+import { historyPageWithoutLinks, withoutHistoryLinks, withoutReleaseLinks } from '@/lib/arr-release-links';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import type {
@@ -281,7 +282,8 @@ export class LidarrClient {
 
   // Release (Interactive Search)
   async getReleases(params: { artistId?: number; albumId?: number }): Promise<Release[]> {
-    return this.get<Release[]>('/api/v1/release', params, { timeout: ARR_RELEASE_TIMEOUT_MS });
+    // Without download links: Prowlarr's carries its API key (see arr-release-links).
+    return withoutReleaseLinks(await this.get<Release[]>('/api/v1/release', params, { timeout: ARR_RELEASE_TIMEOUT_MS }));
   }
 
   async grabRelease(guid: string, indexerId: number, downloadClientId?: number): Promise<void> {
@@ -410,13 +412,13 @@ export class LidarrClient {
     if (filters?.albumId) params.albumId = filters.albumId;
     if (filters?.eventType !== undefined) params.eventType = filters.eventType;
     if (filters?.downloadId) params.downloadId = filters.downloadId;
-    return this.get<HistoryResponse>('/api/v1/history', params);
+    return historyPageWithoutLinks(await this.get<HistoryResponse>('/api/v1/history', params));
   }
 
   async getArtistHistory(artistId: number, albumId?: number): Promise<HistoryItem[]> {
     const params: Record<string, unknown> = { artistId, includeArtist: true, includeAlbum: true };
     if (albumId !== undefined) params.albumId = albumId;
-    return this.get<HistoryItem[]>('/api/v1/history/artist', params);
+    return withoutHistoryLinks(await this.get<HistoryItem[]>('/api/v1/history/artist', params));
   }
 
   // Commands

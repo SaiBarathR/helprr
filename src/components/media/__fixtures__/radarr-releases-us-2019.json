@@ -47,8 +47,7 @@
     "protocol": "torrent",
     "indexerFlags": [
       "G_Freeleech"
-    ],
-    "downloadUrl": ""
+    ]
   },
   {
     "guid": "https://indexer.example/release/r2",
@@ -99,7 +98,6 @@
     "protocol": "torrent",
     "indexerFlags": [
       "G_Freeleech"
-    ],
-    "downloadUrl": ""
+    ]
   }
 ]

@@ -3,7 +3,7 @@ import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
-import { resolveReleaseToken } from '@/lib/prowlarr-release-tokens';
+import { PROWLARR_SCOPE, resolveReleaseToken } from '@/lib/release-tokens';
 
 const EXPIRED = 'This result has expired. Search again.';
 
@@ -28,7 +28,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const release = await resolveReleaseToken(auth.user.id, id);
+    const release = await resolveReleaseToken(PROWLARR_SCOPE, auth.user.id, id);
     if (!release) return NextResponse.json({ error: EXPIRED }, { status: 410 });
 
     const client = await getProwlarrClient();
