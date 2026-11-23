@@ -40,12 +40,14 @@ export function inSafariTab() {
  * Safari's floating bar sat over the bottom ~60 px of a lifted sheet, and a
  * tap there went to Safari (#678). An iPhone SE hides its bottom toolbar while
  * the keyboard is up, and room kept for it there was a blank band between the
- * sheet and the keyboard. The SE's screen (667 pt) is the tallest of the
- * iPhones with a Home button (the 8 Plus's 736 pt); every Face ID iPhone's is
- * 812 pt or more, and an iPad's more again (left as it was).
+ * sheet and the keyboard. An iPhone with a Home button has a 16:9 screen
+ * (about 1.78, with Display Zoom too); every Face ID iPhone's is about 2.16,
+ * also zoomed (a mini at 320 × 693). An iPad is left as it was.
  */
 export function safariBarOverKeyboard() {
-  return inSafariTab() && Math.max(screen.width, screen.height) > 736;
+  const homeButtonIPhone = /iP(hone|od)/.test(navigator.userAgent) &&
+    Math.max(screen.width, screen.height) / Math.min(screen.width, screen.height) < 1.9;
+  return inSafariTab() && !homeButtonIPhone;
 }
 
 /** How long (about 4 frames) iOS's brief scroll of the visible part may last before it is followed. */

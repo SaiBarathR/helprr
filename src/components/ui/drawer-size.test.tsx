@@ -139,6 +139,27 @@ describe('DrawerContent above the keyboard', () => {
     expect(panel.hasAttribute('data-scroll-together')).toBe(true);
   });
 
+  // Display Zoom makes a mini report a screen smaller than an SE's; it still has the floating bar.
+  it('in a Safari tab on a display-zoomed iPhone mini, still keeps clear of the floating bar', async () => {
+    const { fire } = stubViewport(window.innerHeight - 300);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
+    vi.stubGlobal('screen', { width: 320, height: 693 });
+    const panel = openFormSheet();
+    screen.getByRole('textbox', { name: 'Current password' }).focus();
+    fire();
+    await waitFor(() => expect(panel.style.paddingBottom).toBe('3.75rem'));
+  });
+
+  it('in a Safari tab on an iPad, keeps the room it kept before', async () => {
+    const { fire } = stubViewport(window.innerHeight - 300);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPad; CPU OS 27_0 like Mac OS X)' });
+    vi.stubGlobal('screen', { width: 768, height: 1024 });
+    const panel = openFormSheet();
+    screen.getByRole('textbox', { name: 'Current password' }).focus();
+    fire();
+    await waitFor(() => expect(panel.style.paddingBottom).toBe('3.75rem'));
+  });
+
   // Safari's own bars leave the visible part shorter than the layout viewport
   // with no keyboard up. Taken for a keyboard, they lifted the More sheet and
   // capped its list to about four rows on an iPhone SE.
