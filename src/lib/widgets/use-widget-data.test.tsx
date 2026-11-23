@@ -247,11 +247,18 @@ describe('widgetUnavailable', () => {
     expect(widgetUnavailable(noAnswer, 2, 15_000)).toBe('offline');
   });
 
-  it("leaves a server's error answer, a bug in the widget's own code and a working load to the widget", () => {
+  it("keeps data on screen through a server's error answer or a bug in the widget's own code, and leaves a working load to the widget", () => {
     expect(widgetUnavailable({ ...base, isError: true, error: new ApiError(502, 'Bad gateway') }, 5, 15_000)).toBeNull();
     expect(widgetUnavailable({ ...base, isError: true, error: new TypeError("Cannot read properties of undefined (reading 'map')") }, 5, 15_000)).toBeNull();
     expect(widgetUnavailable(base, 0, 15_000)).toBeNull();
     expect(widgetUnavailable({ ...base, fetchStatus: 'fetching' }, 0, 15_000)).toBeNull();
+  });
+
+  it('says a load failed for any other reason with nothing loaded, instead of leaving the widget empty', () => {
+    const failed = { ...base, data: undefined, isError: true };
+    expect(widgetUnavailable({ ...failed, error: new ApiError(500, 'Request failed') }, 1, 15_000)).toBe('error');
+    expect(widgetUnavailable({ ...failed, error: new SyntaxError('The string did not match the expected pattern.') }, 1, 60_000)).toBe('error');
+    expect(widgetUnavailable({ ...failed, error: new TypeError("Cannot read properties of null (reading 'map')") }, 1, 15_000)).toBe('error');
   });
 });
 
@@ -264,6 +271,13 @@ describe('widgetErrorText', () => {
 
   it("keeps a server's own message", () => {
     expect(widgetErrorText(new Error('Seerr is not configured'))).toBe('Seerr is not configured');
-    expect(widgetErrorText('odd')).toBe('Failed to fetch');
+    expect(widgetErrorText(new ApiError(500, 'Request failed'))).toBe('Request failed');
+  });
+
+  it("never shows the engine's own words for a parse failure or other exception", () => {
+    expect(widgetErrorText(new SyntaxError('The string did not match the expected pattern.'))).toBe('Couldn’t load.');
+    expect(widgetErrorText(new SyntaxError('Unexpected token \'<\', "<!doctype "... is not valid JSON'))).toBe('Couldn’t load.');
+    expect(widgetErrorText(new RangeError('Invalid time value'))).toBe('Couldn’t load.');
+    expect(widgetErrorText('odd')).toBe('Couldn’t load.');
   });
 });

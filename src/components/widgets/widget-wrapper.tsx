@@ -1,9 +1,10 @@
 'use client';
 
 import { Component, Fragment, type ReactNode } from 'react';
-import { WifiOff } from 'lucide-react';
+import { CircleAlert, WifiOff } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { isChunkLoadError, reloadForChunkLoadError, reloadWhenServerAnswers } from '@/lib/chunk-load-recovery';
+import type { WidgetUnavailable } from '@/lib/widgets/widget-unavailable-context';
 import { FONT_BODY, HPR } from './bento-primitives';
 
 interface WidgetWrapperProps {
@@ -19,13 +20,14 @@ interface ErrorBoundaryState {
 }
 
 /**
- * Why a widget has nothing to show: its name, and that the device is offline
- * or Helprr can't be reached. EmptyState's look, sized for a one-cell phone
+ * Why a widget has nothing to show: its name, and that the device is offline,
+ * Helprr can't be reached, or its data couldn't load. EmptyState's look, sized for a one-cell phone
  * widget too (about 44×60 inside the card at 320): the name takes up to two
  * lines there, and globals.css drops the icon and "right now." where they
  * don't fit. Fills the nearest positioned parent.
  */
-export function WidgetCover({ name, offline, children }: { name: string; offline: boolean; children?: ReactNode }) {
+export function WidgetCover({ name, reason, children }: { name: string; reason: WidgetUnavailable; children?: ReactNode }) {
+  const Icon = reason === 'error' ? CircleAlert : WifiOff;
   return (
     <div role="status" className="widget-cover" style={{ position: 'absolute', inset: 0, container: 'widget-cover / size' }}>
       <div
@@ -46,7 +48,7 @@ export function WidgetCover({ name, offline, children }: { name: string; offline
           textAlign: 'center',
         }}
       >
-        <WifiOff size={18} aria-hidden="true" style={{ flexShrink: 0 }} />
+        <Icon size={18} aria-hidden="true" style={{ flexShrink: 0 }} />
         {/* Whole words, each its own span, so where the name may take two
             lines (globals.css) a word too long for the line ends in "…"
             instead of being cut at the edge: a one-cell cover read "Service Hea…". */}
@@ -55,16 +57,18 @@ export function WidgetCover({ name, offline, children }: { name: string; offline
             <Fragment key={i}>{i > 0 && ' '}<span>{word}</span></Fragment>
           ))}
         </span>
-        {offline
+        {reason === 'offline'
           ? <span>You&apos;re offline</span>
-          : <span>Can’t reach Helprr<span className="widget-cover-tail"> right now.</span></span>}
+          : reason === 'unreachable'
+            ? <span>Can’t reach Helprr<span className="widget-cover-tail"> right now.</span></span>
+            : <span>Couldn’t load<span className="widget-cover-tail"> its data.</span></span>}
         {children}
       </div>
     </div>
   );
 }
 
-const retryButtonClass = 'rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-foreground';
+export const retryButtonClass = 'rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-foreground';
 
 class WidgetErrorBoundary extends Component<WidgetWrapperProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { error: null };
@@ -124,7 +128,7 @@ class WidgetErrorBoundary extends Component<WidgetWrapperProps, ErrorBoundarySta
       // widget that hadn't been shown yet: say so as the offline cover does.
       return (
         <div style={{ position: 'relative', height: '100%', minHeight: 0 }}>
-          <WidgetCover name={this.props.name} offline={!globalThis.navigator.onLine}>
+          <WidgetCover name={this.props.name} reason={globalThis.navigator.onLine ? 'unreachable' : 'offline'}>
             <button type="button" onClick={this.resetError} className={`mt-1.5 shrink-0 ${retryButtonClass}`}>
               Retry
             </button>

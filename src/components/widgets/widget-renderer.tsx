@@ -14,7 +14,7 @@ import { useConfiguredWidgetServices } from '@/lib/widgets/widget-availability-c
 import { WidgetVisibilityProvider } from '@/lib/widgets/widget-visibility-context';
 import { useWidgetUnavailableReports, WidgetUnavailableProvider } from '@/lib/widgets/widget-unavailable-context';
 import { getWidgetComponent, resetWidgetComponent } from './widget-loaders';
-import { WidgetCover, WidgetWrapper, WidgetSkeleton } from './widget-wrapper';
+import { retryButtonClass, WidgetCover, WidgetWrapper, WidgetSkeleton } from './widget-wrapper';
 import { useUIStore } from '@/lib/store';
 import type { WidgetInstance, WidgetLayoutVariant, WidgetProps } from '@/lib/widgets/types';
 import { HPR } from './bento-primitives';
@@ -158,13 +158,15 @@ function MissingServices({ services, setupPath, canConnect }: {
 /**
  * Offline, or with Helprr unreachable, a widget with nothing it can truthfully
  * show (no saved copy, or one past its five minutes) says so instead of
- * drawing its zeros and empty states as if they were real. The widget stays
+ * drawing its zeros and empty states as if they were real. A load that failed
+ * otherwise with nothing loaded yet says it couldn't load, with Retry (polling
+ * tries again too). The widget stays
  * mounted underneath, hidden, so its polling carries on and it reappears the
  * moment a load succeeds; with a saved copy it shows as usual, beside the
  * shared saved-data notice.
  */
 function UnavailableCover({ name, children }: { name: string; children: ReactNode }) {
-  const { unavailable, report } = useWidgetUnavailableReports();
+  const { unavailable, retry, report } = useWidgetUnavailableReports();
   return (
     <WidgetUnavailableProvider report={report}>
       <div style={{ position: 'relative', height: '100%', minHeight: 0 }}>
@@ -172,7 +174,15 @@ function UnavailableCover({ name, children }: { name: string; children: ReactNod
         <div style={{ height: '100%', minHeight: 0, visibility: unavailable ? 'hidden' : undefined }}>
           {children}
         </div>
-        {unavailable && <WidgetCover name={name} offline={unavailable === 'offline'} />}
+        {unavailable && (
+          <WidgetCover name={name} reason={unavailable}>
+            {unavailable === 'error' && (
+              <button type="button" onClick={retry} className={`widget-cover-retry mt-1.5 shrink-0 ${retryButtonClass}`}>
+                Retry
+              </button>
+            )}
+          </WidgetCover>
+        )}
       </div>
     </WidgetUnavailableProvider>
   );
