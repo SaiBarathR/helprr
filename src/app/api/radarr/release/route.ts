@@ -4,7 +4,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { grabErrorResponse, parseRadarrGrab } from '@/lib/arr-grab';
-import { arrReleaseScope, resolveReleaseToken, withReleaseTokens } from '@/lib/release-tokens';
+import { arrReleaseInstance, resolveReleaseToken, withReleaseTokens } from '@/lib/release-tokens';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('activity.manage');
@@ -28,11 +28,12 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
-    const client = await getRadarrClient(instanceId);
+    // Resolved once, so the tokens are scoped to the instance that was searched.
+    const instance = await arrReleaseInstance('radarr', request.nextUrl.searchParams.get('instanceId') ?? undefined);
+    const client = await getRadarrClient(instance.id);
     const releases = await client.getReleases(movieIdNum);
     // The browser gets a token per release, not its guid: a guid can be a download link with a passkey.
-    return NextResponse.json(await withReleaseTokens(await arrReleaseScope('radarr', instanceId), auth.user.id, releases));
+    return NextResponse.json(await withReleaseTokens(instance.scope, auth.user.id, releases));
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to search releases');
   }
@@ -60,11 +61,11 @@ async function postHandler(request: NextRequest) {
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
   try {
-    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const instance = await arrReleaseInstance('radarr', request.nextUrl.searchParams.get('instanceId') ?? undefined);
     // A token from this user's search here (release-tokens); gone after 30 minutes, like the *arr's own cache.
-    const release = await resolveReleaseToken(await arrReleaseScope('radarr', instanceId), auth.user.id, parsed.request.guid);
+    const release = await resolveReleaseToken(instance.scope, auth.user.id, parsed.request.guid);
     if (!release) return NextResponse.json({ error: 'This result has expired. Search again.', code: 'expired' }, { status: 410 });
-    const client = await getRadarrClient(instanceId);
+    const client = await getRadarrClient(instance.id);
     await client.grabRelease({ ...parsed.request, guid: release.guid, indexerId: release.indexerId });
     return NextResponse.json({ success: true });
   } catch (error) {

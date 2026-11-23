@@ -14,13 +14,29 @@ const HISTORY_DATA_LINK_FIELDS = ['downloadUrl', 'magnetUrl', 'guid'] as const;
 
 /*
  * The indexer's page links are shown and opened, so they stay, but only as an
- * http(s) link without user info or a query parameter named like a key (the
- * names Helprr's log redaction also hides). An unusual tracker definition could
- * otherwise put its key in a details link.
+ * http(s) link without user info, without a query parameter named like a key
+ * (the names Helprr's log and manual-download redaction hide, in any case, with
+ * a trailing [] or stray spaces), and without a fragment that holds a value.
+ * The rest of the query is kept as written. Not covered: a key in the path,
+ * which no name gives away. An unusual tracker definition could otherwise put
+ * its key in a details link.
  */
 const RELEASE_PAGE_FIELDS = ['infoUrl', 'commentUrl'] as const;
 const HISTORY_DATA_PAGE_FIELDS = ['nzbInfoUrl'] as const;
-const KEY_PARAM = /^(?:api[_-]?key|passkey|authkey|torrent_pass|rsskey|token|secret|password|sid)$/i;
+const KEY_PARAM = /^(?:api[_-]?(?:key|token)|pass[_-]?key|auth[_-]?key|torrent[_-]?pass|rss[_-]?key|access[_-]?token|key|pid|token|secret|password|sid|sig|signature)$/i;
+
+function isKeyName(raw: string): boolean {
+  let name = raw;
+  try {
+    name = decodeURIComponent(raw.replace(/\+/g, ' '));
+  } catch {
+    // A malformed escape: judged as written.
+  }
+  return KEY_PARAM.test(name.replace(/[\s\u0000-\u001f]/g, '').replace(/\[\]$/, ''));
+}
+
+// A parameter goes when it, or any ;-separated part of it, is named like a key.
+const isKeyParam = (part: string) => part.split(';').some((piece) => isKeyName(piece.split('=')[0]));
 
 /** The link without its credentials, or null when it is not an http(s) link. */
 export function pageLinkWithoutKeys(value: unknown): string | null {
@@ -34,7 +50,10 @@ export function pageLinkWithoutKeys(value: unknown): string | null {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
   url.username = '';
   url.password = '';
-  for (const name of [...url.searchParams.keys()]) if (KEY_PARAM.test(name)) url.searchParams.delete(name);
+  const parts = url.search.slice(1).split('&');
+  const kept = parts.filter((part) => !isKeyParam(part));
+  if (kept.length < parts.length) url.search = kept.length > 0 ? `?${kept.join('&')}` : '';
+  if (url.hash.includes('=')) url.hash = '';
   return url.toString();
 }
 

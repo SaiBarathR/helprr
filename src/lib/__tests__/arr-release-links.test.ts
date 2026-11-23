@@ -117,6 +117,25 @@ describe('indexer page links keep working without keys', () => {
     expect(pageLinkWithoutKeys('https://tracker.example/details/42#comments')).toBe('https://tracker.example/details/42#comments');
   });
 
+  it.each([
+    ['a ;-separated key', `https://t.example/d?id=1;passkey=${KEY}`, 'https://t.example/d'],
+    ['a key with []', `https://t.example/d?id=1&passkey[]=${KEY}`, 'https://t.example/d?id=1'],
+    ['an encoded name', `https://t.example/d?id=1&pass%6Bey=${KEY}`, 'https://t.example/d?id=1'],
+    ['a name with a space', `https://t.example/d?id=1&%20passkey=${KEY}`, 'https://t.example/d?id=1'],
+    ['a name with a NUL', `https://t.example/d?id=1&passkey%00=${KEY}`, 'https://t.example/d?id=1'],
+    ['other key names', `https://t.example/d?id=1&rss_key=${KEY}&api_token=${KEY}&access_token=${KEY}&auth_key=${KEY}&key=${KEY}&pid=${KEY}&sig=${KEY}&signature=${KEY}&pass-key=${KEY}`, 'https://t.example/d?id=1'],
+    ['a fragment with a value', `https://t.example/d?id=1#passkey=${KEY}`, 'https://t.example/d?id=1'],
+    ['the rest kept as written', `https://t.example/d?q=a%20b~c/d&flag&passkey=${KEY}&x=1+2`, 'https://t.example/d?q=a%20b~c/d&flag&x=1+2'],
+  ])('drop %s', (_label, link, kept) => {
+    expect(pageLinkWithoutKeys(link)).toBe(kept);
+  });
+
+  it('leave a link with no key exactly as it was', () => {
+    for (const link of ['https://t.example/d?q=a%20b~c/d&flag&x=1+2', 'https://t.example/details/42#comments', 'https://t.example/d?id=1&&p=2']) {
+      expect(pageLinkWithoutKeys(link)).toBe(link);
+    }
+  });
+
   it('drop what is not an http(s) link', () => {
     for (const value of ['magnet:?xt=urn:btih:ABC', 'javascript:alert(1)', 'not a link', '', 42, null, undefined]) {
       expect(pageLinkWithoutKeys(value)).toBeNull();

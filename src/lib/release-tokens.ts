@@ -15,17 +15,23 @@ export interface ReleaseRef {
 export const PROWLARR_SCOPE = 'prowlarr-release';
 
 const SERVICE_TYPE = { sonarr: 'SONARR', radarr: 'RADARR', lidarr: 'LIDARR' } as const;
+type ArrService = keyof typeof SERVICE_TYPE;
+
+/** One Sonarr/Radarr/Lidarr instance's interactive search, by its connection id. */
+export function arrReleaseScope(service: ArrService, connectionId: string): string {
+  return `arr-release:${service}:${sha256Hex(connectionId)}`;
+}
 
 /**
- * One Sonarr/Radarr/Lidarr instance's interactive search, by its connection id
- * (no instance id means the default instance). A token then works whether or
- * not the request names the default instance, and never on another instance
- * after the default changes. Throws as `resolveConnection` does for an unknown
- * instance, before any token is read.
+ * The request's instance, resolved once (no instance id means the default):
+ * its connection id, to build the client with, and its token scope. A token
+ * then works whether or not the grab names the default instance, and never on
+ * another instance after the default changes, even mid-search. Throws as
+ * `resolveConnection` does for an unknown instance, before any token is read.
  */
-export async function arrReleaseScope(service: keyof typeof SERVICE_TYPE, instanceId?: string): Promise<string> {
+export async function arrReleaseInstance(service: ArrService, instanceId?: string): Promise<{ id: string; scope: string }> {
   const { id } = await resolveConnection(SERVICE_TYPE[service], instanceId);
-  return `arr-release:${service}:${sha256Hex(id)}`;
+  return { id, scope: arrReleaseScope(service, id) };
 }
 
 function tokenKey(scope: string, userId: string, token: string): string {

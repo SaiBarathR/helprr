@@ -64,6 +64,7 @@ import { GET as radarrSearch, POST as radarrGrab } from '@/app/api/radarr/releas
 import { GET as lidarrSearch, POST as lidarrGrab } from '@/app/api/lidarr/release/route';
 import { GET as sonarrClients } from '@/app/api/sonarr/downloadclient/route';
 import { issueReleaseTokens, PROWLARR_SCOPE } from '@/lib/release-tokens';
+import { getSonarrClient } from '@/lib/service-helpers';
 import { sha256Hex } from '@/lib/cache/keys';
 import { GET as radarrClients } from '@/app/api/radarr/downloadclient/route';
 import { GET as lidarrClients } from '@/app/api/lidarr/downloadclient/route';
@@ -167,9 +168,24 @@ describe('the token store', () => {
     expect(mocks.sonarr.grabRelease).not.toHaveBeenCalled();
   });
 
-  it('an unknown instance fails before any token is read', async () => {
+  it('a default change during the search keeps the tokens on the instance searched', async () => {
+    // The search takes a while; an admin makes son-2 the default meanwhile.
+    mocks.sonarr.getReleases.mockImplementationOnce(async () => {
+      mocks.defaults.SONARR = 'son-2';
+      return [mocks.release(PASSKEY_GUID)];
+    });
+    const [first] = await (await get(sonarrSearch, '/api/sonarr/release?episodeId=5')).json();
+    expect(vi.mocked(getSonarrClient)).toHaveBeenLastCalledWith('son-1');
+    expect((await post(sonarrGrab, '/api/sonarr/release', { guid: first.guid, indexerId: 8 })).status).toBe(410);
+    expect(mocks.sonarr.grabRelease).not.toHaveBeenCalled();
+    expect((await post(sonarrGrab, '/api/sonarr/release?instanceId=son-1', { guid: first.guid, indexerId: 8 })).status).toBe(200);
+    expect(vi.mocked(getSonarrClient)).toHaveBeenLastCalledWith('son-1');
+  });
+
+  it('an unknown instance fails before any token is read, without echoing upstream text', async () => {
     const res = await post(sonarrGrab, '/api/sonarr/release?instanceId=missing', { guid: 'tok', indexerId: 8 });
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'Failed to grab release' });
     expect(mocks.redis.get).not.toHaveBeenCalled();
     expect(mocks.sonarr.grabRelease).not.toHaveBeenCalled();
   });

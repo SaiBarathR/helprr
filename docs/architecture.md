@@ -1024,13 +1024,15 @@ of them (a grab sends indexerId + the release's own guid), so the three Arr
 clients drop them as they arrive (`src/lib/arr-release-links.ts`), and no route,
 cache or search provider can pass them on. The indexer page links that are shown
 (`infoUrl`, `commentUrl`, history's `nzbInfoUrl`) stay, but only as http(s) links
-without user info or a query parameter named like a key. A search result's own `guid` can be
+without user info, a query parameter named like a key (also with `[]`, stray
+spaces or `;`-joined) or a fragment holding a value; the rest of the query is kept
+as written, and a key in the path is not detected. A search result's own `guid` can be
 the same download link, and the grab needs it, so it stays on the server too:
 the search routes hand the browser a per-user token for it
 (`src/lib/release-tokens.ts`, one Redis entry per result for 30 minutes,
-scoped to the app and the instance's connection id, so a search on the default
-instance resolves whether or not the grab names it, and not on another instance
-after the default changes), and the grab
+scoped to the app and the instance's connection id, resolved once per request,
+so a search on the default instance resolves whether or not the grab names it,
+and never on another instance after the default changes, even mid-search), and the grab
 routes resolve it; a token from
 another user, instance or app, or an expired one, is an expired result. The
 download-client routes return only what the choice shows, not each client's
