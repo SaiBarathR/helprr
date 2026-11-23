@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Indexer page links in interactive search and history (the release's details and
+  comments pages) no longer carry a query parameter named like a key or passkey, or a
+  user name and password; a link that isn't http(s) is dropped.
+- Lidarr's grab checks the release and download client as Sonarr's and Radarr's do.
+
+### Fixed
+
+- A release found on the default Sonarr, Radarr or Lidarr no longer shows "This result has
+  expired" when grabbed with that instance named, and after you change the default
+  instance a grab from an earlier search can no longer go to the new default.
+
+#### For admins
+
+- Redis is limited to 256 MB (Helprr uses tens of MB). Past the limit it refuses writes
+  instead of dropping keys, so the sign-in and two-step limits it holds stay in force.
+  New installs get it at once. `./scripts/update.sh` leaves Redis running, so on an
+  existing install apply it once after updating with
+  `docker compose up -d --no-deps helprr-redis` (Redis restarts in a moment and keeps
+  its data).
+
 ## [1.18.0] - 2026-11-23
 
 Manual grab in interactive search, indexer keys kept off the browser, YouTube captions that

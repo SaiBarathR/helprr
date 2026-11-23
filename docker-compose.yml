@@ -54,7 +54,9 @@ services:
         # /data is handed to the redis user here, whole: the entrypoint skips that when
         # it finds a file it does not know, and Redis could then not read its own data.
         chown -R redis /data 2>/dev/null || true
-        exec docker-entrypoint.sh redis-server - --appendonly yes <<EOF
+        # At most 256 MB (Helprr uses tens), refusing writes past it instead of evicting:
+        # the login and two-step limits are kept here too and must not be dropped.
+        exec docker-entrypoint.sh redis-server - --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction <<EOF
         requirepass "$$(printf '%s' "$$REDIS_PASSWORD" | sed 's/[\\"]/\\&/g')"
         EOF
     volumes:
