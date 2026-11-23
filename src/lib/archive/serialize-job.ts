@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { previousVideoNames, sizeThumbnail } from '@/lib/twitch/serialize';
+import { sizeThumbnail } from '@/lib/twitch/serialize';
 
 export const JOB_SELECT = {
   id: true,
@@ -42,7 +42,6 @@ export function serializeJob(job: JobRow) {
     ...job,
     video: job.video && {
       ...job.video,
-      ...previousVideoNames(job.video),
       thumbnailUrl: sizeThumbnail(job.video.thumbnailUrl, 320, 180),
     },
     bytesDone: job.bytesDone === null ? null : Number(job.bytesDone),
