@@ -3,6 +3,7 @@ import { getSonarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { grabErrorResponse, parseSonarrGrab } from '@/lib/arr-grab';
 
 async function getHandler(request: NextRequest) {
   const auth = await requireUserCapability('activity.manage');
@@ -38,34 +39,33 @@ async function getHandler(request: NextRequest) {
 }
 
 /**
- * Initiates a grab of a Sonarr release using parameters supplied in the request body.
- *
- * Expects a JSON body with `guid` (release identifier) and `indexerId` (indexer identifier); `downloadClientId` may be provided to select a specific download client.
- *
- * @param request - HTTP request whose JSON body must contain:
- *   - `guid`: the release GUID to grab
- *   - `indexerId`: the indexer ID to use for the grab
- *   - `downloadClientId` (optional): the download client ID to route the grab through
- * @returns A NextResponse with `{ success: true }` on success, or `{ error: string }` on failure. Responses use status 400 for missing required fields and 500 for server errors.
+ * Grabs a release from the last interactive search. The body is one of the
+ * shapes `parseSonarrGrab` accepts: plain `{ guid, indexerId }`, with the
+ * searched episode (`episodeId`) or season (`seriesId`, `seasonNumber`) for a
+ * release Sonarr couldn't match, or a Manual grab (`shouldOverride`), each with
+ * an optional `downloadClientId`. 400 for anything else; known Sonarr refusals
+ * come back in Helprr's words with a `code` (see `grabErrorResponse`).
  */
 async function postHandler(request: NextRequest) {
   const auth = await requireUserCapability('activity.manage');
   if (!auth.ok) return auth.response;
 
+  let body: unknown;
   try {
-    const body = await request.json();
-    const { guid, indexerId, downloadClientId } = body;
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+  const parsed = parseSonarrGrab(body);
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
-    if (!guid || indexerId === undefined) {
-      return NextResponse.json({ error: 'guid and indexerId are required' }, { status: 400 });
-    }
-
+  try {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getSonarrClient(instanceId);
-    await client.grabRelease(guid, indexerId, downloadClientId);
+    await client.grabRelease(parsed.request);
     return NextResponse.json({ success: true });
   } catch (error) {
-    return upstreamErrorResponse(error, 'Failed to grab release');
+    return grabErrorResponse(error, 'sonarr');
   }
 }
 

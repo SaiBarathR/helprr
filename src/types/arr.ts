@@ -299,7 +299,7 @@ export interface MovieFileEdit {
 // Release (Interactive Search)
 export interface Release {
   guid: string;
-  quality: { quality: { id: number; name: string }; revision?: { version: number } };
+  quality: ArrQualityModel;
   qualityWeight: number;
   age: number;
   ageHours: number;
@@ -323,17 +323,66 @@ export interface Release {
   customFormatScore?: number;
   customFormats?: { id: number; name: string }[];
   languages?: { id: number; name: string }[];
+  /**
+   * False when Sonarr/Radarr couldn't tell which series and episodes (or movie)
+   * the release is for: a plain grab then fails, so the user confirms the
+   * search's own item or chooses one (Manual grab). Missing counts as true.
+   */
+  downloadAllowed?: boolean;
   // Sonarr-specific
   seriesId?: number;
   episodeId?: number;
   seasonNumber?: number;
   fullSeason?: boolean;
+  /** Read from the release title, whether or not Sonarr matched it. */
+  seriesTitle?: string;
+  episodeNumbers?: number[];
+  /** What Sonarr matched the release to; absent or empty when it couldn't. */
+  mappedSeriesId?: number;
+  mappedSeasonNumber?: number;
+  mappedEpisodeInfo?: ReleaseEpisode[];
   // Radarr-specific
   movieId?: number;
+  /** Titles read from the release, whether or not Radarr matched it. */
+  movieTitles?: string[];
+  mappedMovieId?: number;
   // Lidarr-specific
   artistId?: number;
   albumId?: number;
 }
+
+/** An episode a Sonarr release maps to (ReleaseEpisodeResource). */
+export interface ReleaseEpisode {
+  id: number;
+  seasonNumber: number;
+  episodeNumber: number;
+  absoluteEpisodeNumber?: number;
+  title?: string;
+}
+
+/**
+ * POST /api/v3/release bodies Helprr sends. Sonarr and Radarr find the release
+ * in their search cache by indexerId + guid, then:
+ * - plain: grab it as they matched it;
+ * - context: when they couldn't match it, use the item that was searched for;
+ * - override: grab it as the user chose (Manual grab); every field is required.
+ */
+interface ArrGrabBase {
+  guid: string;
+  indexerId: number;
+  downloadClientId?: number;
+}
+export type SonarrGrabRequest = ArrGrabBase & (
+  | { episodeId?: never; seriesId?: never; shouldOverride?: never }
+  | { episodeId: number }
+  | { seriesId: number; seasonNumber: number }
+  | { shouldOverride: true; seriesId: number; episodeIds: number[]; quality: ArrQualityModel; languages: ArrLanguage[] }
+);
+export type RadarrGrabRequest = ArrGrabBase & (
+  | { movieId?: never; shouldOverride?: never }
+  | { movieId: number }
+  | { shouldOverride: true; movieId: number; quality: ArrQualityModel; languages: ArrLanguage[] }
+);
 
 export interface DownloadClient {
   id: number;

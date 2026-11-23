@@ -3,6 +3,7 @@ import { getRadarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { grabErrorResponse, parseRadarrGrab } from '@/lib/arr-grab';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('activity.manage');
@@ -36,31 +37,33 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 }
 
 /**
- * Trigger grabbing a Radarr release using identifiers supplied in the request body.
- *
- * Expects the request body to be JSON with `guid` (string) and `indexerId` (number) — `downloadClientId` (number) may be provided to select a download client.
- *
- * @param request - The incoming HTTP request whose JSON body contains `{ guid, indexerId, downloadClientId? }`
- * @returns A JSON response: `{ success: true }` on success; otherwise `{ error: string }` with status `400` for missing/invalid input or `500` for internal failures.
+ * Grabs a release from the last interactive search. The body is one of the
+ * shapes `parseRadarrGrab` accepts: plain `{ guid, indexerId }`, with the
+ * searched movie (`movieId`) for a release Radarr couldn't match, or a Manual
+ * grab (`shouldOverride`), each with
+ * an optional `downloadClientId`. 400 for anything else; known Radarr refusals
+ * come back in Helprr's words with a `code` (see `grabErrorResponse`).
  */
 async function postHandler(request: NextRequest) {
   const auth = await requireUserCapability('activity.manage');
   if (!auth.ok) return auth.response;
 
+  let body: unknown;
   try {
-    const body = await request.json();
-    const { guid, indexerId, downloadClientId } = body;
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+  const parsed = parseRadarrGrab(body);
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
-    if (!guid || indexerId === undefined) {
-      return NextResponse.json({ error: 'guid and indexerId are required' }, { status: 400 });
-    }
-
+  try {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getRadarrClient(instanceId);
-    await client.grabRelease(guid, indexerId, downloadClientId);
+    await client.grabRelease(parsed.request);
     return NextResponse.json({ success: true });
   } catch (error) {
-    return upstreamErrorResponse(error, 'Failed to grab release');
+    return grabErrorResponse(error, 'radarr');
   }
 }
 

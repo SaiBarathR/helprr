@@ -1,0 +1,105 @@
+[
+  {
+    "guid": "https://indexer.example/release/r1",
+    "quality": {
+      "quality": {
+        "id": 22,
+        "name": "BR-DISK",
+        "source": "bluray",
+        "resolution": 1080,
+        "modifier": "brdisk"
+      },
+      "revision": {
+        "version": 1,
+        "real": 0,
+        "isRepack": false
+      }
+    },
+    "qualityWeight": 2401,
+    "age": 2714,
+    "ageHours": 65154.37529964714,
+    "ageMinutes": 3909262.5179788335,
+    "size": 18139236584,
+    "indexerId": 5,
+    "indexer": "Indexer A (Prowlarr)",
+    "releaseGroup": "DDR",
+    "title": "Us 2019.MULTi.UHD.BluRay.2160p.HEVC.HDR.Atmos.7.1-DDR",
+    "movieTitles": [
+      "Us"
+    ],
+    "languages": [
+      {
+        "id": 1,
+        "name": "English"
+      }
+    ],
+    "mappedMovieId": 116,
+    "movieRequested": true,
+    "approved": true,
+    "rejected": false,
+    "rejections": [],
+    "infoUrl": "https://indexer.example/details/r1",
+    "downloadAllowed": true,
+    "customFormats": [],
+    "customFormatScore": 0,
+    "seeders": 11,
+    "leechers": 3,
+    "protocol": "torrent",
+    "indexerFlags": [
+      "G_Freeleech"
+    ],
+    "downloadUrl": ""
+  },
+  {
+    "guid": "https://indexer.example/release/r2",
+    "quality": {
+      "quality": {
+        "id": 15,
+        "name": "WEBRip-1080p",
+        "source": "webrip",
+        "resolution": 1080,
+        "modifier": "none"
+      },
+      "revision": {
+        "version": 1,
+        "real": 0,
+        "isRepack": false
+      }
+    },
+    "qualityWeight": 1701,
+    "age": 557,
+    "ageHours": 13390.563355231194,
+    "ageMinutes": 803433.8013138716,
+    "size": 1472443695,
+    "indexerId": 5,
+    "indexer": "Indexer B (Prowlarr)",
+    "releaseGroup": "iVy",
+    "title": "Fix Us 2019 1080p WEBRip DDP 2 0 10bit H 265-iVy",
+    "movieTitles": [
+      "Fix Us"
+    ],
+    "languages": [
+      {
+        "id": 0,
+        "name": "Unknown"
+      }
+    ],
+    "movieRequested": false,
+    "approved": false,
+    "rejected": true,
+    "rejections": [
+      "Unknown Movie. Unable to match to correct movie using release title."
+    ],
+    "infoUrl": "https://indexer.example/details/r2",
+    "downloadAllowed": false,
+    "customFormats": [],
+    "customFormatScore": 0,
+    "seeders": 5,
+    "leechers": 3,
+    "protocol": "torrent",
+    "indexerFlags": [
+      "G_Freeleech"
+    ],
+    "downloadUrl": ""
+  }
+]

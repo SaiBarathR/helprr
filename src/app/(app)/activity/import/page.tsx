@@ -20,6 +20,7 @@ import { pollCommand } from '@/lib/arr-command';
 import { trackManualImport } from '@/lib/manual-import-tracker';
 import type { ManualImportItem, RadarrMovie, SonarrEpisode, SonarrSeries } from '@/types';
 import { SearchInput } from '@/components/media/search-input';
+import { MediaPicker, type MediaOption } from '@/components/media/arr-pickers';
 import { LidarrManualImport } from './_components/lidarr-manual-import';
 
 // The *arr returns scanned files in no particular order; list them by path, as
@@ -35,8 +36,6 @@ const NO_FILES: ManualImportItem[] = [];
 
 type View = 'files' | 'episodes' | 'media';
 
-// A series or movie offered when the *arr could not match the files itself.
-type MediaOption = { id: number; title: string; year?: number };
 
 /**
  * Top-level page component that renders ManualImportContent inside a Suspense boundary with a skeleton fallback.
@@ -105,7 +104,6 @@ function ManualImportContent() {
   // the scanned files, with refreshed fields when the *arr could check them.
   const [assigned, setAssigned] = useState<Map<string, ManualImportItem>>(new Map());
   const [uncheckedPaths, setUncheckedPaths] = useState<Set<string>>(new Set());
-  const [mediaSearch, setMediaSearch] = useState('');
   const [assigning, setAssigning] = useState(false);
   // Bumped per choice and on backing out, so a late answer is recognised and dropped.
   const assignRequest = useRef(0);
@@ -159,12 +157,6 @@ function ManualImportContent() {
     select: ensureArray,
     staleTime: 60_000,
   });
-  const filteredMedia = useMemo(() => {
-    const q = mediaSearch.trim().toLowerCase();
-    return mediaOptions
-      .filter((m) => !q || m.title.toLowerCase().includes(q))
-      .sort((a, b) => a.title.localeCompare(b.title));
-  }, [mediaOptions, mediaSearch]);
 
   // The series whose episodes the picker offers: the link's when it carries
   // one, otherwise that of the file being edited.
@@ -337,7 +329,6 @@ function ManualImportContent() {
       // picks on files that were never unplaced are kept.
       const replaced = new Set(unplacedFiles.map((f) => f.path));
       setFileOverrides((prev) => new Map([...prev].filter(([index]) => !replaced.has(scannedFiles[index]?.path))));
-      setMediaSearch('');
       setView('files');
     } finally {
       if (request === assignRequest.current) setAssigning(false);
@@ -422,60 +413,18 @@ function ManualImportContent() {
 
   if (view === 'media') {
     return (
-      <div
-        className="fixed inset-y-0 right-0 left-[var(--app-main-left,0px)] z-50 flex flex-col bg-background pl-[calc(var(--main-pad-x)+var(--main-inset-left))] pr-[calc(var(--main-pad-x)+var(--main-inset-right))] pt-[calc(env(safe-area-inset-top)+var(--main-pad-top))]"
-        style={{ '--header-height': '0px' } as React.CSSProperties}
-      >
-        <PageHeader
-          title={isSonarr ? 'Select Series' : 'Select Movie'}
-          subtitle={searchParams.get('title') || undefined}
-          onBack={() => { assignRequest.current++; setAssigning(false); setView('files'); setMediaSearch(''); }}
-        />
-
-        <div className="py-2 border-b border-border">
-          <SearchInput
-            clearable
-            value={mediaSearch}
-            onChange={setMediaSearch}
-            historyKey="activity-import-media"
-            placeholder={`Search ${isSonarr ? 'series' : 'movies'}…`}
-            autoFocus
-            className="w-full text-sm bg-muted/40 rounded-lg pl-9 pr-3 py-2.5 h-auto shadow-none border-0 outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-primary/40 transition-shadow"
-          >
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          </SearchInput>
-        </div>
-
-        <div className="flex-1 overflow-y-auto overscroll-contain pb-[var(--footer-height)]">
-          {mediaLoading ? (
-            <PageSpinner />
-          ) : mediaError ? (
-            <p className="text-center py-12 text-sm text-muted-foreground">Couldn&apos;t load the {isSonarr ? 'series' : 'movie'} list</p>
-          ) : filteredMedia.length === 0 ? (
-            <p className="text-center py-12 text-sm text-muted-foreground">No {isSonarr ? 'series' : 'movies'} match</p>
-          ) : (
-            filteredMedia.map((option) => {
-              const isSelected = (isSonarr ? chosenMedia?.series?.id : chosenMedia?.movie?.id) === option.id;
-              return (
-                <button
-                  key={option.id}
-                  onClick={() => assignMedia(option)}
-                  disabled={assigning}
-                  className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors active:bg-muted/60 disabled:opacity-60 ${
-                    isSelected ? 'bg-primary/8' : 'hover:bg-muted/40'
-                  }`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm truncate">{option.title}</p>
-                    {option.year ? <p className="text-[11px] text-muted-foreground mt-0.5">{option.year}</p> : null}
-                  </div>
-                  {isSelected && <Check className="h-4 w-4 text-primary shrink-0" />}
-                </button>
-              );
-            })
-          )}
-        </div>
-      </div>
+      <MediaPicker
+        kind={isSonarr ? 'series' : 'movie'}
+        subtitle={searchParams.get('title') || undefined}
+        options={mediaOptions}
+        loading={mediaLoading}
+        error={mediaError}
+        selectedId={isSonarr ? chosenMedia?.series?.id : chosenMedia?.movie?.id}
+        disabled={assigning}
+        historyKey="activity-import-media"
+        onBack={() => { assignRequest.current++; setAssigning(false); setView('files'); }}
+        onSelect={assignMedia}
+      />
     );
   }
 

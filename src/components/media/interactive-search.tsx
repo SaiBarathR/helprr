@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { notFound } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
@@ -23,6 +23,7 @@ import {
   SlidersHorizontal, Check, RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { GrabAnywayDialog, ManualGrabSheet, type GrabOutcome, type SearchedItem } from '@/components/media/manual-grab';
 import type { Release, DownloadClient } from '@/types';
 
 interface InteractiveSearchProps {
@@ -31,8 +32,16 @@ interface InteractiveSearchProps {
   service: 'sonarr' | 'radarr' | 'lidarr';
   /** Ids from the route; every value but instanceId must be a whole number. */
   searchParams: Record<string, string | number>;
+  /**
+   * Sonarr/Radarr: the series, season and episode (or movie) from the route,
+   * for a release the *arr couldn't match (Grab anyway / Manual grab). Whole numbers.
+   */
+  searchedItem?: Record<string, string | number>;
   showSeasonPackFilter?: boolean;
 }
+
+/** A row's grab, as Sonarr's own list shows it: in flight, done, or failed (with why). */
+type RowGrab = { status: 'grabbing' | 'grabbed' | 'failed'; error?: string };
 
 // A search asks every indexer and can take half a minute, so going back to the
 // item and returning shows the same results instead of searching again.
@@ -88,6 +97,8 @@ function languageChips(languages?: { id: number; name: string }[]) {
   );
 }
 
+const NO_ITEM: Record<string, string | number> = {};
+
 type SortKey = 'quality' | 'size' | 'seeders' | 'age' | 'customFormatScore';
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -110,11 +121,17 @@ export function InteractiveSearch({
   subtitle,
   service,
   searchParams,
+  searchedItem = NO_ITEM,
   showSeasonPackFilter = false,
 }: InteractiveSearchProps) {
-  if (!Object.entries(searchParams).every(([key, value]) => key === 'instanceId' || /^\d+$/.test(String(value)))) {
+  if (
+    !Object.entries(searchParams).every(([key, value]) => key === 'instanceId' || /^\d+$/.test(String(value)))
+    || !Object.values(searchedItem).every((value) => /^\d+$/.test(String(value)))
+  ) {
     notFound();
   }
+  // Lidarr keeps its plain grab and download-client override (no Manual grab there yet).
+  const hasManualGrab = service !== 'lidarr';
   const [sortKey, setSortKey] = useState<SortKey>('quality');
   const [sortAsc, setSortAsc] = useState(false);
 
@@ -125,9 +142,17 @@ export function InteractiveSearch({
   const [languageFilter, setLanguageFilter] = useState<string[]>([]);
   const [seasonPackFilter, setSeasonPackFilter] = useState<'any' | 'seasonPack' | 'singleEpisode'>('any');
 
-  // Override state
+  // Override state (Lidarr's download-client dialog)
   const [overrideRelease, setOverrideRelease] = useState<Release | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  // Sonarr/Radarr: the release awaiting "Grab anyway", and the Manual grab sheet.
+  const [confirmRelease, setConfirmRelease] = useState<Release | null>(null);
+  const [manual, setManual] = useState<{ release: Release; key: number } | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  // The sheet's series and episode lists open full screen in place of the page;
+  // back on it, the list is where the user left it (null: nothing to restore).
+  const [fullScreen, setFullScreen] = useState(false);
+  const pageScroll = useRef<number | null>(null);
 
   const searchQueryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -154,11 +179,30 @@ export function InteractiveSearch({
   const releases = useMemo(() => releasesQuery.data ?? [], [releasesQuery.data]);
   const loading = releasesQuery.isFetching;
 
+  // Per-row grab state, for the results it was made on: a new search starts clean.
+  // Read through a ref, so a grab that ends after a new search doesn't reset it.
+  const [grabs, setGrabs] = useState<{ at: number; rows: Record<string, RowGrab> }>({ at: 0, rows: {} });
+  const resultsAt = useRef(releasesQuery.dataUpdatedAt);
+  useEffect(() => { resultsAt.current = releasesQuery.dataUpdatedAt; }, [releasesQuery.dataUpdatedAt]);
+  const rowGrabs = grabs.at === releasesQuery.dataUpdatedAt ? grabs.rows : {};
+  const setRowGrab = (guid: string, grab: RowGrab) => setGrabs((prev) => ({
+    at: resultsAt.current,
+    rows: { ...(prev.at === resultsAt.current ? prev.rows : {}), [guid]: grab },
+  }));
+
+  // The page's own item, in numbers: what Manual grab starts from.
+  const searched: SearchedItem = Object.fromEntries(Object.entries(searchedItem).map(([k, v]) => [k, Number(v)]));
+  // What "Grab anyway" sends, as Sonarr's own UI does: the search's episode, season or movie.
+  const searchContext = Object.fromEntries(
+    Object.entries(searchParams).filter(([k]) => k !== 'instanceId').map(([k, v]) => [k, Number(v)]),
+  );
+  const instanceId = searchParams.instanceId !== undefined ? String(searchParams.instanceId) : undefined;
+
   // Download clients load lazily when the override sheet opens (cached after).
   const clientsQuery = useQuery({
     queryKey: [service, 'downloadclients', searchQueryString],
     queryFn: jsonFetcher<DownloadClient[]>(`/api/${service}/downloadclient?${searchQueryString}`),
-    enabled: overrideRelease !== null,
+    enabled: overrideRelease !== null || manualOpen,
     select: (d) => (Array.isArray(d) ? d.filter((c) => c.enable) : []),
   });
   const downloadClients = clientsQuery.data ?? [];
@@ -170,29 +214,60 @@ export function InteractiveSearch({
     }
   }, [clientsQuery.isError, clientsQuery.error]);
 
+  // One mutation for every Sonarr/Radarr/Lidarr grab (plain, Grab anyway,
+  // Manual grab), so a 401 reaches the global redirect; each row keeps its own state.
   const grabMutation = useMutation({
-    mutationFn: async (release: Release) => {
+    mutationFn: async ({ release, body }: { release: Release; body: Record<string, unknown> }) => {
       const res = await fetch(releaseUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guid: release.guid, indexerId: release.indexerId }),
+        body: JSON.stringify({ guid: release.guid, indexerId: release.indexerId, ...body }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        throw new ApiError(res.status, data?.error || 'Grab failed');
+        throw new ApiError(res.status, data?.error || 'Grab failed', typeof data?.code === 'string' ? data.code : undefined);
       }
     },
-    onSuccess: () => {
+    onMutate: ({ release }) => setRowGrab(release.guid, { status: 'grabbing' }),
+    onSuccess: (_data, { release }) => {
+      setRowGrab(release.guid, { status: 'grabbed' });
       toast.success('Added to download queue');
       void expireSearches();
     },
-    onError: (err) => {
-      if (err instanceof ApiError && err.status === 401) return;
-      toast.error(err instanceof Error ? err.message : 'Grab failed');
+    onError: (err, { release }) => {
+      setRowGrab(release.guid, { status: 'failed', error: err instanceof Error ? err.message : 'Grab failed' });
     },
   });
-  // Per-release spinner: the guid of the release currently being grabbed (or null).
-  const grabbing = grabMutation.isPending ? (grabMutation.variables?.guid ?? null) : null;
+
+  /** Grabs and says how it went; the caller shows a failure where it belongs. */
+  async function postGrab(release: Release, body: Record<string, unknown>): Promise<GrabOutcome & { status?: number }> {
+    try {
+      await grabMutation.mutateAsync({ release, body });
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : 'Grab failed',
+        code: err instanceof ApiError ? err.code : undefined,
+        status: err instanceof ApiError ? err.status : undefined,
+      };
+    }
+  }
+
+  // A grab from the list: a refusal Manual grab can solve opens it, an expired
+  // result offers a new search, anything else is a toast (a 401 redirects instead).
+  async function grabFromList(release: Release, body: Record<string, unknown>) {
+    const outcome = await postGrab(release, body);
+    if (outcome.ok || outcome.status === 401) return;
+    if (outcome.code === 'unmatched' && hasManualGrab) {
+      toast.error(outcome.error);
+      openManual(release);
+    } else if (outcome.code === 'expired') {
+      toast.error(outcome.error, { action: { label: 'Search again', onClick: doSearch } });
+    } else {
+      toast.error(outcome.error);
+    }
+  }
 
   const overrideGrabMutation = useMutation({
     mutationFn: async (vars: { release: Release; clientId: number | null }) => {
@@ -208,13 +283,16 @@ export function InteractiveSearch({
         throw new ApiError(res.status, data?.error || 'Grab failed');
       }
     },
-    onSuccess: () => {
+    // Lidarr's override marks its row as a plain grab does.
+    onSuccess: (_data, { release }) => {
+      setRowGrab(release.guid, { status: 'grabbed' });
       toast.success('Added to download queue');
       setOverrideRelease(null);
       void expireSearches();
     },
-    onError: (err) => {
+    onError: (err, { release }) => {
       if (err instanceof ApiError && err.status === 401) return;
+      setRowGrab(release.guid, { status: 'failed', error: err instanceof Error ? err.message : 'Grab failed' });
       toast.error(err instanceof Error ? err.message : 'Grab failed');
     },
   });
@@ -256,13 +334,34 @@ export function InteractiveSearch({
   }
 
   function handleGrab(release: Release) {
-    grabMutation.mutate(release);
+    // As in Sonarr/Radarr: a release they couldn't match asks first.
+    if (hasManualGrab && release.downloadAllowed === false) {
+      setConfirmRelease(release);
+      return;
+    }
+    void grabFromList(release, {});
+  }
+
+  function openManual(release: Release) {
+    // Taken now: while the sheet is open, a Safari tab's scroll lock reads 0.
+    pageScroll.current = window.scrollY;
+    setManual((prev) => ({ release, key: (prev?.key ?? 0) + 1 }));
+    setManualOpen(true);
   }
 
   function openOverride(release: Release) {
+    if (hasManualGrab) {
+      openManual(release);
+      return;
+    }
     setOverrideRelease(release);
     setSelectedClientId(null);
   }
+
+  // Back on the page where the user left it, once it shows again after a full-screen list.
+  useEffect(() => {
+    if (!fullScreen && pageScroll.current !== null) window.scrollTo(0, pageScroll.current);
+  }, [fullScreen]);
 
   function handleOverrideGrab() {
     if (!overrideRelease) return;
@@ -342,7 +441,9 @@ export function InteractiveSearch({
   const hasActiveFilters = !!textFilter || indexerFilter.length > 0 || qualityFilter.length > 0 || languageFilter.length > 0 || seasonPackFilter !== 'any';
 
   return (
-    <div className="animate-content-in">
+    <>
+    {/* Hidden, not unmounted, while Manual grab's series or episode list is open: the results stay as they were. */}
+    <div className="animate-content-in" hidden={fullScreen}>
       <PageHeader
         title="Interactive Search"
         subtitle={subtitle}
@@ -542,6 +643,7 @@ export function InteractiveSearch({
                 filteredAndSorted.map((release) => {
                   const isRejected = release.rejected;
                   const isTorrent = release.protocol === 'torrent';
+                  const rowGrab = rowGrabs[release.guid] as RowGrab | undefined;
                   const infoUrl = release.infoUrl;
                   return (
                     <div
@@ -580,27 +682,39 @@ export function InteractiveSearch({
                               <ExternalLink className="h-3.5 w-3.5" />
                             </a>
                           )}
-                          {/* Add to download queue */}
+                          {/* Add to download queue; then, as in Sonarr's list, whether it was grabbed */}
                           <button
-                            className="min-w-[28px] min-h-[28px] flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50"
-                            title="Add to download queue"
+                            className={`min-w-[28px] min-h-[28px] flex items-center justify-center rounded hover:bg-accent disabled:opacity-50 ${
+                              rowGrab?.status === 'grabbed' ? 'text-emerald-500 disabled:opacity-100'
+                                : rowGrab?.status === 'failed' ? 'text-destructive'
+                                  : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                            title={rowGrab?.status === 'grabbed' ? 'Added to download queue'
+                              : rowGrab?.status === 'failed' ? `${rowGrab.error ?? 'Grab failed'}. Try again`
+                                : 'Add to download queue'}
                             onClick={() => handleGrab(release)}
-                            disabled={grabbing === release.guid}
-                            aria-label="Add to download queue"
+                            disabled={rowGrab?.status === 'grabbing' || rowGrab?.status === 'grabbed'}
+                            aria-label={rowGrab?.status === 'grabbed' ? 'Added to download queue'
+                              : rowGrab?.status === 'failed' ? `Grab failed: ${rowGrab.error ?? 'Grab failed'}. Add to download queue`
+                                : 'Add to download queue'}
                           >
-                            {grabbing === release.guid ? (
+                            {rowGrab?.status === 'grabbing' ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : rowGrab?.status === 'grabbed' ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : rowGrab?.status === 'failed' ? (
+                              <AlertTriangle className="h-3.5 w-3.5" />
                             ) : (
                               <Download className="h-3.5 w-3.5" />
                             )}
                           </button>
-                          {/* Override and add to download queue */}
+                          {/* Override and add to download queue (Manual grab; Lidarr: another download client) */}
                           <button
                             className="min-w-[28px] min-h-[28px] flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50"
                             title="Override and add to download queue"
                             aria-label="Override and add to download queue"
                             onClick={() => openOverride(release)}
-                            disabled={grabbing === release.guid}
+                            disabled={rowGrab?.status === 'grabbing'}
                           >
                             <SlidersHorizontal className="h-3.5 w-3.5" />
                           </button>
@@ -715,5 +829,39 @@ export function InteractiveSearch({
         </DialogContent>
       </Dialog>
     </div>
+
+    {hasManualGrab && (
+      <GrabAnywayDialog
+        service={service as 'sonarr' | 'radarr'}
+        release={confirmRelease}
+        onCancel={() => setConfirmRelease(null)}
+        onChooseManually={() => {
+          const release = confirmRelease;
+          setConfirmRelease(null);
+          if (release) openManual(release);
+        }}
+        onGrabAnyway={() => {
+          const release = confirmRelease;
+          setConfirmRelease(null);
+          if (release) void grabFromList(release, searchContext);
+        }}
+      />
+    )}
+    {hasManualGrab && manual && (
+      <ManualGrabSheet
+        key={manual.key}
+        service={service as 'sonarr' | 'radarr'}
+        instanceId={instanceId}
+        open={manualOpen}
+        release={manual.release}
+        searched={searched}
+        downloadClients={downloadClients}
+        onClose={() => setManualOpen(false)}
+        onGrab={postGrab}
+        onFullScreenChange={setFullScreen}
+        onSearchAgain={doSearch}
+      />
+    )}
+    </>
   );
 }

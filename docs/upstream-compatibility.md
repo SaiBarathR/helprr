@@ -31,7 +31,7 @@ product release number.
 | Service type | Integration | API contract used by Helprr | Exact version verified | Verification evidence |
 | --- | --- | --- | --- | --- |
 | `SONARR` | Sonarr | REST `/api/v3` | `4.0.20.3014` (two instances); `4.0.19.2979` (earlier qualification) | On `4.0.20.3014`: system-status probe; live series, queue, history, and wanted reads; unmatched-download queue listing, manual-import scan, series re-evaluation, and manual import (see below). On `4.0.19.2979`: live cleanup, file, and whole-series operations |
-| `RADARR` | Radarr | REST `/api/v3` | `6.4.4.10685` (two instances); `6.2.1.10461` (earlier qualification) | On `6.4.4.10685`: system-status probe; live movie-list and quality-profile reads; paged reads checked. On `6.2.1.10461`: live cleanup and whole-movie operations |
+| `RADARR` | Radarr | REST `/api/v3` | `7.0.3.10918` (two instances; interactive-search grabs only); `6.4.4.10685` (two instances); `6.2.1.10461` (earlier qualification) | On `7.0.3.10918`: interactive search and its plain, searched-movie and Manual grab bodies (see Interactive-search grabs). On `6.4.4.10685`: system-status probe; live movie-list and quality-profile reads; paged reads checked. On `6.2.1.10461`: live cleanup and whole-movie operations |
 | `LIDARR` | Lidarr | REST `/api/v1` | `3.1.2.4913` | Authenticated system-status probe; live track-file and album operations. Artist-list and health reads re-run 2026-10-07 |
 | `QBITTORRENT` | qBittorrent | Web API `/api/v2` | `v5.1.4` | Authenticated app-version probe; live queue, cleanup, keep-data, and delete-data operations. Torrent-list, transfer-summary, and category reads re-run 2026-10-07 |
 | `PROWLARR` | Prowlarr | REST `/api/v1` | `2.5.2.5491`; `2.4.0.5397` (earlier qualification) | Authenticated system-status probe on both; live indexer-list, status, health and history reads and `PUT /api/v1/indexer/bulk` enable, priority and tags (other properties unchanged, unknown id refused), `GET`/`POST /api/v1/search` with a real grab, and applications list and test on `2.5.2.5491` |
@@ -421,6 +421,34 @@ test instances, with locally generated torrents of random bytes:
   `downloadFolderImported` history record with the release's `downloadId`
   (Sonarr: one per episode, with its `episodeId`) and `data.fileId`, the id of
   the file the import created.
+
+### Interactive-search grabs (2026-11-23)
+
+`POST /api/v3/release` grabs a release from the *arr's search cache, found by
+`indexerId` + `guid` (source: `ReleaseController.DownloadRelease`, Sonarr
+`v4.0.20.3014`, Radarr `v7.0.3.10918`). Live on Sonarr `4.0.20.3014` and Radarr
+`7.0.3.10918` (the dummy instances, qBittorrent `5.1.4`), through a local build:
+
+- **Unmatched releases.** A search returns releases the *arr couldn't match with
+  `downloadAllowed: false`, no `mappedSeriesId` / `mappedMovieId`, and the rejection
+  "Unknown Series" / "Unknown Movie. Unable to match to correct movie using release
+  title." (7 of 9 for *Love in Disguise* S01E03; 40 of 76 for *Us*). A plain grab of
+  one is refused with 404 `{ message: "Unable to find matching series and episodes,
+  will need to be manually provided" }` (Radarr: "…matching movie…"). The body's
+  `description` is the server's stack trace.
+- **Searched item.** The same release with `episodeId` (Sonarr) or `movieId`
+  (Radarr) added was grabbed: history `grabbed` for S01E03, and for *Us*. Sonarr also
+  takes `seriesId` + `seasonNumber` and then reads the episodes from the title,
+  refusing with 404 "Unable to parse episodes in the release…" when it finds none.
+- **Manual grab.** `shouldOverride: true` with `seriesId`, `episodeIds`, `quality`
+  (with its full `revision`) and `languages` (Radarr: `movieId`) was grabbed as sent:
+  Sonarr's history shows two `grabbed` records, S01E03 and S01E04, quality
+  `WEBDL-720p` revision 2 and languages Unknown, English; Radarr's shows revision 2
+  and Unknown, English. The queue afterwards shows the *arr's own reading of the
+  torrent's name, not the override.
+- **Errors.** An unknown guid is 404 "Couldn't find requested release in cache, try
+  searching again" on both; an empty guid or `indexerId: 0` is a 400 validation list.
+  Release guids may be whole magnet links (up to about 1.5 KB seen).
 
 ### Sonarr and Radarr manual import (advanced fallback)
 
