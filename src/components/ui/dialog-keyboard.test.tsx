@@ -48,9 +48,19 @@ describe('a centred dialog and the phone keyboard', () => {
   it('keeps clear of the address bar in a Safari tab', () => {
     stubViewport(400);
     vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
+    vi.stubGlobal('screen', { width: 402, height: 874 });
     const panel = openDialog();
     expect(panel.style.top).toContain('170px');
     expect(panel.style.maxHeight).toContain('340px');
+  });
+
+  it('in a Safari tab on an iPhone SE, keeps no room for the toolbar it hides', () => {
+    stubViewport(400);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
+    vi.stubGlobal('screen', { width: 375, height: 667 });
+    const panel = openDialog();
+    expect(panel.style.top).toContain('200px');
+    expect(panel.style.maxHeight).toContain('400px');
   });
 
   it('goes back to its own classes once the keyboard closes', async () => {

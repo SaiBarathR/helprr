@@ -461,8 +461,10 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
   const audioFull = isAudio && expanded;
   const video = playback.stream?.mediaSource.MediaStreams?.find((stream) => stream.Type === 'Video');
   const showChrome = expanded && !locked && (controlsVisible || panel !== 'none' || playback.status !== 'playing');
-  // The centre transport replaces the bottom row's on touch screens.
-  const centreTransport = coarse && showChrome && panel === 'none';
+  // The centre transport replaces the bottom row's on touch screens. An
+  // error's message and Retry take the centre instead: drawn over the
+  // transport, a two-line message ran through the skips and Retry sat on Play.
+  const centreTransport = coarse && showChrome && panel === 'none' && !playback.error;
   const nextItem = isVideo ? playback.queue[playback.index + 1] : undefined;
 
   useEffect(() => {
@@ -880,7 +882,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                     sits in the same corner, and the title moved down into the
                     control row. A phone has no room for a centred title there,
                     so it stays up here beside the button. */}
-                <div className={cn(playback.needsJellyfinConnect && 'relative z-30', 'flex items-start gap-3 pt-[max(1rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-4 pl-[max(1rem,env(safe-area-inset-left))] md:pr-[max(2rem,env(safe-area-inset-right))] md:pl-[max(2rem,env(safe-area-inset-left))]')}>
+                <div className={cn(playback.needsJellyfinConnect && 'relative z-30', 'flex items-start gap-3 pt-[max(1rem,calc(env(safe-area-inset-top)+var(--ios-app-top-drop,0px)))] pr-[max(1rem,env(safe-area-inset-right))] pb-4 pl-[max(1rem,env(safe-area-inset-left))] md:pr-[max(2rem,env(safe-area-inset-right))] md:pl-[max(2rem,env(safe-area-inset-left))]')}>
                   <Button variant="ghost" size="icon" className="shrink-0 text-white" onClick={() => playback.setVideoExpanded(false)} aria-label="Minimize player">
                     <ChevronDown />
                   </Button>
@@ -1213,7 +1215,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
 
       {audioFull && playback.item && (
         <div className="fixed inset-0 z-[80] flex flex-col bg-background">
-          <div className="flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))]">
+          <div className="flex items-center justify-between p-4 pt-[max(1rem,calc(env(safe-area-inset-top)+var(--ios-app-top-drop,0px)))]">
             <Button variant="ghost" size="icon" onClick={() => playback.setVideoExpanded(false)} aria-label="Minimize">
               <ChevronDown />
             </Button>

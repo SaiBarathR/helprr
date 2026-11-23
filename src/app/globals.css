@@ -284,6 +284,15 @@
   }
 }
 
+/* The same band covers the top of the full-screen player and its Queue
+   panel, whatever the nav does, so their top rows (title, Minimize, Close,
+   the Queue heading) take the same drop. Only while the status bar shows:
+   its inset is 0 when it doesn't (an iPhone in landscape), and the drop with
+   it. */
+:root[data-ios-app] {
+  --ios-app-top-drop: min(27px, calc(env(safe-area-inset-top, 0px) * 1000));
+}
+
 /* The page-loading overlay (AppShell) covers the page, not the app's chrome:
    it starts under the status bar, and on a phone with the nav at the top under
    the bar too, where sticky toolbars pin (--header-height), so its heading
