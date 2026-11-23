@@ -34,6 +34,22 @@ export function inSafariTab() {
   return isIOS() && !homeScreen;
 }
 
+/**
+ * A Safari tab whose address bar stays on screen, over the bottom of the
+ * visible part, while the keyboard is up. On an iPhone 18 Pro (iOS 27)
+ * Safari's floating bar sat over the bottom ~60 px of a lifted sheet, and a
+ * tap there went to Safari (#678). An iPhone SE hides its bottom toolbar while
+ * the keyboard is up, and room kept for it there was a blank band between the
+ * sheet and the keyboard. An iPhone with a Home button has a 16:9 screen
+ * (about 1.78, with Display Zoom too); every Face ID iPhone's is about 2.16,
+ * also zoomed (a mini at 320 × 693). An iPad is left as it was.
+ */
+export function safariBarOverKeyboard() {
+  const homeButtonIPhone = /iP(hone|od)/.test(navigator.userAgent) &&
+    Math.max(screen.width, screen.height) / Math.min(screen.width, screen.height) < 1.9;
+  return inSafariTab() && !homeButtonIPhone;
+}
+
 /** How long (about 4 frames) iOS's brief scroll of the visible part may last before it is followed. */
 export const PAN_HOLD_MS = 70;
 /** How long the visible part must stay put before a new move of it is held again. */
@@ -362,8 +378,9 @@ export function keepCentredDialogAboveKeyboard(node: HTMLElement, anchorTop?: st
       return;
     }
     // In a Safari tab, Safari's floating address bar sits over the bottom of
-    // what is left, and a tap there goes to Safari.
-    const visible = viewport.height - (inSafariTab() ? 60 : 0);
+    // what is left, and a tap there goes to Safari (not on an iPhone SE, which
+    // hides its toolbar instead).
+    const visible = viewport.height - (safariBarOverKeyboard() ? 60 : 0);
     if (anchorTop) {
       // A dialog placed from the top (Search) stays there, moved only by an
       // iOS pan, and gets shorter, so its list ends above the keyboard; moving

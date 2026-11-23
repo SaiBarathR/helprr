@@ -232,6 +232,23 @@ describe('top nav drop below the iOS blur', () => {
   });
 });
 
+// The full-screen player and its Queue panel sit under the same band, whatever the nav does.
+describe('player top drop below the iOS blur', () => {
+  const css = readFileSync('src/app/globals.css', 'utf8');
+  const at = css.indexOf('--ios-app-top-drop:');
+  const rule = css.slice(css.lastIndexOf('\n', css.lastIndexOf('{', at)) + 1, css.indexOf('}', at));
+
+  it('applies to the iOS app stamp alone, in no media query or nav condition', () => {
+    expect(at).toBeGreaterThan(0);
+    // A top-level rule: it starts the line, unindented.
+    expect(rule.startsWith(':root[data-ios-app] {')).toBe(true);
+  });
+
+  it('is the nav\'s 27px while the status bar shows, and none when its inset is 0 (landscape)', () => {
+    expect(rule).toContain('--ios-app-top-drop: min(27px, calc(env(safe-area-inset-top, 0px) * 1000));');
+  });
+});
+
 describe('page-loading overlay under the top bar', () => {
   const css = readFileSync('src/app/globals.css', 'utf8');
   const at = css.indexOf('.app-loading-overlay {\n    top: var(--header-height);');

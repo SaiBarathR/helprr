@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { arrowRoomNeeded, followKeyboard, formRoomTooShort, opensKeyboard, PAN_HOLD_MS, PAN_STILL_MS, revealFocusedField } from './keyboard-fit';
+import { arrowRoomNeeded, followKeyboard, formRoomTooShort, opensKeyboard, PAN_HOLD_MS, PAN_STILL_MS, revealFocusedField, safariBarOverKeyboard } from './keyboard-fit';
 
 // A scroll box showing 100–300 px of a column of 36 px fields, 80 px apart,
 // laid out as if scrolled by `box.scrollTop`. iOS's ⌃ / ⌄ arrows skip a field
@@ -532,5 +532,35 @@ describe('opensKeyboard and read-only fields', () => {
     area.readOnly = true;
     expect(opensKeyboard(area)).toBe(false);
     expect(opensKeyboard(document.createElement('select'))).toBe(true);
+  });
+});
+
+describe('safariBarOverKeyboard', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const iPhone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)';
+  const at = (userAgent: string, width: number, height: number, standalone = false) => {
+    vi.stubGlobal('navigator', { ...navigator, userAgent, standalone });
+    vi.stubGlobal('screen', { width, height });
+    return safariBarOverKeyboard();
+  };
+
+  it('is true in a Safari tab on a Face ID iPhone, Display Zoom included', () => {
+    expect(at(iPhone, 402, 874)).toBe(true);
+    expect(at(iPhone, 375, 812)).toBe(true);
+    // A zoomed 6.1-inch phone or mini reports a screen smaller than an SE's.
+    expect(at(iPhone, 320, 693)).toBe(true);
+  });
+
+  it('is false on an iPhone with a Home button (16:9), zoomed or not, in either orientation', () => {
+    expect(at(iPhone, 375, 667)).toBe(false);
+    expect(at(iPhone, 667, 375)).toBe(false);
+    expect(at(iPhone, 320, 568)).toBe(false);
+    expect(at(iPhone, 414, 736)).toBe(false);
+  });
+
+  it('is unchanged on an iPad, and false in the Home Screen app and off iOS', () => {
+    expect(at('Mozilla/5.0 (iPad; CPU OS 27_0 like Mac OS X)', 768, 1024)).toBe(true);
+    expect(at(iPhone, 402, 874, true)).toBe(false);
+    expect(at('Mozilla/5.0 (Linux; Android 16)', 412, 915)).toBe(false);
   });
 });

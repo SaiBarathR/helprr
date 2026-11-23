@@ -113,12 +113,51 @@ describe('DrawerContent above the keyboard', () => {
   it('in a Safari tab, keeps clear of the address bar and scrolls as one column', async () => {
     const { fire } = stubViewport(window.innerHeight - 300);
     vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
+    // An iPhone 18 Pro: Safari's floating bar stays over the keyboard.
+    vi.stubGlobal('screen', { width: 402, height: 874 });
     const panel = openFormSheet();
     screen.getByRole('textbox', { name: 'Current password' }).focus();
     fire();
     await waitFor(() => expect(panel.style.paddingBottom).toBe('3.75rem'));
     expect(panel.style.bottom).toBe('300px');
     expect(panel.hasAttribute('data-scroll-together')).toBe(true);
+  });
+
+  // An iPhone SE hides Safari's toolbar while the keyboard is up; the room kept
+  // for it was a blank band between the sheet's content and the keyboard.
+  it('in a Safari tab on an iPhone SE, sits on the keyboard with no room for the hidden toolbar', async () => {
+    const { fire } = stubViewport(window.innerHeight - 300);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
+    vi.stubGlobal('screen', { width: 375, height: 667 });
+    const panel = openFormSheet();
+    screen.getByRole('textbox', { name: 'Current password' }).focus();
+    fire();
+    await waitFor(() => expect(panel.style.bottom).toBe('300px'));
+    expect(panel.style.paddingBottom).toBe('0px');
+    expect(panel.style.maxHeight).toContain(`${window.innerHeight - 300}px`);
+    // Still one column: field-to-field ⌃ / ⌄ needs it on so short a phone.
+    expect(panel.hasAttribute('data-scroll-together')).toBe(true);
+  });
+
+  // Display Zoom makes a mini report a screen smaller than an SE's; it still has the floating bar.
+  it('in a Safari tab on a display-zoomed iPhone mini, still keeps clear of the floating bar', async () => {
+    const { fire } = stubViewport(window.innerHeight - 300);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)' });
+    vi.stubGlobal('screen', { width: 320, height: 693 });
+    const panel = openFormSheet();
+    screen.getByRole('textbox', { name: 'Current password' }).focus();
+    fire();
+    await waitFor(() => expect(panel.style.paddingBottom).toBe('3.75rem'));
+  });
+
+  it('in a Safari tab on an iPad, keeps the room it kept before', async () => {
+    const { fire } = stubViewport(window.innerHeight - 300);
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPad; CPU OS 27_0 like Mac OS X)' });
+    vi.stubGlobal('screen', { width: 768, height: 1024 });
+    const panel = openFormSheet();
+    screen.getByRole('textbox', { name: 'Current password' }).focus();
+    fire();
+    await waitFor(() => expect(panel.style.paddingBottom).toBe('3.75rem'));
   });
 
   // Safari's own bars leave the visible part shorter than the layout viewport
@@ -461,6 +500,7 @@ describe('DrawerContent on iOS', () => {
 
   it('in a Safari tab, keeps the sheet\'s content above Safari\'s floating address bar', async () => {
     vi.stubGlobal('navigator', { ...navigator, userAgent: iPhone });
+    vi.stubGlobal('screen', { width: 402, height: 874 });
     vi.stubGlobal('visualViewport', { height: window.innerHeight - 300, scale: 1, offsetTop: 0, addEventListener() {}, removeEventListener() {} });
     openForm().focus();
     // followKeyboard also follows the window's resize.

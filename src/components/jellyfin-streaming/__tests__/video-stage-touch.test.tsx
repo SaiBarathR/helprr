@@ -343,3 +343,45 @@ describe('the audio and subtitles panel', () => {
     expect(document.querySelector('[data-player-panel]')!.textContent).not.toContain('Audio track 1');
   });
 });
+
+// iPhone 18 Pro, Home Screen app: drawn over the centre transport, the
+// two-line message ran through the skips and Retry sat on the Play triangle.
+describe('a stream that failed to start', () => {
+  const error = 'Playback did not start. Try again or choose another quality.';
+
+  it('on a touch screen, gives the centre to the message and Retry instead of the transport', async () => {
+    await render({ status: 'error', error, retry: vi.fn() });
+
+    expect(document.body.textContent).toContain(error);
+    expect([...document.querySelectorAll('button')].some((b) => b.textContent === 'Retry')).toBe(true);
+    expect(byLabel('Play')).toBeNull();
+    expect(byLabel('Back 10 seconds')).toBeNull();
+    expect(byLabel('Forward 10 seconds')).toBeNull();
+    // The top bar and the way out stay.
+    expect(byLabel('Close player')).not.toBeNull();
+  });
+
+  it('brings the transport back once the error clears', async () => {
+    await render({ status: 'error', error, retry: vi.fn() });
+    await render({ status: 'paused', error: null });
+
+    expect(byLabel('Play')).not.toBeNull();
+    expect(byLabel('Back 10 seconds')).not.toBeNull();
+  });
+
+  it('with a mouse, keeps the bottom row\'s transport (it is not in the centre)', async () => {
+    state.coarse = false;
+    await render({ status: 'error', error, retry: vi.fn() });
+
+    expect(byLabel('Play')).not.toBeNull();
+  });
+});
+
+// iOS blurs the top of a Home Screen app's screen; globals.css sets the drop
+// only there (--ios-app-top-drop), so elsewhere these stay where they were.
+it('drops the top row below the iOS blur band in the Home Screen app', async () => {
+  await render();
+
+  const row = byLabel('Minimize player')!.parentElement!;
+  expect(row.className).toContain('pt-[max(1rem,calc(env(safe-area-inset-top)+var(--ios-app-top-drop,0px)))]');
+});

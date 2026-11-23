@@ -5,7 +5,7 @@ import { Drawer as DrawerPrimitive } from "vaul"
 
 import { cn } from "@/lib/utils"
 import { useBackClosableOpen } from "@/lib/overlay-history"
-import { followKeyboard, formRoomTooShort, inSafariTab, isIOS, keepIosFromScrolling, opensKeyboard, revealFocusedField } from "@/lib/keyboard-fit"
+import { followKeyboard, formRoomTooShort, inSafariTab, isIOS, keepIosFromScrolling, opensKeyboard, revealFocusedField, safariBarOverKeyboard } from "@/lib/keyboard-fit"
 
 function Drawer({
   open: openProp,
@@ -63,8 +63,9 @@ function fitAboveKeyboard(node: HTMLElement): () => void {
     // The keyboard covers the home indicator the padding keeps clear of. In a
     // Safari tab, Safari's floating address bar sits over the bottom of what
     // is left, and a tap there goes to Safari, so keep the sheet's content
-    // above it.
-    node.style.paddingBottom = tab ? "3.75rem" : "0px"
+    // above it. An iPhone SE hides its toolbar instead: kept for it, that room
+    // was a blank band between the sheet's content and the keyboard.
+    node.style.paddingBottom = safariBarOverKeyboard() ? "3.75rem" : "0px"
     // That leaves a form's body too short to show more than the field being
     // typed in, and Safari's ⌄ / ⌃ keyboard arrows skip a field whose centre
     // isn't on screen (WebKit hit-tests it), so a `scrollTogether` sheet's
