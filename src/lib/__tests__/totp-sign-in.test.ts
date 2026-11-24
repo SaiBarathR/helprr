@@ -119,7 +119,11 @@ beforeEach(() => {
   mocks.userUpdate.mockResolvedValue({});
   mocks.recoveryDeleteMany.mockResolvedValue({ count: 0 });
   mocks.redisSet.mockResolvedValue('OK');
-  mocks.redisEval.mockResolvedValue(['ok', '0']);
+  // The claim is a script now (expiry check and SET NX in one step); it answers as the SET does.
+  mocks.redisEval.mockImplementation(async (script: string, options?: { keys: string[]; arguments: string[] }) => {
+    if (String(script).includes('PXAT')) return (await mocks.redisSet(options?.keys[0], options?.arguments[0])) === 'OK' ? 1 : 0;
+    return ['ok', '0'];
+  });
   mocks.redisDel.mockResolvedValue(1);
   mocks.connectionFindFirst.mockResolvedValue({ url: 'http://jf.lan' });
   setup = createTotpSetup('member');
