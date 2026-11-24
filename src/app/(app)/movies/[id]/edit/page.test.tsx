@@ -95,6 +95,21 @@ describe('edit page root folder', () => {
     expect(puts[0].body).toEqual(expect.objectContaining({ path: '/movies2/Film (2020)' }));
   });
 
+  it('renames the folder in its root folder, and refuses a name that climbs out', async () => {
+    renderPage();
+    const folder = () => screen.getByLabelText('Folder') as HTMLInputElement;
+    await waitFor(() => expect(folder().value).toBe('Film (2020)'));
+    fireEvent.change(folder(), { target: { value: '..' } });
+    expect(folder().getAttribute('aria-invalid')).toBe('true');
+    expect((screen.getByRole('button', { name: 'Save Changes' }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(folder(), { target: { value: 'Film (2020) {tmdb-1}' } });
+    fireEvent.click(screen.getByLabelText('Move Files'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0].body).toEqual(expect.objectContaining({ path: '/movies/Film (2020) {tmdb-1}' }));
+  });
+
   it('sends no move when the root folder is left alone', async () => {
     renderPage();
     await waitFor(() => expect(rootFolderSelect().value).toBe(FOLDERS[0]));

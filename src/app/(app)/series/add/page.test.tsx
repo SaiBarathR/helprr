@@ -78,6 +78,22 @@ describe('add series page', () => {
     expect(posts[0]).toEqual(expect.objectContaining({ instanceId: 'son-2', tvdbId: 1, monitorNewItems: 'all' }));
   });
 
+  it('sends Search for cutoff unmet episodes off by default, and on once switched on', async () => {
+    renderPage();
+    const cutoff = await screen.findByRole('switch', { name: 'Start search for cutoff unmet episodes' });
+    await waitFor(() => expect(screen.getByDisplayValue('HD')).toBeTruthy());
+    expect(cutoff.getAttribute('aria-checked')).toBe('false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Series' }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0].addOptions).toEqual(expect.objectContaining({ searchForMissingEpisodes: true, searchForCutoffUnmetEpisodes: false }));
+
+    fireEvent.click(cutoff);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Series' }));
+    await waitFor(() => expect(posts).toHaveLength(2));
+    expect(posts[1].addOptions).toEqual(expect.objectContaining({ searchForMissingEpisodes: true, searchForCutoffUnmetEpisodes: true }));
+  });
+
   it('sends none when the user turns new-season monitoring off', async () => {
     renderPage();
     await screen.findByText('Monitor New Seasons');

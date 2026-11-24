@@ -14,6 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { TagSelector } from '@/components/media/tag-selector';
+import { FOLDER_NAME_ERROR_ID, FolderNameRow } from '@/components/media/folder-name-row';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,7 +23,7 @@ import { invalidateSeries } from '@/lib/query-invalidation';
 import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
 import { useCan } from '@/components/permission-provider';
 import type { SonarrSeries } from '@/types';
-import { parentPath, pathInRootFolder } from '@/lib/paths';
+import { folderNameError, lastPathSegment, parentPath, pathInRootFolder } from '@/lib/paths';
 
 export default function SeriesEditPage() {
   const { id } = useParams();
@@ -57,6 +58,7 @@ export default function SeriesEditPage() {
   const [monitorNewItems, setMonitorNewItems] = useState<'all' | 'none'>('all');
   const [rootFolder, setRootFolder] = useState('');
   const [rootFolderTouched, setRootFolderTouched] = useState(false);
+  const [folderName, setFolderName] = useState('');
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   // Without a move Sonarr points the series at a folder its files are not in.
   const [moveFiles, setMoveFiles] = useState(true);
@@ -78,12 +80,19 @@ export default function SeriesEditPage() {
     setMonitorNewItems(series.monitorNewItems ?? 'all');
     setSelectedTags([...series.tags]);
     setRootFolder(series.path ? parentPath(series.path) : '');
+    setFolderName(series.path ? lastPathSegment(series.path) : '');
   }, [series]);
 
-  const movedPath = rootFolderTouched && series?.path ? pathInRootFolder(series.path, rootFolder) : null;
+  // The current name is never refused: it is the one Sonarr chose.
+  const folderChanged = series?.path ? folderName !== lastPathSegment(series.path) : false;
+  const folderError = folderChanged ? folderNameError(folderName) : null;
+  const movedPath = (rootFolderTouched || folderChanged) && series?.path && !folderError
+    ? pathInRootFolder(series.path, rootFolder, folderName)
+    : null;
   const moving = movedPath !== null && moveFiles;
 
   function handleSave() {
+    if (folderError) return;
     // Moving files is a disk operation: confirm it first, as the bulk editor does.
     if (moving) setConfirmMove(true);
     else void save();
@@ -256,6 +265,9 @@ export default function SeriesEditPage() {
                 </Select>
               </div>
             )}
+            {rootFolders.length > 0 && (
+              <FolderNameRow value={folderName} onChange={setFolderName} error={folderError} />
+            )}
             {movedPath && (
               <div className="grouped-row">
                 <Label htmlFor="move-files" className="text-sm shrink-0">
@@ -265,11 +277,15 @@ export default function SeriesEditPage() {
               </div>
             )}
           </div>
+          {folderError && (
+            <p id={FOLDER_NAME_ERROR_ID} className="px-4 pt-2 text-xs text-destructive">{folderError}</p>
+          )}
           {movedPath && (
             <p className="px-4 pt-2 text-xs text-muted-foreground">
               {moveFiles
                 ? 'Sonarr moves the series’ files into this folder.'
                 : 'Only the saved path changes; files stay where they are until you move them.'}
+              <span className="mt-1 block break-all">New path: {movedPath}</span>
             </p>
           )}
         </div>
@@ -302,7 +318,7 @@ export default function SeriesEditPage() {
           <Button
             className="flex-1"
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || folderError !== null}
           >
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save

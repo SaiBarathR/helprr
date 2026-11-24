@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
-import { diffArtistEdit, inRootFolder, type LibraryEditCaps, type LibraryEditDiff } from '@/lib/library-edit-guard';
+import { diffArtistEdit, editedPathError, type LibraryEditCaps, type LibraryEditDiff } from '@/lib/library-edit-guard';
 import { resolveConnection } from '@/lib/arr-instances';
 import { can, type PermissionUser } from '@/lib/permissions';
 import type { Capability } from '@/lib/capabilities';
@@ -9,7 +9,7 @@ import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { runWithOperationAudit } from '@/lib/file-audit';
-import { parentPath } from '@/lib/paths';
+import { folderNameError, lastPathSegment, parentPath } from '@/lib/paths';
 
 function parsePositiveId(id: string): { value: number } | { error: NextResponse } {
   const parsed = Number(id);
@@ -114,10 +114,19 @@ async function putHandler(
     }
 
     // A new path goes only into one of this instance's root folders, as the Edit page
-    // offers and the bulk editor checks, never anywhere else the *arr can write.
+    // offers and the bulk editor checks, never anywhere else the *arr can write, and
+    // under a folder name the Edit page allows.
     const newPath = typeof update.path === 'string' ? update.path : null;
-    if (pathChanges && (!newPath || !inRootFolder(newPath, await client.getRootFolders()))) {
-      return NextResponse.json({ error: 'path must be in one of this instance’s root folders' }, { status: 400 });
+    // An admin's edit is not diffed above, so a new folder name the Edit page refuses
+    // (".." would point the *arr at the root folder's parent) is caught here, with a
+    // read only for such a name.
+    if (!pathChanges && newPath && folderNameError(lastPathSegment(newPath))) {
+      current ??= await client.getArtistById(pathId);
+      pathChanges = current.path !== newPath;
+    }
+    if (pathChanges) {
+      const pathError = editedPathError(newPath, await client.getRootFolders(), current?.path);
+      if (pathError) return NextResponse.json({ error: pathError }, { status: 400 });
     }
 
     const save = () => client.updateArtist(update, moveFiles);

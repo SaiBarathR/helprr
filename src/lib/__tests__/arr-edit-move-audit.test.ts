@@ -175,6 +175,68 @@ describe.each(cases)('$name Edit PUT file moves', (c) => {
     expect(mocks.runWithOperationAudit).not.toHaveBeenCalled();
   });
 
+  it('renames the folder inside the same root folder as an audited MOVE_MEDIA', async () => {
+    const renamed = c.item.path.replace(/[^/]+$/, 'Renamed (1999)');
+    const res = await put(c, '?moveFiles=true&instanceId=inst-1', { ...c.item, path: renamed });
+    expect(res.status).toBe(200);
+    expect(c.update()).toHaveBeenCalledWith(expect.objectContaining({ path: renamed }), true);
+    expect(mocks.runWithOperationAudit.mock.calls[0][0]).toMatchObject({
+      operation: 'MOVE_MEDIA',
+      details: { fromPath: c.item.path, path: renamed, rootFolderPath: c.item.path.slice(0, c.item.path.lastIndexOf('/')) },
+    });
+  });
+
+  it.each([
+    ['the parent folder', '..'],
+    ['a trailing dot', 'Renamed.'],
+    ['a leading space', ' Renamed'],
+    ['a control character', 'Re\u0007named'],
+    ['a backslash', 'Re\\named'],
+    ['a name over 255 bytes', 'x'.repeat(256)],
+  ])('refuses a folder named with %s, before anything reaches the *arr', async (_label, name) => {
+    const root = c.item.path.slice(0, c.item.path.lastIndexOf('/'));
+    const res = await put(c, '?moveFiles=true', { ...c.item, path: `${root}/${name}` });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/^Invalid folder name/);
+    expect(c.update()).not.toHaveBeenCalled();
+    expect(mocks.runWithOperationAudit).not.toHaveBeenCalled();
+  });
+
+  it("refuses a member's rename without the move switch too, and a rename without changePath", async () => {
+    const root = c.item.path.slice(0, c.item.path.lastIndexOf('/'));
+    mocks.user = member({ [c.caps.view]: true, [c.caps.path]: true });
+    expect((await put(c, '', { ...c.item, path: `${root}/..` })).status).toBe(400);
+    mocks.user = member({ [c.caps.view]: true, [c.caps.path]: false });
+    expect((await put(c, '', { ...c.item, path: `${root}/Renamed` })).status).toBe(403);
+    expect(c.update()).not.toHaveBeenCalled();
+  });
+
+  it("refuses an admin's rename to a refused name with Move Files off, reading the item only for such a name", async () => {
+    const root = c.item.path.slice(0, c.item.path.lastIndexOf('/'));
+    expect((await put(c, '', { ...c.item, path: `${root}/..` })).status).toBe(400);
+    expect(c.get()).toHaveBeenCalledTimes(1);
+    expect(c.update()).not.toHaveBeenCalled();
+    c.get().mockClear();
+    expect((await put(c, '', { ...c.item, path: `${root}/Renamed` })).status).toBe(200);
+    expect(c.get()).not.toHaveBeenCalled();
+  });
+
+  it("saves an admin's edit that keeps a current name it would refuse", async () => {
+    const odd = { ...c.item, path: c.item.path.replace(/[^/]+$/, 'Odd.') };
+    c.get().mockResolvedValue(odd);
+    expect((await put(c, '', { ...odd, tags: [3] })).status).toBe(200);
+    expect(c.update()).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a current folder name it would refuse when only the root folder changes', async () => {
+    const odd = { ...c.item, path: c.item.path.replace(/[^/]+$/, 'Odd.') };
+    c.get().mockResolvedValue(odd);
+    const moved = c.newPath.replace(/[^/]+$/, 'Odd.');
+    const res = await put(c, '?moveFiles=true', { ...odd, path: moved });
+    expect(res.status).toBe(200);
+    expect(c.update()).toHaveBeenCalledWith(expect.objectContaining({ path: moved }), true);
+  });
+
   it('lets a member with changePath move, and audits it under their name', async () => {
     const user = member({ [c.caps.view]: true, [c.caps.path]: true });
     mocks.user = user;
