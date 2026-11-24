@@ -116,13 +116,17 @@ export default function ServiceStatusPage() {
     window.history.replaceState(window.history.state, '', query ? `/settings/status?${query}` : '/settings/status');
   }, [handledLink]);
   const targetStatus = healthTarget ? statuses.find((s) => s.instanceId === healthTarget.instanceId) : undefined;
-  // Once the instance is listed, its own type decides the service: a hand-made
-  // link naming the wrong one shows that instance's real health (or nothing,
-  // for an instance with none), never one service's title over another's.
-  const targetService = targetStatus ? HEALTH_SERVICE[targetStatus.type] : healthTarget?.service;
+  // The instance's own type decides the service: a hand-made link naming the
+  // wrong one shows that instance's real health (or nothing, for an instance
+  // with none), never one service's title over another's. So a link waits for
+  // the list (cached for a minute); only when the list fails or lacks the
+  // instance does the link's own service stand.
+  const targetService = targetStatus ? HEALTH_SERVICE[targetStatus.type] : loading ? undefined : healthTarget?.service;
   const sheetTarget = healthTarget && targetService && canReadHealth(me, targetService)
     ? { service: targetService, instanceId: healthTarget.instanceId }
     : null;
+  // A link that came to nothing is done with, so a later refetch can't open it.
+  if (healthOpen && !sheetTarget && !loading) setHealthOpen(false);
   const healthTitle = !sheetTarget
     ? ''
     : targetStatus && targetStatus.label && targetStatus.label !== targetStatus.name

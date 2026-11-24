@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   me: null as unknown,
   search: new URLSearchParams(),
   healthCalls: [] as string[],
+  healthUrls: [] as string[],
   statuses: [] as unknown[],
 }));
 vi.mock('@/components/permission-provider', async (importOriginal) => ({
@@ -46,12 +47,14 @@ beforeEach(() => {
   mocks.me = ADMIN;
   mocks.search = new URLSearchParams();
   mocks.healthCalls = [];
+  mocks.healthUrls = [];
   mocks.statuses = statuses;
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (url === '/api/services/health') return new Response(JSON.stringify(mocks.statuses));
     const match = url.match(/^\/api\/(sonarr|radarr|lidarr)\/health\?instanceId=(.+)$/);
     if (match) {
       mocks.healthCalls.push(match[2]);
+      mocks.healthUrls.push(url);
       // As the real routes do, another service's instance id is not found.
       if (!match[2].startsWith(match[1].slice(0, 3))) return new Response('{}', { status: 404 });
       return new Response(JSON.stringify(health[match[2]] ?? []));
@@ -106,6 +109,8 @@ describe('Service status health', () => {
     await waitFor(() => expect(within(sheet).getByText('Missing root folder: /anime')).toBeTruthy());
     expect(within(sheet).getByText('Sonarr · Anime health')).toBeTruthy();
     expect(within(sheet).queryByText(/Radarr/)).toBeNull();
+    // Not even briefly: the wrong service's health is never asked for.
+    expect(mocks.healthUrls).not.toContain('/api/radarr/health?instanceId=son-2');
   });
 
   it('opens nothing when a link names an instance that has no health', async () => {
@@ -115,6 +120,7 @@ describe('Service status health', () => {
     expect(await screen.findByText('2 health issues')).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(screen.queryByText(/qBittorrent health/)).toBeNull();
+    expect(mocks.healthUrls.some((url) => url.includes('qbt-1'))).toBe(false);
   });
 
   it('shows no health to a member without notify.health, and ignores the link', async () => {
