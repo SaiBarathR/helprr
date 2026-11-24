@@ -625,6 +625,22 @@ export class QBittorrentClient {
     return this.get<string[]>('/api/v2/torrents/tags');
   }
 
+  /** New tags on no torrent yet; one that exists already is left as it is. */
+  async createTags(tags: string[]): Promise<void> {
+    if (tags.length === 0) throw new Error('createTags needs at least one tag');
+    const params = new URLSearchParams();
+    params.append('tags', tags.join(','));
+    await this.post('/api/v2/torrents/createTags', params.toString());
+  }
+
+  /** Deletes the tags outright: qBittorrent takes them off every torrent that has them. */
+  async deleteTags(tags: string[]): Promise<void> {
+    if (tags.length === 0) throw new Error('deleteTags needs at least one tag');
+    const params = new URLSearchParams();
+    params.append('tags', tags.join(','));
+    await this.post('/api/v2/torrents/deleteTags', params.toString());
+  }
+
   /** qBittorrent creates a tag it does not know yet. */
   async addTags(hashes: string, tags: string[]): Promise<void> {
     const params = new URLSearchParams();

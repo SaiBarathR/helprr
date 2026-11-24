@@ -53,6 +53,15 @@ describe('stored view, sort and filter preferences', () => {
     });
   });
 
+  it('keeps the torrents table columns it knows, and defaults a missing or unusable choice', async () => {
+    expect((await loadStored({})).torrentsTableColumns).toEqual(initial.torrentsTableColumns);
+    expect((await loadStored({ torrentsTableColumns: ['tags', 'magnet_uri', 'state', 3] })).torrentsTableColumns).toEqual(['tags', 'state']);
+    useUIStore.setState(initial, true);
+    expect((await loadStored({ torrentsTableColumns: 'tags' })).torrentsTableColumns).toEqual(initial.torrentsTableColumns);
+    // Every column hidden is a choice: the table still shows Name.
+    expect((await loadStored({ torrentsTableColumns: [] })).torrentsTableColumns).toEqual([]);
+  });
+
   it('drops unknown filter entries and a filter that is not a list', async () => {
     const state = await loadStored({
       moviesFilter: ['monitored', 'bogus'], seriesFilter: 'monitored', musicFilter: ['complete'],

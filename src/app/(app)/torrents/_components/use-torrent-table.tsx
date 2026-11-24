@@ -7,8 +7,51 @@ import type { DataTableColumn } from '@/components/ui/data-table';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { Gauge } from 'lucide-react';
 import type { QBittorrentTorrent } from '@/types';
-import { formatEta, formatSpeed, formatTorrentSize } from './torrent-list';
-import { TorrentRowActions, getStateBadge, torrentContextActionGroups } from './torrent-row';
+import { formatDateTime } from '@/lib/date-format';
+import { formatDistanceToNowShort } from '@/lib/format';
+import type { TorrentsTableColumn } from '@/lib/store';
+import { formatBytes, formatEta, formatSeedingTime, formatSpeed, formatTorrentSize } from './torrent-list';
+import { TorrentRowActions, TorrentTagChips, getStateBadge, torrentContextActionGroups } from './torrent-row';
+import { parseTorrentTags } from './torrent-tags';
+
+const dash = <span className="text-xs text-muted-foreground">&mdash;</span>;
+
+/** A qBittorrent Unix-seconds date, or a dash for 0 / -1 (not yet). */
+function dateCell(seconds: number | undefined) {
+  if (!seconds || seconds <= 0) return dash;
+  const text = formatDateTime(seconds * 1000, { dateStyle: 'medium', timeStyle: 'short' });
+  return <span className="text-xs text-muted-foreground whitespace-nowrap truncate" title={text}>{text}</span>;
+}
+
+/** A limit in force: -1 is none. */
+function limitCell(value: number | undefined, format: (value: number) => string) {
+  if (value === undefined || value === null) return dash;
+  return <span className="text-xs text-muted-foreground">{value < 0 ? 'None' : format(value)}</span>;
+}
+
+/** The picker's names for the columns a user can show or hide, in table order. */
+export const TORRENT_TABLE_COLUMN_LABELS: Record<TorrentsTableColumn, string> = {
+  state: 'Status',
+  progress: 'Progress',
+  size: 'Size',
+  dlspeed: 'Download speed',
+  upspeed: 'Upload speed',
+  eta: 'ETA',
+  num_seeds: 'Seeds',
+  num_leechs: 'Peers',
+  ratio: 'Ratio',
+  tags: 'Tags',
+  added_on: 'Added on',
+  completion_on: 'Completed on',
+  last_activity: 'Last activity',
+  tracker_host: 'Tracker',
+  save_path: 'Save path',
+  availability: 'Availability',
+  downloaded: 'Downloaded',
+  uploaded: 'Uploaded',
+  ratio_limit: 'Ratio limit',
+  seeding_time_limit: 'Seeding limit',
+};
 
 /** The wide-screen table's columns, and each row wrapped in its context menu. */
 export function useTorrentTable({
@@ -24,6 +67,7 @@ export function useTorrentTable({
   canManageTorrents,
   canDeleteTorrents,
   canSelect,
+  visibleColumns,
 }: {
   allSelected: boolean;
   selectAll: () => void;
@@ -38,6 +82,8 @@ export function useTorrentTable({
   canDeleteTorrents: boolean;
   /** No checkbox column without a bulk action (selectionAllowed). */
   canSelect: boolean;
+  /** The picker's choice; Name, the checkbox and the actions always show. */
+  visibleColumns: readonly TorrentsTableColumn[];
 }) {
   const tableColumns = useMemo((): DataTableColumn<QBittorrentTorrent>[] => ([
     {
@@ -182,6 +228,102 @@ export function useTorrentTable({
       cell: (t) => <span className="text-xs text-muted-foreground">{(t.ratio ?? 0).toFixed(2)}</span>,
     },
     {
+      id: 'tags',
+      label: 'Tags',
+      width: 140,
+      minWidth: 80,
+      cell: (t) => {
+        const tags = parseTorrentTags(t.tags);
+        return tags.length > 0 ? <TorrentTagChips tags={tags} max={2} /> : dash;
+      },
+    },
+    {
+      id: 'added_on',
+      label: 'Added on',
+      width: 148,
+      sortKey: 'added_on',
+      cell: (t) => dateCell(t.added_on),
+    },
+    {
+      id: 'completion_on',
+      label: 'Completed on',
+      width: 148,
+      sortKey: 'completion_on',
+      cell: (t) => dateCell(t.completion_on),
+    },
+    {
+      id: 'last_activity',
+      label: 'Last activity',
+      width: 112,
+      cell: (t) => (t.last_activity && t.last_activity > 0
+        ? (
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            {formatDistanceToNowShort(new Date(t.last_activity * 1000).toISOString(), '—')}
+          </span>
+        )
+        : dash),
+    },
+    {
+      id: 'tracker_host',
+      label: 'Tracker',
+      width: 140,
+      minWidth: 80,
+      // The host name alone (projectTorrentForSummary): a tracker URL can hold a passkey.
+      cell: (t) => (t.tracker_host
+        ? <span className="block text-xs text-muted-foreground truncate" title={t.tracker_host}>{t.tracker_host}</span>
+        : dash),
+    },
+    {
+      id: 'save_path',
+      label: 'Save path',
+      width: 180,
+      minWidth: 100,
+      cell: (t) => (t.save_path
+        ? <span className="block text-xs text-muted-foreground truncate" title={t.save_path}>{t.save_path}</span>
+        : dash),
+    },
+    {
+      id: 'availability',
+      label: 'Availability',
+      width: 88,
+      align: 'right',
+      // qBittorrent sends -1 while it isn't downloading.
+      cell: (t) => (t.availability >= 0
+        ? <span className="text-xs text-muted-foreground">{t.availability.toFixed(2)}</span>
+        : dash),
+    },
+    {
+      id: 'downloaded',
+      label: 'Downloaded',
+      width: 96,
+      align: 'right',
+      sortKey: 'downloaded',
+      cell: (t) => <span className="text-xs text-muted-foreground">{formatBytes(t.downloaded ?? 0)}</span>,
+    },
+    {
+      id: 'uploaded',
+      label: 'Uploaded',
+      width: 96,
+      align: 'right',
+      sortKey: 'uploaded',
+      cell: (t) => <span className="text-xs text-muted-foreground">{formatBytes(t.uploaded ?? 0)}</span>,
+    },
+    {
+      id: 'ratio_limit',
+      label: 'Ratio limit',
+      width: 88,
+      align: 'right',
+      // The limit in force (the torrent's own or the global one), as qBittorrent's own column.
+      cell: (t) => limitCell(t.max_ratio, (ratio) => ratio.toFixed(2)),
+    },
+    {
+      id: 'seeding_time_limit',
+      label: 'Seeding limit',
+      width: 96,
+      align: 'right',
+      cell: (t) => limitCell(t.max_seeding_time, (minutes) => formatSeedingTime(minutes * 60)),
+    },
+    {
       id: 'actions',
       label: '',
       width: 48,
@@ -197,7 +339,11 @@ export function useTorrentTable({
         />
       ),
     },
-  ] satisfies DataTableColumn<QBittorrentTorrent>[]).filter((column) => canSelect || column.id !== 'select'), [allSelected, selectAll, selectedTorrents, toggleSelect, fetchDetail, torrentAction, openDeleteDrawer, openCategoryDrawer, openRename, canSelect]);
+  ] satisfies DataTableColumn<QBittorrentTorrent>[]).filter((column) => {
+    if (column.id === 'select') return canSelect;
+    if (column.id === 'name' || column.id === 'actions') return true;
+    return visibleColumns.includes(column.id as TorrentsTableColumn);
+  }), [allSelected, selectAll, selectedTorrents, toggleSelect, fetchDetail, torrentAction, openDeleteDrawer, openCategoryDrawer, openRename, canSelect, visibleColumns]);
 
   const wrapTableRow = useCallback((torrent: QBittorrentTorrent, tr: ReactElement) => (
     <QuickContextMenu

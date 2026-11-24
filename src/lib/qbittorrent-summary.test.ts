@@ -2,6 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { projectTorrentsForSummary, torrentCounters, passiveTorrentRefreshIntervalMs } from './qbittorrent-summary';
 import type { QBittorrentTorrent } from '@/types';
 describe('torrent transfer projections', () => {
+  it('carries what the table columns show, and the tracker as its host name only', () => {
+    const source = {
+      hash: 'h', name: 'n', tags: 'a, b', added_on: 10, completion_on: 20, last_activity: 30, save_path: '/downloads',
+      availability: 1.5, downloaded: 4, uploaded: 5, max_ratio: 2, max_seeding_time: 60,
+      tracker: 'https://tracker.example:8443/abc123passkey/announce', magnet_uri: 'magnet:?tr=abc123passkey',
+    } as unknown as QBittorrentTorrent;
+    const [projected] = projectTorrentsForSummary([source]);
+    expect(projected).toMatchObject({
+      tags: 'a, b', added_on: 10, completion_on: 20, last_activity: 30, save_path: '/downloads',
+      availability: 1.5, downloaded: 4, uploaded: 5, max_ratio: 2, max_seeding_time: 60, tracker_host: 'tracker.example',
+    });
+    expect(JSON.stringify(projected)).not.toContain('passkey');
+  });
   it.each([-1, 0, 2048])('preserves total_size %i so metadata availability reaches the list', (totalSize) => {
     const source = { hash: 'metadata', size: 0, total_size: totalSize } as QBittorrentTorrent;
     expect(projectTorrentsForSummary([source])[0].total_size).toBe(totalSize);
