@@ -629,7 +629,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(280);
+    expect(handlers.size).toBe(281);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
