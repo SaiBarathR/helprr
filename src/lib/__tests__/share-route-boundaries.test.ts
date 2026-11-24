@@ -105,11 +105,12 @@ describe('Web Share Target request boundaries', () => {
     expect(response.status).toBe(413);
   });
 
-  it('keeps the text limit for a signed-out share', async () => {
+  it('keeps the text limit for a signed-out share, sending a share that large (a file) to sign in', async () => {
     mocks.requireUser.mockResolvedValue(SIGNED_OUT);
     const response = await POST(formRequest('title=x', { 'content-length': String(16 * 1024 + 1) }));
 
-    expect(response.status).toBe(413);
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe(`/login?next=${encodeURIComponent('/torrents/add')}`);
   });
 
   it('caps URL-encoded redirect expansion even when each source field is valid', async () => {
@@ -188,9 +189,10 @@ describe('sharing .torrent files', () => {
     expect(mocks.keepSharedTorrents).not.toHaveBeenCalled();
   });
 
-  it('keeps nothing for a signed-out share and sends it to sign in', async () => {
+  it('keeps nothing for a signed-out share of a real-sized torrent and sends it to sign in', async () => {
     mocks.requireUser.mockResolvedValue(SIGNED_OUT);
-    const response = await shareFiles([{ name: 'a.torrent', bytes: TORRENT }]);
+    const big = new TextEncoder().encode(`d4:infod4:name1:a6:pieces60000:${'x'.repeat(60_000)}ee`);
+    const response = await shareFiles([{ name: 'a.torrent', bytes: big }]);
 
     expect(response.status).toBe(303);
     expect(response.headers.get('location')!.startsWith('/login?')).toBe(true);

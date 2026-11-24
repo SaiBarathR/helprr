@@ -102,7 +102,8 @@ describe('adding several magnets and links at once', () => {
         { index: 1, result: 'exists', hash: hashOf(2) },
         { index: 2, result: 'added', hash: linked.hash, name: `Name ${linked.hash.slice(0, 4)}` },
         { index: 3, result: 'failed', error: 'The link answered HTTP 404' },
-        { index: 4, result: 'failed', error: 'The same torrent is earlier in this list' },
+        // A second copy ends as the first did: it is there now.
+        { index: 4, result: 'exists', hash: hashOf(1) },
       ],
     });
     // A link can carry a passkey: the answer never repeats one.
@@ -158,6 +159,39 @@ describe('adding several magnets and links at once', () => {
       const res = await pending;
       expect((await res.json()).results).toEqual([
         { index: 0, result: 'failed', error: 'qBittorrent did not confirm the torrent within 5 seconds' },
+        { index: 1, result: 'failed', error: 'qBittorrent did not confirm the torrent within 5 seconds' },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('gives a second copy of a failed torrent the same failure', async () => {
+    mocks.qbit.addMagnet.mockResolvedValue('Fails.');
+    const res = await addLinks(`${magnetOf(6)}\n${magnetOf(6)}`);
+    expect((await res.json()).results).toEqual([
+      { index: 0, result: 'failed', error: 'qBittorrent rejected the magnet link' },
+      { index: 1, result: 'failed', error: 'qBittorrent rejected the magnet link' },
+    ]);
+  });
+
+  it('still reports what was added when a confirmation look fails', async () => {
+    let calls = 0;
+    mocks.qbit.getTorrents.mockImplementation((...args: unknown[]) => {
+      calls += 1;
+      // The duplicate check, then a first look that sees only the first, then qBittorrent stops answering.
+      if (calls === 1) return list(...args);
+      if (calls === 2) return Promise.resolve([{ hash: hashOf(7), name: 'Seven' }]);
+      return Promise.reject(new Error('timeout of 30000ms exceeded'));
+    });
+    vi.useFakeTimers();
+    try {
+      const pending = addLinks(`${magnetOf(7)}\n${magnetOf(8)}`);
+      await vi.advanceTimersByTimeAsync(1000);
+      const res = await pending;
+      expect(res.status).toBe(200);
+      expect((await res.json()).results).toEqual([
+        { index: 0, result: 'added', hash: hashOf(7), name: 'Seven' },
         { index: 1, result: 'failed', error: 'qBittorrent did not confirm the torrent within 5 seconds' },
       ]);
     } finally {

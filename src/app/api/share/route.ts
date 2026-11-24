@@ -69,6 +69,12 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   try {
     ({ params, torrents } = await readShared(request, auth.ok, auth.ok && can(auth.user, 'torrents.add')));
   } catch (error) {
+    // Signed out, only a file makes a share this large (each text field is
+    // capped far below it), and a file can't survive the sign-in: sign in, then
+    // share again from the Add page's app.
+    if (!auth.ok && error instanceof BoundedBodyError && error.status === 413) {
+      return redirectOrPayloadTooLarge(`/login?next=${encodeURIComponent('/torrents/add')}`);
+    }
     const response = boundedBodyErrorResponse(error);
     if (response) return response;
     throw error;

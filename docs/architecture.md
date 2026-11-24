@@ -1115,6 +1115,35 @@ change: a third-party tracker on it leaks the torrent, and a replaced passkey tr
 can only be restored by someone who can see it. Tracker changes delete nothing
 and are not operation-audited, like tags, location and rename.
 
+Adding torrents (`POST /api/qbittorrent`, `torrents.add`) takes up to 20 magnets and
+http(s) `.torrent` links, one per line, or up to 20 files, in one request. A link
+is fetched by Helprr, not handed to qBittorrent's `urls=`: qBittorrent answers
+"Ok." and drops a failed download quietly, so only a fetched file gives the info
+hash that lets the route say "already there", confirm the add and offer Choose
+Files. The fetch (`src/lib/torrent-link-fetch.ts`, on `src/lib/outbound-url.ts`)
+reaches public addresses only, for every user (no LAN, loopback, link-local,
+metadata or reserved address, checked on the name and on every resolved address
+at connect time), http and https only, no proxy and no credentials, at most three
+redirects each checked again (a redirect to a magnet is that magnet; to any other
+scheme it fails), a 15-second deadline and a 10 MB cap; the bytes then go to
+qBittorrent as a file. Every line is checked before anything is fetched or added.
+One item answers as a single add always has (200 with its hash, 409, or the error);
+several answer 200 with a result per non-blank line or file, in order (`added`,
+`exists`, or `failed` with a fixed phrase), and never repeat a link. Request bodies
+stay out of the failed-request log, since a link or a magnet's tracker can carry a
+passkey in its path.
+
+The Android share target also takes `.torrent` files (the manifest's `torrent`
+field). A user with `torrents.add` who shares one is sent to Torrents → Add with
+it: the POST can only redirect, so the files that parse as torrents are kept in
+Redis under one slot per user (`helprr:share:torrents:<userId>`, 15 minutes, 4 MB
+in all; a new share replaces it) and read back by `GET /api/share/torrents` for
+that user only. A shared magnet or link whose path ends in `.torrent` is sent to
+Add by the `/share` page (so it also survives a sign-in), and the Add page takes
+it out of the address bar once it is in the form. Anyone without `torrents.add`
+gets the usual share resolution; signed out, a share that large (only a file
+makes one) goes to sign-in without it.
+
 Compose caps Redis at 256 MB with `maxmemory-policy noeviction` (Helprr itself
 uses tens of MB). Past the cap Redis refuses writes rather than evicting keys,
 because the login, two-step and replay limits live in Redis beside the caches

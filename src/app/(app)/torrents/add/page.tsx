@@ -166,7 +166,7 @@ function AddTorrentPageContent() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // A share into the Android app opens here with its links, or with its files kept on the server.
-  const sharedFiles = searchParams.get('shared') === 'files';
+  const [sharedFiles] = useState(() => searchParams.get('shared') === 'files');
   const [addMode, setAddMode] = useState<'magnet' | 'file'>(sharedFiles ? 'file' : 'magnet');
   const [linksText, setLinksText] = useState(() => searchParams.get('links') ?? '');
   const [torrentFiles, setTorrentFiles] = useState<File[]>([]);
@@ -221,7 +221,9 @@ function AddTorrentPageContent() {
     queryKey: ['share', 'torrents'],
     queryFn: jsonFetcher<{ files: Array<{ name: string; data: string }> }>('/api/share/torrents'),
     enabled: sharedFiles && canAddTorrents,
-    staleTime: Infinity,
+    // Each share replaces the last one on the server: never show an earlier one from the cache.
+    gcTime: 0,
+    refetchOnWindowFocus: false,
     retry: false,
   });
   const [sharedTaken, setSharedTaken] = useState(false);
@@ -229,6 +231,15 @@ function AddTorrentPageContent() {
     setSharedTaken(true);
     setTorrentFiles(sharedQuery.data.files.slice(0, MAX_ITEMS).map(fileFromShare));
   }
+
+  // Shared links can carry a passkey: once in the form, keep them out of the
+  // address bar, the history and the cached page.
+  useEffect(() => {
+    if (!searchParams.has('links')) return;
+    const rest = new URLSearchParams(searchParams);
+    rest.delete('links');
+    router.replace(rest.size > 0 ? `/torrents/add?${rest}` : '/torrents/add');
+  }, [router, searchParams]);
 
   const lines = useMemo(() => linkLines(linksText), [linksText]);
   const itemCount = addMode === 'magnet' ? lines.length : torrentFiles.length;
@@ -345,6 +356,8 @@ function AddTorrentPageContent() {
       router.push('/torrents');
     },
     onError: (err) => {
+      // What is on screen now is what failed; the last list no longer is.
+      setAddResults(null);
       if (err instanceof ApiError && err.status === 401) return;
       toast.error(err instanceof Error ? err.message : 'Failed to add torrent');
     },

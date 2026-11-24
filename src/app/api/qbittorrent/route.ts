@@ -236,7 +236,15 @@ async function waitForTorrentHashes(client: QBittorrentClient, hashes: string[])
 
   while (hashes.length > 0 && Date.now() <= deadline) {
     const missing = hashes.filter((hash) => !found.has(hash));
-    const torrents = await client.getTorrents(undefined, undefined, undefined, undefined, missing.join('|'));
+    let torrents: Awaited<ReturnType<QBittorrentClient['getTorrents']>>;
+    try {
+      torrents = await client.getTorrents(undefined, undefined, undefined, undefined, missing.join('|'));
+    } catch (error) {
+      // The torrents were sent: a failed look is "not confirmed" for what is
+      // still missing, not a failure of the whole add.
+      console.warn('[qbittorrent] add confirmation poll failed:', error instanceof Error ? error.message : error);
+      break;
+    }
     for (const torrent of torrents) {
       const hash = String(torrent.hash ?? '').toLowerCase();
       if (missing.includes(hash)) found.set(hash, typeof torrent.name === 'string' ? torrent.name : '');
@@ -347,15 +355,18 @@ async function addTorrents(
   options: SharedAddOptions,
 ): Promise<AddOutcome[]> {
   const outcomes: Array<AddOutcome | null> = items.map((item) => ('result' in item ? item : null));
-  const seen = new Set<string>();
+  const firstIndex = new Map<string, number>();
+  // A second copy in the same list ends as the first did ("already there" once it is in).
+  const duplicates: Array<{ index: number; of: number }> = [];
   const toCheck: Array<{ index: number; source: AddSource }> = [];
   items.forEach((item, index) => {
     if ('result' in item) return;
-    if (seen.has(item.hash)) {
-      outcomes[index] = failed('The same torrent is earlier in this list', 409);
+    const first = firstIndex.get(item.hash);
+    if (first !== undefined) {
+      duplicates.push({ index, of: first });
       return;
     }
-    seen.add(item.hash);
+    firstIndex.set(item.hash, index);
     toCheck.push({ index, source: item });
   });
 
@@ -402,7 +413,18 @@ async function addTorrents(
       ? { result: 'added', hash, ...(confirmed.get(hash) ? { name: confirmed.get(hash) } : {}) }
       : failed('qBittorrent did not confirm the torrent within 5 seconds', 502);
   }
-  if (sent.length > 0) await bumpQbitCacheVersion();
+  for (const { index, of } of duplicates) {
+    const first = outcomes[of]!;
+    outcomes[index] = first.result === 'failed' ? first : { result: 'exists', hash: first.hash };
+  }
+  // Fail-soft: the adds happened, and the next poll catches up anyway.
+  if (sent.length > 0) {
+    try {
+      await bumpQbitCacheVersion();
+    } catch {
+      // Ignored as above.
+    }
+  }
   return outcomes as AddOutcome[];
 }
 
@@ -653,4 +675,6 @@ async function postHandler(request: NextRequest) {
 }
 
 export const GET = withApiLogging(getHandler, 'api/qbittorrent');
-export const POST = withApiLogging(postHandler, 'api/qbittorrent');
+// No bodies in the logs: a pasted link (or a magnet's tracker) can carry a passkey
+// in its path, where the logger's key=value redaction doesn't reach.
+export const POST = withApiLogging(postHandler, 'api/qbittorrent', { logBodies: false });

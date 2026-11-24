@@ -4,10 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ caps: new Set<string>(), params: new URLSearchParams(), adds: [] as Array<() => Response> }));
+const mocks = vi.hoisted(() => ({ caps: new Set<string>(), params: new URLSearchParams(), adds: [] as Array<() => Response>, replace: vi.fn() }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => mocks.params }));
 vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap) }));
-vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
+vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn(), replace: mocks.replace }) }));
 vi.mock('@/components/layout/page-header', () => ({ PageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
 vi.mock('@/components/torrents/manual-download-form', async () => {
   const { useState } = await import('react');
@@ -413,6 +413,11 @@ describe('Add Torrent: several at once, links, and shares', () => {
     expect(screen.getByText('example.org · Third.torrent')).toBeTruthy();
     expect(screen.getByText('1 of 3 not added').closest('section')!.textContent).not.toContain('SECRET');
     expect((screen.getByLabelText('Magnet or .torrent links') as HTMLTextAreaElement).value).toBe(LINK);
+
+    // The retry of what is left fails on its own: the earlier list goes, the error is a toast.
+    answer = () => json({ error: 'The link answered HTTP 404' }, 502);
+    await userEvent.click(screen.getByRole('button', { name: 'Add Torrent' }));
+    await waitFor(() => expect(screen.queryByText('1 of 3 not added')).toBeNull());
   });
 
   it('sends several files in one add', async () => {
@@ -457,6 +462,8 @@ describe('Add Torrent: several at once, links, and shares', () => {
     renderPage();
     expect(((await screen.findByLabelText('Magnet or .torrent links')) as HTMLTextAreaElement).value).toBe(`${M1}\n${M2}`);
     expect(screen.getByRole('button', { name: 'Add 2 Torrents' })).toBeTruthy();
+    // A link can carry a passkey: it leaves the address bar once it is in the form.
+    expect(mocks.replace).toHaveBeenCalledWith('/torrents/add');
   });
 
   it('opens with the files a share brought', async () => {
