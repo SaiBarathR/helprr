@@ -21,7 +21,6 @@ const SOURCE_LABELS: Record<string, string> = {
   sonarr: 'Sonarr',
   radarr: 'Radarr',
   lidarr: 'Lidarr',
-  prowlarr: 'Prowlarr',
   qbittorrent: 'qBittorrent',
   jellyfin: 'Jellyfin',
   seerr: 'Seerr',

@@ -89,7 +89,8 @@ async function targets(): Promise<Target[]> {
 
 /**
  * Returns false when the check should run again after ARR_UPDATE_RETRY_MS: an
- * app could not be read, or nobody takes the event yet (the apps are not asked
+ * app could not be read, its notification could not be recorded, or nobody
+ * takes the event yet (the apps are not asked
  * then, and an admin who turns it on hears within the hour, not the next day).
  */
 export async function checkArrUpdates(): Promise<boolean> {
@@ -111,9 +112,13 @@ export async function checkArrUpdates(): Promise<boolean> {
       url: '/settings/status',
       // Also once per version when two checks race.
       dedupeKey: `arrUpdateAvailable:${target.instanceId}:${update.version}`,
-      metadata: { source: target.app, instanceId: target.instanceId, instanceLabel: target.label, id: update.version, redirect: '/settings/status' },
+      // The id names the instance too: it is the push's tag, and two instances behind on the
+      // same version must not replace each other on a phone.
+      metadata: { source: target.app, instanceId: target.instanceId, instanceLabel: target.label, id: `${target.instanceId}:${update.version}`, redirect: '/settings/status' },
     }, { service: target.app, instanceId: target.instanceId, reason: 'arr-update-available' });
-    if (sent !== null) await rememberNotified(target.instanceId, update.version);
+    // Not recorded (the database refused it): nothing remembered, and the hourly retry tries again.
+    if (sent === null) throw new Error(`${name} update notification could not be recorded`);
+    await rememberNotified(target.instanceId, update.version);
   }));
   let ok = true;
   for (const result of results) {

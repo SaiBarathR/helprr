@@ -27,7 +27,7 @@ import { diffLibrary, notifyLibraryChanges, type LibraryItem } from './library-c
 const main = { connection: { id: 's1', label: 'Main', updatedAt: new Date(1000) } };
 const anime = { connection: { id: 's2', label: 'Anime', updatedAt: new Date(1000) } };
 const series = (id: number, title: string, year?: number, instanceId = 's1'): LibraryItem => ({ id, title, year, instanceId });
-const read = (items: LibraryItem[], failedInstanceIds: string[] = []) => ({ items, failedInstanceIds });
+const read = (items: LibraryItem[], failedInstanceIds: string[] = [], cached = false) => ({ items, failedInstanceIds, cached });
 const noGrouping = async () => false;
 const sent = () => mocks.notify.mock.calls.map(([event]) => {
   const e = event as { eventType: string; title: string; body: string; url: string };
@@ -98,6 +98,18 @@ describe('notifyLibraryChanges', () => {
     const edited = { connection: { ...main.connection, updatedAt: new Date(2000) } };
     await notifyLibraryChanges('sonarr', [edited], read([series(9, 'Something Else')]), noGrouping);
     expect(mocks.notify).not.toHaveBeenCalled();
+  });
+
+  it('records a first list only from a live read, never from the cache (it may predate a new or re-pointed instance)', async () => {
+    // Anime was just added: the cached library holds only Main's titles.
+    await notifyLibraryChanges('sonarr', [main], read([series(1, 'Severance')]), noGrouping);
+    await notifyLibraryChanges('sonarr', [main, anime], read([series(1, 'Severance')], [], true), noGrouping);
+    // The live read after the cache is cleared is Anime's first list, so its library is not "added".
+    await notifyLibraryChanges('sonarr', [main, anime], read([series(1, 'Severance'), series(5, 'Frieren', 2023, 's2')]), noGrouping);
+    expect(mocks.notify).not.toHaveBeenCalled();
+    // A cache hit still tells changes against a list it can be compared with.
+    await notifyLibraryChanges('sonarr', [main, anime], read([series(5, 'Frieren', 2023, 's2'), series(6, 'Dandadan', 2024, 's2')], [], true), noGrouping);
+    expect(sent().map((e) => [e.title, e.body])).toEqual([['Main · Series Deleted', 'Severance'], ['Anime · Series Added', 'Dandadan (2024)']]);
   });
 
   it('sends nothing when the new list cannot be saved, so a change is never told every cycle', async () => {

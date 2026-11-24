@@ -310,7 +310,6 @@ export async function notifyAndLog(
   }
 }
 
-/** Prefix a notification title with the instance label only when >1 instance of the type is connected. */
 /**
  * The notices whose event someone takes: an allowed user with a device switched
  * on for it, or a channel set to it. The opt-in events (title added or deleted,
@@ -337,6 +336,7 @@ export async function wantedNotices<T extends { event: { eventType: string; meta
   return kept;
 }
 
+/** Prefix a notification title with the instance label only when >1 instance of the type is connected. */
 export function instanceTitle(base: string, label: string, instanceCount: number): string {
   return instanceCount > 1 ? `${label} · ${base}` : base;
 }

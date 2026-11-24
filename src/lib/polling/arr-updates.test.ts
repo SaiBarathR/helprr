@@ -79,6 +79,8 @@ describe('checkArrUpdates', () => {
         body: 'Sonarr 3.1.0.5799 is out (this one runs 3.0.2.5780).',
         url: '/settings/status',
         dedupeKey: 'arrUpdateAvailable:s1:3.1.0.5799',
+        // The push tag comes from the id: one per instance.
+        metadata: expect.objectContaining({ id: 's1:3.1.0.5799' }),
       }),
       expect.objectContaining({ title: 'Prowlarr update available', body: 'Prowlarr 3.1.0.5799 is out (this one runs 3.0.2.5780).', dedupeKey: 'arrUpdateAvailable:p1:3.1.0.5799' }),
     ]);
@@ -110,11 +112,11 @@ describe('checkArrUpdates', () => {
     expect(mocks.notify).not.toHaveBeenCalled();
   });
 
-  it('remembers nothing when the notification could not be recorded, so the next check tries again', async () => {
+  it('remembers nothing when the notification could not be recorded, and asks for the hourly retry', async () => {
     mocks.sonarr = [sonarr('s1', 'Main', async () => lists.prowlarr)];
     mocks.notify.mockResolvedValueOnce(null);
-    await checkArrUpdates();
-    await checkArrUpdates();
+    expect(await checkArrUpdates()).toBe(false);
+    expect(await checkArrUpdates()).toBe(true);
     expect(mocks.notify).toHaveBeenCalledTimes(2);
   });
 });

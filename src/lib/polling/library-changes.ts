@@ -69,14 +69,14 @@ export function diffLibrary(known: KnownLibrary | null, version: number, titles:
 
 /**
  * Compare each instance that answered this read with its last list, and send
- * what changed. The first list of an instance (or of a changed connection) only
- * records it. The new list is saved before anything is sent, so Redis refusing
+ * what changed. The first live list of an instance (or of a changed
+ * connection) only records it. The new list is saved before anything is sent, so Redis refusing
  * the write sends nothing rather than the same change every cycle.
  */
 export async function notifyLibraryChanges(
   service: 'sonarr' | 'radarr',
   instances: Instance[],
-  result: { items: LibraryItem[]; failedInstanceIds: string[] },
+  result: { items: LibraryItem[]; failedInstanceIds: string[]; cached: boolean },
   groupingEnabled: () => Promise<boolean>,
 ): Promise<void> {
   const answered = instances.filter(({ connection }) => !result.failedInstanceIds.includes(connection.id));
@@ -96,6 +96,12 @@ export async function notifyLibraryChanges(
       const key = knownKey(service, connection.id);
       const diff = diffLibrary(parseKnown(await redis.get(key)), version, titles);
       if (diff && diff.added.length === 0 && diff.deleted.length === 0) continue;
+      // A first list (or one after the connection changed) only from a live read:
+      // the cached library does not say which instances it covered, so right
+      // after an instance is added or pointed elsewhere (before the cache is
+      // cleared) it would record none or another server's titles, and the next
+      // read would tell the whole library as added or deleted.
+      if (!diff && result.cached) continue;
       await redis.set(key, JSON.stringify({ version, titles } satisfies KnownLibrary), { EX: KNOWN_TTL_SECONDS });
       if (!diff) continue;
 
