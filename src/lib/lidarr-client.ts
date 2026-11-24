@@ -522,17 +522,13 @@ export class LidarrClient {
     return this.get<HealthCheck[]>('/api/v1/health');
   }
 
+  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
   async getUpdates(): Promise<ArrUpdate[]> {
     return this.get<ArrUpdate[]>('/api/v1/update');
   }
 
   async getSystemStatus(): Promise<SystemStatus> {
     return this.get<SystemStatus>('/api/v1/system/status');
-  }
-
-  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
-  async getUpdates(): Promise<unknown[]> {
-    return this.get<unknown[]>('/api/v1/update');
   }
 
   /** System → Tasks: each scheduled task with its interval and last and next run. */

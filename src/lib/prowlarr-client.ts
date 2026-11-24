@@ -450,6 +450,7 @@ export class ProwlarrClient {
     return this.get<HealthCheck[]>('/api/v1/health');
   }
 
+  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
   async getUpdates(): Promise<ArrUpdate[]> {
     return this.get<ArrUpdate[]>('/api/v1/update');
   }
@@ -479,11 +480,6 @@ export class ProwlarrClient {
 
   async sendCommand(name: string): Promise<CommandResponse> {
     return this.post<CommandResponse>('/api/v1/command', { name });
-  }
-
-  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
-  async getUpdates(): Promise<unknown[]> {
-    return this.get<unknown[]>('/api/v1/update');
   }
 
   /** System → Tasks: each scheduled task with its interval and last and next run. */
