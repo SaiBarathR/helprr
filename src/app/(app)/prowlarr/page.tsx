@@ -494,6 +494,7 @@ function StatCard({ label, value, icon, iconBg }: StatCardProps) {
 function StatsTab() {
   const [dateRange, setDateRange] = useRouteViewState<DateRange>('dateRange', '7d');
   const [filters, setFilters] = useRouteViewState<StatsFilters>('statsFilters', NO_STATS_FILTERS);
+  const queryClient = useQueryClient();
 
   // The shared caches the indexer list and the Apps tab fill; the menu just has fewer choices while they load.
   const indexersQuery = useQuery({
@@ -507,24 +508,21 @@ function StatsTab() {
     [indexersQuery.data],
   );
   const filterTags = tagsQuery.data ?? [];
-  // A tag deleted in Prowlarr since it was picked would fail the whole request.
-  const appliedFilters = tagsQuery.data
-    ? { ...filters, tags: filters.tags.filter((id) => filterTags.some((tag) => tag.id === id)) }
-    : filters;
+  // A tag deleted in Prowlarr since it was picked would fail the whole request,
+  // and an indexer deleted since would leave a nameless chip over empty stats.
+  const appliedFilters = {
+    ...filters,
+    tags: tagsQuery.data ? filters.tags.filter((id) => filterTags.some((tag) => tag.id === id)) : filters.tags,
+    indexers: indexersQuery.data
+      ? filters.indexers.filter((id) => filterIndexers.some((indexer) => indexer.id === id))
+      : filters.indexers,
+  };
 
   const statsQuery = useQuery(prowlarrStatsQuery(dateRange, appliedFilters));
   const activeFilters = statsActiveFilters(appliedFilters, setFilters, filterIndexers, filterTags);
 
   const stats = statsQuery.data ?? null;
   const loading = statsQuery.isLoading;
-
-  if (statsQuery.isError) {
-    return (
-      <div className="rounded-xl bg-card border border-border p-8 text-center text-muted-foreground">
-        Failed to load stats
-      </div>
-    );
-  }
 
   const indexers = stats?.indexers ?? [];
   const userAgents: ProwlarrUserAgentStat[] = stats?.userAgents ?? [];
@@ -607,7 +605,26 @@ function StatsTab() {
       </div>
       <ActiveFilterBar filters={activeFilters} onClearAll={() => setFilters(NO_STATS_FILTERS)} />
 
-      {loading ? (
+      {/* Below the filters, so a filter that broke the request can still be changed. */}
+      {statsQuery.isError ? (
+        <div className="rounded-xl bg-card border border-border p-8 text-center text-muted-foreground">
+          <p>Failed to load stats</p>
+          {activeFilters.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={() => {
+                setFilters(NO_STATS_FILTERS);
+                // A tag deleted in Prowlarr is the usual cause; the next list leaves it out.
+                void queryClient.invalidateQueries({ queryKey: prowlarrTagsQuery.queryKey });
+              }}
+            >
+              Clear filters
+            </Button>
+          )}
+        </div>
+      ) : loading ? (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="rounded-xl bg-card border border-border p-4 h-[72px] animate-pulse" />

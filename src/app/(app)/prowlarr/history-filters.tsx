@@ -114,12 +114,12 @@ export function HistoryFilterBar({
           ))}
         </ResponsiveMenu>
       </div>
-      {/* One tap flips the order; the label says which order is showing. */}
+      {/* One tap flips the order; the label says which order is showing, and oldest first is lit like a filter. */}
       <button
         type="button"
         aria-label={oldestFirst ? 'Oldest first. Show newest first' : 'Newest first. Show oldest first'}
         onClick={() => onSortChange(oldestFirst ? 'newest' : 'oldest')}
-        className={`ml-auto shrink-0 ${pillClass(false)}`}
+        className={`ml-auto shrink-0 ${pillClass(oldestFirst)}`}
       >
         <SortIcon className="h-3.5 w-3.5 shrink-0" />
         <span className="hidden sm:inline">{oldestFirst ? 'Oldest' : 'Newest'}</span>

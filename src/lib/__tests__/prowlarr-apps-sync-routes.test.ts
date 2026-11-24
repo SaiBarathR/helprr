@@ -321,6 +321,8 @@ describe('POST /api/prowlarr/applications/from-connection', () => {
     [{ ...ADD_BODY, apiKey: 'chosen-by-the-browser' }, 'Unsupported field: apiKey'],
     [{ ...ADD_BODY, baseUrl: 'ftp://sonarr' }, 'baseUrl must be an http or https address'],
     [{ ...ADD_BODY, prowlarrUrl: 'http://user:pass@prowlarr:9696' }, 'prowlarrUrl must be an http or https address'],
+    [{ ...ADD_BODY, baseUrl: 'http://sonarr:8989/?apikey=x' }, 'baseUrl must be an http or https address'],
+    [{ ...ADD_BODY, prowlarrUrl: 'http://prowlarr:9696/#x' }, 'prowlarrUrl must be an http or https address'],
     [{ ...ADD_BODY, name: '  ' }, 'name must be 1 to 100 characters'],
     [{ ...ADD_BODY, syncLevel: 'all' }, 'syncLevel must be disabled, addOnly or fullSync'],
     [{ ...ADD_BODY, connectionId: '../x' }, 'connectionId is required'],

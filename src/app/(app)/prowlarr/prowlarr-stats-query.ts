@@ -20,10 +20,14 @@ export function hasStatsFilters(filters: StatsFilters): boolean {
 
 const RANGE_DAYS: Record<Exclude<DateRange, 'all'>, number> = { '7d': 7, '30d': 30, '90d': 90 };
 
-/** The end of a local `YYYY-MM-DD` day, or null for anything else. */
+/**
+ * The end of a local `YYYY-MM-DD` day, or null for anything else. Years before
+ * 2000 count as unfinished: a date field typed into passes through 0002, 0020
+ * and 0202 on the way to 2026, and each would fetch stats.
+ */
 export function endOfLocalDay(day: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
-  if (!match) return null;
+  if (!match || Number(match[1]) < 2000) return null;
   const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 23, 59, 59, 999);
   return Number.isNaN(date.getTime()) ? null : date;
 }

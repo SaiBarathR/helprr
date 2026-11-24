@@ -84,7 +84,7 @@ describe('ApplicationsTab', () => {
     perms.canManage = true;
     renderTab();
     await userEvent.click(await screen.findByRole('button', { name: 'Sonarr' }));
-    await userEvent.click(screen.getByRole('radio', { name: /Full sync/ }));
+    await userEvent.click(screen.getByRole('button', { name: /^Full sync/ }));
     expect(writes()).toEqual([]);
     const confirm = await screen.findByRole('alertdialog');
     expect(within(confirm).getByText(/remove indexers from Sonarr/)).toBeTruthy();
@@ -96,7 +96,7 @@ describe('ApplicationsTab', () => {
     perms.canManage = true;
     renderTab();
     await userEvent.click(await screen.findByRole('button', { name: 'Sonarr' }));
-    await userEvent.click(screen.getByRole('radio', { name: /Sync off/ }));
+    await userEvent.click(screen.getByRole('button', { name: /^Sync off/ }));
     await userEvent.click(await screen.findByRole('button', { name: 'anime', pressed: true }));
     expect(writes()).toEqual([
       ['/api/prowlarr/applications/bulk', 'PUT', { ids: [5], syncLevel: 'disabled' }],

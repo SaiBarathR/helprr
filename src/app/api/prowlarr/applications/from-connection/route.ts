@@ -18,6 +18,10 @@ import type { ProwlarrSyncLevel } from '@/lib/prowlarr-client';
 // Adding an app hands one of Helprr's arr API keys to Prowlarr, so this is an
 // admin's, like the connection itself. The key goes from Helprr's database to
 // Prowlarr server to server: no response, log line or audit row holds it.
+// Unlike editing a connection (/api/services asks for the key again when its
+// address changes), the arr address here is the admin's to type: under Docker
+// Prowlarr reaches the arr by another name than Helprr does, which is the point
+// of the form. An admin can already export the keys, so this exposes nothing new.
 
 const ALLOWED_KEYS = new Set(['connectionId', 'name', 'baseUrl', 'prowlarrUrl', 'syncLevel', 'testOnly']);
 const MAX_NAME = 100;
@@ -36,12 +40,17 @@ function isConnectionId(value: unknown): value is string {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
 }
 
-/** An http(s) address with no user name or password in it (Prowlarr shows its URLs in clear), without a trailing slash. */
+/**
+ * An http(s) base address, without a trailing slash: no user name or password
+ * (Prowlarr shows its URLs in clear), and no query or fragment, which Prowlarr
+ * would keep in front of every API path.
+ */
 function parseUrl(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > MAX_URL) return null;
   try {
     const url = new URL(value.trim());
     if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username || url.password) return null;
+    if (url.search || url.hash) return null;
     return url.toString().replace(/\/+$/, '');
   } catch {
     return null;

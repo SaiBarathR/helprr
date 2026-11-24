@@ -7,7 +7,9 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 /**
  * Sync one app now. Prowlarr's sync command has no per-app form, so the server
  * saves the app unchanged, which makes Prowlarr test it and add and update that
- * app's indexers (removals wait for Sync All). The browser never handles the
+ * app's indexers (removals wait for Sync All). An edit made in Prowlarr in the
+ * moment between the read and the save would be undone; Prowlarr's own form has
+ * the same window. The browser never handles the
  * app's settings, and a failure is a fixed message: Prowlarr's can quote the
  * arr's URL.
  */

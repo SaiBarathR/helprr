@@ -65,11 +65,14 @@ export function ApplicationSheet({ application, onClose }: {
   const [confirmFullSync, setConfirmFullSync] = useState(false);
   const tags = tagsQuery.data ?? [];
 
-  async function edit(change: Omit<ProwlarrApplicationBulkEdit, 'ids'>, failure: string) {
+  // `turnedOn`: Prowlarr's bulk editor syncs nothing, so an app whose sync was
+  // just turned on gets its indexers only at the next sync; the toast says so.
+  async function edit(change: Omit<ProwlarrApplicationBulkEdit, 'ids'>, failure: string, turnedOn = false) {
     if (!application) return;
     setPending(true);
     const error = await saveApplication({ ids: [application.id], ...change });
     if (error) toast.error(failure, { description: error });
+    else if (turnedOn) toast.success(`Sync is on for ${application.name}`, { description: 'Use Sync now to send it the indexers now.' });
     await queryClient.invalidateQueries({ queryKey: ['prowlarr', 'applications'] });
     setPending(false);
   }
@@ -80,7 +83,7 @@ export function ApplicationSheet({ application, onClose }: {
       setConfirmFullSync(true);
       return;
     }
-    void edit({ syncLevel }, `Could not change how ${application.name} syncs`);
+    void edit({ syncLevel }, `Could not change how ${application.name} syncs`, application.syncLevel === 'disabled');
   }
 
   async function post(path: 'test' | 'sync', done: string, failed: string, setBusy: (busy: boolean) => void) {
@@ -136,15 +139,14 @@ export function ApplicationSheet({ application, onClose }: {
 
               <section aria-label="Sync level" className="space-y-1.5">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Sync level</p>
-                <div role="radiogroup" aria-label="Sync level" className="rounded-lg bg-muted/30 divide-y divide-border/40">
+                <div role="group" aria-label="Sync level" className="rounded-lg bg-muted/30 divide-y divide-border/40">
                   {(['disabled', 'addOnly', 'fullSync'] as const).map((level) => {
                     const selected = application.syncLevel === level;
                     return (
                       <button
                         key={level}
                         type="button"
-                        role="radio"
-                        aria-checked={selected}
+                        aria-pressed={selected}
                         disabled={pending}
                         onClick={() => pickSyncLevel(level)}
                         className="flex w-full items-start gap-3 px-3 py-2.5 text-left disabled:opacity-60"
@@ -220,7 +222,7 @@ export function ApplicationSheet({ application, onClose }: {
         confirmLabel="Use full sync"
         busy={pending}
         onConfirm={async () => {
-          await edit({ syncLevel: 'fullSync' }, `Could not change how ${name} syncs`);
+          await edit({ syncLevel: 'fullSync' }, `Could not change how ${name} syncs`, application?.syncLevel === 'disabled');
           setConfirmFullSync(false);
         }}
       />
