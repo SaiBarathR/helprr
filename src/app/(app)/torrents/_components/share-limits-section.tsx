@@ -88,13 +88,18 @@ function parseDraft(kind: 'ratio' | 'time', label: string, draft: Draft): number
 
 /**
  * A torrent's ratio, seeding time and inactive seeding time limits. qBittorrent
- * sets the three together, so one editor holds all of them.
+ * sets the three together, so one editor holds all of them. Without
+ * `allowGlobal` it edits the global limits themselves (Torrents settings), which
+ * are a limit or none.
  */
 export function ShareLimitsSection({
   values,
   effective,
   target,
   readOnly = false,
+  allowGlobal = true,
+  title = 'Share Limits',
+  footer = 'What qBittorrent does when a torrent reaches a limit (stop it or remove it) is set with the global limits, in qBittorrent Settings.',
   onSave,
 }: {
   /** null where the torrents being edited disagree. */
@@ -104,12 +109,15 @@ export function ShareLimitsSection({
   /** Who the limits apply to, named in the toast (e.g. "3 torrents"). */
   target?: string;
   readOnly?: boolean;
+  /** Offer "Use global limit" (a torrent's own limits); false for the global limits. */
+  allowGlobal?: boolean;
+  title?: string;
+  footer?: string;
   /** Resolves false once the failure has been toasted (useTorrentAction). */
   onSave?: (values: ShareLimitValues) => Promise<boolean>;
 }) {
   const [drafts, setDrafts] = useState<Record<ShareLimitField, Draft> | null>(null);
   const [saving, setSaving] = useState(false);
-  const footer = 'What qBittorrent does when a torrent reaches a limit (stop it or remove it) is set in qBittorrent, with the global limits.';
 
   const startEditing = () => {
     setDrafts(Object.fromEntries(FIELDS.map(({ field, kind }) => [field, draftFor(kind, values[field])])) as Record<ShareLimitField, Draft>);
@@ -135,7 +143,8 @@ export function ShareLimitsSection({
     try {
       if (await onSave(next)) {
         setDrafts(null);
-        toast.success(`Share limits updated${target ? ` for ${target}` : ''}`);
+        // Sentence case: "Share limits updated".
+        toast.success(`${title.charAt(0)}${title.slice(1).toLowerCase()} updated${target ? ` for ${target}` : ''}`);
       }
     } finally {
       setSaving(false);
@@ -144,7 +153,7 @@ export function ShareLimitsSection({
 
   if (!drafts) {
     return (
-      <GroupedSection title="Share Limits" footer={footer}>
+      <GroupedSection title={title} footer={footer}>
         {FIELDS.map(({ field, label, kind }) => {
           const text = formatShareLimit(kind, values[field], effective?.[field]);
           return readOnly ? (
@@ -172,7 +181,7 @@ export function ShareLimitsSection({
   }
 
   return (
-    <GroupedSection title="Share Limits" footer={footer}>
+    <GroupedSection title={title} footer={footer}>
       <form className="grouped-row grouped-row-stacked gap-4" onSubmit={handleSave}>
         {FIELDS.map(({ field, label, kind }) => {
           const draft = drafts[field];
@@ -184,7 +193,7 @@ export function ShareLimitsSection({
                   <SelectValue placeholder="Mixed: choose one" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="global">Use global limit</SelectItem>
+                  {allowGlobal && <SelectItem value="global">Use global limit</SelectItem>}
                   <SelectItem value="unlimited">Unlimited</SelectItem>
                   <SelectItem value="custom">Custom</SelectItem>
                 </SelectContent>

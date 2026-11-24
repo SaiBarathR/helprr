@@ -166,14 +166,21 @@ export function ArrTasksPanel({
   );
 }
 
+// The arrs' levels, and qBittorrent's (critical, warning, info, normal) for its log.
 const LEVEL_STYLE: Record<string, string> = {
   fatal: 'text-rose-400 light:text-rose-600',
   error: 'text-rose-400 light:text-rose-600',
+  critical: 'text-rose-400 light:text-rose-600',
   warn: 'text-amber-400 light:text-amber-700',
+  warning: 'text-amber-400 light:text-amber-700',
+  info: 'text-sky-400 light:text-sky-700',
 };
-const LEVEL_LABEL: Record<string, string> = { fatal: 'Fatal', error: 'Error', warn: 'Warning' };
+const LEVEL_LABEL: Record<string, string> = {
+  fatal: 'Fatal', error: 'Error', warn: 'Warning', critical: 'Critical', warning: 'Warning', info: 'Info', normal: 'Normal',
+};
 
-function LogEntryRow({ entry }: { entry: ArrLogEntry }) {
+/** One log line: its level, source and age, and the message (clamped, with Show more). Also the qBittorrent log's. */
+export function LogEntryRow({ entry }: { entry: Pick<ArrLogEntry, 'time' | 'level' | 'logger' | 'message' | 'exception'> }) {
   const [expanded, setExpanded] = useState(false);
   // Offered when the four lines cut the message off (measured, as the width
   // decides) or there is an exception to show.

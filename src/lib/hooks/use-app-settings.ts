@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/query-fetch';
 import { fetchAppSettings, forgetAppSettingsFetch } from '@/lib/app-settings-fetch';
 import { normalizeRegionCode } from '@/lib/region';
 import { DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS } from '@/lib/service-down-alert-delay';
+import { DEFAULT_TORRENT_STALLED_ALERT_MINS } from '@/lib/torrent-stalled-alert';
 
 export interface AppSettingsState {
   pollingIntervalSecs: number;
@@ -32,6 +33,7 @@ export interface AppSettingsState {
   activityDigestDayOfWeek: number;
   notificationGroupingEnabled: boolean;
   serviceDownAlertDelaySecs: number;
+  torrentStalledAlertMins: number;
   animeAutoMapEnabled: boolean;
   animeAutoMapHour: number;
   updateCheckEnabled: boolean;
@@ -93,6 +95,7 @@ function normalize(raw: Record<string, unknown>): AppSettingsState {
     activityDigestDayOfWeek: numberOr(raw.activityDigestDayOfWeek, 1),
     notificationGroupingEnabled: raw.notificationGroupingEnabled !== false,
     serviceDownAlertDelaySecs: numberOr(raw.serviceDownAlertDelaySecs, DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS),
+    torrentStalledAlertMins: numberOr(raw.torrentStalledAlertMins, DEFAULT_TORRENT_STALLED_ALERT_MINS),
     animeAutoMapEnabled: raw.animeAutoMapEnabled !== false,
     animeAutoMapHour: numberOr(raw.animeAutoMapHour, 0),
     updateCheckEnabled: raw.updateCheckEnabled !== false,

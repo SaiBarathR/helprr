@@ -219,6 +219,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         activityDigestDayOfWeek: settings.activityDigestDayOfWeek,
         notificationGroupingEnabled: settings.notificationGroupingEnabled,
         serviceDownAlertDelaySecs: settings.serviceDownAlertDelaySecs,
+        torrentStalledAlertMins: settings.torrentStalledAlertMins,
         animeAutoMapEnabled: settings.animeAutoMapEnabled,
         animeAutoMapHour: settings.animeAutoMapHour,
         updateCheckEnabled: settings.updateCheckEnabled,

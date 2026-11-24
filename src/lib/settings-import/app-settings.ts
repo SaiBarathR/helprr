@@ -6,6 +6,7 @@ import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { parseDiskThresholds } from '@/lib/disk-space';
 import { normalizeRegionCode } from '@/lib/region';
 import { DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS, MAX_SERVICE_DOWN_ALERT_DELAY_SECS } from '@/lib/service-down-alert-delay';
+import { DEFAULT_TORRENT_STALLED_ALERT_MINS, MAX_TORRENT_STALLED_ALERT_MINS, MIN_TORRENT_STALLED_ALERT_MINS } from '@/lib/torrent-stalled-alert';
 import type { ExportedAppSettings } from '@/lib/settings-export';
 import {
   LOG_LEVELS,
@@ -66,6 +67,10 @@ export function buildAppSettingsUpdate(
   if (input.serviceDownAlertDelaySecs !== undefined)
     out.serviceDownAlertDelaySecs = clampInt(
       input.serviceDownAlertDelaySecs, 0, MAX_SERVICE_DOWN_ALERT_DELAY_SECS, DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS,
+    );
+  if (input.torrentStalledAlertMins !== undefined)
+    out.torrentStalledAlertMins = clampInt(
+      input.torrentStalledAlertMins, MIN_TORRENT_STALLED_ALERT_MINS, MAX_TORRENT_STALLED_ALERT_MINS, DEFAULT_TORRENT_STALLED_ALERT_MINS,
     );
   if (input.animeAutoMapEnabled !== undefined)
     out.animeAutoMapEnabled = Boolean(input.animeAutoMapEnabled);
@@ -136,6 +141,8 @@ export async function applyAppSettingsInTxn(
       notificationGroupingEnabled: (data.notificationGroupingEnabled as boolean | undefined) ?? true,
       serviceDownAlertDelaySecs:
         (data.serviceDownAlertDelaySecs as number | undefined) ?? DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS,
+      torrentStalledAlertMins:
+        (data.torrentStalledAlertMins as number | undefined) ?? DEFAULT_TORRENT_STALLED_ALERT_MINS,
       animeAutoMapEnabled: (data.animeAutoMapEnabled as boolean | undefined) ?? true,
       animeAutoMapHour: (data.animeAutoMapHour as number | undefined) ?? 0,
       updateCheckEnabled: (data.updateCheckEnabled as boolean | undefined) ?? true,

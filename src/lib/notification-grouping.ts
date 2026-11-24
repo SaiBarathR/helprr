@@ -92,6 +92,8 @@ const GROUP_NOUNS: Record<string, string> = {
   'qbittorrent:torrentAdded': 'Torrents Added',
   'qbittorrent:torrentCompleted': 'Downloads Complete',
   'qbittorrent:torrentDeleted': 'Torrents Removed',
+  'qbittorrent:torrentErrored': 'Torrents Errored',
+  'qbittorrent:torrentStalled': 'Torrents Stalled',
   'sonarr:upcomingPremiere': 'Upcoming Episodes',
   'radarr:upcomingPremiere': 'Upcoming Movies',
   'lidarr:upcomingPremiere': 'Upcoming Albums',

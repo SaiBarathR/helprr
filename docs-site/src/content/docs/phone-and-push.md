@@ -75,6 +75,18 @@ can add a hundred titles at once), and while nobody has them on they are not lis
 Notifications either. A download that needs a manual import (the apps' "Manual
 Interaction Required") is **Import Failed**, as before.
 
+Two qBittorrent events tell about a download in trouble. **Torrent Errored** comes when
+a torrent stops on an error or finds its files missing (for example a disk that went
+away); it opens the torrent's settings, where **Location** can point it at its files
+again. **Torrent Stalled** comes when a download has had no data, or a magnet no
+metadata, for the time set under it in **Settings → Notifications → qBittorrent →
+Stalled for** (30 minutes by default; admins choose from 5 minutes to 24 hours, for
+everyone). It opens the torrent's trackers, whose messages usually say why. Each comes
+once each time a torrent gets into that state, and again only after it has recovered;
+a stall is timed from when Helprr first sees it, also after Helprr restarts. Both are
+off until you turn them on, on each device and channel, including ones from before
+Helprr had them.
+
 **Settings → Notifications → Service outages → Alert after** sets how long a service
 must stay unreachable before the "is unreachable" notification (2 minutes by default;
 Immediately, or up to 30 minutes). A shorter blip, such as the internet dropping for a

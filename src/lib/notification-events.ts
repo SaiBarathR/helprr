@@ -5,7 +5,7 @@ export const EVENT_TYPES = [
   'titleAdded', 'titleDeleted', 'fileDeleted', 'fileRenamed',
   'upcomingPremiere', 'healthWarning', 'healthRestored',
   'serviceDown', 'serviceRestored', 'diskLowSpace', 'databaseBackup', 'arrUpdateAvailable',
-  'torrentAdded', 'torrentCompleted', 'torrentDeleted',
+  'torrentAdded', 'torrentCompleted', 'torrentDeleted', 'torrentErrored', 'torrentStalled',
   'jellyfinPlaybackStart',
   'cleanupStrike', 'cleanupRemoved', 'cleanupFailed',
   'watchlistReminder', 'watchlistAvailable', 'watchingNewEpisode',
@@ -153,6 +153,18 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     label: 'Torrent Removed',
     description: 'When a torrent is removed',
     iconName: 'Trash2', colorClass: 'bg-zinc-500/10 text-zinc-400',
+  },
+  torrentErrored: {
+    type: 'torrentErrored', group: 'qbittorrent',
+    label: 'Torrent Errored',
+    description: 'When a torrent stops on an error or finds its files missing',
+    iconName: 'AlertTriangle', colorClass: 'bg-red-500/10 text-red-500',
+  },
+  torrentStalled: {
+    type: 'torrentStalled', group: 'qbittorrent',
+    label: 'Torrent Stalled',
+    description: 'When a download has had no data, or no metadata, for longer than the time below',
+    iconName: 'Clock', colorClass: 'bg-amber-500/10 text-amber-400',
   },
   jellyfinPlaybackStart: {
     type: 'jellyfinPlaybackStart', group: 'jellyfin',
@@ -338,7 +350,7 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
   {
     id: 'qbittorrent',
     title: 'qBittorrent',
-    types: ['torrentAdded', 'torrentCompleted', 'torrentDeleted'],
+    types: ['torrentAdded', 'torrentCompleted', 'torrentDeleted', 'torrentErrored', 'torrentStalled'],
   },
   {
     id: 'jellyfin',
@@ -411,10 +423,12 @@ export const WATCHING_EPISODE_DAY_OPTIONS = [0, 7, 14, 30, 60, 90] as const;
 // import list adding a hundred titles, a series renamed file by file), so
 // they are opt-in too. That is also their starting state on devices and
 // channels from before they existed: such a device has no row for them and a
-// channel does not list them, so neither starts getting them.
+// channel does not list them, so neither starts getting them. So are a
+// torrent that errors or stalls (QBT-12).
 const DEFAULT_OFF_EVENT_TYPES: ReadonlySet<string> = new Set<NotificationEventType>([
   'tonightPickInvite',
   'titleAdded', 'titleDeleted', 'fileDeleted', 'fileRenamed', 'arrUpdateAvailable',
+  'torrentErrored', 'torrentStalled',
 ]);
 
 export function eventEnabledByDefault(eventType: string): boolean {

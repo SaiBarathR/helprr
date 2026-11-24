@@ -248,6 +248,8 @@ export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability>
   torrentAdded: 'notify.torrents',
   torrentCompleted: 'notify.torrents',
   torrentDeleted: 'notify.torrents',
+  torrentErrored: 'notify.torrents',
+  torrentStalled: 'notify.torrents',
   jellyfinPlaybackStart: 'notify.jellyfin',
   cleanupStrike: 'notify.cleanup',
   cleanupRemoved: 'notify.cleanup',

@@ -12,6 +12,7 @@ import { EVENT_GROUPS, EVENT_META, eventEnabledByDefault } from '@/lib/notificat
 import { ADMIN_ONLY_EVENT_TYPES, EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { WatchingWindowRow } from '@/components/notifications/watching-window-row';
+import { TorrentStalledRow } from '@/components/notifications/torrent-stalled-row';
 
 // Per-item download/import events are the only ones that carry quality + tag
 // metadata, so only they expose the filter inputs.
@@ -290,6 +291,7 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
                 </div>
                 {/* The alert also needs series.view, which the toggle's capability doesn't cover. */}
                 {eventType === 'watchingNewEpisode' && hasCapability(me, 'series.view') && <WatchingWindowRow />}
+                {eventType === 'torrentStalled' && <TorrentStalledRow />}
                 {canFilter && checked && isExpanded && (
                   <div className="px-4 pb-3 pt-1 space-y-2">
                     <div>

@@ -1131,8 +1131,25 @@ the owner's public IP. `/api/qbittorrent/transfer` and the summary (full, `view=
 rate limits, DHT nodes and connection status, for every user. The client's
 `getTransferInfo` applies it too, so a new caller can't pass the address on. Preferences are read
 through methods that copy out named keys (`getSpeedLimits`, `getSavePathPreferences`,
-`isQueueingEnabled`, `isSubcategoriesEnabled`), since `app/preferences` holds the Web UI and proxy passwords, and
+`isQueueingEnabled`, `isSubcategoriesEnabled`, `getQueueSeedingPreferences`), since `app/preferences` holds the Web UI and proxy passwords, and
 `sync/maindata` only through `getServerStats`.
+
+Queueing and the global seeding limits (QBT-25, `/api/qbittorrent/queue-seeding`)
+are the only other preferences Helprr writes. `src/lib/qbittorrent-queue-seeding.ts`
+holds the twelve keys: the route refuses a body naming any other key (the Web UI
+password, the program run on completion), checks types, ranges and the
+`max_ratio_act` values, and takes a limit's value only with its switch turned on
+(qBittorrent reads a missing value as 0, which would act on every seeding torrent).
+The client rebuilds the payload from the same list. Reading needs `torrents.view`;
+writing is admin-only and records a `SETTINGS_UPDATED` security event with the keys.
+
+qBittorrent's main log (QBT-24, `/api/qbittorrent/log`, admin-only, page
+`/torrents/log`) lists forward from an id only, so the route reads all it keeps
+(`log/main`, at most 20 000 messages) and pages newest first by `before`. Each
+entry is rebuilt from id, time, type and message; the message has IP addresses
+masked (the external IP, listen addresses, Web UI login addresses; not
+`0.0.0.0`, `::` or loopback), then `redactLogText`: URLs cut to their host,
+credentials, keys and magnets removed. File paths are kept for the admin.
 
 qBittorrent's announce URLs carry a private tracker's passkey, in the path or the
 query, and so does each `tr=` of a torrent's magnet. The torrent lists
@@ -1443,6 +1460,23 @@ row to the admins' notification list.
   Service status.
 - "Manual Interaction Required" is the existing `importFailed` (a queue item in
   `importBlocked`, or `importPending` with a warning), for Sonarr as for Radarr.
+
+qBittorrent's `torrentErrored` and `torrentStalled` (QBT-12, `notify.torrents`)
+come from the qBittorrent poll (`src/lib/polling/torrent-problems.ts`). Each
+torrent's entry in its `PollingState.lastQueueIds` carries `errored`,
+`stuckSince` and `stuckSent`, saved every poll with the rest, so no Redis key or
+extra write is needed: `torrentErrored` goes out when a torrent is in `error` or
+`missingFiles` and was not at the last poll (also for one new since then), and
+again only after it has left those states. `torrentStalled` goes out once per
+stall when `stalledDL`, `metaDL` or `forcedMetaDL` has lasted
+`AppSettings.torrentStalledAlertMins` (5–1440, default 30, an admin setting
+under the Torrent Stalled switch), timed from the first poll that saw it; any
+other state ends the stall. The first run, and entries saved before these
+marks (no `errored`), only record, so an upgrade announces nothing already
+broken. Both are in `DEFAULT_OFF_EVENT_TYPES`, so devices and channels without
+a choice get none and no migration seeded them. They open
+`/torrents/<hash>/settings` (an error: Location) and
+`/torrents/<hash>/trackers` (a stall).
 
 "Now in your library" (`watchlistAvailable`, `src/lib/polling/watchlist-available.ts`)
 is sent from the Radarr/Sonarr history poll: a non-upgrade import of a title on

@@ -8,6 +8,7 @@ import { disableCachingAndPurgeCaches } from '@/lib/cache/admin';
 import { setCachedAnilistTtlSettings, setCachedCacheImagesEnabled } from '@/lib/cache/state';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS, MAX_SERVICE_DOWN_ALERT_DELAY_SECS } from '@/lib/service-down-alert-delay';
+import { DEFAULT_TORRENT_STALLED_ALERT_MINS, MAX_TORRENT_STALLED_ALERT_MINS, MIN_TORRENT_STALLED_ALERT_MINS } from '@/lib/torrent-stalled-alert';
 import { configureLogger } from '@/lib/logger';
 import { configureApiLogging, withApiLogging } from '@/lib/api-logger';
 import { getEnvTimeZone, isValidTimeZone, setAppTimeZone } from '@/lib/timezone';
@@ -148,6 +149,7 @@ async function putHandler(request: NextRequest) {
       activityDigestMode, activityDigestHour, activityDigestDayOfWeek,
       notificationGroupingEnabled,
       serviceDownAlertDelaySecs,
+      torrentStalledAlertMins,
       animeAutoMapEnabled, animeAutoMapHour,
       updateCheckEnabled,
       anilistSectionsTtlMin, anilistBrowseTtlMin, anilistDetailTtlMin, anilistAiringTtlMin,
@@ -301,6 +303,11 @@ async function putHandler(request: NextRequest) {
       if ('error' in parsed) return parsed.error;
       data.serviceDownAlertDelaySecs = parsed.value;
     }
+    if (torrentStalledAlertMins !== undefined) {
+      const parsed = parseIntegerSetting(torrentStalledAlertMins, 'Torrent stalled alert time', MIN_TORRENT_STALLED_ALERT_MINS, MAX_TORRENT_STALLED_ALERT_MINS);
+      if ('error' in parsed) return parsed.error;
+      data.torrentStalledAlertMins = parsed.value;
+    }
     if (animeAutoMapEnabled !== undefined) {
       // Strict check — Boolean('false') would silently enable the nightly job.
       if (typeof animeAutoMapEnabled !== 'boolean') {
@@ -377,6 +384,8 @@ async function putHandler(request: NextRequest) {
         notificationGroupingEnabled: (data.notificationGroupingEnabled as boolean | undefined) ?? true,
         serviceDownAlertDelaySecs:
           (data.serviceDownAlertDelaySecs as number | undefined) ?? DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS,
+        torrentStalledAlertMins:
+          (data.torrentStalledAlertMins as number | undefined) ?? DEFAULT_TORRENT_STALLED_ALERT_MINS,
         animeAutoMapEnabled: (data.animeAutoMapEnabled as boolean | undefined) ?? true,
         animeAutoMapHour: (data.animeAutoMapHour as number | undefined) ?? 0,
         updateCheckEnabled: (data.updateCheckEnabled as boolean | undefined) ?? true,

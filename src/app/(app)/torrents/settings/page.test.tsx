@@ -10,8 +10,9 @@ const mocks = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn() },
   ui: { hasHydrated: true, torrentsView: 'auto', setTorrentsView: vi.fn() },
   handleAuthError: vi.fn(),
+  me: null as null | { role: string },
 }));
-vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap), useMe: () => null }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap), useMe: () => mocks.me }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ back: vi.fn(), push: vi.fn() }) }));
 vi.mock('@/lib/client-refresh-settings', () => ({ getRefreshIntervalMs: vi.fn().mockResolvedValue(60_000) }));
 vi.mock('@/lib/store', () => ({ useUIStore: (select: (state: typeof mocks.ui) => unknown) => select(mocks.ui) }));
@@ -45,12 +46,22 @@ let limitReads: (object | Response)[];
 let limitGets: number;
 let posts: Record<string, unknown>[];
 let postResponse: (body: Record<string, unknown>) => Promise<Response>;
+let queueSeeding: Record<string, unknown>;
+let queuePatches: Record<string, unknown>[];
+const QUEUE_SEEDING = {
+  queueing_enabled: true, max_active_downloads: 3, max_active_uploads: -1, max_active_torrents: 5, dont_count_slow_torrents: false,
+  max_ratio_enabled: true, max_ratio: 2, max_seeding_time_enabled: false, max_seeding_time: -1,
+  max_inactive_seeding_time_enabled: false, max_inactive_seeding_time: -1, max_ratio_act: 0,
+};
 
 beforeEach(async () => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
   mocks.caps = new Set(['torrents.bandwidth']);
   mocks.ui.torrentsView = 'auto';
+  mocks.me = null;
+  queueSeeding = { ...QUEUE_SEEDING };
+  queuePatches = [];
   limitReads = [{ ...LIMITS, speedLimitsMode: 0 }];
   limitGets = 0;
   posts = [];
@@ -59,6 +70,13 @@ beforeEach(async () => {
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/qbittorrent/transfer') return Response.json(TRANSFER);
     if (url === '/api/qbittorrent/transfer/stats') return stats();
+    if (url === '/api/qbittorrent/queue-seeding') {
+      if (init?.method === 'PATCH') {
+        queuePatches.push(JSON.parse(String(init.body)));
+        return Response.json({ success: true });
+      }
+      return Response.json(queueSeeding);
+    }
     if (init?.method === 'POST') {
       const body = JSON.parse(String(init.body));
       posts.push(body);
@@ -325,5 +343,57 @@ describe('qBittorrent settings page', () => {
       });
       expect(mocks.ui.setTorrentsView).toHaveBeenLastCalledWith(view);
     }
+  });
+
+  describe('queueing and seeding limits (QBT-25)', () => {
+    const queueSwitch = () => document.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Torrent Queueing"]');
+
+    it('shows them read-only to a member, with no controls', async () => {
+      await renderPage();
+      await waitFor(() => expect(rowText('Torrent Queueing')).toBe('Torrent QueueingOn'));
+      expect(queueSwitch()).toBeNull();
+      expect(rowText('Max Active Downloads')).toBe('Max Active Downloads3');
+      expect(rowText('Max Active Uploads')).toBe('Max Active UploadsNo limit');
+      expect(rowText('Ratio Limit')).toBe('Ratio Limit2');
+      expect(rowText('Seeding Time Limit')).toBe('Seeding Time LimitUnlimited');
+      expect(rowText('Then')).toBe('ThenStop torrent');
+    });
+
+    it('turns queueing off for an admin, hides the counts and refreshes the queue buttons', async () => {
+      mocks.me = { role: 'admin' };
+      await renderPage();
+      await waitFor(() => expect(queueSwitch()).not.toBeNull());
+      queryClient.setQueryData(['qbittorrent', 'options'], { tags: [], queueingEnabled: true });
+      await act(async () => queueSwitch()!.click());
+      await waitFor(() => expect(queuePatches).toEqual([{ queueing_enabled: false }]));
+      await waitFor(() => expect(queueSwitch()!.getAttribute('aria-checked')).toBe('false'));
+      expect(rowText('Max Active Downloads')).toBeUndefined();
+      expect(queryClient.getQueryState(['qbittorrent', 'options'])?.isInvalidated).toBe(true);
+    });
+
+    it('saves a count for an admin', async () => {
+      mocks.me = { role: 'admin' };
+      await renderPage();
+      await waitFor(() => expect(queueSwitch()).not.toBeNull());
+      await saveLimit('Max Active Downloads', '8');
+      await waitFor(() => expect(queuePatches).toEqual([{ max_active_downloads: 8 }]));
+      await waitFor(() => expect(rowText('Max Active Downloads')).toContain('8'));
+    });
+
+    it('asks before removing torrents with their files when a limit is reached', async () => {
+      mocks.me = { role: 'admin' };
+      await renderPage();
+      await waitFor(() => expect(queueSwitch()).not.toBeNull());
+      const action = [...document.querySelectorAll<HTMLSelectElement>('select')].find((el) => [...el.options].some((o) => o.text === 'Remove torrent and its files'))!;
+      await act(async () => {
+        action.value = '3';
+        action.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await waitFor(() => expect(document.body.textContent).toContain('Remove torrents and their files?'));
+      expect(queuePatches).toEqual([]);
+      const confirm = [...document.querySelectorAll('button')].find((el) => el.textContent === 'Remove with files')!;
+      await act(async () => confirm.click());
+      await waitFor(() => expect(queuePatches).toEqual([{ max_ratio_act: 3 }]));
+    });
   });
 });

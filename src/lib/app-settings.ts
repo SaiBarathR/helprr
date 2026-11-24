@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getEnvTimeZone, normalizeTimeZone } from '@/lib/timezone';
 import { DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS } from '@/lib/service-down-alert-delay';
+import { DEFAULT_TORRENT_STALLED_ALERT_MINS } from '@/lib/torrent-stalled-alert';
 
 export const DEFAULT_LOG_LEVEL = 'debug';
 export const DEFAULT_LOG_MAX_FILE_MB = 50;
@@ -32,6 +33,7 @@ export function buildDefaultAppSettings(): Prisma.AppSettingsCreateInput {
     activityDigestHour: 8,
     activityDigestDayOfWeek: 1,
     serviceDownAlertDelaySecs: DEFAULT_SERVICE_DOWN_ALERT_DELAY_SECS,
+    torrentStalledAlertMins: DEFAULT_TORRENT_STALLED_ALERT_MINS,
     animeAutoMapEnabled: true,
     animeAutoMapHour: 0,
     updateCheckEnabled: true,
