@@ -273,6 +273,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/qbittorrent/options',
     'GET /api/qbittorrent',
     'GET /api/qbittorrent/summary',
+    'GET /api/qbittorrent/transfer/stats',
     'GET /api/qbittorrent/transfer/limits',
     'GET /api/qbittorrent/transfer',
   ],
@@ -583,7 +584,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(290);
+    expect(handlers.size).toBe(291);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

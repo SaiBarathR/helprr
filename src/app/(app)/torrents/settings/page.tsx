@@ -15,7 +15,7 @@ import { formatBytes } from '@/lib/format';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { useUIStore, type TorrentsViewPreference } from '@/lib/store';
 import { useCan } from '@/components/permission-provider';
-import type { QBittorrentTransferInfo } from '@/types';
+import type { QBittorrentServerStats, QBittorrentTransferInfo } from '@/types';
 import { SpeedLimitInput, formatSpeedLimit } from '../_components/speed-limit-input';
 
 interface TransferLimits {
@@ -82,6 +82,19 @@ export default function QBittorrentSettingsPage() {
     refetchIntervalInBackground: false,
   });
   const transfer = transferQuery.data;
+
+  // A full sync/maindata read upstream, cached briefly on the server; free space
+  // and all-time totals change slowly, so this polls less often than transfer.
+  const statsQuery = useQuery({
+    queryKey: ['qbittorrent', 'transfer', 'stats'],
+    queryFn: jsonFetcher<QBittorrentServerStats>('/api/qbittorrent/transfer/stats'),
+    staleTime: 0,
+    refetchInterval: backoffRefetchInterval(Math.max(refreshIntervalMs, 30_000)),
+    refetchIntervalInBackground: false,
+  });
+  const stats = statsQuery.data;
+  const statValue = (value: number | null | undefined, format: (value: number) => string) =>
+    stats ? (value == null ? 'Unknown' : format(value)) : statsQuery.isError ? 'Unavailable' : '…';
 
   const { mutateAsync: postLimits } = useMutation({ mutationFn: postTransferLimits });
 
@@ -233,8 +246,12 @@ export default function QBittorrentSettingsPage() {
         <GroupedSection title="Transfer Stats">
           {transfer ? (
             <>
+              <StatRow label="Free Disk Space" value={statValue(stats?.freeSpaceOnDisk, formatBytes)} />
               <StatRow label="Session Downloaded" value={formatBytes(transfer.dl_info_data)} />
               <StatRow label="Session Uploaded" value={formatBytes(transfer.up_info_data)} />
+              <StatRow label="All-time Downloaded" value={statValue(stats?.alltimeDownloaded, formatBytes)} />
+              <StatRow label="All-time Uploaded" value={statValue(stats?.alltimeUploaded, formatBytes)} />
+              <StatRow label="Global Ratio" value={statValue(stats?.globalRatio, (ratio) => ratio.toFixed(2))} />
               <StatRow label="DHT Nodes" value={String(transfer.dht_nodes)} />
               <StatRow label="Connection Status" value={transfer.connection_status} />
             </>

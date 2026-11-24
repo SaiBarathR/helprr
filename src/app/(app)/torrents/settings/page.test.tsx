@@ -36,8 +36,11 @@ const TRANSFER = {
   dl_rate_limit: 0, up_rate_limit: 0, dht_nodes: 365, connection_status: 'connected',
 };
 
+const STATS = { freeSpaceOnDisk: 512 * 1024 ** 3, alltimeDownloaded: 1.5 * 1024 ** 4, alltimeUploaded: 3 * 1024 ** 4, globalRatio: 2 };
+
 let root: Root;
 let queryClient: QueryClient;
+let stats: () => Response;
 let limitReads: (object | Response)[];
 let limitGets: number;
 let posts: Record<string, unknown>[];
@@ -52,8 +55,10 @@ beforeEach(async () => {
   limitGets = 0;
   posts = [];
   postResponse = async () => Response.json({ success: true });
+  stats = () => Response.json(STATS);
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/qbittorrent/transfer') return Response.json(TRANSFER);
+    if (url === '/api/qbittorrent/transfer/stats') return stats();
     if (init?.method === 'POST') {
       const body = JSON.parse(String(init.body));
       posts.push(body);
@@ -116,6 +121,26 @@ describe('qBittorrent settings page', () => {
     expect(rowText('Session Downloaded')).toBe('Session Downloaded2.7 GB');
     expect(rowText('Session Uploaded')).toBe('Session Uploaded634.3 MB');
     expect(rowText('Connection Status')).toBe('Connection Statusconnected');
+    await waitFor(() => expect(rowText('Free Disk Space')).toBe('Free Disk Space512 GB'));
+    expect(rowText('All-time Downloaded')).toBe('All-time Downloaded1.5 TB');
+    expect(rowText('All-time Uploaded')).toBe('All-time Uploaded3 TB');
+    expect(rowText('Global Ratio')).toBe('Global Ratio2.00');
+  });
+
+  it("says what qBittorrent can't tell, and when the stats can't be read", async () => {
+    stats = () => Response.json({ ...STATS, freeSpaceOnDisk: null });
+    await renderPage();
+    await waitFor(() => expect(rowText('Free Disk Space')).toBe('Free Disk SpaceUnknown'));
+    expect(rowText('Session Downloaded')).toBe('Session Downloaded2.7 GB');
+
+    queryClient.clear();
+    await act(async () => root.unmount());
+    root = createRoot(document.getElementById('root')!);
+    stats = () => Response.json({ error: 'Failed' }, { status: 500 });
+    await renderPage();
+    await waitFor(() => expect(rowText('All-time Uploaded')).toBe('All-time UploadedUnavailable'));
+    // The session stats come from their own read and still show.
+    expect(rowText('Session Uploaded')).toBe('Session Uploaded634.3 MB');
   });
 
   it('flips alternative mode at once and keeps both sets of limits', async () => {

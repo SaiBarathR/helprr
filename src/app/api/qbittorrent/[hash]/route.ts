@@ -7,7 +7,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { deleteTorrentsAudited, TORRENT_DELETE_REFUSALS } from '@/lib/file-audit';
-import { isInsideDownloadRoots, parseLocation, parseTags } from '@/lib/qbittorrent-inputs';
+import { isInsideDownloadRoots, parseLocation, parseShareLimits, parseTags } from '@/lib/qbittorrent-inputs';
 
 // A v1 info hash (SHA-1) or a v2 one (SHA-256), in hex.
 const SINGLE_TORRENT_HASH = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
@@ -118,9 +118,15 @@ async function postHandler(
       case 'setCategory':
         await client.setCategory(hash, body.category ?? '');
         break;
-      case 'setShareLimits':
-        await client.setShareLimits(hash, body.ratioLimit ?? -2, body.seedingTimeLimit ?? -2, body.inactiveSeedingTimeLimit ?? -2);
+      case 'setShareLimits': {
+        const limits = parseShareLimits(body);
+        if (!limits) {
+          logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action, validationFailed: true });
+          return NextResponse.json({ error: 'Enter a valid ratio and seeding time for each limit' }, { status: 400 });
+        }
+        await client.setShareLimits(hash, limits.ratioLimit, limits.seedingTimeLimit, limits.inactiveSeedingTimeLimit);
         break;
+      }
       case 'recheck':
         await client.recheckTorrent(hash);
         break;
