@@ -117,10 +117,11 @@ async function putHandler(
     // offers and the bulk editor checks, never anywhere else the *arr can write, and
     // under a folder name the Edit page allows.
     const newPath = typeof update.path === 'string' ? update.path : null;
-    // An admin's edit is not diffed above, so a new folder name the Edit page refuses
-    // (".." would point the *arr at the root folder's parent) is caught here, with a
-    // read only for such a name.
-    if (!pathChanges && newPath && folderNameError(lastPathSegment(newPath))) {
+    // An admin's edit with Move Files off is not diffed above. Only its folder name is
+    // checked, here: a new name the Edit page refuses (".." would point the *arr at the
+    // root folder's parent) is caught, with a read only for such a name. Where else an
+    // admin points the path stays theirs to choose, as before.
+    if (!pathChanges && newPath && folderNameError(lastPathSegment(newPath), parentPath(newPath))) {
       current ??= await client.getArtistById(pathId);
       pathChanges = current.path !== newPath;
     }

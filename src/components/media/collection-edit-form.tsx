@@ -131,7 +131,7 @@ export function CollectionEditForm({
           </div>
           <p className="px-4 pt-2 text-xs text-muted-foreground">
             {monitorMovies === 'monitor'
-              ? 'Radarr monitors every movie of this collection that is already in the library, and searches for the ones without a file.'
+              ? 'Radarr monitors every movie of this collection that is already in the library. It starts no search: use Search for that.'
               : 'Applies to the movies of this collection that are already in the library.'}
           </p>
         </div>

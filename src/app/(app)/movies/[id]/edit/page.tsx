@@ -27,7 +27,7 @@ import { invalidateMovies } from '@/lib/query-invalidation';
 import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
 import { useCan } from '@/components/permission-provider';
 import type { RadarrMovie } from '@/types';
-import { folderNameError, lastPathSegment, parentPath, pathInRootFolder } from '@/lib/paths';
+import { folderNameError, lastPathSegment, parentPath, pathInRootFolder, sameFolder } from '@/lib/paths';
 
 export default function MovieEditPage() {
   const { id } = useParams();
@@ -97,8 +97,11 @@ export default function MovieEditPage() {
     },
   });
   const saving = saveMutation.isPending;
+  // A rename keeps the title in its root folder, so it needs one the instance lists:
+  // a title in a sub-folder of one picks a root folder first.
+  const rootListed = rootFolders.some((rf) => sameFolder(rf.path, rootFolder));
   // The current name is never refused: it is the one Radarr chose.
-  const folderError = movie?.path && folderName !== lastPathSegment(movie.path) ? folderNameError(folderName) : null;
+  const folderError = movie?.path && folderName !== lastPathSegment(movie.path) ? folderNameError(folderName, rootFolder) : null;
   const movedPath = movie?.path && !folderError ? pathInRootFolder(movie.path, rootFolder, folderName) : null;
   const moving = movedPath !== null && moveFiles;
 
@@ -206,7 +209,7 @@ export default function MovieEditPage() {
               </div>
             )}
             {rootFolders.length > 0 && (
-              <FolderNameRow value={folderName} onChange={setFolderName} error={folderError} />
+              <FolderNameRow value={folderName} onChange={setFolderName} error={folderError} disabled={!rootListed} />
             )}
             {movedPath && (
               <div className="grouped-row">
@@ -215,6 +218,11 @@ export default function MovieEditPage() {
               </div>
             )}
           </div>
+          {rootFolders.length > 0 && !rootListed && (
+            <p className="px-4 pt-2 text-xs text-muted-foreground">
+              The movie isn’t directly inside a root folder. Pick one to rename its folder.
+            </p>
+          )}
           {folderError && (
             <p id={FOLDER_NAME_ERROR_ID} className="px-4 pt-2 text-xs text-destructive">{folderError}</p>
           )}

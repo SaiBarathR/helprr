@@ -32,7 +32,7 @@ import {
 } from '@/lib/hooks/use-reference-data';
 import { useCan } from '@/components/permission-provider';
 import type { LidarrArtist } from '@/types';
-import { folderNameError, lastPathSegment, parentPath, pathInRootFolder } from '@/lib/paths';
+import { folderNameError, lastPathSegment, parentPath, pathInRootFolder, sameFolder } from '@/lib/paths';
 
 export default function ArtistEditPage() {
   const { id } = useParams();
@@ -104,8 +104,11 @@ export default function ArtistEditPage() {
     },
   });
   const saving = saveMutation.isPending;
+  // A rename keeps the title in its root folder, so it needs one the instance lists:
+  // a title in a sub-folder of one picks a root folder first.
+  const rootListed = rootFolders.some((rf) => sameFolder(rf.path, rootFolder));
   // The current name is never refused: it is the one Lidarr chose.
-  const folderError = artist?.path && folderName !== lastPathSegment(artist.path) ? folderNameError(folderName) : null;
+  const folderError = artist?.path && folderName !== lastPathSegment(artist.path) ? folderNameError(folderName, rootFolder) : null;
   const movedPath = artist?.path && !folderError ? pathInRootFolder(artist.path, rootFolder, folderName) : null;
   const moving = movedPath !== null && moveFiles;
 
@@ -202,7 +205,7 @@ export default function ArtistEditPage() {
               </div>
             )}
             {rootFolders.length > 0 && (
-              <FolderNameRow value={folderName} onChange={setFolderName} error={folderError} />
+              <FolderNameRow value={folderName} onChange={setFolderName} error={folderError} disabled={!rootListed} />
             )}
             {movedPath && (
               <div className="grouped-row">
@@ -211,6 +214,11 @@ export default function ArtistEditPage() {
               </div>
             )}
           </div>
+          {rootFolders.length > 0 && !rootListed && (
+            <p className="px-4 pt-2 text-xs text-muted-foreground">
+              The artist isn’t directly inside a root folder. Pick one to rename its folder.
+            </p>
+          )}
           {folderError && (
             <p id={FOLDER_NAME_ERROR_ID} className="px-4 pt-2 text-xs text-destructive">{folderError}</p>
           )}

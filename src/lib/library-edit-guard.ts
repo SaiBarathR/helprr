@@ -121,7 +121,7 @@ export function editedPathError(
   if (!newPath || !inRootFolder(newPath, rootFolders)) return 'path must be in one of this instance’s root folders';
   const folder = lastPathSegment(newPath);
   if (currentPath && lastPathSegment(currentPath) === folder) return null;
-  const nameError = folderNameError(folder);
+  const nameError = folderNameError(folder, parentPath(newPath));
   return nameError ? `Invalid folder name: ${nameError}` : null;
 }
 

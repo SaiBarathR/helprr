@@ -19,6 +19,7 @@ import type {
   RadarrLookupResult,
 } from '@/types';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { sameFolder } from '@/lib/paths';
 
 const COLLECTIONS_SCOPE = 'radarr-collections';
 
@@ -287,8 +288,6 @@ function parseCollectionEdit(body: Record<string, unknown>): { edit: CollectionE
   }
   return { edit };
 }
-
-const sameFolder = (a: string, b: string) => a.replace(/[\\/]+$/, '') === b.replace(/[\\/]+$/, '');
 
 // Monitoring, and the options Radarr applies when it adds the collection's movies.
 // Only the fields sent change; each needs its own capability (COLLECTION_FIELD_CAPABILITY).

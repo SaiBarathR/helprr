@@ -52,17 +52,27 @@ export function pathInRootFolder(path: string, rootFolder: string, folder = last
 const FOLDER_NAME_MAX_BYTES = 255;
 
 /**
- * Why `name` can't be a title's folder directly inside a root folder, or null
+ * Why `name` can't be a title's folder directly inside `rootFolder`, or null
  * when it can. The Edit pages show it, and the PUT routes refuse the same names,
  * so a typed name can neither climb out of the root folder (`..`, separators)
- * nor make a folder that is awkward to see or remove.
+ * nor make a folder that is awkward to see or remove. A Windows root folder also
+ * refuses what Windows can't name a folder, as the move would fail there.
  */
-export function folderNameError(name: string): string | null {
+export function folderNameError(name: string, rootFolder: string): string | null {
   if (!name) return 'Enter a folder name';
   if (/[/\\]/.test(name)) return 'A folder name can’t contain / or \\';
-  if (/[\u0000-\u001f\u007f]/.test(name)) return 'A folder name can’t contain control characters';
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(name)) return 'A folder name can’t contain control characters';
   // Also refuses "." and "..": they start with a dot.
   if (/^[\s.]|[\s.]$/.test(name)) return 'A folder name can’t start or end with a space or a dot';
   if (new TextEncoder().encode(name).length > FOLDER_NAME_MAX_BYTES) return 'This folder name is too long';
+  if (separatorOf(rootFolder) === '\\') {
+    if (/[<>:"|?*]/.test(name)) return 'A Windows folder name can’t contain < > : " | ? or *';
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(name)) return 'Windows keeps this name for a device';
+  }
   return null;
+}
+
+/** Whether two folders are the same one, a trailing separator aside. */
+export function sameFolder(a: string, b: string): boolean {
+  return withoutTrailingSeparators(a, separatorOf(a)) === withoutTrailingSeparators(b, separatorOf(b));
 }

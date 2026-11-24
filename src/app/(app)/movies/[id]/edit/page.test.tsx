@@ -33,6 +33,7 @@ import MovieEditPage from './page';
 const ITEM = { id: 7, title: 'Film', qualityProfileId: 4, minimumAvailability: 'released', monitored: false, tags: [], path: '/movies/Film (2020)' };
 const FOLDERS = ['/movies', '/movies2'];
 let puts: { url: string; body: Record<string, unknown> }[];
+const ITEM_OVERRIDE: { path?: string } = {};
 
 beforeEach(() => {
   puts = [];
@@ -42,13 +43,14 @@ beforeEach(() => {
       puts.push({ url: `${url.pathname}${url.search}`, body: JSON.parse(String(init.body)) });
       return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
-    const body = url.pathname === '/api/radarr/7' ? ITEM
+    const body = url.pathname === '/api/radarr/7' ? { ...ITEM, ...ITEM_OVERRIDE }
       : url.pathname === '/api/radarr/rootfolders' ? FOLDERS.map((path, i) => ({ id: i + 1, path }))
         : [];
     return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }));
 });
 afterEach(() => {
+  delete ITEM_OVERRIDE.path;
   vi.unstubAllGlobals();
   vi.clearAllMocks();
   sessionStorage.clear();
@@ -108,6 +110,22 @@ describe('edit page root folder', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0].body).toEqual(expect.objectContaining({ path: '/movies/Film (2020) {tmdb-1}' }));
+  });
+
+  it('asks for a root folder first when the movie sits below one, then renames inside it', async () => {
+    ITEM_OVERRIDE.path = '/movies/4K/Film (2020)';
+    renderPage();
+    const folder = () => screen.getByLabelText('Folder') as HTMLInputElement;
+    await waitFor(() => expect(folder().disabled).toBe(true));
+    expect(screen.getByText(/isn’t directly inside a root folder/)).toBeTruthy();
+
+    fireEvent.change(rootFolderSelect(), { target: { value: FOLDERS[1] } });
+    expect(folder().disabled).toBe(false);
+    fireEvent.change(folder(), { target: { value: 'Film' } });
+    fireEvent.click(screen.getByLabelText('Move Files'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0].body).toEqual(expect.objectContaining({ path: '/movies2/Film' }));
   });
 
   it('sends no move when the root folder is left alone', async () => {

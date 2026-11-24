@@ -14,10 +14,12 @@ export function FolderNameRow({
   value,
   onChange,
   error,
+  disabled,
 }: {
   value: string;
   onChange: (value: string) => void;
   error: string | null;
+  disabled?: boolean;
 }) {
   return (
     <div className="grouped-row">
@@ -31,6 +33,7 @@ export function FolderNameRow({
         autoCapitalize="off"
         autoCorrect="off"
         spellCheck={false}
+        disabled={disabled}
         className="ml-3 min-w-0 flex-1 sm:max-w-[320px]"
       />
     </div>

@@ -228,6 +228,18 @@ describe.each(cases)('$name Edit PUT file moves', (c) => {
     expect(c.update()).toHaveBeenCalledTimes(1);
   });
 
+  it('refuses a colon in a folder name on a Windows instance only', async () => {
+    const win = { ...c.item, path: 'D:\\Media\\Old' };
+    c.get().mockResolvedValue(win);
+    c.roots().mockResolvedValue([{ path: 'D:\\Media' }]);
+    const res = await put(c, '?moveFiles=true', { ...win, path: 'D:\\Media\\Star Wars: A New Hope' });
+    expect(res.status).toBe(400);
+    expect(c.update()).not.toHaveBeenCalled();
+    c.roots().mockResolvedValue(c.rootPaths.map((path) => ({ path })));
+    const root = c.item.path.slice(0, c.item.path.lastIndexOf('/'));
+    expect((await put(c, '?moveFiles=true', { ...c.item, path: `${root}/Star Wars: A New Hope` })).status).toBe(200);
+  });
+
   it('keeps a current folder name it would refuse when only the root folder changes', async () => {
     const odd = { ...c.item, path: c.item.path.replace(/[^/]+$/, 'Odd.') };
     c.get().mockResolvedValue(odd);
