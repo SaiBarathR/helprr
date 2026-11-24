@@ -332,7 +332,7 @@ describe('series detail page (characterization)', () => {
     await screen.findAllByRole('heading', { level: 1, name: 'Severance' });
     expect(menuLabels()).toEqual([
       'Refresh', 'Search Monitored', 'Open in Trakt', 'Open in IMDb', 'Open in TVDB', 'Open in Sonarr', 'Open in Jellyfin',
-      'Add to Watchlist…', 'Schedule alert…', 'Monitor', 'Edit', 'Preview Rename', 'Manage Episodes', 'Delete',
+      'Add to Watchlist…', 'Schedule alert…', 'Monitor', 'Edit', 'Preview Rename', 'Manage Episodes', 'History', 'Delete',
     ]);
     expect(screen.getByRole('button', { name: 'Monitored' })).toBeTruthy();
     expect(await screen.findByRole('button', { name: 'Schedule alert' })).toBeTruthy();
@@ -353,7 +353,7 @@ describe('series detail page (characterization)', () => {
     mocks.role = 'member';
     renderPage();
     await screen.findAllByRole('heading', { level: 1, name: 'Severance' });
-    expect(menuLabels()).toEqual(['Open in Trakt', 'Open in IMDb', 'Open in TVDB', 'Open in Sonarr', 'Open in Jellyfin', 'Add to Watchlist…']);
+    expect(menuLabels()).toEqual(['Open in Trakt', 'Open in IMDb', 'Open in TVDB', 'Open in Sonarr', 'Open in Jellyfin', 'Add to Watchlist…', 'History']);
     expect(screen.queryByRole('button', { name: 'Monitored' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Season 1 monitored' })).toBeNull();
     await waitFor(() => expect(rowValue('Show Type')).toBe('Scripted'));
@@ -445,9 +445,29 @@ describe('series detail page (characterization)', () => {
     const drawer = screen.getByRole('dialog');
     expect(within(drawer).getByRole('heading', { name: 'Delete Severance?' })).toBeTruthy();
     await user.click(within(drawer).getByRole('checkbox', { name: 'Also delete all files from disk' }));
+    expect((within(drawer).getByRole('checkbox', { name: 'Add import-list exclusion' }) as HTMLInputElement).checked).toBe(false);
     await user.click(within(drawer).getByRole('button', { name: 'Delete Series' }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/series'));
-    expect(mocks.sent.at(-1)).toEqual({ method: 'DELETE', path: '/api/sonarr/7?deleteFiles=true&instanceId=son-1', body: null });
+    expect(mocks.sent.at(-1)).toEqual({
+      method: 'DELETE',
+      path: '/api/sonarr/7?deleteFiles=true&addImportListExclusion=false&instanceId=son-1',
+      body: null,
+    });
+  });
+
+  it('adds an import-list exclusion only when asked', async () => {
+    const user = renderPage();
+    await screen.findAllByRole('heading', { level: 1, name: 'Severance' });
+    await user.click(menu().getByRole('menuitem', { name: 'Delete' }));
+    const drawer = screen.getByRole('dialog');
+    await user.click(within(drawer).getByRole('checkbox', { name: 'Add import-list exclusion' }));
+    await user.click(within(drawer).getByRole('button', { name: 'Delete Series' }));
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/series'));
+    expect(mocks.sent.at(-1)).toEqual({
+      method: 'DELETE',
+      path: '/api/sonarr/7?deleteFiles=false&addImportListExclusion=true&instanceId=son-1',
+      body: null,
+    });
   });
 
   it('expands a season into its TMDB episodes, linking those Sonarr has', async () => {
@@ -479,6 +499,15 @@ describe('series detail page (characterization)', () => {
     expect(mocks.push).toHaveBeenLastCalledWith('/series/7/manage?title=Severance&instance=son-1');
   });
 
+  it('opens the series history from the pill under Play, for a viewer too', async () => {
+    mocks.caps = new Set(['series.view']);
+    mocks.role = 'member';
+    const user = renderPage();
+    await screen.findAllByRole('heading', { level: 1, name: 'Severance' });
+    await user.click(screen.getByRole('button', { name: 'History' }));
+    expect(mocks.push).toHaveBeenLastCalledWith('/series/7/history?instance=son-1');
+  });
+
   it("offers the poster's and each season's quick actions, and opens a season's interactive search page", async () => {
     mocks.contextMenus = true;
     const user = renderPage();
@@ -489,6 +518,7 @@ describe('series detail page (characterization)', () => {
     expect(poster.getAllByRole('link').map((action) => [action.textContent, action.getAttribute('href')])).toEqual([
       ['Edit', '/series/7/edit?instance=son-1'],
       ['Manage Episodes', '/series/7/manage?title=Severance&instance=son-1'],
+      ['History', '/series/7/history?instance=son-1'],
       ['Open in IMDb', 'https://www.imdb.com/title/tt11280740'],
       ['Open in TVDB', 'https://www.thetvdb.com/?id=371980&tab=series'],
       ['Open in Sonarr', 'https://sonarr.example/series/severance'],

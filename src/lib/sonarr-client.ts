@@ -162,9 +162,13 @@ export class SonarrClient {
   }
 
   // DELETE /editor carries its options in the request body, not the query string.
-  async deleteSeriesBulk(seriesIds: number[], deleteFiles: boolean = false): Promise<void> {
+  async deleteSeriesBulk(
+    seriesIds: number[],
+    deleteFiles: boolean = false,
+    addImportListExclusion: boolean = false
+  ): Promise<void> {
     await this.client.delete('/api/v3/series/editor', {
-      data: { seriesIds, deleteFiles, addImportListExclusion: false },
+      data: { seriesIds, deleteFiles, addImportListExclusion },
     });
   }
 

@@ -17,6 +17,7 @@ import {
   ResponsiveMenuSeparator,
 } from '@/components/ui/responsive-menu';
 import { Badge } from '@/components/ui/badge';
+import { CustomFormatChips } from '@/components/media/custom-format-chips';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
@@ -97,6 +98,7 @@ function buildEpisodeDrawerData(episodeFile: SonarrEpisodeFile): {
     : episodeFile.language?.name ?? '';
   const audioLanguages = mediaInfo?.audioLanguages || fileLanguages;
   const subtitles = mediaInfo?.subtitles?.trim() ? mediaInfo.subtitles : 'None';
+  const customFormatNames = (episodeFile.customFormats ?? []).map((cf) => cf.name).filter(Boolean);
   const runtime = formatRuntime(mediaInfo?.runTime);
   const videoBitrate = formatBitrate(mediaInfo?.videoBitrate);
   const audioBitrate = formatBitrate(mediaInfo?.audioBitrate);
@@ -108,6 +110,10 @@ function buildEpisodeDrawerData(episodeFile: SonarrEpisodeFile): {
     { label: 'File Size', value: formatBytes(episodeFile.size) },
     { label: 'Quality', value: qualityName },
     ...(fileLanguages ? [{ label: 'Language', value: fileLanguages }] : []),
+    ...(episodeFile.customFormatScore !== undefined
+      ? [{ label: 'Score', value: episodeFile.customFormatScore >= 0 ? `+${episodeFile.customFormatScore}` : String(episodeFile.customFormatScore) }]
+      : []),
+    ...(customFormatNames.length > 0 ? [{ label: 'Custom Formats', value: customFormatNames.join(', ') }] : []),
     ...(episodeFile.path ? [{ label: 'Path', value: episodeFile.path, breakValue: true }] : []),
   ];
 
@@ -656,6 +662,16 @@ export default function EpisodeDetailPage() {
               <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Quality</span>
               <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{episodeFile.quality?.quality?.name || 'Unknown'}</span>
             </div>
+            {((episodeFile.customFormats?.length ?? 0) > 0 || (episodeFile.customFormatScore ?? 0) !== 0) && (
+              <div className="flex justify-between items-center gap-4 px-4 py-2.5 border-b">
+                <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Custom Formats</span>
+                <CustomFormatChips
+                  score={episodeFile.customFormatScore}
+                  formats={episodeFile.customFormats}
+                  className="min-w-0 justify-end"
+                />
+              </div>
+            )}
             {episodeFile.languages && episodeFile.languages.length > 0 && (
               <div className="flex justify-between items-center gap-4 px-4 py-2.5 border-b">
                 <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Language</span>

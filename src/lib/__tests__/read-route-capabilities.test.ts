@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getLidarrClient: vi.fn(),
   sonarrRename: vi.fn(),
   sonarrManualImport: vi.fn(),
+  sonarrSeriesHistory: vi.fn(),
   radarrHistory: vi.fn(),
   radarrRename: vi.fn(),
   radarrManualImport: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock('@/lib/service-helpers', () => ({
 
 import { GET as manualImportGet } from '@/app/api/activity/manualimport/route';
 import { GET as movieHistoryGet } from '@/app/api/radarr/history/movie/route';
+import { GET as seriesHistoryGet } from '@/app/api/sonarr/history/series/route';
 import { GET as tracksGet } from '@/app/api/lidarr/album/[albumId]/tracks/route';
 import { GET as sonarrRenameGet } from '@/app/api/sonarr/rename/route';
 import { GET as radarrRenameGet } from '@/app/api/radarr/rename/route';
@@ -57,6 +59,13 @@ const cases: GetCase[] = [
     capability: 'movies.view',
     invoke: () => movieHistoryGet(request(
       '/api/radarr/history/movie?movieId=8&instanceId=radarr-4k',
+    )),
+  },
+  {
+    name: 'Sonarr series history',
+    capability: 'series.view',
+    invoke: () => seriesHistoryGet(request(
+      '/api/sonarr/history/series?seriesId=7&instanceId=sonarr-hd',
     )),
   },
   {
@@ -97,6 +106,7 @@ beforeEach(() => {
   mocks.getSonarrClient.mockResolvedValue({
     getRenamePreview: mocks.sonarrRename.mockResolvedValue([]),
     getManualImport: mocks.sonarrManualImport.mockResolvedValue([]),
+    getSeriesHistory: mocks.sonarrSeriesHistory.mockResolvedValue([]),
   });
   mocks.getRadarrClient.mockResolvedValue({
     getMovieHistory: mocks.radarrHistory.mockResolvedValue([]),
@@ -158,6 +168,7 @@ describe('sensitive authenticated GET route capabilities', () => {
     expect(mocks.getSonarrClient).toHaveBeenCalledWith('sonarr-hd');
     expect(mocks.sonarrManualImport).toHaveBeenCalledWith('download-1');
     expect(mocks.sonarrRename).toHaveBeenCalledWith(7);
+    expect(mocks.sonarrSeriesHistory).toHaveBeenCalledWith(7);
     expect(mocks.getRadarrClient).toHaveBeenCalledWith('radarr-4k');
     expect(mocks.radarrHistory).toHaveBeenCalledWith(8);
     expect(mocks.radarrRename).toHaveBeenCalledWith(8);
@@ -165,4 +176,14 @@ describe('sensitive authenticated GET route capabilities', () => {
     expect(mocks.lidarrTracks).toHaveBeenCalledWith(9);
     expect(mocks.lidarrRename).toHaveBeenCalledWith(10, 9);
   });
+
+  it.each(['', 'seriesId=0', 'seriesId=-3', 'seriesId=1.5', 'seriesId=abc'])(
+    'rejects a missing or invalid series id before upstream work: "%s"',
+    async (query) => {
+      const response = await seriesHistoryGet(request(`/api/sonarr/history/series?${query}`));
+
+      expect(response.status).toBe(400);
+      expect(mocks.getSonarrClient).not.toHaveBeenCalled();
+    },
+  );
 });

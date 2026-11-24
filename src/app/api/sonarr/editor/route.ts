@@ -119,8 +119,13 @@ async function deleteHandler(request: NextRequest) {
       targetTitle: `${parsed.ids.length} ${parsed.ids.length === 1 ? 'series' : 'series'}`,
       itemCount: parsed.ids.length,
       filesDeleted: parsed.deleteFiles,
-      details: { targetIds: parsed.ids, deleteFiles: parsed.deleteFiles, bulk: true },
-    }, () => client.deleteSeriesBulk(parsed.ids, parsed.deleteFiles));
+      details: {
+        targetIds: parsed.ids,
+        deleteFiles: parsed.deleteFiles,
+        addImportListExclusion: parsed.addImportListExclusion,
+        bulk: true,
+      },
+    }, () => client.deleteSeriesBulk(parsed.ids, parsed.deleteFiles, parsed.addImportListExclusion));
     await invalidateTaggedLibrary('sonarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {

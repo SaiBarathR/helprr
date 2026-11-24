@@ -163,6 +163,7 @@ async function deleteHandler(
     }
     const { searchParams } = new URL(request.url);
     const deleteFiles = searchParams.get('deleteFiles') === 'true';
+    const addImportListExclusion = searchParams.get('addImportListExclusion') === 'true';
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getSonarrClient(instanceId);
     const series = await client.getSeriesById(seriesId).catch(() => null);
@@ -176,8 +177,8 @@ async function deleteHandler(
       targetTitle: series?.title ?? `Series #${seriesId}`,
       itemCount: 1,
       filesDeleted: deleteFiles,
-      details: { targetIds: [seriesId], deleteFiles },
-    }, () => client.deleteSeries(seriesId, deleteFiles));
+      details: { targetIds: [seriesId], deleteFiles, addImportListExclusion },
+    }, () => client.deleteSeries(seriesId, deleteFiles, addImportListExclusion));
     await invalidateTaggedLibrary('sonarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {

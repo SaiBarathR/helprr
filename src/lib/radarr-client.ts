@@ -154,9 +154,13 @@ export class RadarrClient {
   }
 
   // DELETE /editor carries its options in the request body, not the query string.
-  async deleteMoviesBulk(movieIds: number[], deleteFiles: boolean = false): Promise<void> {
+  async deleteMoviesBulk(
+    movieIds: number[],
+    deleteFiles: boolean = false,
+    addImportExclusion: boolean = false
+  ): Promise<void> {
     await this.client.delete('/api/v3/movie/editor', {
-      data: { movieIds, deleteFiles, addImportExclusion: false },
+      data: { movieIds, deleteFiles, addImportExclusion },
     });
   }
 

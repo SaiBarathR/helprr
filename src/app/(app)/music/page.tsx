@@ -397,11 +397,16 @@ export default function MusicPage() {
     [runSearch, selectedArtists],
   );
 
-  const runDelete = useCallback(async (items: LidarrArtistListItem[], deleteFiles: boolean, leaveSelection = false) => {
+  const runDelete = useCallback(async (
+    items: LidarrArtistListItem[],
+    deleteFiles: boolean,
+    addImportListExclusion: boolean,
+    leaveSelection = false,
+  ) => {
     const { ok, fail, firstError } = await fanOutItems(items, (instanceId, ids) =>
       fetch(`/api/lidarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, deleteFiles }),
+        body: JSON.stringify({ ids, deleteFiles, addImportListExclusion }),
       }));
     reportBulk('Deleted', ok, fail, { noun: 'artist', pluralNoun: 'artists', reason: firstError });
     await refetchArtists();
@@ -410,7 +415,8 @@ export default function MusicPage() {
   }, [fanOutItems, refetchArtists, exit]);
 
   const handleDelete = useCallback(
-    (deleteFiles: boolean) => runDelete(selectedArtists, deleteFiles, true).then(() => undefined),
+    (deleteFiles: boolean, addImportListExclusion: boolean) =>
+      runDelete(selectedArtists, deleteFiles, addImportListExclusion, true).then(() => undefined),
     [runDelete, selectedArtists],
   );
 
@@ -448,11 +454,11 @@ export default function MusicPage() {
     return fail === 0;
   }, [fanOutItems, selectedArtists, exit, deselectMany, keyOf]);
 
-  const confirmSingleDelete = useCallback(async (deleteFiles: boolean) => {
+  const confirmSingleDelete = useCallback(async (deleteFiles: boolean, addImportListExclusion: boolean) => {
     if (!deleteTarget || deletingTarget) return;
     setDeletingTarget(true);
     try {
-      if (await runDelete([deleteTarget], deleteFiles)) setDeleteTarget(null);
+      if (await runDelete([deleteTarget], deleteFiles, addImportListExclusion)) setDeleteTarget(null);
     } finally {
       setDeletingTarget(false);
     }
@@ -996,6 +1002,7 @@ export default function MusicPage() {
         onOpenChange={(open) => { if (!open && !deletingTarget) setDeleteTarget(null); }}
         title={`Delete “${deleteTarget?.artistName ?? ''}”?`}
         description={`This removes the artist from its connected service.`}
+        showImportListExclusion
         busy={deletingTarget}
         onConfirm={confirmSingleDelete}
       />
@@ -1015,6 +1022,7 @@ export default function MusicPage() {
           onApplyTags={handleApplyTags}
           onSearch={handleBulkSearch}
           onDelete={handleDelete}
+          importListExclusionOption
           itemNoun="artist"
           bulkEdit={{
             service: 'lidarr',

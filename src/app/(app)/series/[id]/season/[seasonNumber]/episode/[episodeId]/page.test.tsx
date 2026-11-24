@@ -125,3 +125,39 @@ describe('episode page status badge', () => {
     }
   });
 });
+
+describe('episode page file formats', () => {
+  const render = () => act(async () => root.render(<QueryClientProvider client={queryClient}><EpisodeDetailPage /></QueryClientProvider>));
+  const withFile = (file: Record<string, unknown>) => {
+    const episode = EPISODES[0] as Record<string, unknown>;
+    const saved = { hasFile: episode.hasFile, episodeFile: episode.episodeFile };
+    Object.assign(episode, {
+      hasFile: true,
+      episodeFile: { id: 9, relativePath: 'Season 4/Ted Lasso - S04E01.mkv', path: '/tv/x.mkv', size: 1024, quality: { quality: { name: 'WEBDL-1080p' } }, ...file },
+    });
+    return () => Object.assign(episode, saved);
+  };
+
+  it('shows the custom formats the file matched next to its score', async () => {
+    const restore = withFile({ customFormats: [{ id: 14, name: 'Anime LQ Groups' }, { id: 3, name: 'x265' }], customFormatScore: -10 });
+    try {
+      await render();
+      await waitFor(() => expect(document.body.textContent).toContain('Custom Formats'));
+      const row = [...document.querySelectorAll('span')].find((s) => s.textContent === 'Custom Formats')!.parentElement!;
+      expect([...row.querySelectorAll('[data-slot="badge"]')].map((b) => b.textContent)).toEqual(['CF -10', 'Anime LQ Groups', 'x265']);
+    } finally {
+      restore();
+    }
+  });
+
+  it('leaves the row out when the file matched no format', async () => {
+    const restore = withFile({ customFormats: [], customFormatScore: 0 });
+    try {
+      await render();
+      await waitFor(() => expect(document.body.textContent).toContain('WEBDL-1080p'));
+      expect(document.body.textContent).not.toContain('Custom Formats');
+    } finally {
+      restore();
+    }
+  });
+});

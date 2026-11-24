@@ -39,13 +39,15 @@ interface BulkActionBarProps {
   onMonitor?: (monitored: boolean) => Promise<void>;
   onApplyTags?: (tagLabels: string[], mode: BulkTagApplyMode) => Promise<void>;
   onSearch: () => Promise<void>;
-  onDelete?: (deleteFiles: boolean) => Promise<void>;
+  onDelete?: (deleteFiles: boolean, addImportListExclusion: boolean) => Promise<void>;
   /** Singular noun for the affected items, e.g. "movie" — used in the delete prompt. */
   itemNoun?: string;
   /** When true, show a Merge / Replace toggle above add/remove in the tag popover. */
   allowReplace?: boolean;
   /** Show the "Also delete files from disk" checkbox in the delete dialog. Default true (library pages). */
   deleteFilesOption?: boolean;
+  /** Show the "Add import-list exclusion" checkbox in the delete dialog (Sonarr/Radarr/Lidarr pages). Default false. */
+  importListExclusionOption?: boolean;
   /** Verb for the delete action button + dialog (e.g. "Remove" for the watchlist). Default "Delete". */
   deleteVerb?: string;
   /** Override the delete dialog description. */
@@ -123,6 +125,7 @@ export function BulkActionBar({
   itemNoun = 'item',
   allowReplace = false,
   deleteFilesOption = true,
+  importListExclusionOption = false,
   deleteVerb = 'Delete',
   deleteDescription,
   bulkEdit,
@@ -458,10 +461,11 @@ export function BulkActionBar({
           }
           confirmLabel={deleteVerb}
           showDeleteFiles={deleteFilesOption}
+          showImportListExclusion={importListExclusionOption}
           busy={busy === 'delete'}
-          onConfirm={(deleteFiles) =>
+          onConfirm={(deleteFiles, addImportListExclusion) =>
             run('delete', async () => {
-              await onDelete(deleteFiles);
+              await onDelete(deleteFiles, addImportListExclusion);
               setDeleteOpen(false);
             })
           }

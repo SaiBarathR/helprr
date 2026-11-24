@@ -199,9 +199,13 @@ export class LidarrClient {
   }
 
   // DELETE /editor carries its options in the request body, not the query string.
-  async deleteArtistsBulk(artistIds: number[], deleteFiles: boolean = false): Promise<void> {
+  async deleteArtistsBulk(
+    artistIds: number[],
+    deleteFiles: boolean = false,
+    addImportListExclusion: boolean = false
+  ): Promise<void> {
     await this.client.delete('/api/v1/artist/editor', {
-      data: { artistIds, deleteFiles, addImportListExclusion: false },
+      data: { artistIds, deleteFiles, addImportListExclusion },
     });
   }
 

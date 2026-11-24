@@ -73,13 +73,16 @@ export function SeriesDeleteDrawer({
   onOpenChange: (open: boolean) => void;
   actions: SeriesActions;
 }) {
-  const { deleteFiles, setDeleteFiles, deleting } = actions;
+  const { deleteFiles, setDeleteFiles, addExclusion, setAddExclusion, deleting } = actions;
   return (
     <Drawer
       open={open}
       onOpenChange={(next) => {
-        // Opt in to deleting files each time, as the shared delete dialog does.
-        if (!next) setDeleteFiles(false);
+        // Opt in to deleting files and to the exclusion each time, as the shared delete dialog does.
+        if (!next) {
+          setDeleteFiles(false);
+          setAddExclusion(false);
+        }
         onOpenChange(next);
       }}
     >
@@ -91,7 +94,7 @@ export function SeriesDeleteDrawer({
           </DrawerDescription>
         </DrawerHeader>
         <div className="px-4">
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer">
             <input
               type="checkbox"
               checked={deleteFiles}
@@ -100,6 +103,16 @@ export function SeriesDeleteDrawer({
               className="h-4 w-4 accent-destructive"
             />
             Also delete all files from disk
+          </label>
+          <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={addExclusion}
+              onChange={(e) => setAddExclusion(e.target.checked)}
+              disabled={deleting}
+              className="h-4 w-4 accent-destructive"
+            />
+            Add import-list exclusion
           </label>
         </div>
         <DrawerFooter>

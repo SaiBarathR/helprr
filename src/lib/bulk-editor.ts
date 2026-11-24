@@ -238,7 +238,7 @@ export async function resolveTagIds(
 
 export function parseBulkDeleteBody(
   body: unknown
-): { ids: number[]; deleteFiles: boolean } | { error: string } {
+): { ids: number[]; deleteFiles: boolean; addImportListExclusion: boolean } | { error: string } {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'Invalid body' };
   const b = body as Record<string, unknown>;
   const ids = toPositiveIntArray(b.ids);
@@ -246,7 +246,10 @@ export function parseBulkDeleteBody(
   if (b.deleteFiles !== undefined && typeof b.deleteFiles !== 'boolean') {
     return { error: 'deleteFiles must be a boolean' };
   }
-  return { ids, deleteFiles: b.deleteFiles === true };
+  if (b.addImportListExclusion !== undefined && typeof b.addImportListExclusion !== 'boolean') {
+    return { error: 'addImportListExclusion must be a boolean' };
+  }
+  return { ids, deleteFiles: b.deleteFiles === true, addImportListExclusion: b.addImportListExclusion === true };
 }
 
 /**

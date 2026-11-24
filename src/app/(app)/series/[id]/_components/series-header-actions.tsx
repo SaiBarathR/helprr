@@ -9,7 +9,7 @@ import {
 import { MarkWatchedMenuItem } from '@/components/jellyfin/mark-watched-button';
 import {
   Bookmark, Bell, MoreHorizontal, RefreshCw, Search, ExternalLink,
-  Pencil, Trash2, Loader2, Tv, Eye, EyeOff, FileEdit, Sparkles, FileStack,
+  Pencil, Trash2, Loader2, Tv, Eye, EyeOff, FileEdit, Sparkles, FileStack, History,
 } from 'lucide-react';
 import type { SonarrSeries } from '@/types';
 import type { WatchStatus } from '@/types/watch-status';
@@ -30,6 +30,7 @@ export function SeriesHeaderActions({
   onWatchlist,
   open,
   onEdit,
+  historyHref,
   onManageEpisodes,
 }: {
   series: SonarrSeries;
@@ -45,6 +46,7 @@ export function SeriesHeaderActions({
   onWatchlist: boolean;
   open: (dialog: SeriesDialog) => void;
   onEdit: () => void;
+  historyHref: string;
   onManageEpisodes: () => void;
 }) {
   const { canManageActivity, canEditMonitoring, canEditSeries, canManageFiles, canDeleteSeries, canScheduleAlert, isAdmin } = caps;
@@ -177,6 +179,10 @@ export function SeriesHeaderActions({
             Manage Episodes
           </ResponsiveMenuActionItem>
         )}
+        <ResponsiveMenuLinkItem href={historyHref}>
+          <History className="h-4 w-4" />
+          History
+        </ResponsiveMenuLinkItem>
         {canDeleteSeries && (
           <ResponsiveMenuActionItem destructive onSelect={() => open('delete')}>
             <Trash2 className="h-4 w-4" />
