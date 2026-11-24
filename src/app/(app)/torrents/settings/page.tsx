@@ -21,8 +21,13 @@ import { SpeedLimitInput, formatSpeedLimit } from '../_components/speed-limit-in
 interface TransferLimits {
   downloadLimit: number;
   uploadLimit: number;
+  altDownloadLimit: number;
+  altUploadLimit: number;
   speedLimitsMode: number;
 }
+
+type LimitAction = 'setDownloadLimit' | 'setUploadLimit' | 'setAltDownloadLimit' | 'setAltUploadLimit';
+type LimitField = 'downloadLimit' | 'uploadLimit' | 'altDownloadLimit' | 'altUploadLimit';
 
 const LIMITS_URL = '/api/qbittorrent/transfer/limits';
 const LIMITS_KEY = ['qbittorrent', 'transfer', 'limits'] as const;
@@ -80,7 +85,7 @@ export default function QBittorrentSettingsPage() {
 
   const { mutateAsync: postLimits } = useMutation({ mutationFn: postTransferLimits });
 
-  const saveLimit = (action: 'setDownloadLimit' | 'setUploadLimit', field: 'downloadLimit' | 'uploadLimit') =>
+  const saveLimit = (action: LimitAction, field: LimitField) =>
     async (limit: number) => {
       // A rejection is toasted by SpeedLimitInput.
       await postLimits({ action, limit });
@@ -90,10 +95,9 @@ export default function QBittorrentSettingsPage() {
   // Bumped per toggle, so only the latest toggle's confirmation writes.
   const speedModeToggle = useRef(0);
 
-  // qBittorrent reports (and sets) the limits of whichever mode is active, and
-  // may apply the switch asynchronously: an immediate re-read can still show
-  // the old mode. Keep the optimistic mode until a read confirms it, then take
-  // that read's limits. If it never confirms, show what qBittorrent reports
+  // qBittorrent may apply the switch asynchronously: an immediate re-read can
+  // still show the old mode. Keep the optimistic mode until a read confirms it,
+  // then take that read. If it never confirms, show what qBittorrent reports
   // rather than leave the switch stuck on a mode it doesn't have.
   const confirmSpeedMode = async (mode: number, toggle: number) => {
     let fresh: TransferLimits | undefined;
@@ -164,7 +168,10 @@ export default function QBittorrentSettingsPage() {
           </div>
         </GroupedSection>
 
-        <GroupedSection title="Speed Limits">
+        <GroupedSection
+          title="Speed Limits"
+          footer="qBittorrent uses the alternative limits while Alternative Speed Limits is on. Bandwidth rules in Settings → Downloads change only the global limits."
+        >
           {limitsQuery.isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -197,12 +204,24 @@ export default function QBittorrentSettingsPage() {
                   aria-label="Alternative Speed Limits"
                 />
               </div>
+              <SpeedLimitInput
+                label="Alternative Download Limit"
+                currentLimit={limits.altDownloadLimit}
+                onSave={saveLimit('setAltDownloadLimit', 'altDownloadLimit')}
+              />
+              <SpeedLimitInput
+                label="Alternative Upload Limit"
+                currentLimit={limits.altUploadLimit}
+                onSave={saveLimit('setAltUploadLimit', 'altUploadLimit')}
+              />
             </>
           ) : (
             <>
               <StatRow label="Global Download Limit" value={formatSpeedLimit(limits.downloadLimit)} />
               <StatRow label="Global Upload Limit" value={formatSpeedLimit(limits.uploadLimit)} />
               <StatRow label="Alternative Speed Limits" value={limits.speedLimitsMode === 1 ? 'On' : 'Off'} />
+              <StatRow label="Alternative Download Limit" value={formatSpeedLimit(limits.altDownloadLimit)} />
+              <StatRow label="Alternative Upload Limit" value={formatSpeedLimit(limits.altUploadLimit)} />
             </>
           )}
         </GroupedSection>
