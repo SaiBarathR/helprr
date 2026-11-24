@@ -78,4 +78,20 @@ describe.skipIf(!redisUrl)('two-step code caps with real Redis Lua', () => {
     expect(await totp.claimMfaPendingToken(token)).toBeNull();
     expect(await client.get(`login:mfa-used:${token.jti}`)).toBeNull();
   });
+
+  it('a claim that reaches Redis after the token ended claims nothing, even if the app saw it in time', async () => {
+    const token = { ...claims('late'), expiresAtMs: Date.now() + 50 };
+    const seenAt = Date.now();
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    // The app checked before the end (seenAt); Redis's own clock refuses the claim.
+    expect(await totp.claimMfaPendingToken(token, seenAt)).toBeNull();
+    expect(await client.get(`login:mfa-used:${token.jti}`)).toBeNull();
+  });
+
+  it('a claim lasts until a second after the token ends', async () => {
+    const token = claims('pxat');
+    expect(await totp.claimMfaPendingToken(token)).toEqual(expect.any(String));
+    const expiresAt = await client.sendCommand(['PEXPIRETIME', `login:mfa-used:${token.jti}`]);
+    expect(Number(expiresAt)).toBe(token.expiresAtMs + 1_000);
+  });
 });

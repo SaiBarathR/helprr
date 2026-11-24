@@ -230,17 +230,28 @@ export function mfaPendingTokenMatches(claims: MfaPendingClaims, user: StampUser
 
 /**
  * Spend a pending token for one sign-in: this claim's own random value, or
- * null when the token was already used or has expired (a request that stalled
- * past the token's end claims nothing). Throws when Redis is unreachable, so
- * the caller fails closed.
+ * null when the token was already used or has expired. The expiry check and
+ * the claim are one step on Redis's clock, and the claim lasts until a second
+ * after the token's end (PXAT): every claim is made before the end and outlives
+ * it, so a request that stalls past the end claims nothing and no token signs
+ * in twice. Throws when Redis is unreachable, so the caller fails closed.
  */
 export async function claimMfaPendingToken(claims: MfaPendingClaims, nowMs = Date.now()): Promise<string | null> {
   if (claims.expiresAtMs <= nowMs) return null;
   const redis = await getRedisClient();
-  const ttlMs = Math.max(1_000, claims.expiresAtMs - nowMs + 1_000);
   const claim = randomBytes(16).toString('base64url');
-  const result = await redis.set(`${MFA_PENDING_USED_KEY_PREFIX}${claims.jti}`, claim, { NX: true, PX: ttlMs });
-  return result === 'OK' ? claim : null;
+  const result = await redis.eval(
+    `local t = redis.call('TIME')
+local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
+if now >= tonumber(ARGV[2]) then return 0 end
+if redis.call('SET', KEYS[1], ARGV[1], 'NX', 'PXAT', ARGV[3]) then return 1 end
+return 0`,
+    {
+      keys: [`${MFA_PENDING_USED_KEY_PREFIX}${claims.jti}`],
+      arguments: [claim, String(claims.expiresAtMs), String(claims.expiresAtMs + 1_000)],
+    },
+  );
+  return Number(result) === 1 ? claim : null;
 }
 
 /**
