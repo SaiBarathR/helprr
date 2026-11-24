@@ -1,4 +1,5 @@
 import type { QBittorrentTorrent, QBittorrentTorrentInfo, QBittorrentTransferInfo } from '@/types';
+import type { TorrentsFilterPreference } from '@/lib/store';
 
 export type ProjectedTorrentSummary = QBittorrentTorrent;
 
@@ -122,6 +123,27 @@ export const ACTIVE_STATES = new Set(['downloading', 'metaDL', 'forcedMetaDL', '
 /** qBittorrent's Active: transferring, fetching metadata, forced or moving. Inactive is everything else. */
 export function torrentIsActive(torrent: Pick<QBittorrentTorrent, 'state' | 'upspeed'>): boolean {
   return ACTIVE_STATES.has(torrent.state) || (torrent.state === 'stalledDL' && torrent.upspeed > 0);
+}
+
+/** One status filter of the Torrents page; the summary route slims its list with it too. */
+export function matchesTorrentFilter(t: QBittorrentTorrent, f: TorrentsFilterPreference): boolean {
+  switch (f) {
+    case 'all': return true;
+    case 'downloading': return DOWNLOADING_STATES.has(t.state);
+    case 'seeding': return SEEDING_STATES.has(t.state);
+    case 'completed': return t.progress >= 1;
+    case 'paused': return PAUSED_STATES.has(t.state);
+    // qBittorrent's Running is "not stopped"; a stopped torrent whose files are
+    // missing reports missingFiles, which the state alone can't tell apart.
+    case 'running': return !PAUSED_STATES.has(t.state);
+    case 'active': return torrentIsActive(t);
+    case 'inactive': return !torrentIsActive(t);
+    case 'stalled': return STALLED_STATES.has(t.state);
+    case 'checking': return CHECKING_STATES.has(t.state);
+    case 'moving': return MOVING_STATES.has(t.state);
+    case 'errored': return ERRORED_STATES.has(t.state);
+    default: return true;
+  }
 }
 
 export function torrentCounters(torrents: QBittorrentTorrent[]) {

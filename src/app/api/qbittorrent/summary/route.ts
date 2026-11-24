@@ -1,5 +1,5 @@
 import { etagJson } from '@/lib/etag-json';
-import { projectTorrentsForSummary, torrentCounters } from '@/lib/qbittorrent-summary';
+import { matchesTorrentFilter, projectTorrentsForSummary, torrentCounters } from '@/lib/qbittorrent-summary';
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
@@ -10,9 +10,6 @@ import { getQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { torrentDeltaHistory } from '@/lib/cache/qbittorrent-delta';
 import { QBITTORRENT_SYNC_MAX_AGE_MS, qbittorrentSyncFor, speedLimitsModeFrom, transferInfoFrom } from '@/lib/qbittorrent-sync';
 import type { TorrentsFilterPreference } from '@/lib/store';
-// The page's own filter, so the slimmed list is exactly what the page shows
-// for that filter (it filters again on its side).
-import { matchesTorrentFilter } from '@/app/(app)/torrents/_components/torrent-list';
 
 // The summary is identical for every authorized user, and every open torrents
 // page polls it every ~5s: it is built from the one merged sync/maindata state
@@ -33,6 +30,8 @@ async function loadSummary(version: number, filter?: string): Promise<QBittorren
   // Field by field: the merged rows carry the magnet and tracker URL, and
   // server_state the last external IPv4 and IPv6 address (the owner's public IP).
   const projected = projectTorrentsForSummary(torrents);
+  // The page's own filter, so the slimmed list is exactly what the page shows
+  // for that filter (it filters again on its side).
   const rows = filter ? projected.filter((torrent) => matchesTorrentFilter(torrent, filter as TorrentsFilterPreference)) : projected;
   return {
     torrents: rows,

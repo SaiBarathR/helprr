@@ -154,6 +154,14 @@ interface TorrentProperties {
   up_speed: number;
 }
 
+/** "SID=…" from a response's Set-Cookie, or null without one. */
+function sessionCookie(setCookieHeader: string[] | undefined): string | null {
+  const sidMatch = setCookieHeader
+    ?.map((c: string) => c.match(/SID=([^;]+)/))
+    .find((m: RegExpMatchArray | null) => m !== null);
+  return sidMatch ? `SID=${sidMatch[1]}` : null;
+}
+
 export class QBittorrentClient {
   private client: AxiosInstance;
   private baseUrl: string;
@@ -184,6 +192,18 @@ export class QBittorrentClient {
       httpsAgent: keepAliveHttpsAgent,
       beforeRedirect: refuseRedirectToAnotherHost,
     });
+    // qBittorrent can open a new session without a sign-in: with "bypass
+    // authentication" for localhost or listed subnets it answers a stale cookie
+    // (after a restart) with a fresh one and no 403. Keep the session it hands
+    // back, or every request starts another one, and sync/maindata, whose rid
+    // belongs to one session, would answer each read in full.
+    this.client.interceptors.response.use((response) => {
+      if (response.config.url !== '/api/v2/auth/login') {
+        const session = sessionCookie(response.headers['set-cookie']);
+        if (session) this.cookie = session;
+      }
+      return response;
+    });
   }
 
   private async ensureAuthenticated(): Promise<void> {
@@ -213,15 +233,8 @@ export class QBittorrentClient {
       },
     });
 
-    const setCookieHeader = response.headers['set-cookie'];
-    if (setCookieHeader) {
-      const sidMatch = setCookieHeader
-        .map((c: string) => c.match(/SID=([^;]+)/))
-        .find((m: RegExpMatchArray | null) => m !== null);
-      if (sidMatch) {
-        this.cookie = `SID=${sidMatch[1]}`;
-      }
-    }
+    const session = sessionCookie(response.headers['set-cookie']);
+    if (session) this.cookie = session;
 
     if (!this.cookie) {
       // "Fails." is qBittorrent refusing the username or password. Anything else with no

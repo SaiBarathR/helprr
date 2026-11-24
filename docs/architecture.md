@@ -1144,7 +1144,10 @@ current. qBittorrent keeps one rid per Web UI session and answers a repeated
 older rid with the changes since its last answer, not a full update, so reads
 are chained, never concurrent, and any failed or odd read starts the next from
 rid 0; a `full_update` (a new session, a restarted qBittorrent) replaces
-everything. The state lives on `globalThis` for the current connection, since
+everything. The client keeps any `SID` qBittorrent sets, not only the sign-in's:
+with "bypass authentication" a restarted qBittorrent answers a stale cookie with a
+new session instead of a 403, and without it every read would start another
+session and come back in full. The state lives on `globalThis` for the current connection, since
 the routes and the poll started from instrumentation can load separate copies
 of the module; Helprr runs one Node process (`node server.js`), so it is not in
 Redis. It holds magnets, tracker URLs and server_state's public IP as qBittorrent

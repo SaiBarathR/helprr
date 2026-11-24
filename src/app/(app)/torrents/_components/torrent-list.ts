@@ -1,14 +1,5 @@
 import type { QBittorrentTorrent } from '@/types';
-import {
-  CHECKING_STATES,
-  DOWNLOADING_STATES,
-  ERRORED_STATES,
-  MOVING_STATES,
-  PAUSED_STATES,
-  SEEDING_STATES,
-  STALLED_STATES,
-  torrentIsActive,
-} from '@/lib/qbittorrent-summary';
+import { PAUSED_STATES } from '@/lib/qbittorrent-summary';
 import type { TorrentsFilterPreference as FilterType, TorrentsSortKeyPreference as SortKey } from '@/lib/store';
 import { parseTorrentTags } from './torrent-tags';
 
@@ -91,6 +82,8 @@ export const filterOptions: { value: FilterType; label: string }[] = [
 ];
 
 export { PAUSED_STATES };
+// Lives with the state sets so the summary route filters with the very same function.
+export { matchesTorrentFilter } from '@/lib/qbittorrent-summary';
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
 
@@ -123,26 +116,6 @@ const STATE_BADGES: Record<string, { label: string; variant: BadgeVariant }> = {
 
 export function torrentStateBadge(state: string): { label: string; variant: BadgeVariant } {
   return STATE_BADGES[state] ?? { label: state, variant: 'secondary' };
-}
-
-export function matchesTorrentFilter(t: QBittorrentTorrent, f: FilterType): boolean {
-  switch (f) {
-    case 'all': return true;
-    case 'downloading': return DOWNLOADING_STATES.has(t.state);
-    case 'seeding': return SEEDING_STATES.has(t.state);
-    case 'completed': return t.progress >= 1;
-    case 'paused': return PAUSED_STATES.has(t.state);
-    // qBittorrent's Running is "not stopped"; a stopped torrent whose files are
-    // missing reports missingFiles, which the state alone can't tell apart.
-    case 'running': return !PAUSED_STATES.has(t.state);
-    case 'active': return torrentIsActive(t);
-    case 'inactive': return !torrentIsActive(t);
-    case 'stalled': return STALLED_STATES.has(t.state);
-    case 'checking': return CHECKING_STATES.has(t.state);
-    case 'moving': return MOVING_STATES.has(t.state);
-    case 'errored': return ERRORED_STATES.has(t.state);
-    default: return true;
-  }
 }
 
 /**
