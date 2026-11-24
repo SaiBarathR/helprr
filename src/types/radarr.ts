@@ -196,6 +196,12 @@ export interface CollectionSummary {
   movieCount: number;
   missingMovies: number; // not-in-library count, from Radarr
   movies: CollectionMovieSummary[];
+  // What Radarr applies when it adds one of the collection's movies (Edit collection).
+  qualityProfileId?: number;
+  rootFolderPath?: string;
+  minimumAvailability?: string;
+  searchOnAdd?: boolean;
+  tags?: number[];
   instanceId?: string;
   instanceLabel?: string;
 }

@@ -234,8 +234,19 @@ export class RadarrClient {
     return this.get<RadarrCollection[]>('/api/v3/collection');
   }
 
+  async getCollection(id: number): Promise<RadarrCollection> {
+    return this.get<RadarrCollection>(`/api/v3/collection/${id}`);
+  }
+
+  // The single-collection PUT takes the whole resource. Tags change only here: the
+  // bulk update below has no tags field (Radarr 7 ignores one).
+  async updateCollection(collection: RadarrCollection): Promise<RadarrCollection> {
+    return this.put<RadarrCollection>(`/api/v3/collection/${collection.id}`, collection);
+  }
+
   // Bulk collection update — PUT /api/v3/collection takes a CollectionUpdateResource.
-  // Only the supplied fields are applied; we use it to toggle monitoring on one id.
+  // Only the supplied fields are applied; monitorMovies (un)monitors the collection's
+  // movies already in Radarr.
   async updateCollections(body: {
     collectionIds: number[];
     monitored?: boolean;
