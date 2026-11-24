@@ -19,7 +19,8 @@ export function seesTrackerUrls(user: Pick<User, 'role'>): boolean {
 }
 
 // qBittorrent lists DHT, PeX and LSD as pseudo-trackers named `** [DHT] **`: no URL, nothing to hide.
-const isPseudoTracker = (url: string) => url.startsWith('** [');
+// Exactly those three; anything else is treated as a URL (and fails closed to its host or `Tracker`).
+const isPseudoTracker = (url: string) => /^\*\* \[(?:DHT|PeX|LSD)\] \*\*$/.test(url);
 
 /** scheme://host[:port] of a tracker URL, without user info, path or query; null when it is not one. */
 export function trackerOrigin(url: string): string | null {
@@ -32,7 +33,9 @@ export function trackerOrigin(url: string): string | null {
   }
 }
 
-// Every piece of the URL past the host that could be the key, longest first so a part is not left half-replaced.
+// Every piece of the URL past the host that could be the key: user info, path
+// segments, and query names and values (a key can be a bare `?<key>`), each as
+// written and decoded, longest first so a part is not left half-replaced.
 function urlSecrets(url: string): string[] {
   let parsed: URL;
   try {
@@ -40,17 +43,23 @@ function urlSecrets(url: string): string[] {
   } catch {
     return [];
   }
-  const pieces = [parsed.username, parsed.password, ...parsed.pathname.split('/'), ...[...parsed.searchParams.values()]];
+  const pieces = [parsed.username, parsed.password, ...parsed.pathname.split('/'), ...parsed.search.slice(1).split(/[&=;]/)];
   for (const piece of [...pieces]) {
-    try {
-      pieces.push(decodeURIComponent(piece));
-    } catch {
-      // A malformed escape: the piece as written is already listed.
+    for (const form of [piece, piece.replace(/\+/g, ' ')]) {
+      try {
+        pieces.push(decodeURIComponent(form));
+      } catch {
+        // A malformed escape: the piece as written is already listed.
+      }
     }
   }
-  // Short pieces (`announce`, `a`, `1`) are no key and would blank ordinary words.
-  return [...new Set(pieces.filter((piece) => piece.length >= 6 && piece !== 'announce'))].sort((a, b) => b.length - a.length);
+  // Short pieces (`a`, `1`) and short plain words (`announce`, `tracker`, `scrape.php`) are no key
+  // and would blank ordinary words in the message; a random key has digits or is long.
+  return [...new Set(pieces.filter((piece) => piece.length >= 6 && !(piece.length < 16 && /^[a-z._-]+$/i.test(piece))))]
+    .sort((a, b) => b.length - a.length);
 }
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /*
  * A tracker's message is kept (it says why a tracker fails), but a tracker can
@@ -60,7 +69,8 @@ function urlSecrets(url: string): string[] {
  */
 function messageWithoutSecrets(message: string, secrets: string[]): string {
   let text = redactUpstreamText(urlsToOrigins(message));
-  for (const secret of secrets) text = text.split(secret).join('[REDACTED]');
+  // In any case: a hex key can come back in other capitals.
+  for (const secret of secrets) text = text.replace(new RegExp(escapeRegExp(secret), 'gi'), '[REDACTED]');
   return text;
 }
 

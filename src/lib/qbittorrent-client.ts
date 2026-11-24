@@ -207,7 +207,8 @@ export class QBittorrentClient {
     category?: string,
     sort?: string,
     reverse?: boolean,
-    hashes?: string
+    hashes?: string,
+    signal?: AbortSignal
   ): Promise<QBittorrentTorrentInfo[]> {
     const params: Record<string, unknown> = {};
     if (filter !== undefined) params.filter = filter;
@@ -215,7 +216,7 @@ export class QBittorrentClient {
     if (sort !== undefined) params.sort = sort;
     if (reverse !== undefined) params.reverse = reverse;
     if (hashes !== undefined) params.hashes = hashes;
-    return this.get<QBittorrentTorrentInfo[]>('/api/v2/torrents/info', params);
+    return this.get<QBittorrentTorrentInfo[]>('/api/v2/torrents/info', params, signal);
   }
 
   async getTorrentProperties(hash: string, signal?: AbortSignal): Promise<TorrentProperties> {

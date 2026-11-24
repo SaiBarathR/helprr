@@ -15,11 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   carries your passkey, so any user allowed to view torrents could read it and use your
   tracker account. Now only admins see full tracker URLs. Everyone else sees each tracker's
   address without its path or query, its status, tier, seed and leecher counts, and its
-  message with any link or key taken out. Torrent lists no longer carry the magnet or the
-  tracker URL at all. Copy Magnet URI still works for everyone: admins get the full magnet,
-  everyone else gets one without trackers (the torrent's hash and name). If people other
-  than admins could view torrents, renew your private trackers' passkeys (usually on the
-  tracker's profile or security page), then update the trackers in qBittorrent.
+  message with links and the tracker's key taken out. Torrent lists no longer carry the
+  magnet or the tracker URL at all. Copy Magnet URI still works for everyone: admins get
+  the full magnet, everyone else gets one without trackers (the torrent's hash and name).
+  If people other than admins could view torrents, renew your private trackers' passkeys
+  (usually on the tracker's profile or security page), then update the trackers in
+  qBittorrent.
 
 ## [1.18.1] - 2026-11-24
 

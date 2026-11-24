@@ -108,6 +108,19 @@ describe('GET /api/qbittorrent/[hash]/details', () => {
     expect((await (await details()).json()).magnet).toBeNull();
   });
 
+  it("refuses anything but one info hash, so qBittorrent's `all` cannot list every torrent", async () => {
+    const res = await getDetails(new NextRequest('http://localhost/api/qbittorrent/all/details'), { params: Promise.resolve({ hash: 'all' }) });
+    expect(res.status).toBe(400);
+    expect(mocks.client.getTorrents).not.toHaveBeenCalled();
+  });
+
+  it('still shows the details when the magnet lookup fails', async () => {
+    mocks.client.getTorrents.mockRejectedValue(new Error('timeout'));
+    const res = await details();
+    expect(res.status).toBe(200);
+    expect((await res.json()).magnet).toBeNull();
+  });
+
   it('checks torrents.view before asking qBittorrent', async () => {
     mocks.requireUserCapability.mockResolvedValue({ ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) });
     expect((await details()).status).toBe(403);

@@ -75,6 +75,27 @@ describe('trackersForViewer', () => {
     expect(trackersForViewer([tracker('udp://open.invalid:1337/announce', 'Connection timed out')], false)[0].msg).toBe('Connection timed out');
   });
 
+  it.each([
+    ['a key that is the query name', 'http://t.invalid/announce.php?0123456789abcdef', 'bad key 0123456789abcdef', '0123456789abcdef'],
+    ['a + in the key', 'http://t.invalid/a?passkey=ab+cd/ef0123456789', 'passkey ab+cd/ef0123456789 not found', 'ab+cd/ef0123456789'],
+    ['an escaped key', 'http://t.invalid/a?passkey=ab%2Bcd0123456789', 'passkey ab%2Bcd0123456789 not found', 'ab%2Bcd0123456789'],
+    ['the key in other capitals', `udp://t.invalid:1337/${KEY.toUpperCase()}/announce`, `key ${KEY} revoked`, KEY],
+  ])('removes %s from the message', (_, url, msg, secret) => {
+    const [shown] = trackersForViewer([tracker(url, msg)], false);
+    expect(shown.msg.toLowerCase()).not.toContain(secret.toLowerCase());
+    expect(shown.msg).toContain('[REDACTED]');
+  });
+
+  it('keeps ordinary words that are also in the announce path', () => {
+    const [shown] = trackersForViewer([tracker(`https://t.invalid/tracker/${KEY}/announce`, 'tracker overloaded')], false);
+    expect(shown.msg).toBe('tracker overloaded');
+  });
+
+  it('treats only the three named pseudo-trackers as having no URL', () => {
+    const [shown] = trackersForViewer([tracker(`** [DHT] ** http://t.invalid/${KEY}/announce`)], false);
+    expect(shown.url).not.toContain(KEY);
+  });
+
   it('does not pass on fields qBittorrent adds', () => {
     const extra = { ...tracker(`https://tracker.invalid/announce/${KEY}`), endpoints: [{ name: `https://tracker.invalid/announce/${KEY}` }] } as TorrentTracker;
     expect(JSON.stringify(trackersForViewer([extra], false))).not.toContain(KEY);
