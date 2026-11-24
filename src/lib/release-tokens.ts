@@ -53,8 +53,9 @@ function tokenKey(scope: string, userId: string, token: string): string {
  * Stands in for a release in the browser. Grabbing needs the release's guid,
  * but for many indexers the guid is a download link that can carry a passkey,
  * so it stays on the server, readable only by the user who searched, and only
- * where they searched (`scope`). Each ref is kept as given (a Prowlarr ref
- * with its links).
+ * where they searched (`scope`). Each ref is kept as given: only Prowlarr's
+ * search passes its links (a ProwlarrReleaseRef); the Arr searches pass the
+ * guid and indexer alone (`withReleaseTokens`).
  */
 export async function issueReleaseTokens(scope: string, userId: string, releases: ReleaseRef[]): Promise<string[]> {
   const tokens = releases.map(() => randomBytes(24).toString('base64url'));

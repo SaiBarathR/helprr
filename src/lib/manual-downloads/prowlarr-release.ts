@@ -9,12 +9,15 @@ import { ManualDownloadRequestError } from './request';
 /**
  * A Prowlarr search result as a manual-download release. The browser names it
  * only by the release token from its search; the links stay on the server.
- * The release is fetched through Prowlarr once (each fetch is a grab in
- * Prowlarr's history and a hit on the indexer), then kept for the token's
- * life so a Check and the Send that follows read the same release.
+ * Each fetch is a grab in Prowlarr's history and a hit on the indexer, so the
+ * release is kept for a while after the first, and a Check and the Send that
+ * follows read the same release. Only a magnet or a small .torrent is kept:
+ * Redis refuses writes when full (noeviction), and the login limits live there.
  */
 
-const SOURCE_TTL_SECONDS = 30 * 60;
+const SOURCE_TTL_SECONDS = 10 * 60;
+/** Most .torrent files are well under this; a larger one is fetched again at Send. */
+const MAX_CACHED_TORRENT_BYTES = 512 * 1024;
 export const PROWLARR_RELEASE_EXPIRED = 'This result has expired. Search again.';
 
 type CachedSource = { kind: 'MAGNET'; magnetUrl: string } | { kind: 'TORRENT_FILE'; torrent: string };
@@ -38,21 +41,28 @@ function fetchProblem(error: unknown): string {
   return error instanceof Error && error.message.startsWith('Prowlarr ') ? error.message : 'Prowlarr could not fetch this release.';
 }
 
+const STORE_UNAVAILABLE = 'Helprr could not reach its cache. Try again in a moment.';
+
 /**
  * The release behind a Prowlarr search token, for the user who searched.
  * Throws ManualDownloadRequestError: 410 once the token has expired, 400 for a
  * Usenet release (manual downloads follow torrents only), 502 when Prowlarr
- * cannot fetch it. The magnet link is tried before the .torrent: it needs no
- * callback to Helprr, and a proxied .torrent is the link that fails more often.
+ * cannot fetch it, 503 when Redis fails. The magnet link is tried before the
+ * .torrent: it needs no callback to Helprr, and a proxied .torrent is the link
+ * that fails more often.
  */
 export async function prowlarrReleaseSource(userId: string, token: string): Promise<ReleaseSource> {
-  const release = await resolveReleaseToken<ProwlarrReleaseRef>(PROWLARR_SCOPE, userId, token);
+  const key = sourceKey(userId, token);
+  let release: ProwlarrReleaseRef | null;
+  let cached: string | null;
+  try {
+    release = await resolveReleaseToken<ProwlarrReleaseRef>(PROWLARR_SCOPE, userId, token);
+    cached = release ? await (await getRedisClient()).get(key) : null;
+  } catch {
+    throw new ManualDownloadRequestError(STORE_UNAVAILABLE, 503);
+  }
   if (!release) throw new ManualDownloadRequestError(PROWLARR_RELEASE_EXPIRED, 410);
   if (release.protocol !== 'torrent') throw new ManualDownloadRequestError('Only torrent releases can be sent to Sonarr or Radarr.');
-
-  const redis = await getRedisClient();
-  const key = sourceKey(userId, token);
-  const cached = await redis.get(key);
   if (cached) return readSource(JSON.parse(cached) as CachedSource);
 
   const links = [...new Set([release.magnetUrl, release.downloadUrl].filter((link): link is string => typeof link === 'string' && link.length > 0))];
@@ -64,18 +74,27 @@ export async function prowlarrReleaseSource(userId: string, token: string): Prom
     throw new ManualDownloadRequestError('Prowlarr is not connected.', 409);
   }
   let problem: unknown = null;
+  let found: { stored: CachedSource; source: ReleaseSource } | null = null;
   for (const link of links) {
     try {
       const fetched = await client.fetchReleaseLink(link);
       const stored: CachedSource = fetched.kind === 'MAGNET'
         ? { kind: 'MAGNET', magnetUrl: fetched.magnetUrl }
         : { kind: 'TORRENT_FILE', torrent: fetched.bytes.toString('base64') };
-      const source = readSource(stored);
-      await redis.set(key, JSON.stringify(stored), { EX: SOURCE_TTL_SECONDS });
-      return source;
+      found = { stored, source: readSource(stored) };
+      break;
     } catch (error) {
       problem = error;
     }
   }
-  throw new ManualDownloadRequestError(fetchProblem(problem), 502);
+  if (!found) throw new ManualDownloadRequestError(fetchProblem(problem), 502);
+  const { stored, source } = found;
+  if (source.kind === 'MAGNET' || source.bytes.length <= MAX_CACHED_TORRENT_BYTES) {
+    try {
+      await (await getRedisClient()).set(key, JSON.stringify(stored), { EX: SOURCE_TTL_SECONDS });
+    } catch {
+      // Not kept: the release is still good for this request, and the next one fetches it again.
+    }
+  }
+  return source;
 }

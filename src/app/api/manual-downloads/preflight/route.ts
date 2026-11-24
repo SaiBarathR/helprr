@@ -9,7 +9,9 @@ import { prowlarrReleaseSource } from '@/lib/manual-downloads/prowlarr-release';
 /**
  * Check a manual download before anything is created or sent: the instance,
  * the title, the add options, the download client and how Arr reads the
- * release name. Changes nothing.
+ * release name. Changes nothing in Arr. A Prowlarr search result is fetched
+ * through Prowlarr here (once, then kept a few minutes), which Prowlarr logs
+ * as a grab and a private tracker may count.
  */
 async function postHandler(request: Request) {
   const auth = await requireUserAllCapabilities(['torrents.add', 'activity.manage']);

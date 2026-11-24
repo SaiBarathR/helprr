@@ -85,6 +85,35 @@ describe('prowlarrReleaseSource', () => {
     expect(mocks.prowlarr.fetchReleaseLink.mock.calls).toEqual([[MAGNET_LINK], [TORRENT_LINK]]);
   });
 
+  it('keeps a small .torrent but fetches a large one again, so Redis is not filled', async () => {
+    const small = await token({ protocol: 'torrent', downloadUrl: TORRENT_LINK });
+    const large = await token({ protocol: 'torrent', downloadUrl: TORRENT_LINK });
+    const big = torrent('Big.mkv');
+    const padded = Buffer.concat([big.subarray(0, big.length - 1), Buffer.from(`7:comment${600 * 1024}:`), Buffer.alloc(600 * 1024, 0x61), Buffer.from('e')]);
+    mocks.prowlarr.fetchReleaseLink.mockImplementation(async () => ({ kind: 'TORRENT_FILE', bytes: mocks.prowlarr.fetchReleaseLink.mock.calls.length === 1 ? torrent('Small.mkv') : padded }));
+
+    await prowlarrReleaseSource('u1', small);
+    await prowlarrReleaseSource('u1', small);
+    expect(mocks.prowlarr.fetchReleaseLink).toHaveBeenCalledTimes(1);
+
+    expect(await prowlarrReleaseSource('u1', large)).toEqual(expect.objectContaining({ kind: 'TORRENT_FILE', name: 'Big.mkv' }));
+    await prowlarrReleaseSource('u1', large);
+    expect(mocks.prowlarr.fetchReleaseLink).toHaveBeenCalledTimes(3);
+  });
+
+  it('answers 503 when Redis fails, and still uses a release it fetched when only the keep fails', async () => {
+    const id = await token({ protocol: 'torrent', magnetUrl: MAGNET_LINK, downloadUrl: TORRENT_LINK });
+    mocks.redis.get.mockRejectedValueOnce(new Error('OOM command not allowed'));
+    expect((await refusal(prowlarrReleaseSource('u1', id))).status).toBe(503);
+    expect(mocks.prowlarr.fetchReleaseLink).not.toHaveBeenCalled();
+
+    mocks.prowlarr.fetchReleaseLink.mockResolvedValue({ kind: 'MAGNET', magnetUrl: MAGNET });
+    mocks.redis.set.mockRejectedValueOnce(new Error('OOM command not allowed'));
+    expect(await prowlarrReleaseSource('u1', id)).toEqual(expect.objectContaining({ kind: 'MAGNET', infoHash: HASH.toUpperCase() }));
+    // One link fetched: a failed keep is not taken for a failed link.
+    expect(mocks.prowlarr.fetchReleaseLink).toHaveBeenCalledTimes(1);
+  });
+
   it('treats a missing, expired or another user\'s token as expired, before asking Prowlarr', async () => {
     const id = await token({ protocol: 'torrent', magnetUrl: MAGNET_LINK }, 'someone-else');
 

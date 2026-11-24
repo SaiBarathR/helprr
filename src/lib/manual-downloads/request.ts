@@ -30,8 +30,10 @@ export interface ManualDownloadRequestOptions {
    * fetched from Prowlarr); throws ManualDownloadForbiddenError to refuse.
    */
   authorize?: (request: { service: ManualDownloadService; monitorTarget: boolean; prowlarr: boolean }) => void;
-  /** Reads a Prowlarr search result by its release token; without it one is refused. */
+  /** Reads a Prowlarr search result by its release token; without it (or `authorize`) one is refused. */
   prowlarrSource?: (token: string) => Promise<ReleaseSource>;
+  /** The send needs its idempotency key; refused before a Prowlarr release is fetched. */
+  requireClientRequestId?: boolean;
 }
 
 /** What each service's manual download needs on top of torrents.add and activity.manage. */
@@ -99,6 +101,9 @@ export async function readManualDownloadRequest(form: FormData, options: ManualD
   if (prowlarrRelease !== undefined && (typeof prowlarrRelease !== 'string' || !prowlarrRelease || prowlarrRelease.length > 64)) {
     throw new ManualDownloadRequestError('Invalid release.');
   }
+  if (options.requireClientRequestId && body.clientRequestId === undefined) throw new ManualDownloadRequestError('Missing request id.');
+  // Checked before the source is read too: a Prowlarr release is fetched from Prowlarr.
+  const add = readAdd(service, body.add);
   options.authorize?.({ service, monitorTarget: body.monitorTarget === true, prowlarr: prowlarrRelease !== undefined });
 
   let source: ReleaseSource;
@@ -106,7 +111,7 @@ export async function readManualDownloadRequest(form: FormData, options: ManualD
     const torrent = form.get('torrent');
     if (typeof prowlarrRelease === 'string') {
       // Only the token is read: a link or file sent beside it is ignored.
-      if (!options.prowlarrSource) throw new ManualDownloadRequestError('Invalid release.');
+      if (!options.prowlarrSource || !options.authorize) throw new ManualDownloadRequestError('Invalid release.');
       source = await options.prowlarrSource(prowlarrRelease);
     } else if (torrent instanceof File) {
       if (torrent.size > MAX_TORRENT_BYTES) throw new ReleaseSourceError('That .torrent file is too large.');
@@ -129,7 +134,7 @@ export async function readManualDownloadRequest(form: FormData, options: ManualD
       source,
       releaseTitle: typeof body.releaseTitle === 'string' ? body.releaseTitle : source.name,
       downloadClientId: body.downloadClientId as number | undefined,
-      add: readAdd(service, body.add),
+      add,
       monitorTarget: body.monitorTarget === true,
     },
     clientRequestId: body.clientRequestId as string | undefined,

@@ -49,6 +49,7 @@ async function postHandler(request: Request) {
         if (prowlarr && !can(auth.user, 'prowlarr.manage')) throw new ManualDownloadForbiddenError();
       },
       prowlarrSource: (token) => prowlarrReleaseSource(auth.user.id, token),
+      requireClientRequestId: true,
     });
   } catch (error) {
     if (error instanceof ManualDownloadForbiddenError) return NextResponse.json({ error: error.message }, { status: 403 });

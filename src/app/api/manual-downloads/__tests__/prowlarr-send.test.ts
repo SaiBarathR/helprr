@@ -149,6 +149,16 @@ describe('sending a Prowlarr search result to Sonarr or Radarr', () => {
     expect((await preflight(body({ magnetUrl: FORGED }))).status).toBe(200);
   });
 
+  it('refuses a send with no request id or bad add options before Prowlarr is asked', async () => {
+    const token = await searchToken();
+
+    expect((await send(body({ prowlarrRelease: token, clientRequestId: undefined }))).status).toBe(400);
+    expect((await send(body({ prowlarrRelease: token, add: { qualityProfileId: 0, rootFolderPath: '/m' } }))).status).toBe(400);
+    expect((await preflight(body({ prowlarrRelease: token, add: { qualityProfileId: 1, rootFolderPath: '' } }))).status).toBe(400);
+
+    expect(mocks.prowlarr.fetchReleaseLink).not.toHaveBeenCalled();
+  });
+
   it('treats an expired token, or one issued to another user, as expired', async () => {
     const token = await searchToken();
     mocks.user.id = 'u2';

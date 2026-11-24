@@ -1,8 +1,10 @@
 'use client';
 
+import { useState } from 'react';
+import { useIsMutating } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { ManualDownloadForm, type Service } from '@/components/torrents/manual-download-form';
+import { MANUAL_DOWNLOAD_MUTATION_KEY, ManualDownloadForm, type Service } from '@/components/torrents/manual-download-form';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import type { ProwlarrSearchResult } from '@/app/api/prowlarr/search/route';
 
@@ -23,13 +25,19 @@ export function SendToArrSheet({
 }) {
   const isMobile = useIsMobile();
   const open = release !== null;
+  // The last result stays on screen while the sheet animates closed.
+  const [shown, setShown] = useState(release);
+  if (release && release !== shown) setShown(release);
+  // A Check or Send on its way keeps the sheet open: its answer belongs to this form.
+  const busy = useIsMutating({ mutationKey: MANUAL_DOWNLOAD_MUTATION_KEY }) > 0;
+  const onOpenChange = (next: boolean) => { if (!next && !busy) onClose(); };
   const title = 'Send to Sonarr or Radarr';
   // Keyed by release: each result starts a fresh form.
-  const form = release && (
+  const form = shown && (
     <ManualDownloadForm
-      key={release.id}
-      release={{ kind: 'prowlarr', token: release.id }}
-      suggestedName={release.title}
+      key={shown.id}
+      release={{ kind: 'prowlarr', token: shown.id }}
+      suggestedName={shown.title}
       prefill={null}
       defaultService={defaultService}
       onCancel={onClose}
@@ -38,11 +46,11 @@ export function SendToArrSheet({
 
   if (isMobile) {
     return (
-      <Drawer open={open} onOpenChange={(next) => !next && onClose()}>
+      <Drawer open={open} onOpenChange={onOpenChange} dismissible={!busy}>
         <DrawerContent>
           <DrawerHeader className="text-left">
             <DrawerTitle>{title}</DrawerTitle>
-            <DrawerDescription>{release?.title}</DrawerDescription>
+            <DrawerDescription>{shown?.title}</DrawerDescription>
           </DrawerHeader>
           <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">{form}</div>
         </DrawerContent>
@@ -51,11 +59,11 @@ export function SendToArrSheet({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription className="[overflow-wrap:anywhere]">{release?.title}</DialogDescription>
+          <DialogDescription className="[overflow-wrap:anywhere]">{shown?.title}</DialogDescription>
         </DialogHeader>
         {form}
       </DialogContent>

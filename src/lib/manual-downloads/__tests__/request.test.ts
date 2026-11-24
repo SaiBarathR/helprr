@@ -52,8 +52,10 @@ describe('readManualDownloadRequest', () => {
     expect(prowlarrSource).not.toHaveBeenCalled();
 
     await expect(readManualDownloadRequest(form({ ...base, prowlarrRelease: 'tok-1' }))).rejects.toThrow(ManualDownloadRequestError);
+    // Fail closed: a resolver without an access check reads nothing.
+    await expect(readManualDownloadRequest(form({ ...base, prowlarrRelease: 'tok-1' }), { prowlarrSource })).rejects.toThrow('Invalid release.');
     for (const bad of ['', 5, 'x'.repeat(65)]) {
-      await expect(readManualDownloadRequest(form({ ...base, prowlarrRelease: bad }), { prowlarrSource })).rejects.toThrow('Invalid release.');
+      await expect(readManualDownloadRequest(form({ ...base, prowlarrRelease: bad }), { authorize: () => {}, prowlarrSource })).rejects.toThrow('Invalid release.');
     }
     expect(prowlarrSource).not.toHaveBeenCalled();
   });

@@ -19,6 +19,12 @@ beforeAll(async () => {
     } else if (req.url?.startsWith('/6/download?file=magnet')) {
       res.writeHead(301, { Location: MAGNET });
       res.end();
+    } else if (req.url?.startsWith('/6/download?file=relative')) {
+      res.writeHead(302, { Location: '/6/download?file=torrent' });
+      res.end();
+    } else if (req.url?.startsWith('/6/download?file=huge')) {
+      res.writeHead(200, { 'Content-Type': 'application/x-bittorrent' });
+      res.end(Buffer.alloc(10 * 1024 * 1024 + 1));
     } else if (req.url?.startsWith('/6/download?file=away')) {
       res.writeHead(301, { Location: `${base}/6/download?file=torrent` });
       res.end();
@@ -47,6 +53,16 @@ describe('ProwlarrClient.fetchReleaseLink', () => {
     seen.length = 0;
     await expect(new ProwlarrClient(base, 'key').fetchReleaseLink(`${base}/6/download?file=away`)).rejects.toThrow(/own site/);
     expect(seen).toEqual(['/6/download?file=away']);
+  });
+
+  it('refuses a relative redirect back to Prowlarr too, rather than follow it', async () => {
+    seen.length = 0;
+    await expect(new ProwlarrClient(base, 'key').fetchReleaseLink(`${base}/6/download?file=relative`)).rejects.toThrow(/own site/);
+    expect(seen).toEqual(['/6/download?file=relative']);
+  });
+
+  it('stops reading a .torrent over the manual-download limit', async () => {
+    await expect(new ProwlarrClient(base, 'key').fetchReleaseLink(`${base}/6/download?file=huge`)).rejects.toThrow(/maxContentLength/);
   });
 
   it('fetches nothing from another server or outside the base path', async () => {
