@@ -100,7 +100,7 @@ export function listableRoots(roots: string[]): string[] {
   const listable = new Set<string>();
   for (const root of absoluteRoots(roots)) {
     const found = folderUnderRoots(root, [root]);
-    if (found) listable.add(found.path);
+    if (found) listable.add(cleanFolderPath(found.path));
   }
   return [...listable].sort((a, b) => a.localeCompare(b));
 }
@@ -115,17 +115,31 @@ export function listableRoots(roots: string[]): string[] {
 export function listedFolderName(entry: unknown, dir: string, windows: boolean): string | null {
   if (typeof entry !== 'string') return null;
   const path = windows ? entry.replace(/\\/g, '/') : entry;
-  if (!path.startsWith(`${dir}/`)) return null;
-  const name = path.slice(dir.length + 1);
+  const prefix = dir.endsWith('/') ? dir : `${dir}/`;
+  if (!path.startsWith(prefix)) return null;
+  const name = path.slice(prefix.length);
   if (!name || name.includes('/') || (!windows && name.includes('\\'))) return null;
   if (CONTROL_CHARACTERS.test(name) || /^[\s\u0085.]*$/.test(name) || /[\s\u0085]$/.test(name)) return null;
   return name;
 }
 
-/** The folder above a FolderUnderRoots path, or null at a drive or the top. */
+/**
+ * A FolderUnderRoots path as qBittorrent lists it: without empty or "." parts
+ * (it cleans them, so its entries would never start with the path asked for),
+ * and a bare drive as "D:/" ("D:" is the drive's working folder on Windows).
+ */
+export function cleanFolderPath(path: string): string {
+  const lead = path.startsWith('//') ? '//' : path.startsWith('/') ? '/' : '';
+  const cleaned = lead + path.split('/').filter((part) => part !== '' && part !== '.').join('/');
+  return /^[A-Za-z]:$/.test(cleaned) ? `${cleaned}/` : cleaned;
+}
+
+/** The folder above a cleanFolderPath path, cleaned; null at a drive or the top. */
 export function parentFolder(path: string): string | null {
-  const cut = path.lastIndexOf('/');
-  return cut > 0 ? path.slice(0, cut) : null;
+  const cut = path.replace(/\/$/, '').lastIndexOf('/');
+  if (cut <= 0) return null;
+  const parent = cleanFolderPath(path.slice(0, cut));
+  return parent === path ? null : parent;
 }
 
 /**

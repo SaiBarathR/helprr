@@ -19,6 +19,7 @@ const MAX_PATH_LENGTH = 4096;
 /** Where an arr that downloads into this torrent's category may lose track of it. */
 export interface RenameArrUse {
   app: string;
+  /** The connection's label; only an admin is sent it (anyone else gets the app's name). */
   instance: string;
 }
 
@@ -96,13 +97,24 @@ async function postHandler(
       if (uses.length > 0 || usage.unchecked.length > 0) {
         checkedArrUses = { uses, unchecked: usage.unchecked };
         if (input.confirm !== true) {
+          // Connection labels are an admin's to see (other lists filter them by grant): anyone else gets the app's name.
+          const admin = auth.user.role === 'admin';
+          const shownUses = admin
+            ? uses
+            : [...new Set(uses.map((use) => use.app))].map((app) => ({ app, instance: app }));
           return refuse(
             409,
             uses.length > 0
               ? `Sonarr, Radarr or Lidarr downloads into ${category}: renaming can stop it importing this torrent`
               : `Some Sonarr, Radarr or Lidarr instances did not answer, so whether they use ${category} is unknown`,
             'needsConfirm',
-            { needsConfirm: true, category, uses, unchecked: usage.unchecked },
+            {
+              needsConfirm: true,
+              category,
+              uses: shownUses,
+              unchecked: admin ? usage.unchecked : [],
+              someUnchecked: usage.unchecked.length > 0,
+            },
           );
         }
       }

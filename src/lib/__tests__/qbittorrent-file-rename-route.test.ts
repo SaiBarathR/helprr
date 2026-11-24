@@ -192,11 +192,13 @@ describe('a torrent an arr downloads', () => {
 
     const first = await rename({ kind: 'file', path: 'Pack/readme.txt', name: 'notes.txt' });
     expect(first.status).toBe(409);
+    // A member is told which app, not the connection's label.
     expect(await first.json()).toMatchObject({
       needsConfirm: true,
       category: 'tv',
-      uses: [{ app: 'Sonarr', instance: 'Sonarr Anime' }],
+      uses: [{ app: 'Sonarr', instance: 'Sonarr' }],
       unchecked: [],
+      someUnchecked: false,
     });
     expect(renamed()).toBe(0);
 
@@ -211,12 +213,30 @@ describe('a torrent an arr downloads', () => {
     expect((await rename({ kind: 'file', path: 'Pack/readme.txt', name: 'notes.txt' })).status).toBe(200);
   });
 
+  it('names the instances to an admin only', async () => {
+    mocks.qbit.getTorrents.mockResolvedValue([{ hash: HASH, name: 'Pack', category: 'tv' }]);
+    mocks.sonarr = [
+      sonarrUsing('tv'),
+      { connection: { label: 'Sonarr 4K' }, client: { getDownloadClients: vi.fn(async () => { throw new Error('down'); }) } },
+    ];
+    const member = await rename({ kind: 'file', path: 'Pack/readme.txt', name: 'notes.txt' });
+    expect(await member.json()).toMatchObject({ uses: [{ app: 'Sonarr', instance: 'Sonarr' }], unchecked: [], someUnchecked: true });
+
+    mocks.requireUserCapability.mockResolvedValue({ ok: true, user: { ...USER, role: 'admin' }, session: {} });
+    const admin = await rename({ kind: 'file', path: 'Pack/readme.txt', name: 'notes.txt' });
+    expect(await admin.json()).toMatchObject({
+      uses: [{ app: 'Sonarr', instance: 'Sonarr Anime' }],
+      unchecked: ['Sonarr 4K'],
+      someUnchecked: true,
+    });
+  });
+
   it('asks when an arr does not answer', async () => {
     mocks.qbit.getTorrents.mockResolvedValue([{ hash: HASH, name: 'Pack', category: 'tv' }]);
     mocks.sonarr = [{ connection: { label: 'Sonarr' }, client: { getDownloadClients: vi.fn(async () => { throw new Error('down'); }) } }];
     const res = await rename({ kind: 'file', path: 'Pack/readme.txt', name: 'notes.txt' });
     expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ needsConfirm: true, uses: [], unchecked: ['Sonarr'] });
+    expect(await res.json()).toMatchObject({ needsConfirm: true, uses: [], someUnchecked: true });
   });
 
   it('asks no arr about a torrent with no category', async () => {

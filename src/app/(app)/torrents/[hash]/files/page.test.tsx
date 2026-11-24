@@ -60,9 +60,11 @@ const renderPage = () => {
   return render(<QueryClientProvider client={client}><TorrentFilesPage /></QueryClientProvider>);
 };
 
+// Longer than findBy's 1 s: under a full parallel run the list can take longer to arrive.
+const WAIT = { timeout: 5_000 };
 const startRename = async (name: string) => {
-  await userEvent.click(await screen.findByRole('button', { name: `More actions for ${name}` }));
-  await userEvent.click(await screen.findByRole('menuitem', { name: /Rename/ }));
+  await userEvent.click(await screen.findByRole('button', { name: `More actions for ${name}` }, WAIT));
+  await userEvent.click(await screen.findByRole('menuitem', { name: /Rename/ }, WAIT));
 };
 
 describe('torrent files page', () => {

@@ -8,6 +8,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import {
   absoluteRoots,
+  cleanFolderPath,
   folderUnderRoots,
   getDownloadRoots,
   listableRoots,
@@ -76,7 +77,11 @@ async function getHandler(request: NextRequest) {
     }
 
     const location = parseLocation(requested);
-    const folder = location === null ? null : folderUnderRoots(location, roots);
+    const found = location === null ? null : folderUnderRoots(location, roots);
+    // Cleaning drops only empty and "." parts, but it is checked again: what is checked is what is listed.
+    const folder = found && folderUnderRoots(cleanFolderPath(found.path), roots)
+      ? { path: cleanFolderPath(found.path), windows: found.windows }
+      : null;
     if (!folder) {
       logApiDuration(ROUTE, startedAt, { method: 'GET', purpose, validationFailed: true });
       return NextResponse.json(

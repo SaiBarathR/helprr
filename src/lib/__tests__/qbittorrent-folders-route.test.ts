@@ -140,6 +140,29 @@ describe('where it lists', () => {
     expect(mocks.qbit.getDirectoryContent).toHaveBeenCalledWith('/downloads/tv');
   });
 
+  it('lists a folder typed with "." or "//" as qBittorrent cleans it', async () => {
+    mocks.qbit.getDirectoryContent.mockResolvedValue(['/downloads/tv/Anime']);
+    for (const typed of ['/downloads/./tv', '/downloads//tv/.']) {
+      const body = await (await list('add', typed)).json();
+      expect(body).toMatchObject({ path: '/downloads/tv', parent: '/downloads', folders: ['Anime'] });
+    }
+    expect(mocks.qbit.getDirectoryContent).toHaveBeenLastCalledWith('/downloads/tv');
+  });
+
+  it('keeps a bare drive root a drive, not its working folder', async () => {
+    mocks.qbit.getDefaultSavePath.mockResolvedValue('D:\\');
+    mocks.qbit.getCategories.mockResolvedValue({});
+    expect((await (await list('add')).json()).folders).toEqual(['D:/']);
+
+    mocks.qbit.getDirectoryContent.mockResolvedValue(['D:/Media', 'D:/Games']);
+    const top = await (await list('add', 'D:\\')).json();
+    expect(mocks.qbit.getDirectoryContent).toHaveBeenLastCalledWith('D:/');
+    expect(top).toMatchObject({ path: 'D:/', parent: null, folders: ['Games', 'Media'] });
+
+    mocks.qbit.getDirectoryContent.mockResolvedValue([]);
+    expect(await (await list('add', 'D:/Media')).json()).toMatchObject({ path: 'D:/Media', parent: 'D:/' });
+  });
+
   it('reads a Windows root as Windows does', async () => {
     mocks.qbit.getDefaultSavePath.mockResolvedValue('D:\\Downloads');
     mocks.qbit.getCategories.mockResolvedValue({});

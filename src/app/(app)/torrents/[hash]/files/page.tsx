@@ -52,7 +52,9 @@ interface RenameTarget {
 interface RenameWarning {
   category: string;
   uses: RenameArrUse[];
+  /** Instances that did not answer, by name for an admin. */
   unchecked: string[];
+  someUnchecked: boolean;
 }
 
 type RenameResult = { ok: true; path: string } | ({ ok: false } & RenameWarning);
@@ -128,6 +130,7 @@ export default function TorrentFilesPage() {
           category: typeof data.category === 'string' ? data.category : '',
           uses: Array.isArray(data.uses) ? data.uses : [],
           unchecked: Array.isArray(data.unchecked) ? data.unchecked : [],
+          someUnchecked: data.someUnchecked === true,
         };
       }
       // ApiError so a 401 reaches the global MutationCache handler (redirect).
@@ -159,6 +162,15 @@ export default function TorrentFilesPage() {
           dir === target.path || dir.startsWith(`${target.path}/`) ? `${result.path}${dir.slice(target.path.length)}` : dir
         ))));
       }
+      // The new names at once: a poll that still has the old ones can't show them meanwhile.
+      await queryClient.cancelQueries({ queryKey: filesKey });
+      queryClient.setQueryData<{ files: TorrentFile[] }>(filesKey, (old) => old && {
+        ...old,
+        files: old.files.map((file) => {
+          if (target.kind === 'file') return file.name === target.path ? { ...file, name: result.path } : file;
+          return file.name.startsWith(`${target.path}/`) ? { ...file, name: `${result.path}${file.name.slice(target.path.length)}` } : file;
+        }),
+      });
       cancelRename();
       toast.success(`Renamed to ${name}`);
       void queryClient.invalidateQueries({ queryKey: filesKey });
@@ -196,7 +208,7 @@ export default function TorrentFilesPage() {
     // Pause polling while a priority change is in flight so the next poll can't
     // overwrite the optimistic update before the server commits (matches the old
     // pendingMutationRef guard).
-    refetchInterval: () => (priorityPending ? false : refreshIntervalMs),
+    refetchInterval: () => (priorityPending || renamePending ? false : refreshIntervalMs),
     refetchIntervalInBackground: false,
   });
   const files = useMemo(() => filesQuery.data ?? [], [filesQuery.data]);
@@ -759,8 +771,10 @@ function RenameForm({
               {use.instance === use.app ? use.app : `${use.app} (${use.instance})`} downloads into {warning.category}.
             </p>
           ))}
-          {warning.unchecked.length > 0 && (
+          {warning.unchecked.length > 0 ? (
             <p>Did not answer, so not checked: {warning.unchecked.join(', ')}.</p>
+          ) : warning.someUnchecked && (
+            <p>Some of Sonarr, Radarr and Lidarr did not answer, so they were not checked.</p>
           )}
           <p>Renaming inside this torrent can stop its import: the app looks for the files by the names it grabbed.</p>
         </div>
