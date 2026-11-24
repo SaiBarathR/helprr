@@ -66,10 +66,14 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'DELETE /api/anilist/list-entry',
     'POST /api/anime/automap/run',
     'POST /api/anime/automap/stop',
+    // Hands one of Helprr's arr API keys to Prowlarr as a new app.
+    'POST /api/prowlarr/applications/from-connection',
     // qBittorrent categories: each one's folder becomes a download root that add and move accept.
     'POST /api/qbittorrent/categories',
     'PATCH /api/qbittorrent/categories',
     'DELETE /api/qbittorrent/categories',
+    // A peer ban is global and kept in qBittorrent's banned IP list.
+    'POST /api/qbittorrent/[hash]/peers/ban',
     // Library cleanup: rules, preview, marking Leaving soon and Delete now.
     'PUT /api/cleanup/library/config',
     'POST /api/cleanup/library/preview',
@@ -208,6 +212,11 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/prowlarr/command',
     'DELETE /api/prowlarr/indexers/[id]',
     'PUT /api/prowlarr/indexers/bulk',
+    'PUT /api/prowlarr/applications/bulk',
+    'POST /api/prowlarr/applications/[id]/sync',
+    'DELETE /api/prowlarr/indexers/bulk',
+    'POST /api/prowlarr/indexerproxies/[id]/test',
+    'POST /api/prowlarr/indexerproxies/testall',
     'POST /api/prowlarr/search/grab',
     'POST /api/prowlarr/applications/[id]/test',
     'POST /api/prowlarr/applications/testall',
@@ -360,6 +369,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     // Tags are labels only (no folder, unlike categories).
     'POST /api/qbittorrent/tags',
     'DELETE /api/qbittorrent/tags',
+    'POST /api/qbittorrent/[hash]/peers',
   ],
   'cap:watchlist.edit': [
     'DELETE /api/watchlist/[id]',
@@ -635,7 +645,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(283);
+    expect(handlers.size).toBe(291);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

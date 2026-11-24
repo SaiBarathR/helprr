@@ -1,4 +1,4 @@
-type ArrService = 'radarr' | 'sonarr' | 'lidarr';
+type ArrService = 'radarr' | 'sonarr' | 'lidarr' | 'prowlarr';
 
 const POLL_INTERVAL_MS = 1_500;
 const POLL_TIMEOUT_MS = 60_000;

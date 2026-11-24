@@ -33,6 +33,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/anilist/library',
     'GET /api/anilist/list-entry',
     'GET /api/anilist/viewer',
+    // The add form's guesses for one arr connection's addresses.
+    'GET /api/prowlarr/applications/from-connection',
     'GET /api/anime/automap/status',
     'GET /api/cleanup/library/config',
     'GET /api/file-audit',
@@ -207,6 +209,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'cap:prowlarr.manage': [
     // Download client names for a grab; their fields stay on the server.
     'GET /api/prowlarr/downloadclients',
+    // A command's status (Re-check health); only its id, name and status.
+    'GET /api/prowlarr/command/[id]',
   ],
   'cap:prowlarr.view': [
     'GET /api/prowlarr/applications',
@@ -214,6 +218,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/prowlarr/health',
     'GET /api/prowlarr/history',
     'GET /api/prowlarr/indexers',
+    'GET /api/prowlarr/indexerproxies',
     'GET /api/prowlarr/stats',
     'GET /api/prowlarr/status',
     'GET /api/prowlarr/tags',
@@ -286,6 +291,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'cap:torrents.view': [
     'GET /api/qbittorrent/[hash]/details',
     'GET /api/qbittorrent/[hash]/files',
+    'GET /api/qbittorrent/[hash]/peers',
     'GET /api/qbittorrent/categories',
     'GET /api/qbittorrent/options',
     'GET /api/qbittorrent/tags',
@@ -607,7 +613,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(306);
+    expect(handlers.size).toBe(310);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

@@ -1106,6 +1106,24 @@ to whatever client the id names, so the route first checks it is enabled and
 for the release's protocol. The client list leaves the server as id, name and
 protocol only: each client's `fields` hold its password.
 
+The Prowlarr page's commands go through `POST /api/prowlarr/command`, which
+sends only the names on its allow-list (`ApplicationIndexerSync` for Sync All,
+`CheckHealth` for the health banner's Re-check) and needs `prowlarr.manage`;
+`GET /api/prowlarr/command/[id]` follows one until it ends and passes on its id,
+name and status only. Select mode on the Indexers tab edits through
+`PUT /api/prowlarr/indexers/bulk` and deletes through
+`DELETE /api/prowlarr/indexers/bulk` (`prowlarr.manage`, at most 200 ids):
+every id must be one Prowlarr has, or nothing is sent, and since Prowlarr's
+answer does not say which went, the route reads the list again and reports each
+id as deleted or not. Indexer deletes, single or bulk, remove Prowlarr settings
+rather than media, files or downloads and are not in the operation audit. The
+indexer list's search, sort and filters run over the loaded list and are kept in
+the UI store (`prowlarrIndexerView`). Indexer proxies
+(`GET /api/prowlarr/indexerproxies`, `prowlarr.view`) leave the server as id,
+name, type, tags and the indexers sharing a tag with each; their `fields` (host,
+user name, password) never do. Test and Test All (`prowlarr.manage`) answer pass
+or fail only, since Prowlarr's failure text can name the proxy's host.
+
 qBittorrent's `transfer/info` also carries `last_external_address_v4` and `_v6`,
 the owner's public IP. `/api/qbittorrent/transfer` and the summary (full, `view=delta`,
 `view=counters`, and the cache and delta history behind them) rebuild it with
@@ -1141,6 +1159,38 @@ and request bodies stay out of the failed-request log. A private torrent's track
 change: a third-party tracker on it leaks the torrent, and a replaced passkey tracker
 can only be restored by someone who can see it. Tracker changes delete nothing
 and are not operation-audited, like tags, location and rename.
+
+The details route copies `torrents/properties` out by an allow-list. The torrent's
+comment and "created by" are free text whoever made the torrent wrote, where a
+private tracker can put a passkey link: an admin gets them as written, anyone else
+with the tracker-message cleaning above plus links written without a scheme cut to
+their host (`torrentTextForViewer`), and the drawer shows both as plain text.
+
+A peer's IP address is personal data, and qBittorrent's `sync/torrentPeers` keys
+every peer by `ip:port`. The peers route (`GET /api/qbittorrent/[hash]/peers?cursor=`,
+`torrents.view`) rebuilds each peer from an allow-list (`src/lib/qbittorrent-peers.ts`):
+client, country, connection, flags, progress, relevance, speeds and totals for
+everyone; the address only for an admin. Peers are keyed by an HMAC of the torrent
+and the address under `JWT_SECRET`, so the page can follow a peer without being sent
+the address. The route always asks qBittorrent for the full list: qBittorrent keeps
+one sync state per Web UI session for every torrent, Helprr is one session, and a
+`rid=0` request restarts its ids at 1, so its `rid` could name another torrent's
+list. Helprr works out the deltas itself, like the torrent list's: a server-owned
+cursor read back only in the scope that made it (user, torrent, address view),
+64 entries and two minutes at most, a full list otherwise
+(`src/lib/cache/qbittorrent-peer-delta.ts`); the page merges them
+(`src/lib/qbittorrent-peer-view.ts`). Adding peers (`POST`, `torrents.manage`)
+takes at most 50 `ip:port` lines, IPv6 as `[address]:port`, checked with `net.isIP`,
+and never an unspecified, loopback, multicast or broadcast address. A private
+torrent's peers come from its tracker only (one added by hand gets the content, and
+qBittorrent offers no Add Peers for one), so adding to it is an admin's, and a
+torrent qBittorrent doesn't call public counts as private, as for its trackers. A
+ban (`POST .../peers/ban`) is global and kept in qBittorrent's banned IP list until
+removed there, so it is an admin's only: the browser names the peer by its key and
+the server bans the address qBittorrent lists under that key now. Each ban is a
+`SETTINGS_UPDATED` row in the security audit (target: the torrent's hash; the
+address is not recorded). An add's request body, which holds addresses, stays out of
+the failed-request log.
 
 Adding torrents (`POST /api/qbittorrent`, `torrents.add`) takes up to 20 magnets and
 http(s) `.torrent` links, one per line, or up to 20 files, in one request. A link
