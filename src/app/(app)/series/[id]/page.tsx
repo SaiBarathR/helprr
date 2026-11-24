@@ -536,6 +536,7 @@ export default function SeriesDetailPage() {
             {/* Information section */}
             <SeriesInformation
               infoRows={infoRows}
+              alternateTitles={series.alternateTitles}
               seasonDetailRows={seasonDetailRows}
               showAniListMapping={isAnimeSeries && isAdmin}
               animeMapping={anime.animeMapping}

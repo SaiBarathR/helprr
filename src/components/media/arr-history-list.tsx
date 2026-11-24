@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { Copy, ExternalLink, Info } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { formatDateTime } from '@/lib/date-format';
 import { formatBytes } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +19,8 @@ import {
 } from '@/components/ui/drawer';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
+import { MarkFailedButton, canMarkFailed } from '@/components/media/mark-failed-button';
+import { useCan } from '@/components/permission-provider';
 import type { HistoryItem } from '@/types';
 
 // Radarr and Sonarr name the same events differently (movieFile* / episodeFile*).
@@ -70,19 +73,28 @@ async function copyText(value: string, label: string) {
 /**
  * A title's *arr history as tappable cards, with a details drawer. Shared by the
  * movie Files page and the series History page; `episodeLabel` names the episode
- * a series record belongs to (e.g. "S01E02").
+ * a series record belongs to (e.g. "S01E02"). `source` and `instanceId` (the
+ * title's instance) let a grab or import be marked failed, as on Activity → History.
  */
 export function ArrHistoryList({
   items,
   loading,
   episodeLabel,
+  source,
+  instanceId,
 }: {
   items: HistoryItem[];
   loading: boolean;
   episodeLabel?: (item: HistoryItem) => string | null;
+  source: 'sonarr' | 'radarr';
+  instanceId: string | undefined;
 }) {
+  const queryClient = useQueryClient();
+  const canManage = useCan('activity.manage');
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
   const selectedEpisode = selectedHistoryItem ? episodeLabel?.(selectedHistoryItem) ?? null : null;
+  // Until the instance is known there is nothing to name, and canMarkFailed says no.
+  const selectedEvent = selectedHistoryItem ? { ...selectedHistoryItem, source, instanceId } : null;
 
   return (
     <>
@@ -236,6 +248,19 @@ export function ArrHistoryList({
                   </div>
                 )}
               </div>
+              {canManage && selectedEvent && canMarkFailed(selectedEvent) && (
+                <div className="pt-4">
+                  <MarkFailedButton
+                    key={`${source}-${instanceId}-${selectedEvent.id}`}
+                    item={selectedEvent}
+                    onDone={() => {
+                      setSelectedHistoryItem(null);
+                      // The title's history gains a failed event (Activity refreshes itself).
+                      void queryClient.invalidateQueries({ queryKey: [source, 'history'] });
+                    }}
+                  />
+                </div>
+              )}
               <div className="pt-4">
                 <DrawerClose asChild>
                   <Button variant="ghost" className="w-full">
