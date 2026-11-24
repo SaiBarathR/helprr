@@ -1,8 +1,27 @@
 // Notification preferences section of a settings import.
 
 import type { Prisma } from '@prisma/client';
-import { EVENT_TYPES } from '@/lib/notification-events';
-import type { ExportedNotificationDevice } from '@/lib/settings-export';
+import { EVENT_TYPES, type NotificationEventType } from '@/lib/notification-events';
+import type { ExportedNotificationDevice, ExportedUsers } from '@/lib/settings-export';
+
+/**
+ * Events added after another one, each starting from that older event's choice
+ * (as their migrations did), and the users-section marker of a file made since.
+ * A file from before the newer event keeps the older one's choice for both.
+ */
+export const LATER_EVENTS: ReadonlyArray<{
+  from: NotificationEventType;
+  to: NotificationEventType;
+  marker: 'upgradedEvent' | 'healthRestoredEvent';
+}> = [
+  { from: 'imported', to: 'upgraded', marker: 'upgradedEvent' },
+  { from: 'healthWarning', to: 'healthRestored', marker: 'healthRestoredEvent' },
+];
+
+/** The later events a users section predates (it lacks their marker). */
+export function laterEventsMissingFrom(users: ExportedUsers): typeof LATER_EVENTS {
+  return LATER_EVENTS.filter((event) => users[event.marker] !== true);
+}
 
 export async function applyNotificationDeviceInTxn(
   tx: Prisma.TransactionClient,
@@ -31,10 +50,13 @@ export async function applyNotificationDeviceInTxn(
     }
     rules.set(rule.eventType, rule);
   }
-  // A device exported before the "upgraded" event got upgrades as imports: it
-  // keeps that choice (on or off, with its filters), as the migration did.
-  const imported = rules.get('imported');
-  if (imported && !rules.has('upgraded')) rules.set('upgraded', { ...imported, eventType: 'upgraded' });
+  // A device exported before a later event (upgrades came as imports then, and
+  // nothing followed a health warning) keeps the older event's choice for it
+  // (on or off, with its filters), as the migrations did.
+  for (const { from, to } of LATER_EVENTS) {
+    const rule = rules.get(from);
+    if (rule && !rules.has(to)) rules.set(to, { ...rule, eventType: to });
+  }
   let applied = 0;
   for (const [eventType, rule] of rules) {
     await tx.notificationPreference.upsert({

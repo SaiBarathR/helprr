@@ -116,11 +116,18 @@ export default function ServiceStatusPage() {
     window.history.replaceState(window.history.state, '', query ? `/settings/status?${query}` : '/settings/status');
   }, [handledLink]);
   const targetStatus = healthTarget ? statuses.find((s) => s.instanceId === healthTarget.instanceId) : undefined;
-  const healthTitle = !healthTarget
+  // Once the instance is listed, its own type decides the service: a hand-made
+  // link naming the wrong one shows that instance's real health (or nothing,
+  // for an instance with none), never one service's title over another's.
+  const targetService = targetStatus ? HEALTH_SERVICE[targetStatus.type] : healthTarget?.service;
+  const sheetTarget = healthTarget && targetService && canReadHealth(me, targetService)
+    ? { service: targetService, instanceId: healthTarget.instanceId }
+    : null;
+  const healthTitle = !sheetTarget
     ? ''
     : targetStatus && targetStatus.label && targetStatus.label !== targetStatus.name
       ? `${targetStatus.name} · ${targetStatus.label}`
-      : SERVICE_NAME[healthTarget.service];
+      : SERVICE_NAME[sheetTarget.service];
 
   function handleRefresh() {
     void refetch();
@@ -256,7 +263,7 @@ export default function ServiceStatusPage() {
         </GroupedSection>
       )}
 
-      <ArrHealthSheet target={healthTarget} open={healthOpen} title={healthTitle} onOpenChange={setHealthOpen} />
+      <ArrHealthSheet target={sheetTarget} open={healthOpen} title={healthTitle} onOpenChange={setHealthOpen} />
 
       {isAdmin && (
         <div className="mt-6">

@@ -235,7 +235,7 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     });
     await prisma.notificationChannel.create({
       data: {
-        userId: IMPORTER_ID, type: 'webhook', name: 'Home Assistant', events: ['securityAlert'],
+        userId: IMPORTER_ID, type: 'webhook', name: 'Home Assistant', events: ['securityAlert', 'healthWarning', 'healthRestored'],
         config: { headerName: 'X-Helprr-Secret' },
         secrets: encryptSecrets({ url: 'http://192.168.1.10:8123/api/webhook/admin-hook-id', headerValue: 'admin-header-value' }),
       },
@@ -271,7 +271,7 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     const fresh = await runImport.applySettingsImport({ users: full.payload.users } as never, IMPORTER_ID);
     expect(fresh.skipped.some((line) => line.includes('notification channel "Phone" skipped'))).toBe(true);
     const hook = await prisma.notificationChannel.findFirstOrThrow({ where: { name: 'Home Assistant' } });
-    expect(hook).toMatchObject({ userId: IMPORTER_ID, type: 'webhook', events: ['securityAlert'] });
+    expect(hook).toMatchObject({ userId: IMPORTER_ID, type: 'webhook', events: ['securityAlert', 'healthWarning', 'healthRestored'] });
     expect(decryptSecrets(hook.secrets)).toEqual({ url: 'http://192.168.1.10:8123/api/webhook/admin-hook-id', headerValue: 'admin-header-value' });
     expect(await prisma.notificationChannel.count()).toBe(1);
 
@@ -290,6 +290,16 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     // A file from before "Upgraded" (no marker): upgrades came as imports then, so the channel keeps them.
     await runImport.applySettingsImport({ users: { ...bare.payload.users, upgradedEvent: undefined } } as never, IMPORTER_ID);
     expect((await prisma.notificationChannel.findFirstOrThrow({ where: { name: 'Phone' } })).events).toEqual(['imported', 'upgraded']);
+    // A file from before "Health Restored" (no marker): a channel with health warnings gets it too.
+    expect(bare.payload.users?.healthRestoredEvent).toBe(true);
+    await prisma.notificationChannel.update({ where: { userId_name: { userId: IMPORTER_ID, name: 'Home Assistant' } }, data: { events: [] } });
+    const beforeRestored = (bare.payload.users?.accounts ?? []).map((acc) => ({
+      ...acc,
+      notificationChannels: acc.notificationChannels?.map((ch) => ({ ...ch, events: ch.events.filter((e) => e !== 'healthRestored') })),
+    }));
+    await runImport.applySettingsImport({ users: { ...bare.payload.users, accounts: beforeRestored, healthRestoredEvent: undefined } } as never, IMPORTER_ID);
+    expect((await prisma.notificationChannel.findFirstOrThrow({ where: { name: 'Home Assistant' } })).events).toEqual(['securityAlert', 'healthWarning', 'healthRestored']);
+    expect((await prisma.notificationChannel.findFirstOrThrow({ where: { name: 'Phone' } })).events).toEqual(['imported']); // still no health for a member
     expect(decryptSecrets(phone.secrets)).toEqual({ topic: 'member-topic-value', token: 'tk_member_value' });
     expect(decryptSecrets((await prisma.notificationChannel.findFirstOrThrow({ where: { name: 'Home Assistant' } })).secrets))
       .toEqual({ url: 'http://192.168.1.10:8123/api/webhook/admin-hook-id', headerValue: 'admin-header-value' });

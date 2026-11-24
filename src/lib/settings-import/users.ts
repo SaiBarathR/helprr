@@ -24,6 +24,7 @@ import {
 } from './shared';
 import { applyUserDashboardLayoutsInTxn } from './layouts';
 import { applyUserNotificationChannelsInTxn } from './notification-channels';
+import { laterEventsMissingFrom } from './notifications';
 import { applyPreparedWatchlist, prepareWatchlist, type PreparedWatchlist } from './watchlist';
 import { applyPreparedScheduledAlerts, prepareScheduledAlerts, type PreparedAlert } from './alerts';
 import { markTasteProfileStale } from '@/lib/recommendations/profile-store';
@@ -329,7 +330,7 @@ export async function applyUsersInTxn(
       await applyUserDashboardLayoutsInTxn(tx, acc.dashboardLayouts, skipped, userId, ownerLabel);
     }
     if (Array.isArray(acc.notificationChannels)) {
-      await applyUserNotificationChannelsInTxn(tx, acc.notificationChannels, userId, ownerLabel, skipped, data.upgradedEvent !== true);
+      await applyUserNotificationChannelsInTxn(tx, acc.notificationChannels, userId, ownerLabel, skipped, laterEventsMissingFrom(data));
     }
 
     // Default-layout choices travel by name (ids are install-local). Resolve

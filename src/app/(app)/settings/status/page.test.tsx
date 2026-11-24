@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   me: null as unknown,
   search: new URLSearchParams(),
   healthCalls: [] as string[],
+  statuses: [] as unknown[],
 }));
 vi.mock('@/components/permission-provider', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/components/permission-provider')>()),
@@ -45,11 +46,14 @@ beforeEach(() => {
   mocks.me = ADMIN;
   mocks.search = new URLSearchParams();
   mocks.healthCalls = [];
+  mocks.statuses = statuses;
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-    if (url === '/api/services/health') return new Response(JSON.stringify(statuses));
+    if (url === '/api/services/health') return new Response(JSON.stringify(mocks.statuses));
     const match = url.match(/^\/api\/(sonarr|radarr|lidarr)\/health\?instanceId=(.+)$/);
     if (match) {
       mocks.healthCalls.push(match[2]);
+      // As the real routes do, another service's instance id is not found.
+      if (!match[2].startsWith(match[1].slice(0, 3))) return new Response('{}', { status: 404 });
       return new Response(JSON.stringify(health[match[2]] ?? []));
     }
     return new Response('{}');
@@ -93,6 +97,24 @@ describe('Service status health', () => {
     // Back to this page, or a reload, doesn't open it again; the page's history state stays.
     expect(replace).toHaveBeenCalledWith({ kept: true }, '', '/settings/status');
     replace.mockRestore();
+  });
+
+  it("opens the instance's own health when a link names the wrong service", async () => {
+    mocks.search = new URLSearchParams('health=radarr&instance=son-2');
+    renderPage();
+    const sheet = await screen.findByRole('dialog');
+    await waitFor(() => expect(within(sheet).getByText('Missing root folder: /anime')).toBeTruthy());
+    expect(within(sheet).getByText('Sonarr · Anime health')).toBeTruthy();
+    expect(within(sheet).queryByText(/Radarr/)).toBeNull();
+  });
+
+  it('opens nothing when a link names an instance that has no health', async () => {
+    mocks.statuses = [...statuses, { instanceId: 'qbt-1', type: 'QBITTORRENT', name: 'qBittorrent', label: 'qBittorrent', ok: true }];
+    mocks.search = new URLSearchParams('health=sonarr&instance=qbt-1');
+    renderPage();
+    expect(await screen.findByText('2 health issues')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByText(/qBittorrent health/)).toBeNull();
   });
 
   it('shows no health to a member without notify.health, and ignores the link', async () => {

@@ -167,6 +167,15 @@ pushes open that instance's health sheet on Settings → Service status
 (`/settings/status?health=<service>&instance=<id>`), read through
 `/api/{sonarr,radarr,lidarr}/health` (admins and `notify.health`; Lidarr also
 `music.view`), rebuilt from source, type, message and an https help link.
+Migration `20261124140000_health_restored_preferences` gave every device
+preference and channel the choice it had for `healthWarning`, including a
+`healthRestored` row still as `ensureNotificationPreferences` wrote it (on,
+`createdAt` = `updatedAt`); a row its owner changed stays. A settings import
+of an older file does the same as for `upgraded` below (marker
+`healthRestoredEvent: true`; `LATER_EVENTS` in
+`src/lib/settings-import/notifications.ts`). A Service status link whose
+service doesn't match the instance's type opens that instance's own health,
+or nothing.
 One upstream failure must not cancel every other source. Sonarr, Radarr, and
 Lidarr instances share two polling slots per cycle; an instance that fails twice
 in a row is skipped (without taking a slot) for 30 seconds, doubling to 5

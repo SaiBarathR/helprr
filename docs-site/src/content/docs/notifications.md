@@ -18,7 +18,8 @@ calendar feed and other times worked out for you follow **Your time zone** in
 
 A channel set to **Media Imported** before Helprr had **Media Upgraded** gets upgrades
 as well, as it always did; turn **Media Upgraded** off for the channel to get only new
-arrivals.
+arrivals. Likewise a channel set to **Health Warning** before Helprr had **Health
+Restored** gets the all-clear too.
 
 **Send test** sends a test message to one channel and says how it went. When a channel
 keeps failing, Helprr waits longer between tries (5 minutes, doubling up to 6 hours)
