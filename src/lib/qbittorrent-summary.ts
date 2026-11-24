@@ -44,6 +44,10 @@ export function projectTorrentForSummary(torrent: QBittorrentTorrentInfo | QBitt
     auto_tmm: torrent.auto_tmm,
     max_ratio: torrent.max_ratio,
     max_seeding_time: torrent.max_seeding_time,
+    max_inactive_seeding_time: torrent.max_inactive_seeding_time,
+    ratio_limit: torrent.ratio_limit,
+    seeding_time_limit: torrent.seeding_time_limit,
+    inactive_seeding_time_limit: torrent.inactive_seeding_time_limit,
     private: torrent.private,
   };
 }

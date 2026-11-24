@@ -69,7 +69,7 @@ export function TorrentsBulkBar({
         <button
           className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
           onClick={openBulkSpeedLimits}
-          aria-label="Speed Limits"
+          aria-label="Speed & Share Limits"
         >
           <Gauge className="h-4 w-4" />
         </button>

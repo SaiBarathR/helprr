@@ -344,7 +344,8 @@ export default function TorrentsPage() {
   const openBulkSpeedLimits = useCallback(() => {
     setSpeedLimitTargets(torrents
       .filter((t) => selectedTorrents.has(t.hash))
-      .map(({ hash, name, dl_limit, up_limit }) => ({ hash, name, dl_limit, up_limit })));
+      .map(({ hash, name, dl_limit, up_limit, ratio_limit, seeding_time_limit, inactive_seeding_time_limit }) =>
+        ({ hash, name, dl_limit, up_limit, ratio_limit, seeding_time_limit, inactive_seeding_time_limit })));
     router.push('/torrents/speed-limits');
   }, [router, selectedTorrents, torrents]);
 

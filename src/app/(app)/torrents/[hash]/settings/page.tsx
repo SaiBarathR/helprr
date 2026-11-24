@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { useCan } from '@/components/permission-provider';
 import type { QBittorrentTorrent } from '@/types';
 import { SpeedLimitInput } from '../../_components/speed-limit-input';
+import { ShareLimitsSection, type ShareLimitValues } from '../../_components/share-limits-section';
 import { TorrentLocationSection, TorrentQueueSection, TorrentTagsSection } from '../../_components/torrent-organize-sections';
 import { parseTorrentTags } from '../../_components/torrent-tags';
 import { torrentQueryKey, useTorrent, useTorrentAction } from '../../_components/use-torrent';
@@ -55,6 +56,22 @@ export default function TorrentSettingsPage() {
       if (ok) setTorrentField(field, limit);
       return ok;
     };
+
+  const saveShareLimits = async (limits: ShareLimitValues) => {
+    const ok = await runAction({
+      hash,
+      action: 'setShareLimits',
+      ratioLimit: limits.ratio_limit,
+      seedingTimeLimit: limits.seeding_time_limit,
+      inactiveSeedingTimeLimit: limits.inactive_seeding_time_limit,
+    });
+    if (ok) {
+      for (const field of Object.keys(limits) as (keyof ShareLimitValues)[]) setTorrentField(field, limits[field]);
+      // The limits in force (max_*) follow from these and the global ones.
+      void torrentQuery.refetch();
+    }
+    return ok;
+  };
 
   // Optimistic: the switch moves at once and rolls back if qBittorrent refuses.
   // It stays disabled while in flight, so a toggle action can't be sent twice.
@@ -116,6 +133,21 @@ export default function TorrentSettingsPage() {
           </GroupedSection>
         )}
 
+        <ShareLimitsSection
+          values={{
+            ratio_limit: torrent.ratio_limit ?? -2,
+            seeding_time_limit: torrent.seeding_time_limit ?? -2,
+            inactive_seeding_time_limit: torrent.inactive_seeding_time_limit ?? -2,
+          }}
+          effective={{
+            ratio_limit: torrent.max_ratio,
+            seeding_time_limit: torrent.max_seeding_time,
+            inactive_seeding_time_limit: torrent.max_inactive_seeding_time,
+          }}
+          readOnly={!canBandwidth}
+          onSave={saveShareLimits}
+        />
+
         {canManage && (
           <GroupedSection title="Options">
             {OPTIONS.map((option) => (
@@ -160,7 +192,7 @@ export default function TorrentSettingsPage() {
         )}
 
         {!canBandwidth && !canManage && (
-          <p className="py-16 text-center text-sm text-muted-foreground">
+          <p className="py-8 text-center text-sm text-muted-foreground">
             You don&apos;t have permission to change torrent settings.
           </p>
         )}

@@ -8,6 +8,7 @@ import { Copy, FolderOpen, Loader2, SlidersHorizontal } from 'lucide-react';
 import type { QBittorrentTorrent } from '@/types';
 import type { TorrentFile, TorrentTracker } from '@/lib/qbittorrent-client';
 import { formatSpeedLimit } from './speed-limit-input';
+import { formatShareLimit } from './share-limits-section';
 import { realTrackers, trackerCount, trackerStatusLabel } from './torrent-trackers';
 import { formatBytes, formatEta, formatSeedingTime, formatSpeed, torrentSizeUnknown } from './torrent-list';
 import { formatDateTime } from '@/lib/date-format';
@@ -114,6 +115,9 @@ export function TorrentDetailDrawer({
                       <DetailRow label="Sequential Download" value={detailTorrent.seq_dl ? 'On' : 'Off'} />
                       <DetailRow label="First/Last Piece Priority" value={detailTorrent.f_l_piece_prio ? 'On' : 'Off'} />
                       <DetailRow label="Auto Torrent Management" value={detailTorrent.auto_tmm ? 'On' : 'Off'} />
+                      <DetailRow label="Ratio Limit" value={formatShareLimit('ratio', detailTorrent.ratio_limit ?? -2, detailTorrent.max_ratio)} />
+                      <DetailRow label="Seeding Time Limit" value={formatShareLimit('time', detailTorrent.seeding_time_limit ?? -2, detailTorrent.max_seeding_time)} />
+                      <DetailRow label="Inactive Seeding Limit" value={formatShareLimit('time', detailTorrent.inactive_seeding_time_limit ?? -2, detailTorrent.max_inactive_seeding_time)} />
                     </>
                   )}
                 </div>

@@ -133,12 +133,55 @@ describe('bulk speed limits page', () => {
     expect(mocks.router.push).toHaveBeenCalledWith('/torrents');
   });
 
+  it('sets the share limits the selected torrents share', async () => {
+    setSpeedLimitTargets([
+      { ...target('a'), ratio_limit: 2, seeding_time_limit: 1440, inactive_seeding_time_limit: -1 },
+      { ...target('b'), ratio_limit: 2, seeding_time_limit: 1440, inactive_seeding_time_limit: -1 },
+    ]);
+    await renderPage();
+    expect(rowText('Ratio Limit')).toBe('Ratio Limit2');
+    expect(rowText('Seeding Time Limit')).toBe('Seeding Time Limit1 d');
+    expect(rowText('Inactive Seeding Limit')).toBe('Inactive Seeding LimitUnlimited');
+
+    const row = [...document.querySelectorAll<HTMLButtonElement>('button.grouped-row')].find((el) => el.textContent?.startsWith('Ratio Limit'))!;
+    await act(async () => row.click());
+    const input = document.querySelector('input[aria-label="Ratio Limit"]') as HTMLInputElement;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setValue.call(input, '3');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => input.form!.requestSubmit());
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Share limits updated for 2 torrents'));
+
+    expect(posts).toEqual([{ hash: 'a|b', action: 'setShareLimits', ratioLimit: 3, seedingTimeLimit: 1440, inactiveSeedingTimeLimit: -1 }]);
+    expect(rowText('Ratio Limit')).toBe('Ratio Limit3');
+  });
+
+  it('makes the user choose a share limit the torrents disagree on, rather than overwrite it unseen', async () => {
+    setSpeedLimitTargets([
+      { ...target('a'), ratio_limit: 2, seeding_time_limit: 60 },
+      { ...target('b'), ratio_limit: 2, seeding_time_limit: -2 },
+    ]);
+    await renderPage();
+    expect(rowText('Seeding Time Limit')).toBe('Seeding Time LimitMixed');
+    // Missing from an older qBittorrent: read as the global limit.
+    expect(rowText('Inactive Seeding Limit')).toBe('Inactive Seeding LimitGlobal');
+
+    const row = [...document.querySelectorAll<HTMLButtonElement>('button.grouped-row')].find((el) => el.textContent?.startsWith('Ratio Limit'))!;
+    await act(async () => row.click());
+    await act(async () => document.querySelector('form')!.requestSubmit());
+
+    expect(mocks.toast.error).toHaveBeenCalledWith('Choose a setting for seeding time limit');
+    expect(posts).toEqual([]);
+  });
+
   it('explains when the user may not change speed limits', async () => {
     mocks.caps = new Set();
     setSpeedLimitTargets([target('a')]);
     await renderPage();
 
-    expect(document.body.textContent).toContain("You don't have permission to change speed limits.");
+    expect(document.body.textContent).toContain("You don't have permission to change speed or share limits.");
     expect(document.querySelector('button.grouped-row')).toBeNull();
   });
 });
