@@ -2,7 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { NotServiceApiError } from '@/lib/service-response';
-import type { QBittorrentTorrent, QBittorrentTransferInfo } from '@/types';
+import type { QBittorrentTorrentInfo, QBittorrentTransferInfo } from '@/types';
 
 /** qBittorrent turned the Web UI username or password down (it answered "Fails."). */
 export class QBittorrentLoginError extends Error {}
@@ -29,6 +29,11 @@ export interface TorrentTracker {
 }
 
 export type QueueMove = 'topPrio' | 'increasePrio' | 'decreasePrio' | 'bottomPrio';
+
+/** qBittorrent's regular and alternative-mode speed limits, in bytes per second (0 = unlimited). */
+export const SPEED_LIMIT_PREFERENCES = ['dl_limit', 'up_limit', 'alt_dl_limit', 'alt_up_limit'] as const;
+export type SpeedLimitPreference = (typeof SPEED_LIMIT_PREFERENCES)[number];
+export type SpeedLimits = Record<SpeedLimitPreference, number>;
 
 interface TorrentProperties {
   save_path: string;
@@ -207,15 +212,16 @@ export class QBittorrentClient {
     category?: string,
     sort?: string,
     reverse?: boolean,
-    hashes?: string
-  ): Promise<QBittorrentTorrent[]> {
+    hashes?: string,
+    signal?: AbortSignal
+  ): Promise<QBittorrentTorrentInfo[]> {
     const params: Record<string, unknown> = {};
     if (filter !== undefined) params.filter = filter;
     if (category !== undefined) params.category = category;
     if (sort !== undefined) params.sort = sort;
     if (reverse !== undefined) params.reverse = reverse;
     if (hashes !== undefined) params.hashes = hashes;
-    return this.get<QBittorrentTorrent[]>('/api/v2/torrents/info', params);
+    return this.get<QBittorrentTorrentInfo[]>('/api/v2/torrents/info', params, signal);
   }
 
   async getTorrentProperties(hash: string, signal?: AbortSignal): Promise<TorrentProperties> {
@@ -448,25 +454,37 @@ export class QBittorrentClient {
     return this.get<QBittorrentTransferInfo>('/api/v2/transfer/info');
   }
 
-  // Global speed limits
-  async getGlobalDownloadLimit(): Promise<number> {
-    return this.get<number>('/api/v2/transfer/downloadLimit');
+  // Global speed limits. Read and written as preferences, not through
+  // transfer/(set)DownloadLimit: those follow the active mode, so with
+  // alternative speed mode on they read and overwrite the alternative limits.
+  async getSpeedLimits(): Promise<SpeedLimits> {
+    // app/preferences also carries the Web UI and proxy passwords: copy out the
+    // four limits only.
+    const preferences = await this.get<Record<string, unknown>>('/api/v2/app/preferences');
+    const limits = {} as SpeedLimits;
+    for (const key of SPEED_LIMIT_PREFERENCES) {
+      const value = preferences[key];
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new NotServiceApiError();
+      }
+      limits[key] = value;
+    }
+    return limits;
   }
 
-  async getGlobalUploadLimit(): Promise<number> {
-    return this.get<number>('/api/v2/transfer/uploadLimit');
-  }
-
-  async setGlobalDownloadLimit(limit: number): Promise<void> {
+  /** Bytes per second; 0 is unlimited. Keys outside the four limits are never sent. */
+  async setSpeedLimits(limits: Partial<SpeedLimits>): Promise<void> {
+    // setPreferences also changes the Web UI password and the program run on
+    // completion, so the payload is rebuilt from the allow-list.
+    const json: Partial<SpeedLimits> = {};
+    for (const key of SPEED_LIMIT_PREFERENCES) {
+      const value = limits[key];
+      if (value !== undefined) json[key] = value;
+    }
+    if (Object.keys(json).length === 0) throw new Error('setSpeedLimits needs at least one limit');
     const params = new URLSearchParams();
-    params.append('limit', String(limit));
-    await this.post('/api/v2/transfer/setDownloadLimit', params.toString());
-  }
-
-  async setGlobalUploadLimit(limit: number): Promise<void> {
-    const params = new URLSearchParams();
-    params.append('limit', String(limit));
-    await this.post('/api/v2/transfer/setUploadLimit', params.toString());
+    params.append('json', JSON.stringify(json));
+    await this.post('/api/v2/app/setPreferences', params.toString());
   }
 
   async getSpeedLimitsMode(): Promise<number> {

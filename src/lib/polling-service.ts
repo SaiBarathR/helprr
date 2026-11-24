@@ -939,10 +939,9 @@ export class PollingService {
     }
 
     try {
-      await Promise.all([
-        client.setGlobalDownloadLimit(0),
-        client.setGlobalUploadLimit(0),
-      ]);
+      // The regular limits only, whatever mode qBittorrent is in: the
+      // alternative limits are the user's own.
+      await client.setSpeedLimits({ dl_limit: 0, up_limit: 0 });
       logger.info('Bandwidth schedule: restored unlimited', {
         context,
         previousRuleId: previous.ruleId,
@@ -1004,15 +1003,14 @@ export class PollingService {
       return;
     }
 
-    // qBittorrent's transfer API takes bytes/sec; UI/DB use KB/s.
+    // qBittorrent's limits are bytes/sec; UI/DB use KB/s.
     const downloadBytes = intent.downloadKbps * 1024;
     const uploadBytes = intent.uploadKbps * 1024;
 
     try {
-      await Promise.all([
-        client.setGlobalDownloadLimit(downloadBytes),
-        client.setGlobalUploadLimit(uploadBytes),
-      ]);
+      // A rule sets the regular limits only. transfer/setDownloadLimit would
+      // write the alternative ones while alternative speed mode is on.
+      await client.setSpeedLimits({ dl_limit: downloadBytes, up_limit: uploadBytes });
       this.appliedBandwidth = intent;
       logger.info('Bandwidth schedule applied', {
         ruleId: intent.ruleId,

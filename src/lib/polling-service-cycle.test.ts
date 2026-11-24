@@ -544,3 +544,49 @@ describe('jobs that cannot load what they work on', () => {
     expect(service.getHealth().lastCycle?.failed).toBe(1);
   });
 });
+
+describe('bandwidth schedule', () => {
+  // A qBittorrent that behaves like 5.1.4: transfer/setDownloadLimit writes the
+  // limits of the active mode, app/setPreferences writes the named keys.
+  function fakeQbit(mode: 0 | 1) {
+    const prefs = { dl_limit: 1_048_576, up_limit: 524_288, alt_dl_limit: 51_200, alt_up_limit: 20_480 };
+    const transfer = (regular: 'dl_limit' | 'up_limit', alt: 'alt_dl_limit' | 'alt_up_limit') => vi.fn(async (limit: number) => {
+      prefs[mode === 1 ? alt : regular] = limit;
+    });
+    return {
+      prefs,
+      setGlobalDownloadLimit: transfer('dl_limit', 'alt_dl_limit'),
+      setGlobalUploadLimit: transfer('up_limit', 'alt_up_limit'),
+      setSpeedLimits: vi.fn(async (limits: Partial<typeof prefs>) => {
+        Object.assign(prefs, limits);
+      }),
+    };
+  }
+  // Every day, all day (start equals end).
+  const rule = {
+    id: 'r1', name: 'Night', enabled: true, daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+    startHour: 0, startMinute: 0, endHour: 0, endMinute: 0, downloadLimitKbps: 300, uploadLimitKbps: 100,
+  };
+  const context = (rules: unknown[]) => ({
+    startedAtMs: Date.UTC(2026, 10, 24, 12),
+    getSettings: async () => ({ qbtBandwidthSchedule: { rules }, timeZone: 'UTC' }),
+  });
+
+  it.each([0, 1] as const)('sets and then releases only the regular limits (alternative mode %s)', async (mode) => {
+    const qbit = fakeQbit(mode);
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getQBittorrentClient').mockResolvedValue(qbit as never);
+    const internal = new PollingService() as unknown as InternalPollingService;
+    const apply = (internal.applyBandwidthSchedule as (context: unknown) => Promise<void>).bind(internal);
+
+    await apply(context([rule]));
+    expect(qbit.prefs).toEqual({ dl_limit: 300 * 1024, up_limit: 100 * 1024, alt_dl_limit: 51_200, alt_up_limit: 20_480 });
+
+    // The rule is gone: back to unlimited, the alternative limits untouched.
+    await apply(context([]));
+    expect(qbit.prefs).toEqual({ dl_limit: 0, up_limit: 0, alt_dl_limit: 51_200, alt_up_limit: 20_480 });
+    expect(internal.appliedBandwidth).toBeNull();
+    expect(qbit.setGlobalDownloadLimit).not.toHaveBeenCalled();
+    expect(qbit.setGlobalUploadLimit).not.toHaveBeenCalled();
+  });
+});

@@ -392,9 +392,10 @@ export class ProwlarrClient {
     return this.get<ProwlarrIndexer>(`/api/v1/indexer/${id}`);
   }
 
-  async testIndexer(id: number): Promise<unknown> {
+  /** Prowlarr refuses a failing test, so a test that returns passed; its body is not used. */
+  async testIndexer(id: number): Promise<void> {
     const indexer = await this.getIndexer(id);
-    return this.post('/api/v1/indexer/test', indexer, { timeout: 120_000 });
+    await this.post('/api/v1/indexer/test', indexer, { timeout: 120_000 });
   }
 
   async getIndexerStatuses(): Promise<ProwlarrIndexerStatus[]> {

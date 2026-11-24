@@ -15,7 +15,6 @@ import { reportBulkTorrent } from '@/lib/bulk-fan-out';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { DataTable } from '@/components/ui/data-table';
 import type { QBittorrentTorrent } from '@/types';
-import type { TorrentFile, TorrentTracker } from '@/lib/qbittorrent-client';
 import { useUIStore, type TorrentsSortKeyPreference as SortKey } from '@/lib/store';
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
@@ -37,7 +36,7 @@ import { useTorrentsSummary } from './_components/use-torrents-summary';
 import { useTorrentTable } from './_components/use-torrent-table';
 import { TorrentsToolbar } from './_components/torrents-toolbar';
 import { TorrentsBulkBar } from './_components/torrents-bulk-bar';
-import { TorrentDetailDrawer } from './_components/torrent-detail-drawer';
+import { TorrentDetailDrawer, type TorrentDetailData } from './_components/torrent-detail-drawer';
 import { TorrentDeleteDrawer } from './_components/torrent-delete-drawer';
 import { TorrentCategoryDrawer } from './_components/torrent-category-drawer';
 import { PageTitle } from '@/components/layout/page-title';
@@ -75,11 +74,7 @@ export default function TorrentsPage() {
   const detailHashRef = useRef<string | null>(null);
   const detailAbortRef = useRef<AbortController | null>(null);
   useEffect(() => () => detailAbortRef.current?.abort(), []);
-  const [detailData, setDetailData] = useState<{
-    properties: Record<string, unknown>;
-    files: TorrentFile[];
-    trackers: TorrentTracker[];
-  } | null>(null);
+  const [detailData, setDetailData] = useState<TorrentDetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   useEffect(() => {
     detailHashRef.current = detailHash;
@@ -461,7 +456,7 @@ export default function TorrentsPage() {
     }
   }, [setSortDir, setSortKey]);
 
-  // Get detail torrent data from the list for session stats / magnet
+  // Get detail torrent data from the list for session stats
   const detailTorrent = detailHash ? torrentByHash.get(detailHash) : null;
 
   const allSelected = selectedTorrents.size === filteredTorrents.length && filteredTorrents.length > 0;

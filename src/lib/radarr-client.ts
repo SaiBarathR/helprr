@@ -434,6 +434,11 @@ export class RadarrClient {
     return this.get<CommandResponse>(`/api/v3/command/${id}`);
   }
 
+  /** A library-wide command, sent without ids: a refresh without ids refreshes and rescans every movie. */
+  async runLibraryCommand(name: 'RssSync' | 'RefreshMovie' | 'RefreshCollections'): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v3/command', { name });
+  }
+
   async refreshMonitoredDownloads(): Promise<CommandResponse> {
     return this.post<CommandResponse>('/api/v3/command', {
       name: 'RefreshMonitoredDownloads',

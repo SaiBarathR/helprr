@@ -31,7 +31,7 @@ const scheduler = { id: null, username: 'system:cleanup-scheduler' };
 const baseConfig = { enabled: true, intervalMinutes: 60, ignoredDownloads: [], autoRemoveImportedEnabled: false, autoRemoveImportedCategories: ['sonarr', 'radarr', 'tv-sonarr'], autoRemoveImportedDeleteFiles: true, autoRemoveImportedPrivacyType: 'public', autoRunMode: 'disabled' };
 
 function torrent(overrides: Partial<QBittorrentTorrent> = {}): QBittorrentTorrent {
-  return { hash: 'ABC123', name: 'Example', size: 1024, progress: 1, dlspeed: 0, upspeed: 0, num_seeds: 1, num_leechs: 0, state: 'uploading', eta: 0, category: 'sonarr', tags: '', priority: 0, added_on: 0, completion_on: Date.now() / 1000 - 7200, save_path: '', amount_left: 0, completed: 1024, downloaded: 1024, uploaded: 2048, downloaded_session: 0, uploaded_session: 0, dl_limit: 0, up_limit: 0, magnet_uri: '', time_active: 7200, seeding_time: 7200, availability: 1, ratio: 2.5, seq_dl: false, f_l_piece_prio: false, force_start: false, auto_tmm: false, max_ratio: -1, max_seeding_time: -1, private: false, ...overrides };
+  return { hash: 'ABC123', name: 'Example', size: 1024, progress: 1, dlspeed: 0, upspeed: 0, num_seeds: 1, num_leechs: 0, state: 'uploading', eta: 0, category: 'sonarr', tags: '', priority: 0, added_on: 0, completion_on: Date.now() / 1000 - 7200, save_path: '', amount_left: 0, completed: 1024, downloaded: 1024, uploaded: 2048, downloaded_session: 0, uploaded_session: 0, dl_limit: 0, up_limit: 0, time_active: 7200, seeding_time: 7200, availability: 1, ratio: 2.5, seq_dl: false, f_l_piece_prio: false, force_start: false, auto_tmm: false, max_ratio: -1, max_seeding_time: -1, private: false, ...overrides };
 }
 
 function rule(overrides: Partial<SeedingRuleShape> = {}): SeedingRuleShape {

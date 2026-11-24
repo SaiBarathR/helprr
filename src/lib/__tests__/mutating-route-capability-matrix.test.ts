@@ -78,6 +78,9 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/services/import',
     'POST /api/services/scan',
     'POST /api/setup-checklist',
+    // RSS Sync and Refresh all on one Sonarr/Radarr instance: library-wide, so admins only.
+    'POST /api/radarr/library-command',
+    'POST /api/sonarr/library-command',
     'POST /api/sonarr/[id]/anime',
     'PATCH /api/sonarr/[id]/anime',
     'DELETE /api/sonarr/[id]/anime',
@@ -613,7 +616,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(273);
+    expect(handlers.size).toBe(275);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

@@ -89,19 +89,38 @@ async function postHandler(request: NextRequest) {
     if ((body.name === 'RenameMovie' || body.name === 'RenameFiles') && !can(auth.user, 'movies.manageFiles')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    // Every branch that names titles checks its ids: Radarr runs a RefreshMovie
+    // without them on the whole library. Library-wide commands are admin-only, in
+    // /api/radarr/library-command.
     switch (body.name) {
-      case 'MoviesSearch':
-        result = await client.searchMovie(body.movieIds);
+      case 'MoviesSearch': {
+        const movieIds = coercePositiveIntArray(body.movieIds);
+        if (!movieIds) {
+          return NextResponse.json(
+            { error: 'movieIds must be a non-empty array of positive integers' },
+            { status: 400 }
+          );
+        }
+        result = await client.searchMovie(movieIds);
         break;
+      }
       case 'MissingMoviesSearch':
         result = await searchReleasedMissing(client, auth.user, instanceId);
         break;
       case 'CutoffUnmetMoviesSearch':
         result = await client.searchWanted('cutoff');
         break;
-      case 'RefreshMovie':
-        result = await client.refreshMovie(body.movieId);
+      case 'RefreshMovie': {
+        const movieId = coercePositiveInt(body.movieId);
+        if (!movieId) {
+          return NextResponse.json(
+            { error: 'movieId must be a positive integer' },
+            { status: 400 }
+          );
+        }
+        result = await client.refreshMovie(movieId);
         break;
+      }
       case 'RefreshMonitoredDownloads':
         result = await client.refreshMonitoredDownloads();
         break;
@@ -132,7 +151,14 @@ async function postHandler(request: NextRequest) {
           }
           result = await client.renameMovieFiles(movieId, files);
         } else {
-          result = await client.renameMovie(body.movieId);
+          const movieId = coercePositiveInt(body.movieId);
+          if (!movieId) {
+            return NextResponse.json(
+              { error: 'movieId must be a positive integer' },
+              { status: 400 }
+            );
+          }
+          result = await client.renameMovie(movieId);
         }
         break;
       case 'RenameMovie': {

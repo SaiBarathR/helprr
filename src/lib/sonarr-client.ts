@@ -269,6 +269,11 @@ export class SonarrClient {
     });
   }
 
+  /** A library-wide command, sent without ids: a refresh without ids refreshes and rescans every series. */
+  async runLibraryCommand(name: 'RssSync' | 'RefreshSeries'): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v3/command', { name });
+  }
+
   async refreshMonitoredDownloads(): Promise<CommandResponse> {
     return this.post<CommandResponse>('/api/v3/command', {
       name: 'RefreshMonitoredDownloads',

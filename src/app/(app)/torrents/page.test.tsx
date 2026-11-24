@@ -119,7 +119,7 @@ const torrent = (hash: string, name: string, extra: Record<string, unknown> = {}
   hash, name, size: 1024 ** 3, progress: 1, dlspeed: 0, upspeed: 0, num_seeds: 3, num_leechs: 1, state: 'stalledUP', eta: 8640000,
   category: '', tags: '', added_on: 100, completion_on: 200, save_path: '/data', ratio: 1.5, downloaded: 1024 ** 3, uploaded: 512,
   amount_left: 0, priority: 0, time_active: 10, seeding_time: 5, dl_limit: 0, up_limit: 0, availability: -1,
-  downloaded_session: 0, uploaded_session: 0, seq_dl: false, f_l_piece_prio: false, auto_tmm: true, magnet_uri: `magnet:?xt=urn:btih:${hash}`,
+  downloaded_session: 0, uploaded_session: 0, seq_dl: false, f_l_piece_prio: false, auto_tmm: true,
   ...extra,
 });
 const ALPHA = torrent('aaa', 'Alpha.Movie', { state: 'downloading', progress: 0.5, dlspeed: 1024 * 1024, eta: 120, amount_left: 512 * 1024 ** 2, category: 'radarr', size: 2 * 1024 ** 3 });
@@ -166,6 +166,7 @@ beforeEach(() => {
           { url: 'http://tracker.example/announce', status: 2, tier: 0, num_seeds: 4, num_leeches: 2, msg: '' },
           { url: 'udp://tracker.example:1337/announce', status: 4, tier: 1, num_seeds: -1, num_leeches: -1, msg: 'Connection timed out' },
         ],
+        magnet: 'magnet:?xt=urn:btih:aaa&dn=Alpha.Movie',
       });
     }
     return Response.json({});
@@ -443,7 +444,10 @@ describe('torrents page (characterization)', () => {
     expect(within(drawer).getByText('http://tracker.example/announce').nextElementSibling?.textContent).toBe('Working · Tier 0 · Seeds: 4 · Leechers: 2');
     expect(within(drawer).getByText('udp://tracker.example:1337/announce').nextElementSibling?.textContent)
       .toBe('Not working · Tier 1 · Seeds: N/A · Leechers: N/A · Connection timed out');
-    expect(within(drawer).getByRole('button', { name: 'Copy Magnet URI' })).toBeTruthy();
+    // The magnet is the one the details route built for this user, not one from the list.
+    await user.click(within(drawer).getByRole('button', { name: 'Copy Magnet URI' }));
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Magnet URI copied'));
+    expect(await navigator.clipboard.readText()).toBe('magnet:?xt=urn:btih:aaa&dn=Alpha.Movie');
 
     await user.click(within(drawer).getByRole('button', { name: 'Manage Files' }));
     expect(mocks.push).toHaveBeenCalledWith('/torrents/aaa/files?name=Alpha.Movie');

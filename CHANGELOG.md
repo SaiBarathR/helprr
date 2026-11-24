@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Private-tracker passkeys no longer reach users who aren't admins.** A torrent's
+  details listed each tracker's full announce URL, and every torrent list refresh carried
+  the torrent's magnet link and current tracker URL. A private tracker's announce URL
+  carries your passkey, so any user allowed to view torrents could read it and use your
+  tracker account. Now only admins see full tracker URLs. Everyone else sees each tracker's
+  address without its path or query, its status, tier, seed and leecher counts, and its
+  message with links and the tracker's key taken out. Torrent lists no longer carry the
+  magnet or the tracker URL at all. Copy Magnet URI still works for everyone: admins get
+  the full magnet, everyone else gets one without trackers (the torrent's hash and name).
+  If people other than admins could view torrents, renew your private trackers' passkeys
+  (usually on the tracker's profile or security page), then update the trackers in
+  qBittorrent.
+
 ## [1.18.1] - 2026-11-24
 
 Follow-ups to the 1.18.0 security review: indexer page links without keys, grabs that
