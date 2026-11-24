@@ -63,34 +63,20 @@ describe('arr wanted client sort keys', () => {
 
 describe('Sonarr cutoff unmet series ids', () => {
   const records = (ids: number[]) => ids.map((seriesId) => ({ seriesId }));
-  const params = (pageSize: number) => ({
-    params: { page: 1, pageSize, includeSeries: false, includeEpisodeFile: false, includeImages: false, monitored: true },
-    timeout: 60_000,
-  });
 
   beforeEach(() => mocks.get.mockReset());
 
-  it('reads one page when it holds them all, one id per series', async () => {
-    mocks.get.mockResolvedValueOnce({ data: { totalRecords: 3, records: records([4, 4, 9]) } });
-    const result = await new SonarrClient('http://sonarr.local', 'key').getCutoffUnmetSeriesIds();
-    expect(result).toEqual({ seriesIds: [4, 9], complete: true });
-    expect(mocks.get).toHaveBeenCalledTimes(1);
-    expect(mocks.get).toHaveBeenCalledWith('/api/v3/wanted/cutoff', params(1000));
-  });
-
   // Sonarr sorts only by air date, so paging could skip rows that share one at a page edge.
-  it('reads a longer list as one page of its full size, up to the limit', async () => {
-    mocks.get
-      .mockResolvedValueOnce({ data: { totalRecords: 1500, records: records([1]) } })
-      .mockResolvedValueOnce({ data: { totalRecords: 1500, records: records([1, 2, 3]) } });
+  it('reads the list as one page, one id per series, and says when it was cut short', async () => {
+    mocks.get.mockResolvedValueOnce({ data: { totalRecords: 3, records: records([4, 4, 9]) } });
     const client = new SonarrClient('http://sonarr.local', 'key');
-    expect(await client.getCutoffUnmetSeriesIds()).toEqual({ seriesIds: [1, 2, 3], complete: false });
-    expect(mocks.get).toHaveBeenLastCalledWith('/api/v3/wanted/cutoff', params(1500));
+    expect(await client.getCutoffUnmetSeriesIds()).toEqual({ seriesIds: [4, 9], complete: true });
+    expect(mocks.get).toHaveBeenCalledWith('/api/v3/wanted/cutoff', {
+      params: { page: 1, pageSize: 20_000, includeSeries: false, includeEpisodeFile: false, includeImages: false, monitored: true },
+      timeout: 60_000,
+    });
 
-    mocks.get
-      .mockResolvedValueOnce({ data: { totalRecords: 30_000, records: records([1]) } })
-      .mockResolvedValueOnce({ data: { totalRecords: 30_000, records: records([1]) } });
-    await client.getCutoffUnmetSeriesIds();
-    expect(mocks.get).toHaveBeenLastCalledWith('/api/v3/wanted/cutoff', params(20_000));
+    mocks.get.mockResolvedValueOnce({ data: { totalRecords: 30_000, records: records([1, 2]) } });
+    expect(await client.getCutoffUnmetSeriesIds()).toEqual({ seriesIds: [1, 2], complete: false });
   });
 });

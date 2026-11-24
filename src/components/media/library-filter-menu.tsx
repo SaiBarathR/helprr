@@ -32,6 +32,7 @@ import {
   hasLibraryFilterState,
   renameSavedLibraryFilter,
   sameLibraryFilterState,
+  sameName,
   saveLibraryFilter,
   type LibraryFilterState,
   type SavedLibraryFilter,
@@ -193,7 +194,7 @@ function SaveFilterDialog({ open, onClose, saved, updateSaved, current }: {
 }) {
   const [name, setName] = useState('');
   const trimmed = name.trim();
-  const existing = saved.find((filter) => filter.name.localeCompare(trimmed, undefined, { sensitivity: 'accent' }) === 0);
+  const existing = saved.find((filter) => sameName(filter.name, trimmed));
   const close = () => {
     setName('');
     onClose();
@@ -277,7 +278,16 @@ function ManageFiltersDialog({ open, onClose, saved, updateSaved }: {
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) { stopEditing(); onClose(); } }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        // The dialog takes Escape before the field sees it: mid-rename it cancels the rename only.
+        onEscapeKeyDown={(event) => {
+          if (editingId) {
+            event.preventDefault();
+            stopEditing();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Saved filters</DialogTitle>
           <DialogDescription>Rename or delete the filters saved on this device.</DialogDescription>
@@ -300,7 +310,6 @@ function ManageFiltersDialog({ open, onClose, saved, updateSaved }: {
                         onChange={(event) => { setDraft(event.target.value); setError(''); }}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') { event.preventDefault(); commit(filter.id); }
-                          if (event.key === 'Escape') { event.preventDefault(); stopEditing(); }
                         }}
                         className="min-w-0 flex-1"
                       />

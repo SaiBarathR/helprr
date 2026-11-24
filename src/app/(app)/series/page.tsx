@@ -270,6 +270,13 @@ export default function SeriesPage() {
   useEffect(() => {
     if (cutoffIncomplete) toast.warning(`Cutoff Unmet may be missing series from ${cutoffIncomplete}.`);
   }, [cutoffIncomplete]);
+  const cutoffFailed = cutoffFilterOn && cutoffQuery.isError;
+  useEffect(() => {
+    if (cutoffFailed) toast.error("Couldn't load Cutoff Unmet from Sonarr.");
+  }, [cutoffFailed]);
+  // Only Cutoff Unmet picked: every row waits on Sonarr's list. With other statuses
+  // (which match any one) their rows show while it loads.
+  const waitingForCutoff = cutoffFilterOn && filter.length === 1 && cutoffQuery.isPending;
   const visibleFieldsByMode = useUIStore((s) => s.seriesVisibleFields);
   const setVisibleFieldsForMode = useUIStore((s) => s.setSeriesVisibleFields);
   const search = useUIStore((s) => s.seriesSearch);
@@ -989,7 +996,7 @@ export default function SeriesPage() {
       {!search && !selectionMode && <LeavingSoonShelf type="series" />}
 
       {(() => {
-        if ((loading && series.length === 0) || (cutoffFilterOn && cutoffQuery.isPending)) {
+        if ((loading && series.length === 0) || waitingForCutoff) {
           return <MediaGridSkeleton gridClassName={posterGridClass} />;
         }
 
@@ -1014,7 +1021,7 @@ export default function SeriesPage() {
             <div className="text-center py-12 text-muted-foreground">
               {series.length === 0
                 ? 'No series found. Add your Sonarr connection in Settings.'
-                : cutoffFilterOn && cutoffQuery.isError
+                : cutoffFailed
                   ? "Couldn't load Cutoff Unmet from Sonarr."
                   : 'No series match your filters.'}
             </div>

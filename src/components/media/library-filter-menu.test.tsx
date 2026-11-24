@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,7 +11,8 @@ import type { SavedLibraryFilter } from '@/lib/library-saved-filters';
 import type { RadarrMovieListItem } from '@/types';
 
 const viewport = vi.hoisted(() => ({ phone: false }));
-vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn() }) }));
+const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn() }));
+vi.mock('sonner', () => ({ toast }));
 
 HTMLElement.prototype.setPointerCapture ??= () => {};
 HTMLElement.prototype.releasePointerCapture ??= () => {};
@@ -117,5 +118,16 @@ describe('library filter menu', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Delete Drama only' }));
     expect(onSaved).toHaveBeenLastCalledWith([]);
     expect(within(dialog).getByText('No saved filters.')).toBeTruthy();
+
+    // Undo from the toast puts it back.
+    const [, options] = toast.mock.calls.at(-1) as [string, { action: { onClick: () => void } }];
+    act(() => options.action.onClick());
+    expect(onSaved).toHaveBeenLastCalledWith([expect.objectContaining({ name: 'Drama only' })]);
+
+    // Escape mid-rename cancels the rename and keeps the dialog open.
+    await user.click(within(dialog).getByRole('button', { name: 'Rename Drama only' }));
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('dialog', { name: 'Saved filters' })).toBeTruthy();
+    expect(within(dialog).queryByRole('textbox')).toBeNull();
   });
 });

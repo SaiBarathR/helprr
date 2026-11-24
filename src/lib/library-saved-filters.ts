@@ -26,7 +26,7 @@ export const SAVED_FILTER_NAME_MAX = 60;
 const WATCH_CHOICES: readonly MediaWatchFilterPreference[] = ['all', 'watched', 'unwatched'];
 
 function strings(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+  return Array.isArray(value) ? [...new Set(value.filter((entry): entry is string => typeof entry === 'string'))] : [];
 }
 
 /** A stored or imported facet set made safe to read, or null when it isn't one. */
@@ -88,7 +88,8 @@ export function hasLibraryFilterState(state: LibraryFilterState): boolean {
     || state.watch !== 'all';
 }
 
-function sameName(a: string, b: string): boolean {
+/** Saved filter names compare without case: "4K" and "4k" are one filter. */
+export function sameName(a: string, b: string): boolean {
   return a.localeCompare(b, undefined, { sensitivity: 'accent' }) === 0;
 }
 

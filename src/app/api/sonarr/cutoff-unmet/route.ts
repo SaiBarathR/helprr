@@ -2,23 +2,18 @@ import { NextResponse } from 'next/server';
 import { getSonarrClients } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 // The Series page's Cutoff Unmet filter. A series list item has no cutoff state, so
 // it comes from each instance's Wanted → Cutoff Unmet list, read only while the
-// filter is on. Cached per instance for as long as the library list (120s).
-const CUTOFF_TTL_SECONDS = 120;
+// filter is on. Not cached here: an edit or an upgrade changes it, and the library
+// caches are cleared without naming every instance; the page holds it for 60s and
+// refetches it with the library list after an edit.
 
 const CUTOFF_CACHE_HEADERS = {
   'Cache-Control': 'private, no-cache',
   'Vary': 'Cookie',
 } as const;
-
-interface CachedCutoff {
-  seriesIds: number[];
-  complete: boolean;
-}
 
 async function getHandler() {
   const auth = await requireUserCapability('series.view');
@@ -28,11 +23,7 @@ async function getHandler() {
     const instances = await getSonarrClients();
     const results = await Promise.all(instances.map(async ({ connection, client }) => {
       try {
-        const cached = await getCachedJson<CachedCutoff>('sonarr-cutoff-unmet', connection.id);
-        if (cached) return { connection, ...cached };
-        const fresh = await client.getCutoffUnmetSeriesIds();
-        await setCachedJson('sonarr-cutoff-unmet', connection.id, fresh, CUTOFF_TTL_SECONDS);
-        return { connection, ...fresh };
+        return { connection, ...(await client.getCutoffUnmetSeriesIds()) };
       } catch (error) {
         console.error('[api] Sonarr cutoff unmet failed for one instance:', error instanceof Error ? error.message : error);
         return { connection, seriesIds: [], complete: false, failed: true };
