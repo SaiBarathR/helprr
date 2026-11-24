@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { arrMutationFetch } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
+import { goBackOr, useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { PageHeader } from '@/components/layout/page-header';
 import { NotFoundState } from '@/components/ui/not-found-state';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -29,6 +29,7 @@ export default function SeriesEditPage() {
   const router = useRouter();
   const instance = useSearchParams().get('instance') ?? undefined;
   const queryClient = useQueryClient();
+  const detailHref = `/series/${id}${instance ? `?instance=${encodeURIComponent(instance)}` : ''}`;
 
   // Shares queryKeys.detail with the series detail page (gcTime → no refetch when
   // arriving from there). null on !ok preserves the original "not found" path.
@@ -115,7 +116,7 @@ export default function SeriesEditPage() {
         // shows the saved changes (a path move can shift files).
         invalidateSeries(queryClient, { itemId: series.id, instanceId: instance });
         toast.success('Series updated');
-        router.back();
+        goBackOr(router, detailHref);
       } else {
         toast.error('Failed to update series');
       }
@@ -129,13 +130,13 @@ export default function SeriesEditPage() {
   }
 
   if (loading && !series) {
-    return <><PageHeader title="Edit Series" /><PageSpinner /></>;
+    return <><PageHeader title="Edit Series" backHref={detailHref} /><PageSpinner /></>;
   }
 
   if (!series) {
     return (
       <div>
-        <PageHeader title="Edit Series" />
+        <PageHeader title="Edit Series" backHref={detailHref} />
         <NotFoundState message="Series not found" />
       </div>
     );
@@ -143,7 +144,7 @@ export default function SeriesEditPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title={`Edit ${series.title}`} />
+      <PageHeader title={`Edit ${series.title}`} backHref={detailHref} />
 
       <div className="mx-auto max-w-2xl px-4 pt-4 pb-8 space-y-6">
         {/* Quality Profile */}
@@ -242,8 +243,8 @@ export default function SeriesEditPage() {
                     setRootFolderTouched(true);
                   }}
                 >
-                  <SelectTrigger id="root-folder" className="w-[180px] border-0 bg-transparent text-right">
-                    <SelectValue placeholder="Select folder" />
+                  <SelectTrigger id="root-folder" className="w-[180px] border-0 bg-transparent text-right" title={rootFolder || undefined}>
+                    <SelectValue placeholder="Select folder">{rootFolder ? <span className="truncate">{rootFolder}</span> : null}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {rootFolders.map((rf) => (
@@ -293,7 +294,7 @@ export default function SeriesEditPage() {
           <Button
             variant="secondary"
             className="flex-1"
-            onClick={() => router.back()}
+            onClick={() => goBackOr(router, detailHref)}
             disabled={saving}
           >
             Cancel

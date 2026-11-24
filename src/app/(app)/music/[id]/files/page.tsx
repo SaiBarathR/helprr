@@ -311,7 +311,7 @@ export default function ArtistFilesPage() {
                       {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
                     </span>
                   </div>
-                  <p className="text-sm mt-2 break-all leading-tight">{item.sourceTitle}</p>
+                  <p className="text-sm mt-2 leading-tight [overflow-wrap:anywhere]">{item.sourceTitle}</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     {[item.album?.title, item.quality?.quality?.name].filter(Boolean).join(' · ')}
                   </p>

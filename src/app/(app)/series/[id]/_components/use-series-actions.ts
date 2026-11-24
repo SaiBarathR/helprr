@@ -11,6 +11,7 @@ import { handleAuthError } from '@/lib/query-client';
 import { episodesWithFileKey } from '@/lib/series-query-cache';
 import { pollCommand } from '@/lib/arr-command';
 import { seriesMonitorLabel } from '@/lib/series-monitor';
+import { useRemoveQueriesOnUnmount } from '@/lib/hooks/use-remove-queries-on-unmount';
 
 /**
  * What the series page does to Sonarr (and Jellyfin's lookup): monitoring,
@@ -34,6 +35,7 @@ export function useSeriesActions({
   onDeleted: () => void;
 }) {
   const queryClient = useQueryClient();
+  const removeOnUnmount = useRemoveQueriesOnUnmount();
   const [actionLoading, setActionLoading] = useState('');
   const monitorQueue = useRef<Promise<void>>(Promise.resolve());
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
@@ -213,11 +215,13 @@ export function useSeriesActions({
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       invalidateSeries(queryClient);
       invalidateAfterLibraryRemove(queryClient, 'sonarr', [{ id: series.id, instanceId: instance }]);
-      queryClient.removeQueries({ queryKey: queryKeys.detail('sonarr', series.id, instance) });
-      queryClient.removeQueries({ queryKey: queryKeys.episodes(series.id, instance) });
-      queryClient.removeQueries({ queryKey: episodesWithFileKey(series.id, instance) });
-      queryClient.removeQueries({ queryKey: queryKeys.anime(series.id, instance) });
-      queryClient.removeQueries({ queryKey: queryKeys.credits('sonarr', series.id, instance) });
+      removeOnUnmount(
+        queryKeys.detail('sonarr', series.id, instance),
+        queryKeys.episodes(series.id, instance),
+        episodesWithFileKey(series.id, instance),
+        queryKeys.anime(series.id, instance),
+        queryKeys.credits('sonarr', series.id, instance),
+      );
       toast.success('Series deleted');
       onDeleted();
     } catch (e) { handleAuthError(e); toast.error('Delete failed'); }

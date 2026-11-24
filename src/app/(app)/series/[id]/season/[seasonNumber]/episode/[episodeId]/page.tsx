@@ -756,7 +756,7 @@ export default function EpisodeDetailPage() {
 
       {/* History Detail Drawer */}
       <Drawer open={!!selectedHistoryItem} onOpenChange={(v) => { if (!v) setSelectedHistoryItem(null); }}>
-        <DrawerContent>
+        <DrawerContent size="content">
           <DrawerHeader>
             <DrawerTitle>{selectedHistoryItem ? eventTypeLabel(selectedHistoryItem.eventType) : ''}</DrawerTitle>
             <DrawerDescription>
@@ -770,7 +770,7 @@ export default function EpisodeDetailPage() {
               <div className="rounded-lg border overflow-hidden divide-y">
                 <div className="px-4 py-2.5">
                   <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Release Title</span>
-                  <p className="text-sm mt-0.5 break-all leading-tight">
+                  <p className="text-sm mt-0.5 leading-tight [overflow-wrap:anywhere]">
                     {selectedHistoryItem.sourceTitle}
                   </p>
                 </div>

@@ -1,0 +1,47 @@
+import type { FileOperation } from '@prisma/client';
+
+// Keyed on the Prisma enum so a new operation can't ship without a badge (the
+// type check and operation-labels.test.ts both fail on a missing key).
+export const OP_VARIANT: Record<FileOperation, 'default' | 'secondary' | 'destructive'> = {
+  EDIT: 'secondary',
+  IMPORT: 'default',
+  DELETE: 'destructive',
+  DELETE_MEDIA: 'destructive',
+  DELETE_TORRENT: 'destructive',
+  REMOVE_QUEUE: 'destructive',
+  CREATE_MEDIA: 'default',
+  PUSH_RELEASE: 'default',
+  REMOVE_BLOCKLIST: 'secondary',
+  MOVE_MEDIA: 'default',
+  MARK_FAILED: 'destructive',
+  KEEP_MEDIA: 'secondary',
+};
+
+export const OP_LABEL: Record<FileOperation, string> = {
+  EDIT: 'EDIT',
+  IMPORT: 'IMPORT',
+  DELETE: 'FILE DELETE',
+  DELETE_MEDIA: 'MEDIA DELETE',
+  DELETE_TORRENT: 'TORRENT DELETE',
+  REMOVE_QUEUE: 'QUEUE REMOVE',
+  CREATE_MEDIA: 'MEDIA ADD',
+  PUSH_RELEASE: 'RELEASE SENT',
+  REMOVE_BLOCKLIST: 'BLOCKLIST REMOVE',
+  MOVE_MEDIA: 'ROOT FOLDER',
+  MARK_FAILED: 'MARKED FAILED',
+  KEEP_MEDIA: 'KEEP',
+};
+
+export function countLabel(record: { operation: FileOperation; fileCount: number; mediaType: string }): string {
+  const count = record.fileCount;
+  if (record.operation === 'DELETE_MEDIA' || record.operation === 'MOVE_MEDIA' || record.operation === 'KEEP_MEDIA' || record.operation === 'CREATE_MEDIA') {
+    const noun = record.mediaType === 'series' ? 'series' : record.mediaType;
+    return `${count} ${noun}${count === 1 || noun === 'series' ? '' : 's'}`;
+  }
+  if (record.operation === 'DELETE_TORRENT') return `${count} torrent${count === 1 ? '' : 's'}`;
+  if (record.operation === 'REMOVE_QUEUE') return `${count} queue item${count === 1 ? '' : 's'}`;
+  if (record.operation === 'REMOVE_BLOCKLIST') return `${count} blocklist entr${count === 1 ? 'y' : 'ies'}`;
+  if (record.operation === 'MARK_FAILED') return `${count} download${count === 1 ? '' : 's'}`;
+  if (record.operation === 'PUSH_RELEASE') return `${count} release${count === 1 ? '' : 's'}`;
+  return `${count} file${count === 1 ? '' : 's'}`;
+}

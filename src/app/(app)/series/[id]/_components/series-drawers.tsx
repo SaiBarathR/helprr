@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle,
   DrawerDescription, DrawerFooter, DrawerClose,
@@ -95,22 +96,18 @@ export function SeriesDeleteDrawer({
         </DrawerHeader>
         <div className="px-4">
           <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={deleteFiles}
-              onChange={(e) => setDeleteFiles(e.target.checked)}
+              onCheckedChange={(checked) => setDeleteFiles(checked === true)}
               disabled={deleting}
-              className="h-4 w-4 accent-destructive"
             />
             Also delete all files from disk
           </label>
           <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={addExclusion}
-              onChange={(e) => setAddExclusion(e.target.checked)}
+              onCheckedChange={(checked) => setAddExclusion(checked === true)}
               disabled={deleting}
-              className="h-4 w-4 accent-destructive"
             />
             Add import-list exclusion
           </label>
