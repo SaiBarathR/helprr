@@ -8,6 +8,7 @@ import { logger } from '@/lib/logger';
 import { noteJobFailure } from '@/lib/polling-job-report';
 import { writeBadgeSlice } from '@/lib/cache/badge-counts';
 import { PollNotificationCollector, type NotificationEventInput, type PollNotificationContext } from '@/lib/notification-grouping';
+import { qbittorrentSyncFor } from '@/lib/qbittorrent-sync';
 import { DEFAULT_TORRENT_STALLED_ALERT_MINS, formatStalledFor } from '@/lib/torrent-stalled-alert';
 import { getPollingState, notifyAndLog, wantedNotices, type CycleContext } from './shared';
 import { torrentProblems, type TorrentProblemMarks } from './torrent-problems';
@@ -35,7 +36,9 @@ export async function pollQBittorrent(context: CycleContext) {
   const now = Date.now();
   const collector = new PollNotificationCollector();
 
-  const torrents = await client.getTorrents();
+  // The torrents page's merged sync/maindata state: a read shortly after the
+  // page's reuses it, and any read is only what changed since the last one.
+  const { torrents } = await qbittorrentSyncFor(client).read();
   const currentMap = new Map(torrents.map((t) => [t.hash, t]));
 
   // Previous state: array of {hash, progress, name} and the problem marks

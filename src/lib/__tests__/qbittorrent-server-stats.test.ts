@@ -3,19 +3,15 @@ import type { AddressInfo } from 'node:net';
 import { NextResponse } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
+import { resetQBittorrentSyncForTests, serverStatsFrom } from '@/lib/qbittorrent-sync';
 
 const mocks = vi.hoisted(() => ({
   requireUserCapability: vi.fn(),
   getQBittorrentClient: vi.fn(),
-  cache: new Map<string, unknown>(),
 }));
 vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.requireUserCapability }));
 vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: mocks.getQBittorrentClient }));
 vi.mock('@/lib/cache/qbittorrent-version', () => ({ getQbitCacheVersion: vi.fn().mockResolvedValue(3) }));
-vi.mock('@/lib/cache/json-cache', () => ({
-  getCachedJson: vi.fn(async (scope: string, seed: string) => mocks.cache.get(`${scope}:${seed}`) ?? null),
-  setCachedJson: vi.fn(async (scope: string, seed: string, value: unknown) => { mocks.cache.set(`${scope}:${seed}`, value); }),
-}));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
 
 import { GET } from '@/app/api/qbittorrent/transfer/stats/route';
@@ -52,7 +48,7 @@ describe('qBittorrent server stats', () => {
   afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.cache.clear();
+    resetQBittorrentSyncForTests();
     requests = [];
     shareBody = null;
     mocks.requireUserCapability.mockResolvedValue({ ok: true, user: { id: 'u1' }, session: {} });
@@ -69,32 +65,30 @@ describe('qBittorrent server stats', () => {
     };
   });
 
-  it('asks for a full update and keeps only the four stats', async () => {
-    await expect(client.getServerStats()).resolves.toEqual({
+  it('keeps only the four stats', () => {
+    expect(serverStatsFrom((maindata as { server_state: Record<string, unknown> }).server_state)).toEqual({
       freeSpaceOnDisk: 52_000_000_000,
       alltimeDownloaded: 1_876_000,
       alltimeUploaded: 2_688_000,
       globalRatio: 1.43,
     });
-    expect(requests).toEqual(['/api/v2/sync/maindata?rid=0']);
   });
 
-  it("reports what qBittorrent can't tell as null", async () => {
+  it("reports what qBittorrent can't tell as null", () => {
     // -1 is qBittorrent's "unknown" (the save folder is missing, say).
-    maindata = { server_state: { free_space_on_disk: -1, alltime_dl: 'x', global_ratio: '' } };
-    await expect(client.getServerStats()).resolves.toEqual({
+    expect(serverStatsFrom({ free_space_on_disk: -1, alltime_dl: 'x', global_ratio: '' })).toEqual({
       freeSpaceOnDisk: null, alltimeDownloaded: null, alltimeUploaded: null, globalRatio: null,
     });
   });
 
-  it.each(['1,43', '-'])('works the ratio out from the totals when qBittorrent sends %s', async (globalRatio) => {
-    maindata = { server_state: { free_space_on_disk: 1, alltime_dl: 1000, alltime_ul: 1430, global_ratio: globalRatio } };
-    expect((await client.getServerStats()).globalRatio).toBe(1.43);
+  it.each(['1,43', '-'])('works the ratio out from the totals when qBittorrent sends %s', (globalRatio) => {
+    expect(serverStatsFrom({ free_space_on_disk: 1, alltime_dl: 1000, alltime_ul: 1430, global_ratio: globalRatio }).globalRatio).toBe(1.43);
   });
 
   it('refuses an answer without server_state', async () => {
-    maindata = { rid: 2 };
-    await expect(client.getServerStats()).rejects.toThrow();
+    expect(() => serverStatsFrom(null)).toThrow();
+    maindata = { rid: 2, full_update: true };
+    expect((await get()).status).toBe(500);
   });
 
   it('sends all three share limits', async () => {
@@ -122,9 +116,11 @@ describe('qBittorrent server stats', () => {
     expect(requests).toEqual([]);
   });
 
-  it('the route fails without caching when qBittorrent answers oddly', async () => {
+  it('the route fails, then reads in full again, when qBittorrent answers oddly', async () => {
     maindata = 'Forbidden';
     expect((await get()).status).toBe(500);
-    expect(mocks.cache.size).toBe(0);
+    maindata = { rid: 1, full_update: true, server_state: { free_space_on_disk: 7 } };
+    expect((await get()).status).toBe(200);
+    expect(requests).toEqual(['/api/v2/sync/maindata?rid=0', '/api/v2/sync/maindata?rid=0']);
   });
 });

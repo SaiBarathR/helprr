@@ -7,7 +7,17 @@ const mocks = vi.hoisted(() => ({
   unwanted: new Set<string>(),
 }));
 
-vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: vi.fn(async () => ({ getTorrents: mocks.getTorrents })) }));
+// The poll reads sync/maindata (src/lib/qbittorrent-sync.ts); a new client each
+// poll means a new merged state, so every read is a full update of the list.
+vi.mock('@/lib/service-helpers', () => ({
+  getQBittorrentClient: vi.fn(async () => ({
+    getMaindata: async () => ({
+      rid: 1,
+      full_update: true,
+      torrents: Object.fromEntries((await mocks.getTorrents() as Array<{ hash: string }>).map(({ hash, ...fields }) => [hash, fields])),
+    }),
+  })),
+}));
 vi.mock('@/lib/arr-instances', () => ({ getDefaultConnection: vi.fn(async () => ({ id: 'q1' })) }));
 vi.mock('@/lib/cache/badge-counts', () => ({ writeBadgeSlice: vi.fn() }));
 vi.mock('@/lib/polling-job-report', () => ({ noteJobFailure: vi.fn() }));

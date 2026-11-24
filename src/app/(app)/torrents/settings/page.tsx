@@ -87,8 +87,8 @@ export default function QBittorrentSettingsPage() {
   });
   const transfer = transferQuery.data;
 
-  // A full sync/maindata read upstream, cached briefly on the server; free space
-  // and all-time totals change slowly, so this polls less often than transfer.
+  // From the server's merged sync/maindata state (shared with the torrent list);
+  // free space and all-time totals change slowly, so this polls less often than transfer.
   const statsQuery = useQuery({
     queryKey: ['qbittorrent', 'transfer', 'stats'],
     queryFn: jsonFetcher<QBittorrentServerStats>('/api/qbittorrent/transfer/stats'),

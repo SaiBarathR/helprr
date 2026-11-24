@@ -1,77 +1,44 @@
 import { etagJson } from '@/lib/etag-json';
-import { normalizeTransferInfo, projectTorrentsForSummary, torrentCounters } from '@/lib/qbittorrent-summary';
+import { projectTorrentsForSummary, torrentCounters } from '@/lib/qbittorrent-summary';
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import type { QBittorrentSummaryResponse } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
-import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
 import { getQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { torrentDeltaHistory } from '@/lib/cache/qbittorrent-delta';
+import { QBITTORRENT_SYNC_MAX_AGE_MS, qbittorrentSyncFor, speedLimitsModeFrom, transferInfoFrom } from '@/lib/qbittorrent-sync';
+import type { TorrentsFilterPreference } from '@/lib/store';
+// The page's own filter, so the slimmed list is exactly what the page shows
+// for that filter (it filters again on its side).
+import { matchesTorrentFilter } from '@/app/(app)/torrents/_components/torrent-list';
 
 // The summary is identical for every authorized user, and every open torrents
-// page polls it every ~5s — a tiny cache window + in-flight dedupe collapses
-// that multi-client fan-out into one upstream hit per window (mirrors
-// api/activity/queue). The version stamp in the seed is bumped on mutations so
-// the client's fast post-action reconcile never reads a pre-action snapshot.
+// page polls it every ~5s: it is built from the one merged sync/maindata state
+// (src/lib/qbittorrent-sync.ts), read again at most once per 2 s window however
+// many tabs poll, and only as what changed. The version stamp is bumped on
+// mutations and forces a fresh read, so the client's fast post-action reconcile
+// never reads a pre-action snapshot.
 // no-cache (not max-age): a browser HTTP cache can't be busted by the version
 // bump, so it would happily serve a pre-action body to the reconcile refetch.
 const SUMMARY_CACHE_HEADERS = {
   'Cache-Control': 'private, no-cache',
   'Vary': 'Cookie',
 } as const;
-const SUMMARY_CACHE_SCOPE = 'qbittorrent-summary';
-const SUMMARY_CACHE_TTL_SECONDS = 2;
 
-const inflightSummary = new Map<string, Promise<QBittorrentSummaryResponse>>();
-
-async function loadSummary(
-  filter?: string,
-  category?: string,
-  sort?: string,
-  reverse?: boolean,
-): Promise<QBittorrentSummaryResponse> {
+async function loadSummary(version: number, filter?: string): Promise<QBittorrentSummaryResponse> {
   const client = await getQBittorrentClient();
-  const [torrents, transferInfo, speedLimitsMode] = await Promise.all([
-    client.getTorrents(filter, category, sort, reverse),
-    client.getTransferInfo().catch(() => null),
-    client.getSpeedLimitsMode().catch(() => 0),
-  ]);
-  // Field by field: qBittorrent's transfer/info also carries its last external
-  // IPv4 and IPv6 address (the owner's public IP), which no screen shows.
+  const { torrents, serverState } = await qbittorrentSyncFor(client).read(QBITTORRENT_SYNC_MAX_AGE_MS, version);
+  // Field by field: the merged rows carry the magnet and tracker URL, and
+  // server_state the last external IPv4 and IPv6 address (the owner's public IP).
+  const projected = projectTorrentsForSummary(torrents);
+  const rows = filter ? projected.filter((torrent) => matchesTorrentFilter(torrent, filter as TorrentsFilterPreference)) : projected;
   return {
-    torrents: projectTorrentsForSummary(torrents),
-    transferInfo: transferInfo ? normalizeTransferInfo(transferInfo) : null,
-    speedLimitsMode,
+    torrents: rows,
+    transferInfo: transferInfoFrom(serverState),
+    speedLimitsMode: speedLimitsModeFrom(serverState),
   };
-}
-
-async function getSummaryCached(
-  seed: string,
-  filter?: string,
-  category?: string,
-  sort?: string,
-  reverse?: boolean,
-): Promise<{ payload: QBittorrentSummaryResponse; cached: boolean }> {
-  const cached = await getCachedJson<QBittorrentSummaryResponse>(SUMMARY_CACHE_SCOPE, seed);
-  if (cached) return { payload: cached, cached: true };
-
-  // Collapse concurrent identical requests into one upstream fan-out.
-  const existing = inflightSummary.get(seed);
-  if (existing) return { payload: await existing, cached: false };
-
-  const promise = (async () => {
-    const result = await loadSummary(filter, category, sort, reverse);
-    // Only cache a complete snapshot; a null transferInfo means one upstream
-    // call failed and shouldn't be served to every client for the whole TTL.
-    if (result.transferInfo !== null) {
-      await setCachedJson(SUMMARY_CACHE_SCOPE, seed, result, SUMMARY_CACHE_TTL_SECONDS);
-    }
-    return result;
-  })().finally(() => inflightSummary.delete(seed));
-  inflightSummary.set(seed, promise);
-  return { payload: await promise, cached: false };
 }
 
 async function getHandler(request: NextRequest) {
@@ -82,21 +49,18 @@ async function getHandler(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url);
+    // The one parameter the page sends (with one status filter picked). The
+    // list is no longer sorted or narrowed by category upstream: the page does
+    // both itself.
     const filter = searchParams.get('filter') || undefined;
-    const category = searchParams.get('category') || undefined;
-    const sort = searchParams.get('sort') || undefined;
-    const reverse = searchParams.get('reverse') === 'true' ? true : undefined;
 
     const version = await getQbitCacheVersion();
-    // JSON-serialized tuple, not a ':'-joined string: category names may
-    // contain ':' and would make joined seeds ambiguous across combinations.
-    const seed = JSON.stringify([version, filter ?? '', category ?? '', sort ?? '', reverse === true]);
-    const { payload, cached } = await getSummaryCached(seed, filter, category, sort, reverse);
+    const seed = JSON.stringify([version, filter ?? '']);
+    const payload = await loadSummary(version, filter);
 
     logApiDuration('/api/qbittorrent/summary', startedAt, {
       torrentCount: payload.torrents.length,
       filter: filter || 'all',
-      cached,
     });
 
     const view = searchParams.get('view');
