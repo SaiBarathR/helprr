@@ -170,12 +170,18 @@ function AddTorrentPageContent() {
   // The advanced fallback: the Sonarr/Radarr choices, kept while the files are chosen.
   const [fallback, setFallback] = useState<FallbackDraft | null>(null);
 
-  // With qBittorrent's save-path settings, so the empty Save at field can show where the torrent really goes.
-  const categoryDetails = useCategoryDetails().data;
+  const categoriesQuery = useQuery({
+    queryKey: ['qbittorrent', 'categories'],
+    queryFn: jsonFetcher<Record<string, { name: string; savePath: string }>>('/api/qbittorrent/categories'),
+    staleTime: 60_000,
+  });
   const categories = useMemo(
-    () => Object.values(categoryDetails?.categories ?? {}),
-    [categoryDetails],
+    () => Object.values(categoriesQuery.data ?? {}),
+    [categoriesQuery.data],
   );
+  // qBittorrent's save-path settings, only so the empty Save at field can show
+  // where the torrent really goes: the picker above doesn't wait on them.
+  const categoryDetails = useCategoryDetails().data;
   const selectedCategory = category === NO_CATEGORY ? undefined : category;
   // Under automatic management qBittorrent picks the folder from the category.
   const autoPicksFolder = autoTmm === 'on';

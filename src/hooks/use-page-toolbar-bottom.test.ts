@@ -25,6 +25,7 @@ beforeEach(() => {
 afterEach(() => {
   main.remove();
   vi.unstubAllGlobals();
+  Reflect.deleteProperty(document, 'elementsFromPoint');
 });
 
 it("is where the page's toolbar ends once stuck: its pinned top plus its height", () => {
@@ -126,5 +127,4 @@ it('lets toasts back up to the toolbar while a sheet covers the clearance bar, b
   onTop = [bar];
   sheet.remove();
   await waitFor(() => expect(value()).toBe('160px'));
-  Reflect.deleteProperty(document, 'elementsFromPoint');
 });

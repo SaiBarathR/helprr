@@ -64,6 +64,9 @@ export function CategoryForm({ editName }: { editName?: string }) {
   const [removing, setRemoving] = useState(false);
   const [arrWarning, setArrWarning] = useState<ArrWarning | null>(null);
   const [saveError, setSaveError] = useState<SaveError | null>(null);
+  // Typing in a field clears its own error (and one about neither), not the other field's.
+  const clearError = (field: 'name' | 'savePath') =>
+    setSaveError((prev) => (prev && (!prev.field || prev.field === field) ? null : prev));
 
   // Seed once: a background refetch must not overwrite what is being typed.
   if (existing && savePath === null) setSavePath(existing.savePath);
@@ -171,7 +174,7 @@ export function CategoryForm({ editName }: { editName?: string }) {
                 value={name}
                 onChange={(e) => {
                   setName(e.target.value);
-                  setSaveError(null);
+                  clearError('name');
                 }}
                 placeholder="Category name"
                 aria-label="Category name"
@@ -206,7 +209,7 @@ export function CategoryForm({ editName }: { editName?: string }) {
               value={savePath ?? ''}
               onChange={(e) => {
                 setSavePath(e.target.value);
-                setSaveError(null);
+                clearError('savePath');
               }}
               placeholder={implicitFolder ?? 'Default folder'}
               aria-label="Save path"

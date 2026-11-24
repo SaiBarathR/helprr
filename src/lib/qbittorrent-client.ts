@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { NotServiceApiError } from '@/lib/service-response';
+import { normalizeTransferInfo } from '@/lib/qbittorrent-summary';
 import type { QBittorrentServerStats, QBittorrentTorrentInfo, QBittorrentTransferInfo } from '@/types';
 
 /** qBittorrent turned the Web UI username or password down (it answered "Fails."). */
@@ -587,8 +588,12 @@ export class QBittorrentClient {
   }
 
   // Transfer
+  /**
+   * Copied out field by field (normalizeTransferInfo): qBittorrent also sends
+   * its last external IPv4 and IPv6 address, the owner's public IP.
+   */
   async getTransferInfo(): Promise<QBittorrentTransferInfo> {
-    return this.get<QBittorrentTransferInfo>('/api/v2/transfer/info');
+    return normalizeTransferInfo(await this.get<QBittorrentTransferInfo>('/api/v2/transfer/info'));
   }
 
   /**

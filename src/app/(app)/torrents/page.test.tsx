@@ -655,6 +655,21 @@ describe('torrents page (characterization)', () => {
     expect(screen.getAllByRole('columnheader')[0].textContent).toBe('Name');
   });
 
+  it('drops a brought-back selection whose torrents are gone, even when none are left', async () => {
+    mocks.me = { role: 'admin' };
+    const { user } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Alpha.Movie' }));
+    await user.click(within(screen.getByRole('button', { name: 'More actions' }).nextElementSibling as HTMLElement).getByRole('menuitem', { name: 'Set Category' }));
+    await user.click(await within(screen.getByRole('dialog')).findByRole('button', { name: 'New category' }));
+    cleanup();
+
+    mocks.summary = () => full([]);
+    renderPage();
+    await screen.findByText('No torrents yet.');
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
+  });
+
   it('comes back from New category to the drawer, with the selection it was opened for', async () => {
     mocks.me = { role: 'admin' };
     const { user } = renderPage();
@@ -666,8 +681,10 @@ describe('torrents page (characterization)', () => {
     expect(mocks.push).toHaveBeenCalledWith('/torrents/categories/new');
     cleanup();
 
-    // Back on Torrents after Create: the same drawer, the new category listed, the two still selected.
+    // Back on Torrents after Create: the same drawer, its categories read again (so the new one is listed), the two still selected.
+    mocks.asked = [];
     const again = renderPage();
+    await waitFor(() => expect(mocks.asked).toContain('/api/qbittorrent/categories'));
     const drawer = screen.getByRole('dialog');
     expect(within(drawer).getByRole('heading', { name: 'Set Category for 2 torrents' })).toBeTruthy();
     await waitFor(() => expect(names()).toHaveLength(3));

@@ -180,20 +180,19 @@ export default function TorrentsPage() {
     }
   }, []);
 
-  // A selection brought back from New category waits for the first list: the
-  // empty one before it would drop every hash.
-  const listedRef = useRef(false);
+  // A selection brought back from New category waits for the first loaded
+  // list (even an empty one): the placeholder before it would drop every hash.
+  const [unloadedTorrents] = useState(torrents);
   useEffect(() => {
-    if (torrents.length > 0) listedRef.current = true;
-    if (!listedRef.current) return;
-    // Prune selected hashes when refreshed torrent data no longer contains them.
+    if (torrents === unloadedTorrents) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- prune selected hashes when refreshed torrent data no longer contains them
     setSelectedTorrents((prev) => {
       if (prev.size === 0) return prev;
       const availableHashes = new Set(torrents.map((torrent) => torrent.hash));
       const next = new Set(Array.from(prev).filter((hash) => availableHashes.has(hash)));
       return next.size === prev.size ? prev : next;
     });
-  }, [torrents]);
+  }, [torrents, unloadedTorrents]);
 
   useEffect(() => {
     const list = listRef.current;

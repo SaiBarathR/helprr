@@ -291,6 +291,7 @@ describe('Add Torrent: the empty Save at field names where the torrent goes', ()
   // in Manual Mode" as given (checked against 5.1.4 in category-links.test.ts).
   function serve(autoTmmByDefault: boolean | null, categoryPathsInManualMode: boolean | null) {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/qbittorrent/categories') return json({ tv: { name: 'tv', savePath: '/downloads/tv' } });
       if (url === '/api/qbittorrent/categories?details=1') {
         return json({
           categories: { tv: { name: 'tv', savePath: '/downloads/tv' } },
@@ -344,6 +345,17 @@ describe('Add Torrent: the empty Save at field names where the torrent goes', ()
     renderPage();
     await pick('Category', /^tv$/);
     expect(hint()).toBe('/downloads/tv');
+  });
+
+  it('still lists the categories when the save-path settings fail to load', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/qbittorrent/categories') return json({ tv: { name: 'tv', savePath: '/downloads/tv' } });
+      if (url === '/api/qbittorrent/categories?details=1') return json({ error: 'Failed' }, 502);
+      return json({});
+    }));
+    renderPage();
+    await pick('Category', /^tv$/);
+    expect(hint()).toBe('qBittorrent default');
   });
 
   it("falls back to naming qBittorrent's default when qBittorrent doesn't say", async () => {

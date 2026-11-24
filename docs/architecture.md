@@ -1083,9 +1083,10 @@ qBittorrent's `transfer/info` also carries `last_external_address_v4` and `_v6`,
 the owner's public IP. `/api/qbittorrent/transfer` and the summary (full, `view=delta`,
 `view=counters`, and the cache and delta history behind them) rebuild it with
 `normalizeTransferInfo` (`src/lib/qbittorrent-summary.ts`): speeds, session totals,
-rate limits, DHT nodes and connection status, for every user. Preferences are read
+rate limits, DHT nodes and connection status, for every user. The client's
+`getTransferInfo` applies it too, so a new caller can't pass the address on. Preferences are read
 through methods that copy out named keys (`getSpeedLimits`, `getSavePathPreferences`,
-`isQueueingEnabled`), since `app/preferences` holds the Web UI and proxy passwords, and
+`isQueueingEnabled`, `isSubcategoriesEnabled`), since `app/preferences` holds the Web UI and proxy passwords, and
 `sync/maindata` only through `getServerStats`.
 
 qBittorrent's announce URLs carry a private tracker's passkey, in the path or the

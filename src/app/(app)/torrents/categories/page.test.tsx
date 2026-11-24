@@ -124,7 +124,9 @@ describe('Category form', () => {
     expect(mocks.toast.error).not.toHaveBeenCalled();
     expect(mocks.back).not.toHaveBeenCalled();
 
-    // Typing again clears it.
+    // Typing in the other field leaves it; typing in its own clears it.
+    await user.type(screen.getByLabelText('Category name'), 's');
+    expect(screen.getByRole('alert').textContent).toBe(PATH_ERROR);
     await user.type(field, 'x');
     expect(screen.queryByRole('alert')).toBeNull();
   });
