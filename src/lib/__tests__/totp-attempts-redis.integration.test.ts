@@ -49,8 +49,33 @@ describe.skipIf(!redisUrl)('two-step code caps with real Redis Lua', () => {
   it('a used token answers "used" before anything is counted', async () => {
     const uid = `${run}-used`;
     const token = claims('used');
-    expect(await totp.claimMfaPendingToken(token)).toBe(true);
+    expect(await totp.claimMfaPendingToken(token)).toEqual(expect.any(String));
     expect(await totp.startMfaAttempt(uid, 'totp', token)).toEqual({ ok: false, reason: 'used' });
     expect(await client.get(`login:mfa-account:${uid}`)).toBeNull();
+  });
+
+  it('a stalled request gives back only its own claim, never a newer one', async () => {
+    const token = claims('stalled');
+    const key = `login:mfa-used:${token.jti}`;
+    const first = await totp.claimMfaPendingToken(token);
+    expect(first).toEqual(expect.any(String));
+    // The first request stalls; its claim lapses and a second request claims the token.
+    await client.del(key);
+    const second = await totp.claimMfaPendingToken(token);
+    expect(second).toEqual(expect.any(String));
+    expect(second).not.toBe(first);
+    // The first request's release must not free the second's claim.
+    await totp.releaseMfaPendingToken(token, first as string);
+    expect(await client.get(key)).toBe(second);
+    expect(await totp.claimMfaPendingToken(token)).toBeNull();
+    // The claim's owner can give it back.
+    await totp.releaseMfaPendingToken(token, second as string);
+    expect(await client.get(key)).toBeNull();
+  });
+
+  it('an expired token claims nothing', async () => {
+    const token = { ...claims('expired'), expiresAtMs: Date.now() - 1 };
+    expect(await totp.claimMfaPendingToken(token)).toBeNull();
+    expect(await client.get(`login:mfa-used:${token.jti}`)).toBeNull();
   });
 });

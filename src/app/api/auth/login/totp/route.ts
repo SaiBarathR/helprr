@@ -113,23 +113,23 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   // the code is used, so a claim that fails (Redis refusing the write) never
   // costs a recovery code or the code's 30-second step; a wrong code gives the
   // claim back for the next try.
-  let claimed: boolean;
+  let claim: string | null;
   try {
-    claimed = await claimMfaPendingToken(claims);
+    claim = await claimMfaPendingToken(claims);
   } catch {
     return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
   }
-  if (!claimed) return expired();
+  if (!claim) return expired();
 
   let factor: Awaited<ReturnType<typeof consumeSecondFactor>>;
   try {
     factor = await consumeSecondFactor(user, code);
   } catch (error) {
-    await releaseMfaPendingToken(claims);
+    await releaseMfaPendingToken(claims, claim);
     throw error;
   }
   if (!factor) {
-    await releaseMfaPendingToken(claims);
+    await releaseMfaPendingToken(claims, claim);
     // A unique value: the password backoff ignores a repeated identical guess,
     // but the same six digits are a new guess every 30 seconds.
     const counted = [await recordUsernameFailure(user.username, randomUUID()), await recordGlobalLoginFailure()];
