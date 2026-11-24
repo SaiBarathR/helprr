@@ -9,7 +9,9 @@ import { upstreamErrorResponse } from '@/lib/api-error';
  *
  * @param _request - The incoming NextRequest (unused).
  * @param params - A promise resolving to route parameters; must include `id` (the indexer id).
- * @returns On success, a JSON response containing the indexer test result (or `{ success: true }` when the result is falsy). On failure, a JSON response `{ error: string }` with HTTP status 500.
+ * @returns On success, `{ ok: true }`. Prowlarr's own response is not passed on: like the
+ * app test, nothing it sends back reaches the browser. On failure, a JSON response
+ * `{ error: string }` with a fixed message.
  */
 async function postHandler(
   _request: NextRequest,
@@ -25,8 +27,8 @@ async function postHandler(
       return NextResponse.json({ error: 'Invalid indexer id' }, { status: 400 });
     }
     const client = await getProwlarrClient();
-    const result = await client.testIndexer(parsedId);
-    return NextResponse.json(result ?? { success: true });
+    await client.testIndexer(parsedId);
+    return NextResponse.json({ ok: true });
   } catch (error) {
     return upstreamErrorResponse(error, 'Test failed');
   }

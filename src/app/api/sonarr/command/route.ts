@@ -28,19 +28,40 @@ async function postHandler(request: NextRequest) {
     if ((body.name === 'RenameSeries' || body.name === 'RenameFiles') && !can(auth.user, 'series.manageFiles')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    // Every branch that names titles checks its ids: Sonarr runs an EpisodeSearch
+    // or RefreshSeries without them on nothing or on the whole library. Library-wide
+    // commands are admin-only, in /api/sonarr/library-command.
     switch (body.name) {
-      case 'EpisodeSearch':
-        result = await client.searchEpisode(body.episodeIds);
+      case 'EpisodeSearch': {
+        const episodeIds = coercePositiveIntArray(body.episodeIds);
+        if (!episodeIds) {
+          return NextResponse.json(
+            { error: 'episodeIds must be a non-empty array of positive integers' },
+            { status: 400 }
+          );
+        }
+        result = await client.searchEpisode(episodeIds);
         break;
+      }
       case 'MissingEpisodeSearch':
         result = await client.searchWanted('missing');
         break;
       case 'CutoffUnmetEpisodeSearch':
         result = await client.searchWanted('cutoff');
         break;
-      case 'SeasonSearch':
-        result = await client.searchSeason(body.seriesId, body.seasonNumber);
+      case 'SeasonSearch': {
+        const seriesId = coercePositiveInt(body.seriesId);
+        // Season 0 is Specials.
+        const seasonNumber = Number.isInteger(body.seasonNumber) && body.seasonNumber >= 0 ? body.seasonNumber as number : null;
+        if (!seriesId || seasonNumber === null) {
+          return NextResponse.json(
+            { error: 'seriesId must be a positive integer and seasonNumber a whole number' },
+            { status: 400 }
+          );
+        }
+        result = await client.searchSeason(seriesId, seasonNumber);
         break;
+      }
       case 'SeriesSearch':
         // Sonarr has no multi-series search command, so a bulk request fans out
         // one SeriesSearch per id; single-id callers keep the legacy `seriesId`.
@@ -76,9 +97,17 @@ async function postHandler(request: NextRequest) {
           result = await client.searchSeries(body.seriesId as number);
         }
         break;
-      case 'RefreshSeries':
-        result = await client.refreshSeries(body.seriesId);
+      case 'RefreshSeries': {
+        const seriesId = coercePositiveInt(body.seriesId);
+        if (!seriesId) {
+          return NextResponse.json(
+            { error: 'seriesId must be a positive integer' },
+            { status: 400 }
+          );
+        }
+        result = await client.refreshSeries(seriesId);
         break;
+      }
       case 'RefreshMonitoredDownloads':
         result = await client.refreshMonitoredDownloads();
         break;

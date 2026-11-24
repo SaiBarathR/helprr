@@ -259,6 +259,7 @@ const SEARCH_MODULE_BY_SCOPE: Record<string, string> = {
 const MUTATING_COMMANDS = new Set([
   'RefreshMovie',
   'RefreshSeries',
+  'RefreshCollections',
   'RefreshArtist',
   'RenameFiles',
   'RenameSeries',

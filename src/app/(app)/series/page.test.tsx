@@ -15,8 +15,9 @@ vi.mock('@/components/layout/navigation-provider', () => ({
   useAppRouter: () => ({ push: vi.fn() }),
   useNavigation: () => null,
 }));
+const permissions = vi.hoisted(() => ({ me: null as null | { role: string } }));
 vi.mock('@/components/permission-provider', () => ({
-  useMe: () => null,
+  useMe: () => permissions.me,
   useCan: () => false,
   hasCapability: () => false,
 }));
@@ -28,6 +29,7 @@ vi.mock('@/components/jellyfin/watch-status-provider', () => ({
 vi.mock('@/components/ui/pull-to-refresh', () => ({ PullToRefresh: () => null }));
 
 beforeEach(() => {
+  permissions.me = null;
   localStorage.clear();
   sessionStorage.clear();
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} });
@@ -81,5 +83,29 @@ it('applies a sort and closes the menu on one pick, but keeps the multi-select f
   await userEvent.click(within(await screen.findByRole('menu')).getByRole('menuitemcheckbox', { name: 'Monitored' }));
   expect(useUIStore.getState().seriesFilter).toEqual(['monitored']);
   expect(screen.getByRole('menu')).toBeTruthy();
+  client.clear();
+});
+
+it('gives an admin the ⋯ menu with each instance\'s library commands, and a member none', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(String(url) === '/api/instances'
+    ? [{ id: 'son-1', label: 'main', type: 'SONARR' }, { id: 'son-2', label: 'sonarr-anime', type: 'SONARR' }, { id: 'rad-1', label: 'main', type: 'RADARR' }]
+    : [])));
+  permissions.me = { role: 'member' };
+  const memberClient = renderPage();
+  await screen.findByText('No series found. Add your Sonarr connection in Settings.');
+  expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
+  memberClient.clear();
+  cleanup();
+
+  permissions.me = { role: 'admin' };
+  const client = renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: 'More actions' }));
+  const menu = await screen.findByRole('menu');
+  // One group per Sonarr instance, each named; Radarr's instance is not listed.
+  await within(menu).findByText('main (Sonarr)');
+  expect(within(menu).getByText('sonarr-anime')).toBeTruthy();
+  expect(within(menu).getAllByRole('menuitem', { name: 'RSS Sync' })).toHaveLength(2);
+  expect(within(menu).getAllByRole('menuitem', { name: 'Refresh all series' })).toHaveLength(2);
+  expect(within(menu).queryByText(/Radarr/)).toBeNull();
   client.clear();
 });

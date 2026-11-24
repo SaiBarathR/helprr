@@ -22,12 +22,15 @@ import { withAppName } from '@/components/instance-filter';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import {
   ResponsiveMenu,
+  ResponsiveMenuActionItem,
   ResponsiveMenuCheckboxItem,
   ResponsiveMenuLabel,
   ResponsiveMenuSeparator,
   ResponsiveMenuSortDirection,
 } from '@/components/ui/responsive-menu';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
+import { useIsMobile } from '@/hooks/use-is-mobile';
+import { LibraryCommandsMenu } from '@/components/media/library-commands-menu';
 import { useToolbarHeight } from '@/lib/hooks/use-toolbar-height';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks, Eye, EyeOff, Search, Trash2, Pencil, FileStack, FileEdit } from 'lucide-react';
@@ -166,6 +169,11 @@ export default function SeriesPage() {
   const { toolbarRef, toolbarStyle } = useToolbarHeight();
   const me = useMe();
   const isAdmin = me?.role === 'admin';
+  // An admin's toolbar row also holds the ⋯ menu, so it makes room: below md
+  // Refresh folds into the menu, and below 360px so does Select (the selection
+  // bar has its own Cancel). The buttons hide at the same widths in CSS.
+  const belowMd = useIsMobile(767);
+  const below360 = useIsMobile(359);
   const canFilterByWatchStatus = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
   const watchLookup = useWatchLookup(canFilterByWatchStatus);
   const watchMapReady = useWatchMapReady(canFilterByWatchStatus);
@@ -864,7 +872,7 @@ export default function SeriesPage() {
               <TooltipTrigger asChild>
                 <button
                   onClick={() => (selectionMode ? exit() : enter())}
-                  className={`p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
+                  className={`${isAdmin ? 'max-[359px]:hidden ' : ''}p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
                     selectionMode ? 'bg-primary text-primary-foreground' : 'hover:bg-accent active:bg-accent/80'
                   }`}
                   aria-label={selectionMode ? 'Exit selection' : 'Select series'}
@@ -883,7 +891,7 @@ export default function SeriesPage() {
               <button
                 onClick={refresh}
                 disabled={refreshing}
-                className="max-[359px]:hidden p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default"
+                className={`${isAdmin ? 'max-md:hidden' : 'max-[359px]:hidden'} p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default`}
                 aria-label="Refresh Series"
               >
                 <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
@@ -891,6 +899,23 @@ export default function SeriesPage() {
             </TooltipTrigger>
             <TooltipContent>Refresh Series</TooltipContent>
           </Tooltip>
+
+          {isAdmin && (
+            <LibraryCommandsMenu service="sonarr" busy={refreshing}>
+              {below360 && !selectionMode && (
+                <ResponsiveMenuActionItem onSelect={enter}>
+                  <ListChecks className="h-4 w-4" />
+                  Select series
+                </ResponsiveMenuActionItem>
+              )}
+              {belowMd && (
+                <ResponsiveMenuActionItem onSelect={() => { void refresh(); }} disabled={refreshing}>
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh list
+                </ResponsiveMenuActionItem>
+              )}
+            </LibraryCommandsMenu>
+          )}
 
           {canAddSeries && (
             <Tooltip>
