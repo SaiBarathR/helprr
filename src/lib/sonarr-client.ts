@@ -361,6 +361,28 @@ export class SonarrClient {
     return this.get('/api/v3/wanted/cutoff', { page, pageSize, sortKey: 'episodes.airDateUtc', sortDirection: 'descending', includeSeries: true });
   }
 
+  /**
+   * The ids of the series with a monitored episode on Wanted → Cutoff Unmet, for the
+   * library's Cutoff Unmet filter. Sonarr orders the list by air date only, so paging
+   * through it can skip or repeat rows at a page edge: the first page says how many
+   * there are and, when there are more, one page of that size reads them all, up to
+   * `limit` episodes (`complete` is false past it).
+   */
+  async getCutoffUnmetSeriesIds(limit = 20_000): Promise<{ seriesIds: number[]; complete: boolean }> {
+    type Page = { totalRecords: number; records: { seriesId: number }[] };
+    const read = (pageSize: number) => this.get<Page>(
+      '/api/v3/wanted/cutoff',
+      { page: 1, pageSize, includeSeries: false, includeEpisodeFile: false, includeImages: false, monitored: true },
+      { timeout: 60_000 },
+    );
+    let page = await read(1000);
+    if (page.totalRecords > page.records.length) page = await read(Math.min(page.totalRecords, limit));
+    return {
+      seriesIds: [...new Set(page.records.map((record) => record.seriesId))],
+      complete: page.records.length >= page.totalRecords,
+    };
+  }
+
   // Calendar
   // Sonarr leaves out unmonitored episodes, and episodes of unmonitored series,
   // unless asked; the poller's premiere alerts rely on that default.

@@ -31,6 +31,7 @@ function toListItem(series: SonarrSeries): SonarrSeriesListItem {
     images: series.images.filter((img) => img.coverType === 'poster').slice(0, 1),
     year: series.year,
     path: series.path,
+    rootFolderPath: series.rootFolderPath,
     qualityProfileId: series.qualityProfileId,
     monitored: series.monitored,
     runtime: series.runtime,
