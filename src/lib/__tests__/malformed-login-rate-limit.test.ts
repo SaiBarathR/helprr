@@ -13,7 +13,9 @@ vi.mock('@/lib/redis', () => ({
 
 import {
   enforceMalformedLoginBackstop,
+  recordGlobalLoginFailure,
   recordMalformedLoginRequest,
+  recordUsernameFailure,
 } from '@/lib/login-rate-limit';
 
 beforeEach(() => {
@@ -66,5 +68,19 @@ describe('malformed-login global backstop', () => {
     await expect(recordMalformedLoginRequest()).resolves.toMatchObject({
       status: 503,
     });
+  });
+});
+
+describe('failed-attempt recorders', () => {
+  it('report whether Redis took the write, so a refused one is not an ordinary wrong attempt', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    mocks.eval.mockResolvedValue('0');
+    await expect(recordUsernameFailure('member', 'wrong')).resolves.toBe(true);
+    await expect(recordGlobalLoginFailure()).resolves.toBe(true);
+
+    // Redis at its memory cap with noeviction: reads still work, writes are refused.
+    mocks.eval.mockRejectedValue(new Error("OOM command not allowed when used memory > 'maxmemory'."));
+    await expect(recordUsernameFailure('member', 'wrong')).resolves.toBe(false);
+    await expect(recordGlobalLoginFailure()).resolves.toBe(false);
   });
 });

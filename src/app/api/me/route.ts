@@ -185,8 +185,9 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: JELLYFIN_UNAVAILABLE }, { status: 502 });
   }
   if (!confirmed) {
-    for (const name of backoffNames) await recordUsernameFailure(name, currentPassword);
-    await recordGlobalLoginFailure();
+    const counted: boolean[] = [];
+    for (const name of backoffNames) counted.push(await recordUsernameFailure(name, currentPassword));
+    counted.push(await recordGlobalLoginFailure());
     // A guess at the password from a signed-in session counts as a failed sign-in.
     await recordFailedSignIn(request, {
       username: user.username,
@@ -194,6 +195,8 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
       user,
       actor: user,
     });
+    // Redis can refuse writes while still answering the read checks (at its memory cap): a guess the throttles couldn't count must not pass as an ordinary wrong one.
+    if (!counted.every(Boolean)) return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
     // 403, not 401: the client sends every 401 to /login, and the session is fine.
     return NextResponse.json(
       // field: the page marks the password, not the code, as the one that was wrong.

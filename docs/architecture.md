@@ -349,9 +349,11 @@ session but a 5-minute HS256 "MFA pending" JWT with its own audience and no `sid
 `decodeToken` never accepts it. It is bound to the user by an HMAC stamp of the password
 hash, Jellyfin link and `totpEnabledAt`, so any of those changing ends it.
 `POST /api/auth/login/totp` checks it, applies the sign-in throttles keyed on the account,
-verifies a code (±1 step) and uses it up in the same conditional write
-(`totpLastUsedStep < step`), then spends the token's `jti` in Redis (`SET NX`, fail closed)
-and makes the session. The first step no longer clears the username backoff or IP bucket
+spends the token's `jti` in Redis (`SET NX`, fail closed), then verifies a code (±1 step)
+and uses it up in the same conditional write (`totpLastUsedStep < step`) and makes the
+session. The token is claimed before the code is used, so a claim Redis refuses never costs
+a recovery code; a wrong code (or a failure while using it) deletes the claim again for the
+next try. The first step no longer clears the username backoff or IP bucket
 for these accounts, so a known password cannot reset them between code guesses, and every
 wrong code counts (no repeat-guess dedupe). Before a code is checked, one Redis script
 counts the attempt atomically: 10 authenticator codes per account per fixed hour (sign-in,
@@ -1041,7 +1043,11 @@ settings (host, port, user name).
 Compose caps Redis at 256 MB with `maxmemory-policy noeviction` (Helprr itself
 uses tens of MB). Past the cap Redis refuses writes rather than evicting keys,
 because the login, two-step and replay limits live in Redis beside the caches
-and must not be dropped; those checks fail closed when a write fails.
+and must not be dropped; those checks fail closed when a write fails. Because Redis can
+refuse writes while it still answers reads, a failed sign-in or password confirmation that
+the username backoff or the global backstop cannot record answers 503 rather than the usual
+401 or 403 (`recordUsernameFailure` and `recordGlobalLoginFailure` report whether they wrote),
+so guessing cannot go on uncounted.
 
 ## Interactive search grabs (Sonarr/Radarr)
 

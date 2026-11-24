@@ -239,6 +239,20 @@ export async function claimMfaPendingToken(claims: MfaPendingClaims, nowMs = Dat
   return result === 'OK';
 }
 
+/**
+ * Gives back a claim taken before the code was checked, when the code was wrong,
+ * so the next try can still sign in. Best-effort: if it fails, the token stays
+ * spent and only this sign-in ends (the user starts again from the password).
+ */
+export async function releaseMfaPendingToken(claims: MfaPendingClaims): Promise<void> {
+  try {
+    const redis = await getRedisClient();
+    await redis.del(`${MFA_PENDING_USED_KEY_PREFIX}${claims.jti}`);
+  } catch (error) {
+    console.error('[Auth] Failed to release the two-step sign-in claim:', error);
+  }
+}
+
 export type MfaAttemptGate =
   | { ok: true }
   | { ok: false; reason: 'used' | 'spent' }

@@ -13,10 +13,10 @@ const mocks = vi.hoisted(() => ({
   enforceLoginRateLimit: vi.fn(),
   clearLoginAttempts: vi.fn(),
   enforceUsernameBackoff: vi.fn(),
-  recordUsernameFailure: vi.fn(),
+  recordUsernameFailure: vi.fn(async () => true),
   clearUsernameBackoff: vi.fn(),
   enforceGlobalLoginBackstop: vi.fn(),
-  recordGlobalLoginFailure: vi.fn(),
+  recordGlobalLoginFailure: vi.fn(async () => true),
   enforceMalformedLoginBackstop: vi.fn(),
   recordMalformedLoginRequest: vi.fn(),
   authenticateByName: vi.fn(),
@@ -169,5 +169,41 @@ describe('credential route request boundaries', () => {
     expect(response.status).toBe(413);
     expect(prisma.serviceConnection.findFirst).not.toHaveBeenCalled();
     expect(mocks.authenticateByName).not.toHaveBeenCalled();
+  });
+});
+
+describe('a failed attempt the throttles cannot record', () => {
+  const login = (username = 'member', password = 'wrong password') => localLogin(jsonRequest(JSON.stringify({ username, password })));
+
+  it.each(['recordUsernameFailure', 'recordGlobalLoginFailure'] as const)(
+    'answers 503, not 401, when %s refuses the write', async (fn) => {
+      mocks.verifyUserPassword.mockResolvedValue(false);
+      mocks[fn].mockResolvedValueOnce(false);
+      const response = await login();
+      expect(response.status).toBe(503);
+      // Both layers are still tried.
+      expect(mocks.recordUsernameFailure).toHaveBeenCalledOnce();
+      expect(mocks.recordGlobalLoginFailure).toHaveBeenCalledOnce();
+      expect(mocks.createSession).not.toHaveBeenCalled();
+    },
+  );
+
+  it('answers 503 for an unknown user too', async () => {
+    mocks.userFindFirst.mockResolvedValue(null);
+    mocks.recordGlobalLoginFailure.mockResolvedValueOnce(false);
+    expect((await login('nobody')).status).toBe(503);
+  });
+
+  it('still answers 401 when both layers record it', async () => {
+    mocks.verifyUserPassword.mockResolvedValue(false);
+    expect((await login()).status).toBe(401);
+  });
+
+  it('a wrong Jellyfin password that cannot be recorded answers 503', async () => {
+    vi.mocked(prisma.serviceConnection.findFirst).mockResolvedValue({ url: 'http://jf.lan' } as never);
+    mocks.authenticateByName.mockResolvedValue({ ok: false, reason: 'invalid_credentials' });
+    mocks.recordUsernameFailure.mockResolvedValueOnce(false);
+    const response = await jellyfinLogin(jsonRequest(JSON.stringify({ username: 'member', password: 'wrong password' })));
+    expect(response.status).toBe(503);
   });
 });

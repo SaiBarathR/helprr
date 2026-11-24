@@ -137,6 +137,9 @@ beforeEach(() => {
   vi.stubEnv('APP_ORIGIN', '');
   vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
   for (const fn of Object.values(mocks.limits)) fn.mockResolvedValue(null);
+  // The failure recorders report that Redis took the write.
+  mocks.limits.recordGlobalLoginFailure.mockResolvedValue(true);
+  mocks.limits.recordUsernameFailure.mockResolvedValue(true);
   mocks.verifyUserPassword.mockImplementation(async (_user: unknown, password: string) => password === PASSWORD);
   mocks.hashPassword.mockResolvedValue('new-hash');
   mocks.recoveryDeleteMany.mockResolvedValue({ count: 1 });

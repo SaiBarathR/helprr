@@ -71,12 +71,14 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const rawName = request.headers.get(config.userHeader) ?? '';
   if (!trustedAuthSecretMatches(config, providedSecret)) {
     // Someone sent the header without knowing the secret: count it like a wrong password.
-    await recordGlobalLoginFailure();
+    const counted = await recordGlobalLoginFailure();
     await recordFailedSignIn(request, {
       username: normalizeLocalUsername(rawName),
       method: 'trusted-header-secret',
       user: null,
     });
+    // Redis can refuse writes while still answering the read checks: an uncounted guess is not an ordinary one.
+    if (!counted) return json({ error: 'Login service unavailable' }, 503);
     return json({ error: NOT_FROM_PROXY }, 401);
   }
 

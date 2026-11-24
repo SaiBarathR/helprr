@@ -72,6 +72,9 @@ beforeEach(() => {
   vi.stubEnv('JWT_SECRET', 'a-valid-session-secret-that-is-longer-than-32-characters');
   vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
   for (const fn of Object.values(mocks.limits)) fn.mockResolvedValue(null);
+  // The failure recorders report that Redis took the write.
+  mocks.limits.recordGlobalLoginFailure.mockResolvedValue(true);
+  mocks.limits.recordUsernameFailure.mockResolvedValue(true);
   mocks.verifyUserPassword.mockResolvedValue(true);
   mocks.userUpdateMany.mockResolvedValue({ count: 1 });
   mocks.recoveryDeleteMany.mockResolvedValue({ count: 0 });

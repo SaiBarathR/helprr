@@ -8,8 +8,8 @@ const mocks = vi.hoisted(() => ({
   userUpdate: vi.fn(),
   storeJellyfinToken: vi.fn(),
   clearJellyfinToken: vi.fn(),
-  recordUsernameFailure: vi.fn(),
-  recordGlobalLoginFailure: vi.fn(),
+  recordUsernameFailure: vi.fn(async () => true),
+  recordGlobalLoginFailure: vi.fn(async () => true),
   readJellyfinToken: vi.fn(),
   refreshRecommendations: vi.fn(),
 }));

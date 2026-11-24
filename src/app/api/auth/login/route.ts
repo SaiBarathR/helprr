@@ -88,16 +88,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     // Spend the same scrypt work on a throwaway hash so an unknown username
     // can't be distinguished from a wrong password by response latency.
     await verifyPasswordHash(password, await getDummyPasswordHash());
-    await recordUsernameFailure(username, password);
-    await recordGlobalLoginFailure();
+    const counted = [await recordUsernameFailure(username, password), await recordGlobalLoginFailure()];
     await recordFailedSignIn(request, { username, method: 'password', user: null });
+    // Redis can refuse writes while still answering the read checks (at its memory cap): a guess the throttles couldn't count must not pass as an ordinary wrong one.
+    if (!counted.every(Boolean)) return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
     return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
   }
 
   if (!(await verifyUserPassword(user, password))) {
-    await recordUsernameFailure(username, password);
-    await recordGlobalLoginFailure();
+    const counted = [await recordUsernameFailure(username, password), await recordGlobalLoginFailure()];
     await recordFailedSignIn(request, { username, method: 'password', user });
+    if (!counted.every(Boolean)) return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
     return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
   }
 
