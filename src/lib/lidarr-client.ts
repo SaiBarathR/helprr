@@ -18,6 +18,7 @@ import type {
   BlocklistResponse,
   HistoryItem,
   QualityProfile,
+  QualityProfileResource,
   RootFolder,
   DiskSpace,
   HealthCheck,
@@ -479,6 +480,10 @@ export class LidarrClient {
   // Configuration
   async getQualityProfiles(): Promise<QualityProfile[]> {
     return this.get<QualityProfile[]>('/api/v1/qualityprofile');
+  }
+
+  async getQualityProfile(id: number): Promise<QualityProfileResource> {
+    return this.get<QualityProfileResource>(`/api/v1/qualityprofile/${id}`);
   }
 
   async getMetadataProfiles(): Promise<LidarrMetadataProfile[]> {

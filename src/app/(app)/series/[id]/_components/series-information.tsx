@@ -5,6 +5,7 @@ import { Pencil } from 'lucide-react';
 import type { SeriesAniListResponse } from '@/types/anilist';
 import { formatAniListMappingState } from './format';
 import type { InfoRow } from './series-info';
+import { QualityProfileValue } from '@/components/media/quality-profile-sheet';
 
 /** The Information section: the series' rows, each season's details, and (for an admin) the AniList mapping. */
 export function SeriesInformation({
@@ -29,7 +30,11 @@ export function SeriesInformation({
         {infoRows.map((row) => (
           <div key={row.label} className="flex justify-between py-2.5 border-b border-border/30 items-start">
             <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
-            <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
+            {row.onSelect ? (
+              <QualityProfileValue name={row.value} onOpen={row.onSelect} />
+            ) : (
+              <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
+            )}
           </div>
         ))}
         {seasonDetailRows.length > 0 && (
