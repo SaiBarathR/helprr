@@ -466,13 +466,17 @@ export class QBittorrentClient {
     if (!state || typeof state !== 'object') throw new NotServiceApiError();
     const { free_space_on_disk, alltime_dl, alltime_ul, global_ratio } = state as Record<string, unknown>;
     const count = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null);
-    // qBittorrent sends the ratio as a string ("1.43").
-    const ratio = typeof global_ratio === 'string' && global_ratio.trim() !== '' ? Number(global_ratio) : global_ratio;
+    const downloaded = count(alltime_dl);
+    const uploaded = count(alltime_ul);
+    // qBittorrent sends the ratio as text in the host's locale ("1.43", "1,43",
+    // or "-" before any data): when it doesn't parse, work it out from the totals.
+    const sent = typeof global_ratio === 'string' && global_ratio.trim() !== '' ? count(Number(global_ratio)) : count(global_ratio);
+    const derived = downloaded && uploaded !== null ? Math.round((uploaded / downloaded) * 100) / 100 : null;
     return {
       freeSpaceOnDisk: count(free_space_on_disk),
-      alltimeDownloaded: count(alltime_dl),
-      alltimeUploaded: count(alltime_ul),
-      globalRatio: count(ratio),
+      alltimeDownloaded: downloaded,
+      alltimeUploaded: uploaded,
+      globalRatio: sent ?? derived,
     };
   }
 

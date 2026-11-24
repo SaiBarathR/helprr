@@ -87,6 +87,11 @@ describe('qBittorrent server stats', () => {
     });
   });
 
+  it.each(['1,43', '-'])('works the ratio out from the totals when qBittorrent sends %s', async (globalRatio) => {
+    maindata = { server_state: { free_space_on_disk: 1, alltime_dl: 1000, alltime_ul: 1430, global_ratio: globalRatio } };
+    expect((await client.getServerStats()).globalRatio).toBe(1.43);
+  });
+
   it('refuses an answer without server_state', async () => {
     maindata = { rid: 2 };
     await expect(client.getServerStats()).rejects.toThrow();

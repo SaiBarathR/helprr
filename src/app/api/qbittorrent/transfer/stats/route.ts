@@ -10,6 +10,8 @@ import type { QBittorrentServerStats } from '@/types';
 // The stats come from a full sync/maindata, which lists every torrent: on a
 // large library that is megabytes per read. They change slowly and are the same
 // for every user, so one read serves every open settings page for a while.
+// With Helprr's cache turned off only concurrent reads are shared; the page
+// polls every 30 s at most, which keeps that bounded.
 const STATS_CACHE_SCOPE = 'qbittorrent-server-stats';
 const STATS_CACHE_TTL_SECONDS = 15;
 

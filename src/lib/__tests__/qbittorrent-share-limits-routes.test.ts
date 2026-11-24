@@ -68,7 +68,7 @@ describe.each(['bulk', 'single'] as const)('setShareLimits on the %s route', (ro
     ['no limits at all', {}],
     // qBittorrent reads text it can't parse as 0: stop seeding at once.
     ['a ratio as text', { ...VALID, ratioLimit: '2' }],
-    ['a ratio of NaN', { ...VALID, ratioLimit: null }],
+    ['a ratio of null (JSON has no NaN)', { ...VALID, ratioLimit: null }],
     ['a negative ratio other than -1 or -2', { ...VALID, ratioLimit: -0.5 }],
     ['a ratio qBittorrent shows as infinite', { ...VALID, ratioLimit: 9999 }],
     ['fractional minutes', { ...VALID, seedingTimeLimit: 1.5 }],
