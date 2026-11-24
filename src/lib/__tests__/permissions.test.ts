@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { can, type PermissionUser } from '@/lib/permissions';
+import { can, parsePermissions, type PermissionUser } from '@/lib/permissions';
 import { CAPABILITIES } from '@/lib/capabilities';
 
 function member(permissions: unknown = {}): PermissionUser {
@@ -47,6 +47,13 @@ describe('capability resolution', () => {
     expect(can(m, 'series.delete')).toBe(true);
     // Other destructive caps stay denied.
     expect(can(m, 'movies.delete')).toBe(false);
+  });
+
+  it('members get Prowlarr search only when it is turned on, and a backup keeps it', () => {
+    expect(can(member(), 'prowlarr.search')).toBe(false);
+    expect(can(member({ 'prowlarr.search': true }), 'prowlarr.search')).toBe(true);
+    // Settings import reads each user's overrides through parsePermissions.
+    expect(parsePermissions({ 'prowlarr.search': true, 'prowlarr.bogus': true })).toEqual({ 'prowlarr.search': true });
   });
 
   it('a per-user override revokes a capability the template grants', () => {
