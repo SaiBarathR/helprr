@@ -820,7 +820,10 @@ no history get-by-id, so the route forwards any numeric event id of that
 instance and only the UI limits it to grabs and imports). Those two, and Grab now
 on a delayed queue item, also require an explicitly named instance of that
 service. Grab now is not audited: it releases a download early and removes
-nothing. These interactive removals are a user's direct action, like the single
+nothing. The selection bar's Grab (`POST /api/activity/queue/grab`, one request per
+instance) is the same action for several pending releases: it reads the queue first
+and sends only the ids still pending, reports each id as `grabbed`, `notGrabbed`,
+`unknown` (a re-read failed) or `skipped` (not pending), and is not audited either. These interactive removals are a user's direct action, like the single
 queue Remove, not a cleaner run, so they take no cleanup preview token.
 The bulk editor's other settings (quality and
 metadata profile, series type, season folder, monitor-new, minimum availability) are

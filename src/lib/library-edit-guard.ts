@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import type { Capability } from '@/lib/capabilities';
-import { parentPath } from '@/lib/paths';
+import { folderNameError, lastPathSegment, parentPath } from '@/lib/paths';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Server-side payload-diff guard for Sonarr/Radarr PUT (locked decision #7).
@@ -101,9 +101,28 @@ function isUnder(child: string, parent: string): boolean {
  * Whether `path` is a folder directly inside one of the instance's root folders:
  * the only places the Edit page moves a title to, and what the bulk editor checks.
  */
-export function inRootFolder(path: string, rootFolders: { path: string }[]): boolean {
+function inRootFolder(path: string, rootFolders: { path: string }[]): boolean {
   const parent = normPath(parentPath(path));
   return rootFolders.some((folder) => normPath(folder.path) === parent);
+}
+
+/**
+ * Why an Edit PUT can't save `newPath`, or null when it can: the path must be a
+ * folder directly inside one of the instance's root folders, and a folder name
+ * other than the title's current one must pass the Edit page's own check. The
+ * current name is left alone (it is what the *arr chose); an unknown current
+ * path means the name is checked.
+ */
+export function editedPathError(
+  newPath: string | null,
+  rootFolders: { path: string }[],
+  currentPath: string | null | undefined,
+): string | null {
+  if (!newPath || !inRootFolder(newPath, rootFolders)) return 'path must be in one of this instance’s root folders';
+  const folder = lastPathSegment(newPath);
+  if (currentPath && lastPathSegment(currentPath) === folder) return null;
+  const nameError = folderNameError(folder, parentPath(newPath));
+  return nameError ? `Invalid folder name: ${nameError}` : null;
 }
 
 function pathChanged(currentPath: string | undefined, body: Record<string, unknown>): boolean {

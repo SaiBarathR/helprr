@@ -32,6 +32,8 @@ vi.mock('@/lib/store', async () => {
     setActivityFilterBy: (activityFilterBy: string[]) => set({ activityFilterBy }),
     activityInstanceFilter: 'all',
     setActivityInstanceFilter: (activityInstanceFilter: string) => set({ activityInstanceFilter }),
+    activityShowUnmonitored: false,
+    setActivityShowUnmonitored: (activityShowUnmonitored: boolean) => set({ activityShowUnmonitored }),
   }));
   return { useUIStore };
 });
@@ -370,6 +372,51 @@ describe('Activity source filter', () => {
     expect(useUIStore.getState().activityFilterBy).toEqual([]);
     expect(useUIStore.getState().activityInstanceFilter).toBe('all');
     expect(filterBar()).toBeNull();
+  });
+});
+
+describe('Activity Wanted: show unmonitored', () => {
+  const wantedUrls = () => (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+    .map(([url]) => String(url)).filter((url) => url.startsWith('/api/activity/wanted?'));
+  const user = () => userEvent.setup({ pointerEventsCheck: 0 });
+  const openFilters = async () => {
+    await user().click(document.querySelector('[aria-label^="Filter and sort"]')!);
+    await waitForElement(() => document.querySelector('[role="menu"]'));
+  };
+  const unmonitoredItem = () => [...document.querySelectorAll('[role="menuitemcheckbox"]')]
+    .find((item) => item.textContent?.trim() === 'Unmonitored');
+
+  it('is offered in the filter menu on Missing, remembered, and asks for the unmonitored list', async () => {
+    useUIStore.setState({ activityTab: 'missing' });
+    await renderPage();
+    await waitFor(() => expect(wantedUrls().length).toBeGreaterThan(0));
+    expect(wantedUrls().every((url) => !url.includes('unmonitored'))).toBe(true);
+
+    await openFilters();
+    await user().click(unmonitoredItem()!);
+    expect(useUIStore.getState().activityShowUnmonitored).toBe(true);
+    await waitFor(() => expect(wantedUrls().some((url) => url.includes('unmonitored=1'))).toBe(true));
+    await waitFor(() => expect(filterBar()?.textContent).toContain('Unmonitored'));
+    expect(document.querySelector('[aria-label="Filter and sort (filters active)"]')).not.toBeNull();
+  });
+
+  it('is not offered on the Queue, where the saved choice waits', async () => {
+    useUIStore.setState({ activityShowUnmonitored: true });
+    await renderPage();
+    await waitFor(() => expect(text()).toContain('2 Tasks'));
+    expect(filterBar()).toBeNull();
+    await openFilters();
+    expect(unmonitoredItem()).toBeUndefined();
+    expect(useUIStore.getState().activityShowUnmonitored).toBe(true);
+  });
+
+  it('is cleared by Clear all on Cutoff', async () => {
+    useUIStore.setState({ activityTab: 'cutoff', activityShowUnmonitored: true, activityFilterBy: ['sonarr'] });
+    await renderPage();
+    await waitFor(() => expect(filterBar()?.textContent).toContain('Unmonitored'));
+    await act(async () => button('Clear all')!.click());
+    expect(useUIStore.getState().activityShowUnmonitored).toBe(false);
+    expect(useUIStore.getState().activityFilterBy).toEqual([]);
   });
 });
 

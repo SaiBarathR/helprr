@@ -4,6 +4,8 @@ import { resolveConnection } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { RadarrClient } from '@/lib/radarr-client';
 import { requireUserCapability } from '@/lib/auth';
+import { can } from '@/lib/permissions';
+import type { Capability } from '@/lib/capabilities';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
@@ -17,6 +19,7 @@ import type {
   RadarrLookupResult,
 } from '@/types';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { sameFolder } from '@/lib/paths';
 
 const COLLECTIONS_SCOPE = 'radarr-collections';
 
@@ -70,6 +73,11 @@ function buildSummary(collection: TaggedCollection, libByTmdb: Map<number, Libra
     movieCount: movies.length,
     missingMovies,
     movies,
+    qualityProfileId: collection.qualityProfileId,
+    rootFolderPath: collection.rootFolderPath,
+    minimumAvailability: collection.minimumAvailability,
+    searchOnAdd: collection.searchOnAdd,
+    tags: collection.tags,
     instanceId: collection.instanceId,
     instanceLabel: collection.instanceLabel,
   };
@@ -221,34 +229,142 @@ async function postHandler(request: NextRequest) {
   }
 }
 
-// Toggle monitoring on a single collection.
+const MINIMUM_AVAILABILITY = ['announced', 'inCinemas', 'released'] as const;
+
+// The fields the drawer's monitoring switch and Edit collection send, each with the
+// capability a movie edit needs for the same change. null = admin only: no capability
+// covers a movie's quality profile or availability, and searchOnAdd starts searches.
+const COLLECTION_FIELD_CAPABILITY = {
+  monitored: 'movies.editMonitoring',
+  monitorMovies: 'movies.editMonitoring',
+  tags: 'movies.editTags',
+  rootFolderPath: 'movies.changePath',
+  qualityProfileId: null,
+  minimumAvailability: null,
+  searchOnAdd: null,
+} as const satisfies Record<string, Capability | null>;
+
+type CollectionField = keyof typeof COLLECTION_FIELD_CAPABILITY;
+
+interface CollectionEdit {
+  monitored?: boolean;
+  monitorMovies?: boolean;
+  searchOnAdd?: boolean;
+  qualityProfileId?: number;
+  rootFolderPath?: string;
+  minimumAvailability?: (typeof MINIMUM_AVAILABILITY)[number];
+  tags?: number[];
+}
+
+/** The body's collection fields, shape-checked, or the 400 message for the first bad one. */
+function parseCollectionEdit(body: Record<string, unknown>): { edit: CollectionEdit } | { error: string } {
+  const edit: CollectionEdit = {};
+  for (const key of ['monitored', 'monitorMovies', 'searchOnAdd'] as const) {
+    if (body[key] === undefined) continue;
+    // Require an explicit boolean — don't coerce (Boolean("false") would be true).
+    if (typeof body[key] !== 'boolean') return { error: `${key} must be a boolean` };
+    edit[key] = body[key];
+  }
+  if (body.qualityProfileId !== undefined) {
+    const id = body.qualityProfileId;
+    if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) return { error: 'qualityProfileId must be a positive integer' };
+    edit.qualityProfileId = id;
+  }
+  if (body.rootFolderPath !== undefined) {
+    if (typeof body.rootFolderPath !== 'string' || !body.rootFolderPath) return { error: 'rootFolderPath must be a path' };
+    edit.rootFolderPath = body.rootFolderPath;
+  }
+  if (body.minimumAvailability !== undefined) {
+    const value = body.minimumAvailability;
+    if (!MINIMUM_AVAILABILITY.includes(value as never)) return { error: 'minimumAvailability must be announced, inCinemas or released' };
+    edit.minimumAvailability = value as CollectionEdit['minimumAvailability'];
+  }
+  if (body.tags !== undefined) {
+    const tags = body.tags;
+    if (!Array.isArray(tags) || !tags.every((t) => typeof t === 'number' && Number.isInteger(t) && t > 0)) {
+      return { error: 'tags must be a list of tag ids' };
+    }
+    edit.tags = [...new Set(tags as number[])];
+  }
+  return { edit };
+}
+
+// Monitoring, and the options Radarr applies when it adds the collection's movies.
+// Only the fields sent change; each needs its own capability (COLLECTION_FIELD_CAPABILITY).
 async function putHandler(request: NextRequest) {
-  const auth = await requireUserCapability('movies.editMonitoring');
+  const auth = await requireUserCapability('movies.view');
   if (!auth.ok) return auth.response;
   const startedAt = performance.now();
 
   try {
     const body = await request.json();
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
+    }
     const instanceId = typeof body.instanceId === 'string' ? body.instanceId : undefined;
     const collectionId = Number(body.collectionId);
-    if (!Number.isFinite(collectionId) || collectionId <= 0) {
+    if (!Number.isInteger(collectionId) || collectionId <= 0) {
       return NextResponse.json({ error: 'collectionId is required' }, { status: 400 });
     }
-    // Require an explicit boolean — don't coerce (Boolean("false") would be true).
-    if (typeof body.monitored !== 'boolean') {
-      return NextResponse.json({ error: 'monitored (boolean) is required' }, { status: 400 });
+    const parsed = parseCollectionEdit(body);
+    if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
+    const edit = parsed.edit;
+    const fields = Object.keys(edit) as CollectionField[];
+    if (fields.length === 0) {
+      return NextResponse.json({ error: 'Nothing to change' }, { status: 400 });
     }
-    const monitored: boolean = body.monitored;
+
+    if (auth.user.role !== 'admin') {
+      if (fields.some((field) => COLLECTION_FIELD_CAPABILITY[field] === null)) {
+        return NextResponse.json({ error: 'Forbidden: only an admin can change these fields' }, { status: 403 });
+      }
+      const missing = [...new Set(fields.map((field) => COLLECTION_FIELD_CAPABILITY[field]))]
+        .filter((cap) => cap !== null && !can(auth.user, cap));
+      if (missing.length > 0) {
+        return NextResponse.json({ error: `Forbidden: you cannot change ${missing.join(', ')}` }, { status: 403 });
+      }
+    }
 
     const client = await getRadarrClient(instanceId);
-    await client.updateCollections({ collectionIds: [collectionId], monitored });
 
-    // Toggling monitoring can cascade to the collection's movies on the Radarr side,
-    // so drop the movie library (+ search index) along with the collections cache.
-    await invalidateTaggedLibrary('radarr', instanceId);
+    // Ids and folders are the instance's own, so an edit can't point the collection at
+    // a profile, folder or tag that isn't there.
+    const [profiles, folders, tags] = await Promise.all([
+      edit.qualityProfileId !== undefined ? client.getQualityProfiles() : null,
+      edit.rootFolderPath !== undefined ? client.getRootFolders() : null,
+      edit.tags?.length ? client.getTags() : null,
+    ]);
+    if (profiles && !profiles.some((p) => p.id === edit.qualityProfileId)) {
+      return NextResponse.json({ error: 'Unknown quality profile' }, { status: 400 });
+    }
+    if (folders) {
+      const folder = folders.find((f) => sameFolder(f.path, edit.rootFolderPath!));
+      if (!folder) return NextResponse.json({ error: 'rootFolderPath must be one of this instance’s root folders' }, { status: 400 });
+      edit.rootFolderPath = folder.path;
+    }
+    if (tags && !edit.tags!.every((id) => tags.some((t) => t.id === id))) {
+      return NextResponse.json({ error: 'Unknown tag' }, { status: 400 });
+    }
+
+    const { tags: nextTags, ...bulk } = edit;
+    try {
+      if (Object.keys(bulk).length > 0) {
+        await client.updateCollections({ collectionIds: [collectionId], ...bulk });
+      }
+      // Radarr's bulk update has no tags field; the single-collection PUT does.
+      if (nextTags !== undefined) {
+        const current = await client.getCollection(collectionId);
+        await client.updateCollection({ ...current, tags: nextTags });
+      }
+    } finally {
+      // Monitoring can cascade to the collection's movies on the Radarr side, so drop the
+      // movie library (+ search index) along with the collections cache, also after a
+      // tags write that failed once the bulk fields were saved.
+      await invalidateTaggedLibrary('radarr', instanceId);
+    }
 
     logApiDuration('/api/radarr/collections', startedAt, { method: 'PUT' });
-    return NextResponse.json({ ok: true, collectionId, monitored });
+    return NextResponse.json({ ok: true, collectionId, ...edit });
   } catch (error) {
     logApiDuration('/api/radarr/collections', startedAt, { method: 'PUT', failed: true });
     return upstreamErrorResponse(error, 'Failed to update collection');

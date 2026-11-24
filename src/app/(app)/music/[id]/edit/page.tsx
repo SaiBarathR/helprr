@@ -19,6 +19,7 @@ import { Switch } from '@/components/ui/switch';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { TagSelector } from '@/components/media/tag-selector';
+import { FOLDER_NAME_ERROR_ID, FolderNameRow } from '@/components/media/folder-name-row';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -31,7 +32,7 @@ import {
 } from '@/lib/hooks/use-reference-data';
 import { useCan } from '@/components/permission-provider';
 import type { LidarrArtist } from '@/types';
-import { parentPath, pathInRootFolder } from '@/lib/paths';
+import { folderNameError, lastPathSegment, parentPath, pathInRootFolder, sameFolder } from '@/lib/paths';
 
 export default function ArtistEditPage() {
   const { id } = useParams();
@@ -60,6 +61,7 @@ export default function ArtistEditPage() {
   const [metadataProfileId, setMetadataProfileId] = useState<number>(0);
   const [monitorNewItems, setMonitorNewItems] = useState('all');
   const [rootFolder, setRootFolder] = useState('');
+  const [folderName, setFolderName] = useState('');
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   // Without a move Lidarr points the artist at a folder its files are not in.
   const [moveFiles, setMoveFiles] = useState(true);
@@ -75,6 +77,7 @@ export default function ArtistEditPage() {
     setMonitorNewItems(artist.monitorNewItems || 'all');
     setSelectedTags([...artist.tags]);
     setRootFolder(artist.path ? parentPath(artist.path) : '');
+    setFolderName(artist.path ? lastPathSegment(artist.path) : '');
   }
 
   const saveMutation = useMutation({
@@ -101,7 +104,12 @@ export default function ArtistEditPage() {
     },
   });
   const saving = saveMutation.isPending;
-  const movedPath = artist?.path ? pathInRootFolder(artist.path, rootFolder) : null;
+  // A rename keeps the title in its root folder, so it needs one the instance lists:
+  // a title in a sub-folder of one picks a root folder first.
+  const rootListed = rootFolders.some((rf) => sameFolder(rf.path, rootFolder));
+  // The current name is never refused: it is the one Lidarr chose.
+  const folderError = artist?.path && folderName !== lastPathSegment(artist.path) ? folderNameError(folderName, rootFolder) : null;
+  const movedPath = artist?.path && !folderError ? pathInRootFolder(artist.path, rootFolder, folderName) : null;
   const moving = movedPath !== null && moveFiles;
 
   function save() {
@@ -121,6 +129,7 @@ export default function ArtistEditPage() {
   }
 
   function handleSave() {
+    if (folderError) return;
     // Moving files is a disk operation: confirm it first, as the bulk editor does.
     if (moving) setConfirmMove(true);
     else save();
@@ -195,6 +204,9 @@ export default function ArtistEditPage() {
                 </Select>
               </div>
             )}
+            {rootFolders.length > 0 && (
+              <FolderNameRow value={folderName} onChange={setFolderName} error={folderError} disabled={!rootListed} />
+            )}
             {movedPath && (
               <div className="grouped-row">
                 <Label htmlFor="move-files" className="text-sm shrink-0">Move Files</Label>
@@ -202,11 +214,20 @@ export default function ArtistEditPage() {
               </div>
             )}
           </div>
+          {rootFolders.length > 0 && !rootListed && (
+            <p className="px-4 pt-2 text-xs text-muted-foreground">
+              The artist isn’t directly inside a root folder. Pick one to rename its folder.
+            </p>
+          )}
+          {folderError && (
+            <p id={FOLDER_NAME_ERROR_ID} className="px-4 pt-2 text-xs text-destructive">{folderError}</p>
+          )}
           {movedPath && (
             <p className="px-4 pt-2 text-xs text-muted-foreground">
               {moveFiles
                 ? 'Lidarr moves the artist’s files into this folder.'
                 : 'Only the saved path changes; files stay where they are until you move them.'}
+              <span className="mt-1 block break-all">New path: {movedPath}</span>
             </p>
           )}
         </div>
@@ -226,7 +247,7 @@ export default function ArtistEditPage() {
         </div>
 
         <div className="flex gap-3 pt-2">
-          <Button className="flex-1" onClick={handleSave} disabled={saving}>
+          <Button className="flex-1" onClick={handleSave} disabled={saving || folderError !== null}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save Changes
           </Button>
