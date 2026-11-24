@@ -7,6 +7,7 @@ import {
   clearLoginAttempts,
   clearUsernameBackoff,
   enforceGlobalLoginBackstop,
+  enforceLoginWritable,
   recordGlobalLoginFailure,
   enforceMalformedLoginBackstop,
   recordMalformedLoginRequest,
@@ -67,6 +68,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (limited) return limited;
   const globalBackstop = await enforceGlobalLoginBackstop();
   if (globalBackstop) return globalBackstop;
+  // A failure must be countable before the credential is checked (Redis refuses writes at its memory cap).
+  const unwritable = await enforceLoginWritable();
+  if (unwritable) return unwritable;
 
   const rawName = request.headers.get(config.userHeader) ?? '';
   if (!trustedAuthSecretMatches(config, providedSecret)) {

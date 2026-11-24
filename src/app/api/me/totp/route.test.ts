@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
     recordUsernameFailure: vi.fn(),
     clearUsernameBackoff: vi.fn(),
     enforceGlobalLoginBackstop: vi.fn(),
+    enforceLoginWritable: vi.fn(),
     recordGlobalLoginFailure: vi.fn(),
   },
 }));

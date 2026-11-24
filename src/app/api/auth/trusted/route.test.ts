@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
     recordUsernameFailure: vi.fn(),
     clearUsernameBackoff: vi.fn(),
     enforceGlobalLoginBackstop: vi.fn(),
+    enforceLoginWritable: vi.fn(),
     recordGlobalLoginFailure: vi.fn(),
     enforceMalformedLoginBackstop: vi.fn(),
     recordMalformedLoginRequest: vi.fn(),
@@ -171,6 +172,16 @@ describe('trusted-header sign-in', () => {
     expect(mocks.limits.recordGlobalLoginFailure).not.toHaveBeenCalled();
     // Loading the login page some other way spends no sign-in attempts.
     expect(mocks.limits.enforceLoginRateLimit).not.toHaveBeenCalled();
+  });
+
+  it('answers 503 without comparing the secret when Redis refuses writes', async () => {
+    enable();
+    mocks.limits.enforceLoginWritable.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Login service unavailable' }), { status: 503 }));
+    const response = await POST(post({ 'Remote-User': 'Alice', 'X-Helprr-Proxy-Secret': SECRET }));
+    expect(response.status).toBe(503);
+    expectNoSession(response);
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.limits.recordGlobalLoginFailure).not.toHaveBeenCalled();
   });
 
   it('answers 503, not 401, when a wrong secret cannot be counted (and still audits it)', async () => {

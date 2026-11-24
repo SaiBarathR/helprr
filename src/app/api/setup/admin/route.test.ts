@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({ needs: vi.fn(), claim: vi.fn(), session: vi.fn
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (fn: unknown) => fn }));
 vi.mock('@/lib/auth', () => ({ COOKIE_NAME: 'helprr-session', SESSION_DURATION: 3600, createSession: mocks.session }));
 vi.mock('@/lib/login-rate-limit', () => ({
+  enforceLoginWritable: async () => null,
   getClientIp: () => '10.0.0.5',
   enforceLoginRateLimit: mocks.limit,
   enforceGlobalLoginBackstop: mocks.backstop,

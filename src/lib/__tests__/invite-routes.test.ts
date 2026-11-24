@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => {
     },
     // The sign-in throttles: the invite routes must leave them alone.
     login: {
+      enforceLoginWritable: vi.fn(async () => null),
       enforceLoginRateLimit: vi.fn(),
       enforceGlobalLoginBackstop: vi.fn(),
       enforceMalformedLoginBackstop: vi.fn(),

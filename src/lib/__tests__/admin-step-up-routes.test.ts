@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => {
       recordUsernameFailure: vi.fn(),
       clearUsernameBackoff: vi.fn(),
       enforceGlobalLoginBackstop: vi.fn(),
+      enforceLoginWritable: vi.fn(),
       recordGlobalLoginFailure: vi.fn(),
     },
   };
@@ -279,6 +280,14 @@ describe.each(STEPS)('$name, acting admin with two-step sign-in on', ({ run, wri
     const response = await run(body);
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ needsStepUp: true, needsCode: true });
+    expect(mocks.verifyUserPassword).not.toHaveBeenCalled();
+    expectNothingWritten();
+  });
+
+  it('answers 503 without checking the password when Redis refuses writes', async () => {
+    mocks.limits.enforceLoginWritable.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Login service unavailable' }), { status: 503 }));
+    const response = await run({ currentPassword: 'any guess', code: code() });
+    expect(response.status).toBe(503);
     expect(mocks.verifyUserPassword).not.toHaveBeenCalled();
     expectNothingWritten();
   });

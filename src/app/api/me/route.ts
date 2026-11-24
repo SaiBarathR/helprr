@@ -11,6 +11,7 @@ import {
   recordUsernameFailure,
   clearUsernameBackoff,
   enforceGlobalLoginBackstop,
+  enforceLoginWritable,
   recordGlobalLoginFailure,
 } from '@/lib/login-rate-limit';
 import { boundedBodyErrorResponse, readBoundedJson } from '@/lib/server/bounded-body';
@@ -164,6 +165,9 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   if (backoff) return backoff;
   const globalBackstop = await enforceGlobalLoginBackstop();
   if (globalBackstop) return globalBackstop;
+  // A failure must be countable before the credential is checked (Redis refuses writes at its memory cap).
+  const unwritable = await enforceLoginWritable();
+  if (unwritable) return unwritable;
 
   let jellyfin: LinkedJellyfinUser | null = null;
   if (!user.passwordHash) {

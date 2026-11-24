@@ -199,6 +199,28 @@ return {tostring(count), tostring(ttl)}`,
   }
 }
 
+// ─── Write check ──────────────────────────────────────────────────────────────
+
+const LOGIN_WRITE_CHECK_KEY = 'login:write-check';
+
+/**
+ * 503 when Redis refuses writes while it still answers the read checks (at its
+ * memory cap with noeviction), or null. Call after the read checks and before
+ * the password or secret is checked: a failure that cannot be counted must not
+ * be checked at all, or a 503 for a wrong guess and a 200 for the right one
+ * would let guessing go on without a limit. The failure recorders still answer
+ * 503 when Redis fills up between the two.
+ */
+export async function enforceLoginWritable(): Promise<NextResponse | null> {
+  try {
+    const redis = await getRedisClient();
+    await redis.set(LOGIN_WRITE_CHECK_KEY, '1', { PX: LOGIN_WINDOW_MS });
+    return null;
+  } catch {
+    return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+  }
+}
+
 // ─── Per-username exponential backoff (layer 2) ──────────────────────────────
 
 function userKey(username: string): string {

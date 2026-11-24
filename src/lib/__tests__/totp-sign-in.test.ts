@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
     recordUsernameFailure: vi.fn(),
     clearUsernameBackoff: vi.fn(),
     enforceGlobalLoginBackstop: vi.fn(),
+    enforceLoginWritable: vi.fn(),
     recordGlobalLoginFailure: vi.fn(),
     enforceMalformedLoginBackstop: vi.fn(),
     recordMalformedLoginRequest: vi.fn(),
@@ -364,6 +365,8 @@ describe('the code step', () => {
       expect(response.status).toBe(503);
       expect(mocks.createSession).not.toHaveBeenCalled();
       expect(mocks.recordFailedSignIn).toHaveBeenCalled();
+      // The claim is given back even then.
+      expect(mocks.redisDel).toHaveBeenCalledWith(expect.stringMatching(/^login:mfa-used:/));
     },
   );
 

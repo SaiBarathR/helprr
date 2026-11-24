@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   enforceGlobalLoginBackstop: vi.fn(),
   recordUsernameFailure: vi.fn(async () => true),
   recordGlobalLoginFailure: vi.fn(async () => true),
+  enforceLoginWritable: vi.fn(async (): Promise<Response | null> => null),
   clearUsernameBackoff: vi.fn(),
   recordSecurityEvent: vi.fn(),
   recordFailedSignIn: vi.fn(),
@@ -64,6 +65,7 @@ vi.mock('@/lib/db', () => {
   };
 });
 vi.mock('@/lib/login-rate-limit', () => ({
+  enforceLoginWritable: mocks.enforceLoginWritable,
   getClientIp: () => '10.0.0.5',
   enforceLoginRateLimit: mocks.enforceLoginRateLimit,
   enforceUsernameBackoff: mocks.enforceUsernameBackoff,
@@ -199,6 +201,14 @@ describe('DELETE /api/me', () => {
     expect(mocks.userDelete).toHaveBeenCalledTimes(1);
     expect(mocks.userDelete).toHaveBeenCalledWith({ where: { id: 'user-1' } });
     expect(mocks.userUpdateMany.mock.calls[0][0].where.id).toBe('user-1');
+  });
+
+  it('answers 503 without checking the password when Redis refuses writes', async () => {
+    mocks.enforceLoginWritable.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Login service unavailable' }), { status: 503 }));
+    const res = await del({ currentPassword: 'any guess' });
+    expect(res.status).toBe(503);
+    expect(mocks.verifyUserPassword).not.toHaveBeenCalled();
+    expect(mocks.userDelete).not.toHaveBeenCalled();
   });
 
   it('refuses a wrong password with 403 and counts it like a failed sign-in', async () => {

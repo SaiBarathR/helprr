@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   clearJellyfinToken: vi.fn(),
   recordUsernameFailure: vi.fn(async () => true),
   recordGlobalLoginFailure: vi.fn(async () => true),
+  enforceLoginWritable: vi.fn(async (): Promise<Response | null> => null),
   readJellyfinToken: vi.fn(),
   refreshRecommendations: vi.fn(),
 }));
@@ -30,6 +31,7 @@ vi.mock('@/lib/jellyfin-token', () => ({
   readJellyfinToken: mocks.readJellyfinToken,
 }));
 vi.mock('@/lib/login-rate-limit', () => ({
+  enforceLoginWritable: mocks.enforceLoginWritable,
   getClientIp: () => '10.0.0.1',
   enforceLoginRateLimit: vi.fn().mockResolvedValue(null),
   clearLoginAttempts: vi.fn().mockResolvedValue(undefined),
@@ -145,6 +147,13 @@ describe('POST /api/account/jellyfin/link', () => {
     expect(res.status).toBe(409);
     expect(mocks.storeJellyfinToken).not.toHaveBeenCalled();
     expect(mocks.refreshRecommendations).not.toHaveBeenCalled();
+  });
+
+  it('answers 503 without asking Jellyfin when Redis refuses writes', async () => {
+    signedInAs('jf-sai');
+    mocks.enforceLoginWritable.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Login service unavailable' }), { status: 503 }));
+    expect((await POST(request())).status).toBe(503);
+    expect(mocks.authenticateByName).not.toHaveBeenCalled();
   });
 
   it('maps a bad Jellyfin password to 401 and records the failure', async () => {

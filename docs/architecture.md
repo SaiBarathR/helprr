@@ -1044,10 +1044,13 @@ Compose caps Redis at 256 MB with `maxmemory-policy noeviction` (Helprr itself
 uses tens of MB). Past the cap Redis refuses writes rather than evicting keys,
 because the login, two-step and replay limits live in Redis beside the caches
 and must not be dropped; those checks fail closed when a write fails. Because Redis can
-refuse writes while it still answers reads, a failed sign-in or password confirmation that
-the username backoff or the global backstop cannot record answers 503 rather than the usual
-401 or 403 (`recordUsernameFailure` and `recordGlobalLoginFailure` report whether they wrote),
-so guessing cannot go on uncounted.
+refuse writes while it still answers reads, every route that checks a password or the
+trusted-header secret first makes one write (`enforceLoginWritable`, after the read checks)
+and answers 503 without checking the credential when Redis refuses it: a 503 only for wrong
+guesses would otherwise let guessing go on uncounted. Two-step codes get the same from
+`startMfaAttempt`'s count. As a backstop, a failure the username backoff or the global
+backstop cannot record still answers 503 rather than 401 or 403 (`recordUsernameFailure`
+and `recordGlobalLoginFailure` report whether they wrote).
 
 ## Interactive search grabs (Sonarr/Radarr)
 

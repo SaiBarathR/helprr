@@ -32,6 +32,7 @@ vi.mock('@/lib/auth', async () => {
   };
 });
 vi.mock('@/lib/login-rate-limit', () => ({
+  enforceLoginWritable: async () => null,
   getClientIp: () => undefined,
   enforceLoginRateLimit: async () => null,
   clearLoginAttempts: async () => undefined,

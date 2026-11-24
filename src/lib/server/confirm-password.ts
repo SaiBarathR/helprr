@@ -11,6 +11,7 @@ import {
   recordUsernameFailure,
   clearUsernameBackoff,
   enforceGlobalLoginBackstop,
+  enforceLoginWritable,
   recordGlobalLoginFailure,
 } from '@/lib/login-rate-limit';
 import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
@@ -48,6 +49,9 @@ export async function confirmCurrentPassword(
   if (backoff) return backoff;
   const globalBackstop = await enforceGlobalLoginBackstop();
   if (globalBackstop) return globalBackstop;
+  // A failure must be countable before the credential is checked (Redis refuses writes at its memory cap).
+  const unwritable = await enforceLoginWritable();
+  if (unwritable) return unwritable;
 
   if (!(await verifyUserPassword(user, currentPassword))) {
     const counted = [await recordUsernameFailure(user.username, currentPassword), await recordGlobalLoginFailure()];

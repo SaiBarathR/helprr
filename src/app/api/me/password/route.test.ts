@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   enforceGlobalLoginBackstop: vi.fn(),
   recordUsernameFailure: vi.fn(async () => true),
   recordGlobalLoginFailure: vi.fn(async () => true),
+  enforceLoginWritable: vi.fn(async (): Promise<Response | null> => null),
   clearUsernameBackoff: vi.fn(),
 }));
 
@@ -35,6 +36,7 @@ vi.mock('@/lib/db', () => {
   return { prisma: { $transaction: (fn: (t: typeof tx) => unknown) => fn(tx) } };
 });
 vi.mock('@/lib/login-rate-limit', () => ({
+  enforceLoginWritable: mocks.enforceLoginWritable,
   getClientIp: () => '10.0.0.5',
   enforceLoginRateLimit: mocks.enforceLoginRateLimit,
   enforceUsernameBackoff: mocks.enforceUsernameBackoff,
@@ -124,6 +126,14 @@ describe('POST /api/me/password', () => {
     // A password change ends every personal API token too.
     expect(mocks.apiTokenDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
     expect(mocks.enforceLoginRateLimit).toHaveBeenCalledWith('10.0.0.5');
+  });
+
+  it('answers 503 without checking the current password when Redis refuses writes', async () => {
+    mocks.enforceLoginWritable.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Login service unavailable' }), { status: 503 }));
+    const res = await post({ currentPassword: 'any guess', newPassword: NEXT });
+    expect(res.status).toBe(503);
+    expect(mocks.verifyUserPassword).not.toHaveBeenCalled();
+    expect(mocks.userUpdateMany).not.toHaveBeenCalled();
   });
 
   it('refuses a wrong current password with 403 and counts it like a failed sign-in', async () => {
