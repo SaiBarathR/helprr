@@ -146,6 +146,25 @@ describe('torrent lists', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expectNoPasskey(body);
-    expect(JSON.stringify(body)).not.toContain('tracker.invalid');
+    // The Tracker filter gets the current tracker's host name, nothing of its URL.
+    expect(JSON.stringify(body)).not.toContain('https://tracker.invalid');
+    expect(JSON.stringify(body)).not.toContain('/announce');
+    if (query !== '?view=counters') {
+      expect((body.torrents ?? body.changed)[0].tracker_host).toBe('tracker.invalid');
+    }
+  });
+
+  it.each([
+    [`https://user:secret@Tracker.Invalid:8443/${KEY}/announce?passkey=${QUERY_KEY}`, 'tracker.invalid'],
+    [`udp://Tracker.Invalid:1337/announce`, 'tracker.invalid'],
+    ['', ''],
+    ['not a url', ''],
+  ])('names the tracker of %j by host only', async (tracker, host) => {
+    mocks.client.getTorrents.mockResolvedValue([{ ...torrentInfo, tracker }]);
+    const body = await (await getSummary(new NextRequest('http://localhost/api/qbittorrent/summary'))).json();
+    expect(body.torrents[0].tracker_host).toBe(host);
+    expectNoPasskey(body);
+    expect(JSON.stringify(body)).not.toContain('secret');
+    expect(JSON.stringify(body)).not.toContain('8443');
   });
 });

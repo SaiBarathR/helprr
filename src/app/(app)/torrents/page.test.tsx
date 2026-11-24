@@ -60,6 +60,11 @@ vi.mock('@/components/ui/responsive-menu', () => ({
   ResponsiveMenuCheckboxItem: ({ children, checked, onCheckedChange }: { children: React.ReactNode; checked: boolean; onCheckedChange: () => void }) => (
     <button type="button" role="menuitemcheckbox" aria-checked={checked} onClick={onCheckedChange}>{children}</button>
   ),
+  ResponsiveMenuLabel: ({ children }: { children: React.ReactNode }) => <div role="presentation">{children}</div>,
+  ResponsiveMenuSeparator: () => <hr />,
+  ResponsiveMenuActionItem: ({ children, onSelect }: { children: React.ReactNode; onSelect: () => void }) => (
+    <button type="button" role="menuitem" onClick={onSelect}>{children}</button>
+  ),
   ResponsiveMenuSortDirection: ({ value, onChange }: { value: 'asc' | 'desc'; onChange: (dir: 'asc' | 'desc') => void }) => (
     <div role="group" aria-label="Sort direction">
       <button type="button" aria-pressed={value === 'asc'} onClick={() => onChange('asc')}>Ascending</button>
@@ -100,6 +105,12 @@ vi.mock('@/lib/store', async () => {
     hasHydrated: true,
     torrentsFilter: [],
     setTorrentsFilter: (torrentsFilter: string[]) => set({ torrentsFilter }),
+    torrentsCategoryFilter: [],
+    setTorrentsCategoryFilter: (torrentsCategoryFilter: string[]) => set({ torrentsCategoryFilter }),
+    torrentsTagFilter: [],
+    setTorrentsTagFilter: (torrentsTagFilter: string[]) => set({ torrentsTagFilter }),
+    torrentsTrackerFilter: [],
+    setTorrentsTrackerFilter: (torrentsTrackerFilter: string[]) => set({ torrentsTrackerFilter }),
     torrentsSortKey: 'name',
     setTorrentsSortKey: (torrentsSortKey: string) => set({ torrentsSortKey }),
     torrentsSortDir: 'asc',
@@ -144,7 +155,7 @@ beforeEach(() => {
   mocks.action = () => Response.json({ success: true });
   window.sessionStorage.clear();
   resetRouteViewStateForTests();
-  useUIStore.setState({ torrentsFilter: [], torrentsSortKey: 'name', torrentsSortDir: 'asc', torrentsView: 'auto' });
+  useUIStore.setState({ torrentsFilter: [], torrentsCategoryFilter: [], torrentsTagFilter: [], torrentsTrackerFilter: [], torrentsSortKey: 'name', torrentsSortDir: 'asc', torrentsView: 'auto' });
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   vi.stubGlobal('ResizeObserver', ResizeObserverStub);
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
@@ -311,6 +322,58 @@ describe('torrents page (characterization)', () => {
     expect(useUIStore.getState().torrentsFilter).toEqual([]);
   });
 
+  it('filters by category, tag and tracker, names each pick, and keeps it in the store', async () => {
+    mocks.summary = () => full([
+      { ...ALPHA, tags: 'hevc, private', tracker_host: 'tracker.one.invalid' },
+      { ...BRAVO, category: 'tv', tags: 'hevc', tracker_host: 'tracker.two.invalid' },
+      { ...CHARLIE, tracker_host: '' },
+    ]);
+    const { user } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    const menu = screen.getAllByRole('menu')[0];
+    // Each group lists what the torrents have, "none" first.
+    expect(within(menu).getAllByRole('menuitemcheckbox').map((item) => item.textContent)).toEqual(expect.arrayContaining([
+      'No category', 'radarr', 'tv', 'No tag', 'hevc', 'private', 'No tracker', 'tracker.one.invalid', 'tracker.two.invalid',
+    ]));
+
+    await user.click(within(menu).getByRole('menuitemcheckbox', { name: 'hevc' }));
+    await waitFor(() => expect(names()).toEqual(['Alpha.Movie', 'Bravo.Show']));
+    await user.click(within(menu).getByRole('menuitemcheckbox', { name: 'tracker.two.invalid' }));
+    await waitFor(() => expect(names()).toEqual(['Bravo.Show']));
+    expect(useUIStore.getState()).toEqual(expect.objectContaining({
+      torrentsTagFilter: ['hevc'], torrentsTrackerFilter: ['tracker.two.invalid'], torrentsCategoryFilter: [],
+    }));
+    const active = screen.getByRole('region', { name: 'Active filters' });
+    expect(within(active).getByText('Tag: hevc')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Filter: Tag: hevc, Tracker: tracker\.two\.invalid/ })).toBeTruthy();
+    // Category, tag and tracker filter the loaded list; only a status goes to qBittorrent.
+    expect(mocks.asked.every((path) => !/tag|tracker|category/.test(path))).toBe(true);
+
+    await user.click(within(active).getByRole('button', { name: 'Remove Tracker: tracker.two.invalid filter' }));
+    await waitFor(() => expect(names()).toEqual(['Alpha.Movie', 'Bravo.Show']));
+    await user.click(within(menu).getByRole('menuitemcheckbox', { name: 'No category' }));
+    expect(await screen.findByText('No torrents match the active filters.')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Clear search & filters' }));
+    await waitFor(() => expect(names()).toHaveLength(3));
+    expect(useUIStore.getState()).toEqual(expect.objectContaining({
+      torrentsTagFilter: [], torrentsTrackerFilter: [], torrentsCategoryFilter: [],
+    }));
+  });
+
+  it('offers the stalled, errored, checking, moving, inactive and running filters', async () => {
+    mocks.summary = () => full([ALPHA, { ...BRAVO, state: 'missingFiles' }, { ...CHARLIE, state: 'stalledDL' }]);
+    const { user } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    for (const label of ['Running', 'Inactive', 'Checking', 'Moving']) {
+      expect(screen.getByRole('menuitemcheckbox', { name: label })).toBeTruthy();
+    }
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Errored' }));
+    await waitFor(() => expect(names()).toEqual(['Bravo.Show']));
+    expect(mocks.asked).toContain('/api/qbittorrent/summary?filter=errored&view=delta');
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Stalled' }));
+    await waitFor(() => expect(names()).toEqual(['Bravo.Show', 'Charlie']));
+  });
+
   it('sorts from the menu: a new key takes its natural direction, and the direction control reverses it', async () => {
     const { user } = renderPage();
     await waitFor(() => expect(names()).toHaveLength(3));
@@ -364,6 +427,78 @@ describe('torrents page (characterization)', () => {
     expect(mocks.push).toHaveBeenCalledWith('/torrents/speed-limits');
     await user.click(screen.getByRole('button', { name: 'Clear' }));
     expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
+  });
+
+  it('rechecks, reannounces and sets the category of the selection at once', async () => {
+    const { user } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    const select = async () => {
+      await user.click(screen.getByRole('checkbox', { name: 'Select Alpha.Movie' }));
+      await user.click(screen.getByRole('checkbox', { name: 'Select Charlie' }));
+    };
+    const more = () => screen.getByRole('button', { name: 'More actions' }).nextElementSibling as HTMLElement;
+
+    await select();
+    await user.click(within(more()).getByRole('menuitem', { name: 'Recheck' }));
+    await waitFor(() => expect(posted()).toEqual([{ hash: 'aaa|ccc', action: 'recheck' }]));
+    expect(mocks.toast.success).toHaveBeenCalledWith('recheck 2 torrents');
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull());
+
+    await select();
+    await user.click(within(more()).getByRole('menuitem', { name: 'Reannounce' }));
+    await waitFor(() => expect(posted()).toContainEqual({ hash: 'aaa|ccc', action: 'reannounce' }));
+    expect(mocks.toast.success).toHaveBeenCalledWith('reannounce 2 torrents');
+
+    await select();
+    await user.click(within(more()).getByRole('menuitem', { name: 'Set Category' }));
+    const drawer = screen.getByRole('dialog');
+    expect(within(drawer).getByRole('heading', { name: 'Set Category for 2 torrents' })).toBeTruthy();
+    await user.click(await within(drawer).findByRole('button', { name: /^tv/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(posted()).toContainEqual({ hash: 'aaa|ccc', action: 'setCategory', category: 'tv' });
+    expect(mocks.toast.success).toHaveBeenCalledWith('set category for 2 torrents');
+    expect(mocks.toast.success).not.toHaveBeenCalledWith('Category set');
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull());
+    for (const name of ['Alpha.Movie', 'Charlie']) {
+      expect(within(screen.getByRole('button', { name }).closest('.px-3')! as HTMLElement).getByText('tv')).toBeTruthy();
+    }
+  });
+
+  it('sets the category of the torrents the drawer opened on, even when a poll drops one from the selection', async () => {
+    const { user, client } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Alpha.Movie' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Charlie' }));
+    await user.click(within(screen.getByRole('button', { name: 'More actions' }).nextElementSibling as HTMLElement)
+      .getByRole('menuitem', { name: 'Set Category' }));
+    const drawer = screen.getByRole('dialog');
+    expect(within(drawer).getByRole('heading', { name: 'Set Category for 2 torrents' })).toBeTruthy();
+    mocks.summary = () => full([ALPHA, BRAVO]);
+    await act(() => client.refetchQueries({ queryKey: ['torrents'] }));
+    await waitFor(() => expect(names()).toEqual(['Alpha.Movie', 'Bravo.Show']));
+    await user.click(await within(drawer).findByRole('button', { name: /^tv/ }));
+    await waitFor(() => expect(posted()).toEqual([{ hash: 'aaa|ccc', action: 'setCategory', category: 'tv' }]));
+    expect(mocks.toast.success).toHaveBeenCalledWith('set category for 2 torrents');
+  });
+
+  it('keeps the selection and says so when a bulk action fails', async () => {
+    mocks.action = () => Response.json({ error: 'qBittorrent said no' }, { status: 502 });
+    const { user } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Bravo.Show' }));
+    await user.click(within(screen.getByRole('button', { name: 'More actions' }).nextElementSibling as HTMLElement)
+      .getByRole('menuitem', { name: 'Reannounce' }));
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith('Failed to reannounce 1 torrent'));
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeTruthy();
+  });
+
+  it('offers the more bulk actions only to those who may manage torrents', async () => {
+    mocks.caps = new Set(['torrents.delete']);
+    const { user } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Bravo.Show' }));
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
   });
 
   it('hands the selection to the location, tags and queue page', async () => {

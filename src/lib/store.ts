@@ -115,7 +115,10 @@ export interface AnimeFiltersState {
   status: string;
 }
 
-const TORRENTS_FILTERS = ['all', 'downloading', 'seeding', 'completed', 'paused', 'active'] as const;
+const TORRENTS_FILTERS = [
+  'all', 'downloading', 'seeding', 'completed', 'paused', 'active',
+  'running', 'inactive', 'stalled', 'checking', 'moving', 'errored',
+] as const;
 export type TorrentsFilterPreference = (typeof TORRENTS_FILTERS)[number];
 const TORRENTS_SORT_KEYS = [
   'name',
@@ -271,7 +274,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 55;
+export const STORE_VERSION = 56;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -633,6 +636,13 @@ interface UIState {
   // Torrents preferences
   torrentsFilter: TorrentsFilterPreference[];
   setTorrentsFilter: (filter: TorrentsFilterPreference[]) => void;
+  // Category, tag and tracker host names; '' is "none" (see matchesTorrentFacets).
+  torrentsCategoryFilter: string[];
+  setTorrentsCategoryFilter: (filter: string[]) => void;
+  torrentsTagFilter: string[];
+  setTorrentsTagFilter: (filter: string[]) => void;
+  torrentsTrackerFilter: string[];
+  setTorrentsTrackerFilter: (filter: string[]) => void;
   torrentsSortKey: TorrentsSortKeyPreference;
   setTorrentsSortKey: (sortKey: TorrentsSortKeyPreference) => void;
   torrentsSortDir: TorrentsSortDirectionPreference;
@@ -814,6 +824,9 @@ const PERSISTED_KEYS = [
   'animeFilters',
   'randomFilters',
   'torrentsFilter',
+  'torrentsCategoryFilter',
+  'torrentsTagFilter',
+  'torrentsTrackerFilter',
   'torrentsSortKey',
   'torrentsSortDir',
   'torrentsView',
@@ -948,6 +961,10 @@ const PERSISTED_CHOICE_LISTS: Partial<Record<PersistedKey, readonly unknown[]>> 
   requestsTypeFilter: ['movie', 'tv'],
 };
 
+// Lists of names the user's own data defines (qBittorrent categories, tags,
+// tracker hosts): any strings, nothing else.
+const STRING_LIST_KEYS: ReadonlySet<string> = new Set(['torrentsCategoryFilter', 'torrentsTagFilter', 'torrentsTrackerFilter']);
+
 // Percentages: a number in 0–100, rounded. One outside it is not a value the
 // sliders make, so the default stays rather than a clamped guess.
 const PERCENT_KEYS: ReadonlySet<string> = new Set(['glassIntensity', 'calendarImageOpacity']);
@@ -970,6 +987,7 @@ function usablePersistedValue(key: PersistedKey, value: unknown, fallback: unkno
   if (choices) return choices.includes(value) ? value : UNUSABLE;
   const listChoices = PERSISTED_CHOICE_LISTS[key];
   if (listChoices) return Array.isArray(value) ? value.filter((entry) => listChoices.includes(entry)) : UNUSABLE;
+  if (STRING_LIST_KEYS.has(key)) return Array.isArray(value) ? value.filter((entry) => typeof entry === 'string') : UNUSABLE;
   if (VISIBLE_FIELDS_KEYS.has(key)) return isVisibleFieldsByMode(value) ? value : UNUSABLE;
   if (key === 'searchHistory') return isSearchHistoryMap(value) ? value : UNUSABLE;
   if (PERCENT_KEYS.has(key)) {
@@ -1114,6 +1132,12 @@ export const useUIStore = create<UIState>()(
       // Torrents
       torrentsFilter: [],
       setTorrentsFilter: (filter) => set({ torrentsFilter: filter }),
+      torrentsCategoryFilter: [],
+      setTorrentsCategoryFilter: (filter) => set({ torrentsCategoryFilter: filter }),
+      torrentsTagFilter: [],
+      setTorrentsTagFilter: (filter) => set({ torrentsTagFilter: filter }),
+      torrentsTrackerFilter: [],
+      setTorrentsTrackerFilter: (filter) => set({ torrentsTrackerFilter: filter }),
       torrentsSortKey: 'added_on',
       setTorrentsSortKey: (sortKey) => set({ torrentsSortKey: sortKey }),
       torrentsSortDir: 'desc',

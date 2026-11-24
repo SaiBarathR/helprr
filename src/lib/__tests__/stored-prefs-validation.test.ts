@@ -65,6 +65,19 @@ describe('stored view, sort and filter preferences', () => {
     expect(state.requestsTypeFilter).toEqual(['tv']);
   });
 
+  it('keeps the new status filters, and the category, tag and tracker picks as names only', async () => {
+    const state = await loadStored({
+      torrentsFilter: ['stalled', 'errored', 'running', 'inactive', 'checking', 'moving'],
+      torrentsCategoryFilter: ['anime', '', 3, null],
+      torrentsTagFilter: 'hevc',
+      torrentsTrackerFilter: [{ host: 'x' }, 'tracker.invalid'],
+    });
+    expect(state.torrentsFilter).toEqual(['stalled', 'errored', 'running', 'inactive', 'checking', 'moving']);
+    expect(state.torrentsCategoryFilter).toEqual(['anime', '']);
+    expect(state.torrentsTagFilter).toEqual([]);
+    expect(state.torrentsTrackerFilter).toEqual(['tracker.invalid']);
+  });
+
   it('keeps a value of the right kind, drops one of the wrong kind, and loads no unpersisted keys', async () => {
     const state = await loadStored({
       moviesInstanceFilter: 'abc', calendarShowImages: 'yes', moviesVisibleFields: { posters: 'title' },

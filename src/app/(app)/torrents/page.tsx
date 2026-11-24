@@ -8,7 +8,7 @@ import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { ActiveFilterBar, multiSelectFilters, searchFilter } from '@/components/ui/active-filter-bar';
+import { ActiveFilterBar, multiSelectFilters, searchFilter, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { reportBulkTorrent } from '@/lib/bulk-fan-out';
@@ -25,20 +25,24 @@ import {
   OPTIMISTIC_OVERRIDE_FIELD,
   OPTIMISTIC_ROW_PATCHES,
   OPTIMISTIC_STATE_TTL_MS,
+  TORRENT_FACETS,
   TORRENT_ROW_HEIGHT,
   compareTorrents,
   filterOptions,
+  matchesTorrentFacets,
   matchesTorrentFilter,
   torrentActionMessage,
+  torrentFacetOptions,
+  type TorrentFacetFilters,
 } from './_components/torrent-list';
 import { TorrentRow } from './_components/torrent-row';
 import { useTorrentsSummary } from './_components/use-torrents-summary';
 import { useTorrentTable } from './_components/use-torrent-table';
-import { TorrentsToolbar } from './_components/torrents-toolbar';
+import { TorrentsToolbar, type TorrentFacetGroup } from './_components/torrents-toolbar';
 import { TorrentsBulkBar } from './_components/torrents-bulk-bar';
 import { TorrentDetailDrawer, type TorrentDetailData } from './_components/torrent-detail-drawer';
 import { TorrentDeleteDrawer } from './_components/torrent-delete-drawer';
-import { TorrentCategoryDrawer } from './_components/torrent-category-drawer';
+import { TorrentCategoryDrawer, type CategoryDrawerState } from './_components/torrent-category-drawer';
 import { PageTitle } from '@/components/layout/page-title';
 
 
@@ -56,6 +60,16 @@ export default function TorrentsPage() {
   const hasHydrated = useUIStore((s) => s.hasHydrated);
   const filter = useUIStore((s) => s.torrentsFilter);
   const setFilter = useUIStore((s) => s.setTorrentsFilter);
+  const categoryFilter = useUIStore((s) => s.torrentsCategoryFilter);
+  const setCategoryFilter = useUIStore((s) => s.setTorrentsCategoryFilter);
+  const tagFilter = useUIStore((s) => s.torrentsTagFilter);
+  const setTagFilter = useUIStore((s) => s.setTorrentsTagFilter);
+  const trackerFilter = useUIStore((s) => s.torrentsTrackerFilter);
+  const setTrackerFilter = useUIStore((s) => s.setTorrentsTrackerFilter);
+  const facetFilters = useMemo<TorrentFacetFilters>(
+    () => ({ categories: categoryFilter, tags: tagFilter, trackers: trackerFilter }),
+    [categoryFilter, tagFilter, trackerFilter],
+  );
   const sortKey = useUIStore((s) => s.torrentsSortKey);
   const setSortKey = useUIStore((s) => s.setTorrentsSortKey);
   const sortDir = useUIStore((s) => s.torrentsSortDir);
@@ -90,7 +104,7 @@ export default function TorrentsPage() {
   const [deleting, setDeleting] = useState(false);
 
   // Category drawer
-  const [categoryDrawer, setCategoryDrawer] = useState<{ open: boolean; hash: string }>({ open: false, hash: '' });
+  const [categoryDrawer, setCategoryDrawer] = useState<CategoryDrawerState>({ open: false, hash: '' });
   const [categories, setCategories] = useState<Record<string, { name: string; savePath: string }>>({});
   const [categoriesLoading, setCategoriesLoading] = useState(false);
 
@@ -169,7 +183,7 @@ export default function TorrentsPage() {
       window.removeEventListener('resize', measure);
     };
     // isTableView: switching views remounts the measured node, so re-attach.
-  }, [selectedTorrents.size, loading, error, torrents.length, search, filter, isTableView]);
+  }, [selectedTorrents.size, loading, error, torrents.length, search, filter, facetFilters, isTableView]);
 
   const torrentAction = useCallback(async (
     hash: string,
@@ -252,10 +266,12 @@ export default function TorrentsPage() {
     }
   }, [refetchSummary, pendingDeleteRef, pendingFieldRef, setTorrents, torrentsRef]);
 
-  const bulkAction = useCallback(async (action: string, extra?: Record<string, unknown>): Promise<boolean> => {
-    if (selectedTorrents.size === 0) return false;
-    const count = selectedTorrents.size;
-    const hashes = Array.from(selectedTorrents).join('|');
+  // `targets`: the torrents a drawer opened on, which a poll pruning the selection must not change.
+  const bulkAction = useCallback(async (action: string, extra?: Record<string, unknown>, targets?: string[]): Promise<boolean> => {
+    const list = targets ?? Array.from(selectedTorrents);
+    if (list.length === 0) return false;
+    const count = list.length;
+    const hashes = list.join('|');
     const verb = torrentActionMessage(action, 'bulk');
     const ok = (await torrentAction(hashes, action, extra, { silent: true })) !== false;
     if (ok) {
@@ -314,8 +330,8 @@ export default function TorrentsPage() {
     setDeleteDrawer({ open: true, hash, name, deleteFiles });
   }, []);
 
-  const openCategoryDrawer = useCallback(async (hash: string) => {
-    setCategoryDrawer({ open: true, hash });
+  const openCategoryDrawer = useCallback(async (hash: string, bulk?: boolean) => {
+    setCategoryDrawer({ open: true, hash, bulk });
     setCategoriesLoading(true);
     try {
       // Fetch categories via a dedicated endpoint call
@@ -334,6 +350,17 @@ export default function TorrentsPage() {
       setCategoriesLoading(false);
     }
   }, [torrents]);
+
+  const openBulkCategory = useCallback(() => {
+    void openCategoryDrawer(Array.from(selectedTorrents).join('|'), true);
+  }, [openCategoryDrawer, selectedTorrents]);
+
+  // A pick from the selection goes as one bulk action: one toast, and the selection clears.
+  const pickCategory = useCallback((category: string) => (
+    categoryDrawer.bulk
+      ? bulkAction('setCategory', { category }, categoryDrawer.hash.split('|'))
+      : torrentAction(categoryDrawer.hash, 'setCategory', { category })
+  ), [bulkAction, categoryDrawer.bulk, categoryDrawer.hash, torrentAction]);
 
   // Renaming and bulk limits are pages, not drawers: their text fields would
   // bring up the on-screen keyboard, which pushes a drawer out of view on iOS.
@@ -386,12 +413,15 @@ export default function TorrentsPage() {
     if (filter.length > 0) {
       filtered = filtered.filter((t) => filter.some((f) => matchesTorrentFilter(t, f)));
     }
+    if (facetFilters.categories.length > 0 || facetFilters.tags.length > 0 || facetFilters.trackers.length > 0) {
+      filtered = filtered.filter((t) => matchesTorrentFacets(t, facetFilters));
+    }
     filtered.sort((a, b) => {
       const cmp = compareTorrents(a, b, sortKey);
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return filtered;
-  }, [search, torrents, filter, sortKey, sortDir]);
+  }, [search, torrents, filter, facetFilters, sortKey, sortDir]);
 
   // Cards stay window-virtualized; the table paginates instead (DataTable).
   const useVirtualization = !loading && filteredTorrents.length > 0 && !isTableView;
@@ -428,12 +458,34 @@ export default function TorrentsPage() {
     [torrents]
   );
 
+  // Category, tag and tracker choices come from the torrents loaded.
+  const facetOptions = useMemo(() => torrentFacetOptions(torrents, facetFilters), [torrents, facetFilters]);
+  const facetSetters = { categories: setCategoryFilter, tags: setTagFilter, trackers: setTrackerFilter };
+  const facetGroups: TorrentFacetGroup[] = TORRENT_FACETS.map((facet) => ({
+    key: facet.key,
+    title: facet.title,
+    options: facetOptions[facet.key].map((value) => ({ value, label: value || facet.none })),
+    selected: [...facetFilters[facet.key]],
+    onChange: facetSetters[facet.key],
+  }));
+
   // The filter menu's choices, named so a filtered list is never mistaken for
   // every torrent. The search box is a filter too, but shows itself.
-  const menuFilters = multiSelectFilters(filter, filterOptions, (next) => setFilter(next as typeof filter));
+  const menuFilters: ActiveFilter[] = [
+    ...multiSelectFilters(filter, filterOptions, (next) => setFilter(next as typeof filter)),
+    ...TORRENT_FACETS.flatMap((facet) => facetFilters[facet.key].map((value) => ({
+      id: `${facet.key}:${value}`,
+      label: value ? `${facet.title}: ${value}` : facet.none,
+      onRemove: () => facetSetters[facet.key](facetFilters[facet.key].filter((other) => other !== value)),
+    }))),
+  ];
+  const hasMenuFilters = menuFilters.length > 0;
   const activeFilters = [...menuFilters, ...searchFilter(search, () => setSearch(''))];
   const clearFilters = () => {
     setFilter([]);
+    setCategoryFilter([]);
+    setTagFilter([]);
+    setTrackerFilter([]);
     setSearch('');
   };
 
@@ -485,6 +537,7 @@ export default function TorrentsPage() {
         menuFilters={menuFilters}
         filter={filter}
         setFilter={setFilter}
+        facetGroups={facetGroups}
         sortKey={sortKey}
         sortDir={sortDir}
         setSortDir={setSortDir}
@@ -513,6 +566,7 @@ export default function TorrentsPage() {
           canBandwidthTorrents={canBandwidthTorrents}
           openBulkSpeedLimits={openBulkSpeedLimits}
           openOrganize={openOrganize}
+          openBulkCategory={openBulkCategory}
           canDeleteTorrents={canDeleteTorrents}
           setDeleteDrawer={setDeleteDrawer}
           setSelectedTorrents={setSelectedTorrents}
@@ -539,22 +593,19 @@ export default function TorrentsPage() {
       ) : filteredTorrents.length === 0 ? (
         <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
           {/* A filtered-out list must not read like an empty client. */}
-          <p>{torrentsEmptyMessage(search.trim().length > 0, filter.length > 0)}</p>
-          {(search.trim() || filter.length > 0) && (
+          <p>{torrentsEmptyMessage(search.trim().length > 0, hasMenuFilters)}</p>
+          {(search.trim() || hasMenuFilters) && (
             <Button
               variant="outline"
               size="sm"
               className="mt-3"
-              onClick={() => {
-                setSearch('');
-                setFilter([]);
-              }}
+              onClick={clearFilters}
             >
               Clear search & filters
             </Button>
           )}
           {/* An empty client: point at the toolbar's Add for those who may add. */}
-          {!search.trim() && filter.length === 0 && canAddTorrents && (
+          {!search.trim() && !hasMenuFilters && canAddTorrents && (
             <Button variant="outline" size="sm" className="mt-3" onClick={() => router.push('/torrents/add')}>
               Add torrent
             </Button>
@@ -593,7 +644,7 @@ export default function TorrentsPage() {
               sortDir={sortDir}
               onSort={(key) => handleHeaderSort(key as SortKey)}
               wrapRow={wrapTableRow}
-              resetPageKey={`${search}|${filter.join(',')}|${sortKey}|${sortDir}`}
+              resetPageKey={JSON.stringify([search, filter, facetFilters, sortKey, sortDir])}
               stickyHeader
             />
           ) : (
@@ -654,7 +705,7 @@ export default function TorrentsPage() {
         setCategoryDrawer={setCategoryDrawer}
         categoriesLoading={categoriesLoading}
         categories={categories}
-        torrentAction={torrentAction}
+        pickCategory={pickCategory}
       />
 
     </div>

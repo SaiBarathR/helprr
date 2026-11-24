@@ -1058,7 +1058,9 @@ settings (host, port, user name).
 qBittorrent's announce URLs carry a private tracker's passkey, in the path or the
 query, and so does each `tr=` of a torrent's magnet. The torrent lists
 (`/api/qbittorrent`, its summary and delta, and the caches behind them) are
-built field by field without `magnet_uri` or `tracker`. The details route gives an
+built field by field without `magnet_uri` or `tracker`; for the Tracker filter they
+carry only the current tracker's host name (`tracker_host`: no scheme, port, user
+info, path or query). The details route gives an
 admin qBittorrent's tracker list and magnet as they are; anyone else gets
 each tracker's `scheme://host[:port]` (DHT, PeX and LSD as named), its status,
 tier and counts, its message with URLs cut to their origin and any piece of the
