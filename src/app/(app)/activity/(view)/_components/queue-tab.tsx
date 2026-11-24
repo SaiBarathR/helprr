@@ -980,7 +980,8 @@ export function QueueTab({
             <Button
               variant="secondary"
               className="h-11 max-sm:w-11 max-sm:px-0"
-              disabled={bulkGrabbing}
+              // One bulk action at a time: a removal racing a grab would blur both outcomes.
+              disabled={bulkGrabbing || removing}
               onClick={() => void grabSelected()}
               aria-label={`Grab ${releasesLabel(selectedPending.length)} now`}
             >
@@ -991,7 +992,7 @@ export function QueueTab({
           <Button
             variant="destructive"
             className={cn('h-11', selectedPending.length > 0 && 'max-sm:w-11 max-sm:px-0')}
-            disabled={selectedGroups.length === 0}
+            disabled={selectedGroups.length === 0 || bulkGrabbing}
             onClick={() => setBulkRemoveOpen(true)}
           >
             <Trash2 className={cn('h-4 w-4', selectedPending.length > 0 ? 'sm:mr-2' : 'mr-2')} />

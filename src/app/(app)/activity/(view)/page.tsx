@@ -202,13 +202,15 @@ export default function ActivityPage() {
   ];
 
   function clearFilters() {
-    if (showUnmonitored) setShowUnmonitored(false);
+    // A link view's Clear all clears only the link's own filters; Unmonitored is
+    // a saved choice links don't carry.
     if (linkView) {
       updateLinkView({ sources: [], instance: 'all' });
       return;
     }
     setFilterBy([]);
     setInstanceFilter('all');
+    if (showUnmonitored) setShowUnmonitored(false);
   }
 
   function handleTabChange(nextTab: TabKey) {

@@ -352,12 +352,37 @@ describe('POST /api/activity/queue/grab', () => {
   it('after a part-way failure, reads the queue again to say which were sent', async () => {
     mocks.fetchAllQueueRecords
       .mockResolvedValueOnce(queue({ id: 1, status: 'delay' }, { id: 2, status: 'delay' }, { id: 3, status: 'delay' }))
+      .mockResolvedValueOnce(queue({ id: 3, status: 'delay' }, { id: 90, status: 'downloading' }))
       .mockResolvedValueOnce(queue({ id: 3, status: 'delay' }, { id: 90, status: 'downloading' }));
-    mocks.lidarr.grabQueueBulk.mockRejectedValueOnce(new Error('404'));
+    // The retry of the one still pending fails as well.
+    mocks.lidarr.grabQueueBulk.mockRejectedValueOnce(new Error('404')).mockRejectedValueOnce(new Error('500'));
     const res = await send({ source: 'lidarr', instanceId: 'lid-1', ids: [1, 2, 3] });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ grabbed: [1, 2], notGrabbed: [3], unknown: [], skipped: [] });
     expect(mocks.bumpQueueCacheVersion).toHaveBeenCalled();
+  });
+
+  it('sends again what is still pending after a stop the batch itself caused (a season pack)', async () => {
+    // 1 and 2 are two episodes of one pending pack: grabbing 1 sends the pack and drops 2.
+    mocks.fetchAllQueueRecords
+      .mockResolvedValueOnce(queue({ id: 1, status: 'delay' }, { id: 2, status: 'delay' }, { id: 3, status: 'delay' }, { id: 4, status: 'delay' }))
+      .mockResolvedValueOnce(queue({ id: 3, status: 'delay' }, { id: 4, status: 'delay' }, { id: 90, status: 'downloading' }));
+    mocks.sonarr.grabQueueBulk.mockRejectedValueOnce(new Error('404')).mockResolvedValueOnce(undefined);
+    const res = await send({ source: 'sonarr', instanceId: 'son-1', ids: [1, 2, 3, 4] });
+    expect(mocks.sonarr.grabQueueBulk).toHaveBeenNthCalledWith(1, [1, 2, 3, 4]);
+    expect(mocks.sonarr.grabQueueBulk).toHaveBeenNthCalledWith(2, [3, 4]);
+    expect(await res.json()).toEqual({ grabbed: [1, 2, 3, 4], notGrabbed: [], unknown: [], skipped: [] });
+  });
+
+  it('stops retrying after a round that sends nothing more', async () => {
+    mocks.fetchAllQueueRecords
+      .mockResolvedValueOnce(queue({ id: 1, status: 'delay' }, { id: 2, status: 'delay' }, { id: 3, status: 'delay' }))
+      .mockResolvedValueOnce(queue({ id: 2, status: 'delay' }, { id: 3, status: 'delay' }))
+      .mockResolvedValueOnce(queue({ id: 2, status: 'delay' }, { id: 3, status: 'delay' }));
+    mocks.sonarr.grabQueueBulk.mockRejectedValue(new Error('client down'));
+    const res = await send({ source: 'sonarr', instanceId: 'son-1', ids: [1, 2, 3] });
+    expect(mocks.sonarr.grabQueueBulk).toHaveBeenCalledTimes(2);
+    expect(await res.json()).toEqual({ grabbed: [1], notGrabbed: [2, 3], unknown: [], skipped: [] });
   });
 
   it('fails when the app sent none, and says unknown when the second read fails', async () => {

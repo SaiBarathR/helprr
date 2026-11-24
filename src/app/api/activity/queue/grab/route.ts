@@ -9,6 +9,9 @@ import { asJsonObject, resolveActivityArrTarget } from '@/lib/activity-arr-targe
 // Same bound as the bulk removal: a selection can hold every loaded queue record.
 const QUEUE_GRAB_MAX_IDS = 1000;
 const QUEUE_READ_TIMEOUT_MS = 10_000;
+// Each retry follows a stop that still sent something, so a selection makes
+// progress every round; this only bounds a pathological one.
+const QUEUE_GRAB_MAX_ROUNDS = 25;
 
 // The ids of the instance's pending (delay-profile, or no download client)
 // releases, as its own queue marks them; null when the queue could not be read
@@ -38,9 +41,13 @@ async function readPendingIds(client: Parameters<typeof fetchAllQueueRecords>[0]
 // releases to the download client now, as the single grab does for one.
 // The app's bulk grab stops at the first id that is no longer pending, so the
 // queue is read first and only the ids still pending are sent (the others come
-// back as `skipped`). If the app then fails part-way, a second read says which
-// were sent (`grabbed`) and which are still waiting (`notGrabbed`); when that
-// read fails too, the sent ids come back as `unknown`.
+// back as `skipped`). The batch itself can cause such a stop: a pending season
+// pack lists one id per episode, and grabbing the first sends the whole pack and
+// drops its other ids. So after a stop the queue is read again: ids gone from
+// the pending list were sent (`grabbed`), and the ones still pending are sent
+// again while each round sends at least one more. What is still pending after a
+// round that sent nothing is `notGrabbed`; when a read fails, the ids not yet
+// accounted for come back as `unknown`.
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('activity.manage');
   if (!auth.ok) return auth.response;
@@ -76,23 +83,36 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ grabbed: [], notGrabbed: [], unknown: [], skipped });
     }
 
-    try {
-      await client.grabQueueBulk(pending);
-    } catch (error) {
+    const grabbed: number[] = [];
+    let toSend = pending;
+    let notGrabbed: number[] = [];
+    let unknown: number[] = [];
+    let failure: unknown = null;
+    for (let round = 0; toSend.length > 0; round++) {
+      try {
+        await client.grabQueueBulk(toSend);
+        grabbed.push(...toSend);
+        break;
+      } catch (error) {
+        failure = error;
+      }
       const pendingAfter = await readPendingIds(client);
-      await bumpQueueCacheVersion();
-      if (!pendingAfter) return NextResponse.json({ grabbed: [], notGrabbed: [], unknown: pending, skipped });
-      const grabbed = pending.filter((id) => !pendingAfter.has(id));
-      if (grabbed.length === 0) throw error;
-      return NextResponse.json({
-        grabbed,
-        notGrabbed: pending.filter((id) => pendingAfter.has(id)),
-        unknown: [],
-        skipped,
-      });
+      if (!pendingAfter) {
+        unknown = toSend;
+        break;
+      }
+      const sent = toSend.filter((id) => !pendingAfter.has(id));
+      const waiting = toSend.filter((id) => pendingAfter.has(id));
+      grabbed.push(...sent);
+      if (sent.length === 0 || round + 1 >= QUEUE_GRAB_MAX_ROUNDS) {
+        notGrabbed = waiting;
+        break;
+      }
+      toSend = waiting;
     }
     await bumpQueueCacheVersion();
-    return NextResponse.json({ grabbed: pending, notGrabbed: [], unknown: [], skipped });
+    if (grabbed.length === 0 && unknown.length === 0) throw failure;
+    return NextResponse.json({ grabbed, notGrabbed, unknown, skipped });
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to grab the releases');
   }
