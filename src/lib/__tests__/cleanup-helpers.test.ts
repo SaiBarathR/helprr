@@ -8,7 +8,7 @@ import {
 } from '@/lib/cleanup/helpers';
 
 function torrent(overrides: Partial<QBittorrentTorrent> = {}): QBittorrentTorrent {
-  return { hash: 'ABCDEF1234', name: 'Torrent', size: 1, progress: 0, dlspeed: 0, upspeed: 0, num_seeds: 0, num_leechs: 0, state: 'downloading', eta: 0, category: '', tags: '', priority: 0, added_on: 0, completion_on: 0, save_path: '', amount_left: 0, completed: 0, downloaded: 0, uploaded: 0, downloaded_session: 0, uploaded_session: 0, dl_limit: 0, up_limit: 0, magnet_uri: '', time_active: 0, seeding_time: 0, availability: 0, ratio: 0, seq_dl: false, f_l_piece_prio: false, force_start: false, auto_tmm: false, max_ratio: -1, max_seeding_time: -1, ...overrides };
+  return { hash: 'ABCDEF1234', name: 'Torrent', size: 1, progress: 0, dlspeed: 0, upspeed: 0, num_seeds: 0, num_leechs: 0, state: 'downloading', eta: 0, category: '', tags: '', priority: 0, added_on: 0, completion_on: 0, save_path: '', amount_left: 0, completed: 0, downloaded: 0, uploaded: 0, downloaded_session: 0, uploaded_session: 0, dl_limit: 0, up_limit: 0, time_active: 0, seeding_time: 0, availability: 0, ratio: 0, seq_dl: false, f_l_piece_prio: false, force_start: false, auto_tmm: false, max_ratio: -1, max_seeding_time: -1, ...overrides };
 }
 
 function queueItem(overrides: Partial<QueueItem> = {}): QueueItem {

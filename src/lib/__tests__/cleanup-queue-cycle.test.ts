@@ -35,7 +35,7 @@ const failedImportDefaults: FailedImportConfig = { maxStrikes: 0, ignorePrivate:
 const baseConfig = { enabled: true, intervalMinutes: 5, ignoredDownloads: [], processNoContentId: false, downloadingMetadataMaxStrikes: 0, failedImport: failedImportDefaults, reSearchAfterRemoval: true, autoRunMode: 'disabled' };
 
 function torrent(overrides: Partial<QBittorrentTorrent> = {}): QBittorrentTorrent {
-  return { hash: 'ABC123', name: 'Example', size: 1024, progress: 0.5, dlspeed: 0, upspeed: 0, num_seeds: 0, num_leechs: 0, state: 'stalledDL', eta: 0, category: '', tags: '', priority: 0, added_on: 0, completion_on: 0, save_path: '', amount_left: 0, completed: 0, downloaded: 1000, uploaded: 0, downloaded_session: 0, uploaded_session: 0, dl_limit: 0, up_limit: 0, magnet_uri: '', time_active: 0, seeding_time: 0, availability: 0, ratio: 0, seq_dl: false, f_l_piece_prio: false, force_start: false, auto_tmm: false, max_ratio: -1, max_seeding_time: -1, private: false, ...overrides };
+  return { hash: 'ABC123', name: 'Example', size: 1024, progress: 0.5, dlspeed: 0, upspeed: 0, num_seeds: 0, num_leechs: 0, state: 'stalledDL', eta: 0, category: '', tags: '', priority: 0, added_on: 0, completion_on: 0, save_path: '', amount_left: 0, completed: 0, downloaded: 1000, uploaded: 0, downloaded_session: 0, uploaded_session: 0, dl_limit: 0, up_limit: 0, time_active: 0, seeding_time: 0, availability: 0, ratio: 0, seq_dl: false, f_l_piece_prio: false, force_start: false, auto_tmm: false, max_ratio: -1, max_seeding_time: -1, private: false, ...overrides };
 }
 
 function stall(overrides: Partial<StallRuleShape> = {}): StallRuleShape {

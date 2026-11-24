@@ -13,6 +13,7 @@ import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { deleteTorrentsAudited, TORRENT_DELETE_REFUSALS } from '@/lib/file-audit';
 import { isInsideDownloadRoots, parseLocation, parseTags } from '@/lib/qbittorrent-inputs';
+import { projectTorrentsForSummary } from '@/lib/qbittorrent-summary';
 
 const MAGNET_VERIFY_TIMEOUT_MS = 5000;
 const MAGNET_VERIFY_INTERVAL_MS = 500;
@@ -228,7 +229,8 @@ async function getHandler(request: NextRequest) {
       torrentCount: torrents.length,
       filter: filter || 'all',
     });
-    return NextResponse.json(torrents);
+    // The list's fields only: the magnet and tracker URL can carry a passkey.
+    return NextResponse.json(projectTorrentsForSummary(torrents));
   } catch (error) {
     console.error('Failed to fetch torrents:', error);
     logApiDuration('/api/qbittorrent', startedAt, { method: 'GET', failed: true });

@@ -1,8 +1,13 @@
-import type { QBittorrentTorrent, QBittorrentTransferInfo } from '@/types';
+import type { QBittorrentTorrent, QBittorrentTorrentInfo, QBittorrentTransferInfo } from '@/types';
 
 export type ProjectedTorrentSummary = QBittorrentTorrent;
 
-export function projectTorrentForSummary(torrent: QBittorrentTorrent): ProjectedTorrentSummary {
+/**
+ * What a browser gets of a torrent, built field by field. The magnet and the
+ * tracker URL are left out: their announce URLs can carry a private tracker's
+ * passkey (src/lib/qbittorrent-tracker-links.ts), and the list never shows them.
+ */
+export function projectTorrentForSummary(torrent: QBittorrentTorrentInfo | QBittorrentTorrent): ProjectedTorrentSummary {
   return {
     hash: torrent.hash,
     name: torrent.name,
@@ -29,7 +34,6 @@ export function projectTorrentForSummary(torrent: QBittorrentTorrent): Projected
     uploaded_session: torrent.uploaded_session,
     dl_limit: torrent.dl_limit,
     up_limit: torrent.up_limit,
-    magnet_uri: torrent.magnet_uri,
     time_active: torrent.time_active,
     seeding_time: torrent.seeding_time,
     availability: torrent.availability,
@@ -41,11 +45,10 @@ export function projectTorrentForSummary(torrent: QBittorrentTorrent): Projected
     max_ratio: torrent.max_ratio,
     max_seeding_time: torrent.max_seeding_time,
     private: torrent.private,
-    tracker: torrent.tracker,
   };
 }
 
-export function projectTorrentsForSummary(torrents: QBittorrentTorrent[]): ProjectedTorrentSummary[] {
+export function projectTorrentsForSummary(torrents: Array<QBittorrentTorrentInfo | QBittorrentTorrent>): ProjectedTorrentSummary[] {
   return torrents.map(projectTorrentForSummary);
 }
 

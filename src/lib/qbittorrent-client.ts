@@ -2,7 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { NotServiceApiError } from '@/lib/service-response';
-import type { QBittorrentTorrent, QBittorrentTransferInfo } from '@/types';
+import type { QBittorrentTorrentInfo, QBittorrentTransferInfo } from '@/types';
 
 /** qBittorrent turned the Web UI username or password down (it answered "Fails."). */
 export class QBittorrentLoginError extends Error {}
@@ -212,15 +212,16 @@ export class QBittorrentClient {
     category?: string,
     sort?: string,
     reverse?: boolean,
-    hashes?: string
-  ): Promise<QBittorrentTorrent[]> {
+    hashes?: string,
+    signal?: AbortSignal
+  ): Promise<QBittorrentTorrentInfo[]> {
     const params: Record<string, unknown> = {};
     if (filter !== undefined) params.filter = filter;
     if (category !== undefined) params.category = category;
     if (sort !== undefined) params.sort = sort;
     if (reverse !== undefined) params.reverse = reverse;
     if (hashes !== undefined) params.hashes = hashes;
-    return this.get<QBittorrentTorrent[]>('/api/v2/torrents/info', params);
+    return this.get<QBittorrentTorrentInfo[]>('/api/v2/torrents/info', params, signal);
   }
 
   async getTorrentProperties(hash: string, signal?: AbortSignal): Promise<TorrentProperties> {

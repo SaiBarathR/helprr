@@ -15,7 +15,10 @@ import { formatDateTime } from '@/lib/date-format';
 export interface TorrentDetailData {
   properties: Record<string, unknown>;
   files: TorrentFile[];
+  /** Hosts only, without the announce path or query, unless the user is an admin. */
   trackers: TorrentTracker[];
+  /** The magnet to copy, built on the server: without `tr=` unless the user is an admin. */
+  magnet: string | null;
 }
 
 /** One torrent's details: transfer, session, settings (read-only), timing, network, magnet, files and trackers. */
@@ -163,7 +166,7 @@ export function TorrentDetailDrawer({
               </div>
 
               {/* Magnet Link */}
-              {detailTorrent?.magnet_uri && (
+              {detailData.magnet && (
                 <div>
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Magnet Link</h3>
                   <Button
@@ -171,7 +174,8 @@ export function TorrentDetailDrawer({
                     size="sm"
                     className="w-full text-xs"
                     onClick={() => {
-                      navigator.clipboard.writeText(detailTorrent.magnet_uri).then(
+                      if (!detailData.magnet) return;
+                      navigator.clipboard.writeText(detailData.magnet).then(
                         () => toast.success('Magnet URI copied'),
                         () => toast.error('Failed to copy')
                       );
