@@ -24,6 +24,7 @@ import { trackerCount, trackerStatusLabel } from '../../_components/torrent-trac
 interface TrackerRef {
   index: number;
   shown: string;
+  tier: number;
   count: number;
 }
 
@@ -46,6 +47,9 @@ async function postTrackerChange(hash: string, change: TrackerChange): Promise<T
 }
 
 const isPseudoTracker = (tracker: TorrentTracker) => tracker.url.startsWith('** [');
+
+const sameRef = (a: TrackerRef, b: TrackerRef) =>
+  a.index === b.index && a.shown === b.shown && a.tier === b.tier && a.count === b.count;
 
 const trackerLabel = (count: number) => `${count} tracker${count === 1 ? '' : 's'}`;
 
@@ -86,8 +90,12 @@ export default function TorrentTrackersPage() {
       if (!(err instanceof ApiError && err.status === 401)) {
         toast.error(err instanceof Error ? err.message : 'Failed to change trackers');
       }
-      // The list moved under this page: show it as it is now.
-      if (err instanceof ApiError && err.status === 409) void trackersQuery.refetch();
+      // The list moved under this page: show it as it is now, and close an edit
+      // opened on the old one (one refused as already listed stays open to fix).
+      if (err instanceof ApiError && err.status === 409) {
+        void trackersQuery.refetch();
+        if (/changed/.test(err.message)) setEditing(null);
+      }
       return false;
     }
   };
@@ -150,7 +158,7 @@ export default function TorrentTrackersPage() {
 
   // qBittorrent's own places, kept for the server; DHT, PeX and LSD are not listed here.
   const rows = all
-    .map((tracker, index) => ({ tracker, ref: { index, shown: tracker.url, count: all.length } }))
+    .map((tracker, index) => ({ tracker, ref: { index, shown: tracker.url, tier: tracker.tier, count: all.length } }))
     .filter(({ tracker }) => !isPseudoTracker(tracker));
 
   return (
@@ -170,7 +178,8 @@ export default function TorrentTrackersPage() {
             </div>
           )}
           {rows.map(({ tracker, ref }) =>
-            editing?.index === ref.index ? (
+            // A refetch can reorder the list: the form stays with the tracker it was opened on, or closes.
+            editing && sameRef(editing, ref) ? (
               <form key={ref.index} className="grouped-row grouped-row-stacked gap-2" onSubmit={saveEdit}>
                 <p className="text-xs text-muted-foreground break-all">
                   {fullUrls ? 'Edit tracker' : `Replace ${tracker.url}`}

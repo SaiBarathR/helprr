@@ -62,7 +62,7 @@ beforeEach(() => {
 describe('authorization', () => {
   it('needs torrents.manage and changes nothing without it', async () => {
     mocks.requireUserCapability.mockResolvedValue({ ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) });
-    const res = await post({ action: 'remove', index: 3, shown: 'https://tracker.invalid', count: 5 });
+    const res = await post({ action: 'remove', index: 3, shown: 'https://tracker.invalid', tier: 0, count: 5 });
     expect(res.status).toBe(403);
     expect(mocks.requireUserCapability).toHaveBeenCalledWith('torrents.manage');
     expect(mocks.client.getTorrentTrackers).not.toHaveBeenCalled();
@@ -84,28 +84,28 @@ describe('authorization', () => {
 
 describe('edit and remove by place', () => {
   it('lets a member remove a private tracker it was shown only by host', async () => {
-    const res = await post({ action: 'remove', index: 3, shown: 'https://tracker.invalid', count: 5 });
+    const res = await post({ action: 'remove', index: 3, shown: 'https://tracker.invalid', tier: 0, count: 5 });
     expect(res.status).toBe(200);
     expect(mocks.client.removeTrackers).toHaveBeenCalledWith(HASH, [ANNOUNCE]);
     expect(mocks.bump).toHaveBeenCalled();
   });
 
   it('lets a member edit a private tracker to the full URL it typed', async () => {
-    const res = await post({ action: 'edit', index: 3, shown: 'https://tracker.invalid', count: 5, url: 'https://new.invalid/announce/abc123def456' });
+    const res = await post({ action: 'edit', index: 3, shown: 'https://tracker.invalid', tier: 0, count: 5, url: 'https://new.invalid/announce/abc123def456' });
     expect(res.status).toBe(200);
     expect(mocks.client.editTracker).toHaveBeenCalledWith(HASH, ANNOUNCE, 'https://new.invalid/announce/abc123def456');
   });
 
   it('matches an admin on the full URL it was shown', async () => {
     signInAs('admin');
-    expect((await post({ action: 'remove', index: 3, shown: 'https://tracker.invalid', count: 5 })).status).toBe(409);
-    expect((await post({ action: 'remove', index: 3, shown: ANNOUNCE, count: 5 })).status).toBe(200);
+    expect((await post({ action: 'remove', index: 3, shown: 'https://tracker.invalid', tier: 0, count: 5 })).status).toBe(409);
+    expect((await post({ action: 'remove', index: 3, shown: ANNOUNCE, tier: 0, count: 5 })).status).toBe(200);
     expect(mocks.client.removeTrackers).toHaveBeenCalledTimes(1);
   });
 
   it('refuses a place whose tracker moved (the list was reordered)', async () => {
     mocks.client.getTorrentTrackers.mockResolvedValue([LIST[0], LIST[1], LIST[2], LIST[4], LIST[3]]);
-    const res = await post({ action: 'remove', index: 3, shown: 'https://tracker.invalid', count: 5 });
+    const res = await post({ action: 'remove', index: 3, shown: 'https://tracker.invalid', tier: 0, count: 5 });
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: expect.stringMatching(/changed/) });
     noUpstreamChange();
@@ -113,26 +113,53 @@ describe('edit and remove by place', () => {
 
   it('refuses when the list grew or shrank, even if the host at that place still matches', async () => {
     mocks.client.getTorrentTrackers.mockResolvedValue([...LIST, tracker('https://tracker.invalid/announce/other', 2)]);
-    expect((await post({ action: 'remove', index: 3, shown: 'https://tracker.invalid', count: 5 })).status).toBe(409);
+    expect((await post({ action: 'remove', index: 3, shown: 'https://tracker.invalid', tier: 0, count: 5 })).status).toBe(409);
     mocks.client.getTorrentTrackers.mockResolvedValue(LIST.slice(0, 4));
-    expect((await post({ action: 'edit', index: 4, shown: 'udp://public.invalid:1337', count: 5, url: PUBLIC })).status).toBe(409);
+    expect((await post({ action: 'edit', index: 4, shown: 'udp://public.invalid:1337', tier: 1, count: 5, url: PUBLIC })).status).toBe(409);
     noUpstreamChange();
   });
 
+  it('refuses a same-host tracker that moved into the place from another tier', async () => {
+    // Two trackers on one host look alike to a member; the tier tells them apart.
+    const other = tracker('https://tracker.invalid/announce/other', 1);
+    mocks.client.getTorrentTrackers.mockResolvedValue([LIST[0], LIST[1], LIST[2], other, LIST[3]]);
+    expect((await post({ action: 'remove', index: 3, shown: 'https://tracker.invalid', tier: 0, count: 5 })).status).toBe(409);
+    noUpstreamChange();
+  });
+
+  it('says the list changed when qBittorrent no longer has the old URL', async () => {
+    mocks.client.editTracker.mockRejectedValueOnce(new AxiosError('409', 'ERR_BAD_REQUEST', undefined, undefined, {
+      status: 409, statusText: 'Conflict', data: 'Tracker not found', headers: {}, config: { headers: new AxiosHeaders() },
+    }));
+    const res = await post({ action: 'edit', index: 3, shown: 'https://tracker.invalid', tier: 0, count: 5, url: 'https://n.invalid/announce' });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: expect.stringMatching(/changed/) });
+  });
+
+  it('answers 404 for a torrent qBittorrent does not have', async () => {
+    mocks.client.addTrackers.mockRejectedValueOnce(new AxiosError('404', 'ERR_BAD_REQUEST', undefined, undefined, {
+      status: 404, statusText: 'Not Found', data: 'Not Found', headers: {}, config: { headers: new AxiosHeaders() },
+    }));
+    const res = await post({ action: 'add', urls: [PUBLIC] });
+    expect(res.status).toBe(404);
+    expect(mocks.bump).not.toHaveBeenCalled();
+  });
+
   it('refuses DHT, PeX and LSD', async () => {
-    const res = await post({ action: 'remove', index: 0, shown: '** [DHT] **', count: 5 });
+    const res = await post({ action: 'remove', index: 0, shown: '** [DHT] **', tier: -1, count: 5 });
     expect(res.status).toBe(400);
     noUpstreamChange();
   });
 
   it('refuses a place outside the list or a malformed reference', async () => {
     for (const ref of [
-      { index: 9, shown: 'x', count: 10 },
-      { index: -1, shown: 'x', count: 5 },
-      { index: 1.5, shown: 'x', count: 5 },
-      { index: '3', shown: 'https://tracker.invalid', count: 5 },
+      { index: 9, shown: 'x', tier: 0, count: 10 },
+      { index: -1, shown: 'x', tier: 0, count: 5 },
+      { index: 1.5, shown: 'x', tier: 0, count: 5 },
+      { index: '3', shown: 'https://tracker.invalid', tier: 0, count: 5 },
       { index: 3, count: 5 },
-      { index: 3, shown: 'https://tracker.invalid' },
+      { index: 3, shown: 'https://tracker.invalid', tier: 0 },
+      { index: 3, shown: 'https://tracker.invalid', count: 5 },
     ]) {
       const res = await post({ action: 'remove', ...ref });
       expect([400, 409]).toContain(res.status);
@@ -143,15 +170,15 @@ describe('edit and remove by place', () => {
   it('refuses to remove a URL with a | (qBittorrent would read it as other URLs)', async () => {
     mocks.client.getTorrentTrackers.mockResolvedValue([tracker('https://a.invalid/x|https://b.invalid/y', 0)]);
     signInAs('admin');
-    expect((await post({ action: 'remove', index: 0, shown: 'https://a.invalid/x|https://b.invalid/y', count: 1 })).status).toBe(409);
+    expect((await post({ action: 'remove', index: 0, shown: 'https://a.invalid/x|https://b.invalid/y', tier: 0, count: 1 })).status).toBe(409);
     noUpstreamChange();
   });
 
   it('says so when the new URL is already on the torrent, without echoing qBittorrent', async () => {
-    mocks.client.editTracker.mockRejectedValue(new AxiosError('409', 'ERR_BAD_REQUEST', undefined, undefined, {
+    mocks.client.editTracker.mockRejectedValueOnce(new AxiosError('409', 'ERR_BAD_REQUEST', undefined, undefined, {
       status: 409, statusText: 'Conflict', data: 'New tracker URL already exists', headers: {}, config: { headers: new AxiosHeaders() },
     }));
-    const res = await post({ action: 'edit', index: 4, shown: 'udp://public.invalid:1337', count: 5, url: 'https://a.invalid/announce' });
+    const res = await post({ action: 'edit', index: 4, shown: 'udp://public.invalid:1337', tier: 1, count: 5, url: 'https://a.invalid/announce' });
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: 'That tracker is already on this torrent' });
     expect(mocks.bump).not.toHaveBeenCalled();
@@ -166,15 +193,18 @@ describe('URL validation', () => {
       `${PUBLIC} https://evil.invalid/announce`,
       'https://a.invalid/an nounce',
       'https://a.invalid/\u0000',
+      'https://a.invalid/x|https://b.invalid/y',
+      'https://a.invalid/\u200Bx',
+      'https://a.invalid/\u0085x',
     ]) {
       expect((await post({ action: 'add', urls: [url] })).status).toBe(400);
-      expect((await post({ action: 'edit', index: 4, shown: 'udp://public.invalid:1337', count: 5, url })).status).toBe(400);
+      expect((await post({ action: 'edit', index: 4, shown: 'udp://public.invalid:1337', tier: 1, count: 5, url })).status).toBe(400);
     }
     noUpstreamChange();
   });
 
   it('takes http, https, udp and wss only, up to the length cap', async () => {
-    for (const url of ['ftp://a.invalid/x', 'javascript:alert(1)', 'magnet:?xt=urn:btih:x', 'not a url', 'https://', `https://a.invalid/${'a'.repeat(2048)}`, '']) {
+    for (const url of ['ftp://a.invalid/x', 'http:a.invalid/x', 'https://a.invalid\\x', 'javascript:alert(1)', 'magnet:?xt=urn:btih:x', 'not a url', 'https://', `https://a.invalid/${'a'.repeat(2048)}`, '']) {
       expect((await post({ action: 'add', urls: [url] })).status).toBe(400);
     }
     for (const urls of [[], 'https://a.invalid/announce', Array.from({ length: 101 }, (_, i) => `https://t${i}.invalid/announce`)]) {
@@ -184,9 +214,9 @@ describe('URL validation', () => {
   });
 
   it('adds valid URLs once each, trimmed, in the order given', async () => {
-    const res = await post({ action: 'add', urls: [' https://a.invalid/announce ', 'wss://b.invalid/x', 'https://a.invalid/announce', 'udp://c.invalid:80'] });
+    const res = await post({ action: 'add', urls: [' https://a.invalid/announce ', 'wss://b.invalid/x', 'https://a.invalid/announce', 'UDP://c.invalid:80'] });
     expect(res.status).toBe(200);
-    expect(mocks.client.addTrackers).toHaveBeenCalledWith(HASH, ['https://a.invalid/announce', 'wss://b.invalid/x', 'udp://c.invalid:80']);
+    expect(mocks.client.addTrackers).toHaveBeenCalledWith(HASH, ['https://a.invalid/announce', 'wss://b.invalid/x', 'UDP://c.invalid:80']);
     expect(mocks.bump).toHaveBeenCalled();
   });
 
@@ -198,7 +228,7 @@ describe('URL validation', () => {
 
 describe('the answer', () => {
   it('gives a member the new list by host, with no passkey in it', async () => {
-    const res = await post({ action: 'remove', index: 4, shown: 'udp://public.invalid:1337', count: 5 });
+    const res = await post({ action: 'remove', index: 4, shown: 'udp://public.invalid:1337', tier: 1, count: 5 });
     const body = await res.json();
     expect(body.trackers.map((t: { url: string }) => t.url)).toEqual([
       '** [DHT] **', '** [PeX] **', '** [LSD] **', 'https://tracker.invalid', 'udp://public.invalid:1337',
@@ -215,9 +245,9 @@ describe('the answer', () => {
 
   it('never sends a member the full URL in a refusal', async () => {
     for (const body of [
-      { action: 'remove', index: 3, shown: 'https://wrong.invalid', count: 5 },
-      { action: 'edit', index: 3, shown: 'https://tracker.invalid', count: 5, url: 'nope' },
-      { action: 'remove', index: 0, shown: '** [DHT] **', count: 5 },
+      { action: 'remove', index: 3, shown: 'https://wrong.invalid', tier: 0, count: 5 },
+      { action: 'edit', index: 3, shown: 'https://tracker.invalid', tier: 0, count: 5, url: 'nope' },
+      { action: 'remove', index: 0, shown: '** [DHT] **', tier: -1, count: 5 },
     ]) {
       expect(JSON.stringify(await (await post(body)).json())).not.toContain(KEY);
     }
@@ -225,7 +255,7 @@ describe('the answer', () => {
 
   it('still succeeds when the list cannot be read back', async () => {
     mocks.client.getTorrentTrackers.mockResolvedValueOnce(LIST).mockRejectedValueOnce(new Error('down'));
-    const res = await post({ action: 'remove', index: 3, shown: 'https://tracker.invalid', count: 5 });
+    const res = await post({ action: 'remove', index: 3, shown: 'https://tracker.invalid', tier: 0, count: 5 });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ trackers: null });
   });

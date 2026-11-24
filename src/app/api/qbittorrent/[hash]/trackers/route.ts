@@ -47,8 +47,9 @@ async function postHandler(
     }
     if (!body || typeof body !== 'object' || Array.isArray(body)) return refuse(400, 'malformed JSON', 'json');
     const input = body as Record<string, unknown>;
+    if (input.action !== 'add' && input.action !== 'edit' && input.action !== 'remove') return refuse(400, 'Unknown action', 'action');
+    // Logged once known to be one of these.
     action = input.action;
-    if (action !== 'add' && action !== 'edit' && action !== 'remove') return refuse(400, 'Unknown action', 'action');
 
     const fullUrls = seesTrackerUrls(auth.user);
     const client = await getQBittorrentClient();

@@ -11,7 +11,8 @@ import { isPseudoTracker, trackersForViewer } from '@/lib/qbittorrent-tracker-li
  * guessed at.
  */
 
-const TRACKER_SCHEMES = new Set(['http:', 'https:', 'udp:', 'wss:']);
+// Spelled out, not only parsed: WHATWG URL also reads `http:host/x` and `https://host\x`, which qBittorrent's parser does not.
+const TRACKER_PREFIX = /^(?:https?|udp|wss):\/\//i;
 const MAX_TRACKER_URL_LENGTH = 2048;
 /** A pasted public tracker list runs to about a hundred lines. */
 export const MAX_TRACKERS_PER_ADD = 100;
@@ -19,16 +20,16 @@ export const MAX_TRACKERS_PER_ADD = 100;
 /**
  * A tracker URL as typed, or null. qBittorrent takes anything (it lists `not a
  * url` as a tracker), and it splits addTrackers' `urls` on newlines and
- * removeTrackers' on `|`, so whitespace, control characters and `|` are refused
- * rather than letting one value become several entries.
+ * removeTrackers' on `|`, so whitespace, control and invisible format
+ * characters, `|` and `\` are refused rather than letting one value become
+ * several entries (or a tracker that can never work).
  */
 export function parseTrackerUrl(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const url = value.trim();
-  if (!url || url.length > MAX_TRACKER_URL_LENGTH || /[\s|\p{Cc}]/u.test(url)) return null;
+  if (!url || url.length > MAX_TRACKER_URL_LENGTH || !TRACKER_PREFIX.test(url) || /[\s|\\\p{Cc}\p{Cf}]/u.test(url)) return null;
   try {
-    const parsed = new URL(url);
-    return TRACKER_SCHEMES.has(parsed.protocol) && parsed.hostname ? url : null;
+    return new URL(url).hostname ? url : null;
   } catch {
     return null;
   }
@@ -56,19 +57,25 @@ export function trackerUrlError(line: number | null): string {
   return `${what} isn't a tracker URL: it must start with http://, https://, udp:// or wss:// and have no spaces or |`;
 }
 
-/** Where the browser saw the tracker: its place in qBittorrent's list, what it was shown there, and the list's length. */
+/**
+ * Where the browser saw the tracker: its place in qBittorrent's list, what it
+ * was shown there and its tier (two trackers on one host look alike to anyone
+ * but an admin), and the list's length.
+ */
 export interface TrackerRef {
   index: number;
   shown: string;
+  tier: number;
   count: number;
 }
 
 export function parseTrackerRef(body: Record<string, unknown>): TrackerRef | null {
-  const { index, shown, count } = body;
+  const { index, shown, tier, count } = body;
   if (!Number.isInteger(index) || (index as number) < 0) return null;
   if (!Number.isInteger(count) || (count as number) <= (index as number)) return null;
+  if (!Number.isInteger(tier)) return null;
   if (typeof shown !== 'string' || shown.length === 0 || shown.length > MAX_TRACKER_URL_LENGTH) return null;
-  return { index: index as number, shown, count: count as number };
+  return { index: index as number, shown, tier: tier as number, count: count as number };
 }
 
 export type ResolvedTracker =
@@ -78,13 +85,13 @@ export type ResolvedTracker =
 /**
  * The full URL of the tracker the browser named, from qBittorrent's current
  * list. The entry at that place must still show the same to this viewer (the
- * full URL for an admin, `scheme://host[:port]` for anyone else) and the list
- * must be as long as it was; DHT, PeX and LSD are not trackers to change.
+ * full URL for an admin, `scheme://host[:port]` for anyone else) in the same
+ * tier, and the list must be as long as it was; DHT, PeX and LSD are not trackers to change.
  */
 export function resolveTracker(trackers: TorrentTracker[], ref: TrackerRef, fullUrls: boolean): ResolvedTracker {
   const tracker = trackers[ref.index];
   if (!tracker || trackers.length !== ref.count) return { ok: false, reason: 'changed' };
   if (isPseudoTracker(tracker.url)) return { ok: false, reason: 'pseudo' };
-  if (trackersForViewer([tracker], fullUrls)[0].url !== ref.shown) return { ok: false, reason: 'changed' };
+  if (tracker.tier !== ref.tier || trackersForViewer([tracker], fullUrls)[0].url !== ref.shown) return { ok: false, reason: 'changed' };
   return { ok: true, url: tracker.url };
 }

@@ -1055,7 +1055,16 @@ tier and counts, its message with URLs cut to their origin and any piece of the
 torrent's tracker URLs replaced, and a magnet with only `xt` and `dn`
 (`src/lib/qbittorrent-tracker-links.ts`). Copy Magnet URI uses that value, built
 on the server. Search, insights, cleanup, audit and push name torrents only, and
-cleanup matches trackers by host on the server.
+cleanup matches trackers by host on the server. Tracker edits (`POST /api/qbittorrent/[hash]/trackers`,
+`torrents.manage`) keep to that: an edit or removal names the tracker by its place
+in qBittorrent's list, what the user was shown there and the list's length, and the
+server reads the list again and takes the URL from it, refusing a place that moved
+(qBittorrent reorders the list on every change) and DHT, PeX and LSD
+(`src/lib/qbittorrent-tracker-edits.ts`). New URLs must be http, https, udp or wss with
+no whitespace, control character or `|`, since qBittorrent splits added URLs on
+newlines and removed ones on `|`. The answer is the new list as the user may see it,
+and request bodies stay out of the failed-request log. Tracker changes delete nothing
+and are not operation-audited, like tags, location and rename.
 
 Compose caps Redis at 256 MB with `maxmemory-policy noeviction` (Helprr itself
 uses tens of MB). Past the cap Redis refuses writes rather than evicting keys,

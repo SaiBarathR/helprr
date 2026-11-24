@@ -82,8 +82,30 @@ describe('Manage Trackers', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(posts).toHaveLength(1));
     expect(posts[0]).toEqual({
-      action: 'edit', index: 1, shown: 'https://tracker.invalid', count: 3, url: 'https://tracker.invalid/announce/newkey123456',
+      action: 'edit', index: 1, shown: 'https://tracker.invalid', tier: 0, count: 3, url: 'https://tracker.invalid/announce/newkey123456',
     });
+  });
+
+  it('closes an edit refused because the list changed, and shows the list as it is now', async () => {
+    let reordered = false;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        posts.push(JSON.parse(String(init.body)));
+        reordered = true;
+        return Response.json({ error: 'The tracker list changed. Check it and try again.' }, { status: 409 });
+      }
+      const trackers = reordered ? [MEMBER_LIST[0], MEMBER_LIST[2], MEMBER_LIST[1]] : MEMBER_LIST;
+      return Response.json({ properties: {}, files: [], trackers, magnet: null });
+    });
+    render(<TorrentTrackersPage />, { wrapper });
+    await openRowMenu('https://tracker.invalid');
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Edit tracker/ }));
+    await userEvent.type(screen.getByLabelText('New tracker URL'), 'https://tracker.invalid/announce/x');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith(expect.stringMatching(/changed/)));
+    await waitFor(() => expect(screen.queryByLabelText('New tracker URL')).toBeNull());
+    // The row that moved into that place is not offered for the old edit.
+    expect(screen.getByRole('button', { name: 'More actions for udp://public.invalid:1337' })).toBeTruthy();
   });
 
   it('starts an admin’s edit from the full URL', async () => {
@@ -101,7 +123,7 @@ describe('Manage Trackers', () => {
     await openRowMenu('udp://public.invalid:1337');
     await userEvent.click(await screen.findByRole('menuitem', { name: /Remove tracker/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(posts).toEqual([{ action: 'remove', index: 2, shown: 'udp://public.invalid:1337', count: 3 }]));
+    await waitFor(() => expect(posts).toEqual([{ action: 'remove', index: 2, shown: 'udp://public.invalid:1337', tier: 0, count: 3 }]));
     await waitFor(() => expect(screen.queryByText('udp://public.invalid:1337')).toBeNull());
   });
 
