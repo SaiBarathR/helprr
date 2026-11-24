@@ -445,7 +445,7 @@ describe('series detail page (characterization)', () => {
     const drawer = screen.getByRole('dialog');
     expect(within(drawer).getByRole('heading', { name: 'Delete Severance?' })).toBeTruthy();
     await user.click(within(drawer).getByRole('checkbox', { name: 'Also delete all files from disk' }));
-    expect((within(drawer).getByRole('checkbox', { name: 'Add import-list exclusion' }) as HTMLInputElement).checked).toBe(false);
+    expect(within(drawer).getByRole('checkbox', { name: 'Add import-list exclusion' }).getAttribute('aria-checked')).toBe('false');
     await user.click(within(drawer).getByRole('button', { name: 'Delete Series' }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/series'));
     expect(mocks.sent.at(-1)).toEqual({

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
+import { goBackOr, useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { PageHeader } from '@/components/layout/page-header';
 import {
   Select,
@@ -34,6 +34,7 @@ export default function MovieEditPage() {
   const instance = useSearchParams().get('instance') ?? undefined;
   const queryClient = useQueryClient();
   const movieId = Number(id);
+  const detailHref = `/movies/${movieId}${instance ? `?instance=${encodeURIComponent(instance)}` : ''}`;
 
   const movieQuery = useQuery({
     queryKey: queryKeys.detail('radarr', movieId, instance),
@@ -84,7 +85,7 @@ export default function MovieEditPage() {
     onSuccess: (_data, { updatedMovie }) => {
       invalidateMovies(queryClient, { itemId: updatedMovie.id, instanceId: instance });
       toast.success('Movie updated');
-      router.back();
+      goBackOr(router, detailHref);
     },
     onError: (err) => {
       // 401 is handled globally (redirect to /login); only toast other failures.
@@ -185,8 +186,8 @@ export default function MovieEditPage() {
               <div className="grouped-row">
                 <Label className="text-sm shrink-0">Root Folder</Label>
                 <Select value={rootFolder} onValueChange={setRootFolder}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Select folder" />
+                  <SelectTrigger className="w-[180px]" title={rootFolder || undefined}>
+                    <SelectValue placeholder="Select folder">{rootFolder ? <span className="truncate">{rootFolder}</span> : null}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {rootFolders.map((rf) => (
@@ -242,7 +243,7 @@ export default function MovieEditPage() {
           <Button
             variant="outline"
             className="flex-1"
-            onClick={() => router.back()}
+            onClick={() => goBackOr(router, detailHref)}
             disabled={saving}
           >
             Cancel

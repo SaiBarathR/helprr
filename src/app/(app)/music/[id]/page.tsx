@@ -8,6 +8,7 @@ import Link from '@/components/ui/app-link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
@@ -59,6 +60,7 @@ import { handleAuthError } from '@/lib/query-client';
 import { useQualityProfiles, useMetadataProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
 import { useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
+import { useRemoveQueriesOnUnmount } from '@/lib/hooks/use-remove-queries-on-unmount';
 import { formatBytes } from '@/lib/format';
 import { arrInteractiveSearchHref } from '@/lib/arr-edit-href';
 import { useCan } from '@/components/permission-provider';
@@ -100,6 +102,7 @@ export default function ArtistDetailPage() {
   const artistId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
   const queryClient = useQueryClient();
+  const removeOnUnmount = useRemoveQueriesOnUnmount();
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -260,7 +263,7 @@ export default function ArtistDetailPage() {
       const res = await arrMutationFetch(instance, `/api/lidarr/${artist.id}?deleteFiles=${deleteFiles}&addImportListExclusion=${addExclusion}`, { method: 'DELETE' });
       if (res.ok) {
         invalidateMusic(queryClient);
-        queryClient.removeQueries({ queryKey: queryKeys.detail('lidarr', artist.id, instance) });
+        removeOnUnmount(queryKeys.detail('lidarr', artist.id, instance));
         toast.success('Artist deleted');
         router.push('/music');
       } else {
@@ -770,20 +773,16 @@ export default function ArtistDetailPage() {
           </DrawerHeader>
           <div className="px-4">
             <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={deleteFiles}
-                onChange={(e) => setDeleteFiles(e.target.checked)}
-                className="h-4 w-4 accent-destructive"
+                onCheckedChange={(checked) => setDeleteFiles(checked === true)}
               />
               Also delete all files from disk
             </label>
             <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={addExclusion}
-                onChange={(e) => setAddExclusion(e.target.checked)}
-                className="h-4 w-4 accent-destructive"
+                onCheckedChange={(checked) => setAddExclusion(checked === true)}
               />
               Add import-list exclusion
             </label>

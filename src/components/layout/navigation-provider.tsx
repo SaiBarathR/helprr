@@ -148,3 +148,14 @@ export function useAppRouter(): Router {
 export function usePendingHref(): string | null {
   return useContext(PendingHrefContext);
 }
+
+/**
+ * Leaves a page the user reached from `fallback` (an edit page from its detail
+ * page): Back when that stays in Helprr, else `fallback`. Opened from a link or
+ * a fresh tab there is no earlier page, and Back left a blank `about:blank`.
+ * Replace, so Back from the detail page doesn't return to the finished edit.
+ */
+export function goBackOr(router: Pick<Router, 'back' | 'replace'>, fallback: string): void {
+  if (canGoBackInApp()) router.back();
+  else router.replace(fallback);
+}

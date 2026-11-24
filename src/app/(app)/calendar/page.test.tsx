@@ -438,3 +438,24 @@ it("lists a day's all-day film before that morning's episodes, east of UTC too",
     vi.unstubAllEnvs();
   }
 });
+
+// "show all" lists an episode once per Sonarr; unnamed, the two rows looked like a duplicate.
+it.each(['agenda', 'week', 'month'] as const)('names the instance on %s rows only for an app with several instances', (view) => {
+  arr.instances = [
+    { id: 's1', label: 'sonarr', type: 'SONARR' },
+    { id: 's2', label: 'anime', type: 'SONARR' },
+    { id: 'r1', label: 'radarr', type: 'RADARR' },
+  ];
+  const episode = { type: 'episode', title: 'Merry Berry Love', subtitle: 'S01E08', seriesId: 1, date: '2026-10-22T13:30:00', monitored: true, hasFile: false };
+  calendar.events = [
+    { ...episode, id: 'sonarr-s1-8', instanceId: 's1', instanceLabel: 'sonarr' },
+    { ...episode, id: 'sonarr-s2-8', instanceId: 's2', instanceLabel: 'anime', monitored: false },
+    { id: 'radarr-r1-3', type: 'movie', title: 'Film', subtitle: 'Cinema', movieId: 3, date: '2026-10-22T00:00:00Z', monitored: true, hasFile: false, instanceId: 'r1', instanceLabel: 'radarr' },
+  ];
+  useUIStore.setState({ calendarView: view });
+  render(<CalendarPage />);
+  expect(screen.getAllByText('Sonarr')).toHaveLength(1);
+  expect(screen.getAllByText('anime (Sonarr)')).toHaveLength(1);
+  // The only Radarr keeps a plain row.
+  expect(screen.queryByText('Radarr')).toBeNull();
+});

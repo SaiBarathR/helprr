@@ -7,7 +7,12 @@ vi.mock('next/navigation', () => ({
   useParams: () => ({ id: '7' }),
   useSearchParams: () => new URLSearchParams('instance=son-2'),
 }));
-vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn(), back: vi.fn() }) }));
+const router = vi.hoisted(() => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }));
+// The real goBackOr, which goes Back only when this tab has an earlier in-app page.
+vi.mock('@/components/layout/navigation-provider', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/components/layout/navigation-provider')>(),
+  useAppRouter: () => router,
+}));
 vi.mock('@/components/permission-provider', () => ({ useCan: () => true }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/components/layout/page-header', () => ({ PageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
@@ -48,6 +53,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.clearAllMocks();
+  sessionStorage.clear();
 });
 
 function renderPage() {
@@ -115,5 +122,26 @@ describe('edit series page', () => {
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(puts[0].url).toBe('/api/sonarr/7?instanceId=son-2');
     expect(puts[0].body).toEqual(expect.objectContaining({ path: '/tv2/Show' }));
+  });
+});
+
+describe('leaving the edit page', () => {
+  it('goes Back after saving when it was opened from inside Helprr', async () => {
+    sessionStorage.setItem('helprr:in-app-history', '1');
+    renderPage();
+    await waitFor(() => expect(rootFolderSelect().value).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(router.back).toHaveBeenCalledTimes(1));
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it('opens the detail page after saving or cancelling when opened directly (no earlier page)', async () => {
+    renderPage();
+    await waitFor(() => expect(rootFolderSelect().value).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/series/7?instance=son-2'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(router.replace).toHaveBeenLastCalledWith('/series/7?instance=son-2');
+    expect(router.back).not.toHaveBeenCalled();
   });
 });

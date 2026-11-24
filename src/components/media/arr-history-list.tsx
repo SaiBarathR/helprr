@@ -133,7 +133,7 @@ export function ArrHistoryList({
                     {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
                   </span>
                 </div>
-                <p className="text-sm mt-2 break-all leading-tight">
+                <p className="text-sm mt-2 leading-tight [overflow-wrap:anywhere]">
                   {item.sourceTitle}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -150,7 +150,7 @@ export function ArrHistoryList({
       )}
 
       <Drawer open={!!selectedHistoryItem} onOpenChange={(open) => { if (!open) setSelectedHistoryItem(null); }}>
-        <DrawerContent>
+        <DrawerContent size="content">
           <DrawerHeader>
             <DrawerTitle>{selectedHistoryItem ? eventTypeLabel(selectedHistoryItem.eventType) : ''}</DrawerTitle>
             <DrawerDescription>
@@ -164,7 +164,7 @@ export function ArrHistoryList({
               <div className="rounded-lg border overflow-hidden divide-y">
                 <div className="px-4 py-2.5">
                   <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Release Title</span>
-                  <p className="text-sm mt-0.5 break-all leading-tight">
+                  <p className="text-sm mt-0.5 leading-tight [overflow-wrap:anywhere]">
                     {selectedHistoryItem.sourceTitle}
                   </p>
                 </div>

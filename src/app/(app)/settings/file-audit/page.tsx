@@ -10,13 +10,15 @@ import { formatBytes } from '@/lib/format';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { SecurityAuditList } from './security-audit-list';
+import { OP_LABEL, OP_VARIANT, countLabel } from './operation-labels';
+import type { FileOperation } from '@prisma/client';
 
 interface AuditRecord {
   id: string;
   username: string;
   service: 'SONARR' | 'RADARR' | 'LIDARR' | 'QBITTORRENT';
   instanceId: string | null;
-  operation: 'EDIT' | 'DELETE' | 'IMPORT' | 'DELETE_MEDIA' | 'DELETE_TORRENT' | 'REMOVE_QUEUE' | 'REMOVE_BLOCKLIST' | 'MOVE_MEDIA' | 'MARK_FAILED' | 'KEEP_MEDIA';
+  operation: FileOperation;
   mediaType: string;
   mediaId: number | null;
   mediaTitle: string;
@@ -29,48 +31,9 @@ interface AuditRecord {
   createdAt: string;
 }
 
-const OP_VARIANT: Record<AuditRecord['operation'], 'default' | 'secondary' | 'destructive'> = {
-  EDIT: 'secondary',
-  IMPORT: 'default',
-  DELETE: 'destructive',
-  DELETE_MEDIA: 'destructive',
-  DELETE_TORRENT: 'destructive',
-  REMOVE_QUEUE: 'destructive',
-  REMOVE_BLOCKLIST: 'secondary',
-  MOVE_MEDIA: 'default',
-  MARK_FAILED: 'destructive',
-  KEEP_MEDIA: 'secondary',
-};
-
-const OP_LABEL: Record<AuditRecord['operation'], string> = {
-  EDIT: 'EDIT',
-  IMPORT: 'IMPORT',
-  DELETE: 'FILE DELETE',
-  DELETE_MEDIA: 'MEDIA DELETE',
-  DELETE_TORRENT: 'TORRENT DELETE',
-  REMOVE_QUEUE: 'QUEUE REMOVE',
-  REMOVE_BLOCKLIST: 'BLOCKLIST REMOVE',
-  MOVE_MEDIA: 'ROOT FOLDER',
-  MARK_FAILED: 'MARKED FAILED',
-  KEEP_MEDIA: 'KEEP',
-};
-
 function serviceLabel(service: AuditRecord['service']): string {
   if (service === 'QBITTORRENT') return 'qBittorrent';
   return service[0] + service.slice(1).toLowerCase();
-}
-
-function countLabel(record: AuditRecord): string {
-  const count = record.fileCount;
-  if (record.operation === 'DELETE_MEDIA' || record.operation === 'MOVE_MEDIA' || record.operation === 'KEEP_MEDIA') {
-    const noun = record.mediaType === 'series' ? 'series' : record.mediaType;
-    return `${count} ${noun}${count === 1 || noun === 'series' ? '' : 's'}`;
-  }
-  if (record.operation === 'DELETE_TORRENT') return `${count} torrent${count === 1 ? '' : 's'}`;
-  if (record.operation === 'REMOVE_QUEUE') return `${count} queue item${count === 1 ? '' : 's'}`;
-  if (record.operation === 'REMOVE_BLOCKLIST') return `${count} blocklist entr${count === 1 ? 'y' : 'ies'}`;
-  if (record.operation === 'MARK_FAILED') return `${count} download${count === 1 ? '' : 's'}`;
-  return `${count} file${count === 1 ? '' : 's'}`;
 }
 
 function timeAgo(iso: string): string {

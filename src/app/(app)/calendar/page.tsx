@@ -66,7 +66,7 @@ import {
 import { useCalendar } from '@/hooks/use-calendar';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { useUIStore } from '@/lib/store';
-import { InstanceFilter, withAppName, type InstanceOption } from '@/components/instance-filter';
+import { InstanceFilter, severalInstanceLabels, withAppName, type InstanceOption } from '@/components/instance-filter';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
@@ -164,6 +164,22 @@ function RowBackdrop({ src }: { src: string | null }) {
 // The page's calendar refetch, for the rows' alert buttons: a saved alert
 // shows as "Scheduled" on its row at once, not after a reload.
 const AlertSavedContext = createContext<(() => void) | undefined>(undefined);
+
+/** Instance names by instanceId, only for apps with more than one instance:
+ *  "show all" lists the same episode once per Sonarr, and without the name the
+ *  rows looked like duplicates. */
+const InstanceLabelsContext = createContext<ReadonlyMap<string, string>>(new Map());
+
+function InstanceChip({ event }: { event: CalendarEvent }) {
+  const labels = useContext(InstanceLabelsContext);
+  const label = event.instanceId ? labels.get(event.instanceId) : undefined;
+  if (!label) return null;
+  return (
+    <Badge variant="outline" className="h-4 min-w-0 max-w-[45%] px-1 py-0 text-[9px]" title={label}>
+      <span className="truncate">{label}</span>
+    </Badge>
+  );
+}
 
 function scheduleDraftFromEvent(event: CalendarEvent): ScheduledAlertDraft | null {
   const q = event.instanceId ? `?instance=${event.instanceId}` : '';
@@ -705,6 +721,7 @@ function AgendaEventRow({ row, showImages }: { row: AgendaRow; showImages: boole
                     Scheduled
                   </Badge>
                 )}
+                <InstanceChip event={event} />
                 <p className="min-w-0 truncate text-xs text-muted-foreground">{event.subtitle}</p>
               </div>
             </div>
@@ -922,6 +939,7 @@ function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: 
                   {event.scheduleLabel || 'Scheduled'}
                 </Badge>
               )}
+              <InstanceChip event={event} />
               <p className="text-xs text-muted-foreground truncate min-w-0">
                 {event.subtitle}
               </p>
@@ -1279,6 +1297,7 @@ function WeekView({
                                 Scheduled
                               </Badge>
                             )}
+                            <InstanceChip event={event} />
                           </div>
                           <p className="text-xs text-muted-foreground truncate">
                             {event.subtitle}
@@ -1494,6 +1513,10 @@ export default function CalendarPage() {
       .filter((c) => c.type === 'SONARR' || c.type === 'RADARR' || (c.type === 'LIDARR' && canViewMusic))
       .map((c) => ({ id: c.id, label: withAppName(c.label, c.type) })),
     [arrConnections, canViewMusic],
+  );
+  const instanceLabels = useMemo(
+    () => severalInstanceLabels(Array.isArray(arrConnections) ? arrConnections : []),
+    [arrConnections],
   );
 
   // Drop a stale instance selection once the list has loaded without it.
@@ -1749,6 +1772,7 @@ export default function CalendarPage() {
           events to keep on screen during a background refetch. */}
       {(!loading || events.length > 0) && (
         <AlertSavedContext.Provider value={onAlertSaved}>
+        <InstanceLabelsContext.Provider value={instanceLabels}>
           {calendarView === 'agenda' && (
             <AgendaView ref={agendaViewRef} events={filteredEvents} showImages={showImages} stickyOffset={stickyOffset || 80} />
           )}
@@ -1758,6 +1782,7 @@ export default function CalendarPage() {
           {calendarView === 'week' && (
             <WeekView currentDate={currentDate} events={filteredEvents} showImages={showImages} />
           )}
+        </InstanceLabelsContext.Provider>
         </AlertSavedContext.Provider>
       )}
     </div>

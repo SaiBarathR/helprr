@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
+import { goBackOr, useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { PageHeader } from '@/components/layout/page-header';
 import { NotFoundState } from '@/components/ui/not-found-state';
 import {
@@ -39,6 +39,7 @@ export default function ArtistEditPage() {
   const instance = useSearchParams().get('instance') ?? undefined;
   const queryClient = useQueryClient();
   const artistId = Number(id);
+  const detailHref = `/music/${artistId}${instance ? `?instance=${encodeURIComponent(instance)}` : ''}`;
 
   const artistQuery = useQuery({
     queryKey: queryKeys.detail('lidarr', artistId, instance),
@@ -91,7 +92,7 @@ export default function ArtistEditPage() {
     onSuccess: (_data, { updated }) => {
       invalidateMusic(queryClient, { itemId: updated.id, instanceId: instance });
       toast.success('Artist updated');
-      router.back();
+      goBackOr(router, detailHref);
     },
     onError: (err) => {
       // 401 is handled globally (redirect to /login); only toast other failures.
@@ -185,7 +186,7 @@ export default function ArtistEditPage() {
               <div className="grouped-row">
                 <Label className="text-sm shrink-0">Root Folder</Label>
                 <Select value={rootFolder} onValueChange={setRootFolder}>
-                  <SelectTrigger className="w-[180px]"><SelectValue placeholder="Select folder" /></SelectTrigger>
+                  <SelectTrigger className="w-[180px]" title={rootFolder || undefined}><SelectValue placeholder="Select folder">{rootFolder ? <span className="truncate">{rootFolder}</span> : null}</SelectValue></SelectTrigger>
                   <SelectContent>
                     {rootFolders.map((rf) => (
                       <SelectItem key={rf.id} value={rf.path}>{rf.path}</SelectItem>
@@ -229,7 +230,7 @@ export default function ArtistEditPage() {
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save Changes
           </Button>
-          <Button variant="outline" className="flex-1" onClick={() => router.back()} disabled={saving}>
+          <Button variant="outline" className="flex-1" onClick={() => goBackOr(router, detailHref)} disabled={saving}>
             Cancel
           </Button>
         </div>

@@ -8,6 +8,7 @@ import { FadeInImage } from '@/components/media/fade-in-image';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
@@ -59,6 +60,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { invalidateAfterLibraryRemove, invalidateMovies, patchLibraryMonitored } from '@/lib/query-invalidation';
 import { useQualityProfiles, useTags } from '@/lib/hooks/use-reference-data';
+import { useRemoveQueriesOnUnmount } from '@/lib/hooks/use-remove-queries-on-unmount';
 import { pollCommand } from '@/lib/arr-command';
 import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
@@ -93,6 +95,7 @@ export default function MovieDetailPage() {
   const movieId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
   const queryClient = useQueryClient();
+  const removeOnUnmount = useRemoveQueriesOnUnmount();
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -316,7 +319,7 @@ export default function MovieDetailPage() {
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       invalidateMovies(queryClient);
       invalidateAfterLibraryRemove(queryClient, 'radarr', [{ id: movie.id, instanceId: instance }]);
-      queryClient.removeQueries({ queryKey: queryKeys.detail('radarr', movie.id, instance) });
+      removeOnUnmount(queryKeys.detail('radarr', movie.id, instance));
       toast.success('Movie deleted');
       router.push('/movies');
     } catch (e) { handleAuthError(e); toast.error('Delete failed'); }
@@ -1087,22 +1090,18 @@ export default function MovieDetailPage() {
           </DrawerHeader>
           <div className="px-4">
             <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={deleteFiles}
-                onChange={(e) => setDeleteFiles(e.target.checked)}
+                onCheckedChange={(checked) => setDeleteFiles(checked === true)}
                 disabled={deleting}
-                className="h-4 w-4 accent-destructive"
               />
               Also delete all files from disk
             </label>
             <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={addExclusion}
-                onChange={(e) => setAddExclusion(e.target.checked)}
+                onCheckedChange={(checked) => setAddExclusion(checked === true)}
                 disabled={deleting}
-                className="h-4 w-4 accent-destructive"
               />
               Add import-list exclusion
             </label>
