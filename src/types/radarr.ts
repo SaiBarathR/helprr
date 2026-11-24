@@ -161,6 +161,7 @@ export interface RadarrCollection {
   qualityProfileId?: number;
   minimumAvailability?: string;
   searchOnAdd?: boolean;
+  tags?: number[];
   missingMovies?: number;
 }
 
