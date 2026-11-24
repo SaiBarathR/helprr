@@ -1160,6 +1160,28 @@ change: a third-party tracker on it leaks the torrent, and a replaced passkey tr
 can only be restored by someone who can see it. Tracker changes delete nothing
 and are not operation-audited, like tags, location and rename.
 
+The save-path folder picker (`GET /api/qbittorrent/folders?for=add|location|category&path=`)
+lists folders with qBittorrent 5's `app/getDirectoryContent` only inside the download
+roots the save-path checks use (`src/lib/qbittorrent-inputs.ts`): the default save path
+and every category's for Add (`torrents.add`) and Set location (`torrents.manage`), the
+default save path alone for a category (admin, as the categories route requires). Only
+absolute roots count. The requested path is read as those checks read it (dots-only
+parts, a backslash outside Windows and control characters refused) and that checked
+form, without empty or `.` parts and with a bare drive kept as `D:/`, is what
+qBittorrent is asked to list. The answer is folder names, sorted and capped
+at 500, without the ones a save path could not name, and the folder above only while it
+is still inside a root. qBittorrent follows symbolic links and its API can't tell one
+from a folder, so a link placed inside a download folder is listed like a folder, as the
+save-path checks also read paths by their text. Renaming a file or folder inside a
+torrent (`POST /api/qbittorrent/[hash]/files/rename`, `torrents.manage`) takes the old
+path, which must be one in the torrent's own file list, and a new name with no slash,
+backslash, control character or dots-only value (255 bytes at most); the server puts it
+beside the old one, so a rename never moves anything out of its folder. A torrent whose
+category a Sonarr, Radarr or Lidarr download client names (exactly, or an instance that
+did not answer) needs `confirm`, as removing such a category does; only an admin is
+told the instances' names (anyone else gets the app's). Renames are logged with the user,
+not operation-audited.
+
 The details route copies `torrents/properties` out by an allow-list. The torrent's
 comment and "created by" are free text whoever made the torrent wrote, where a
 private tracker can put a passkey link: an admin gets them as written, anyone else

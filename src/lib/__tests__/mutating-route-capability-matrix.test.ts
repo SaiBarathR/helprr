@@ -365,6 +365,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
   'cap:torrents.bandwidth': ['POST /api/qbittorrent/transfer/limits'],
   'cap:torrents.manage': [
     'POST /api/qbittorrent/[hash]/files/priority',
+    'POST /api/qbittorrent/[hash]/files/rename',
     'POST /api/qbittorrent/[hash]/trackers',
     // Tags are labels only (no folder, unlike categories).
     'POST /api/qbittorrent/tags',
@@ -645,7 +646,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(291);
+    expect(handlers.size).toBe(292);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

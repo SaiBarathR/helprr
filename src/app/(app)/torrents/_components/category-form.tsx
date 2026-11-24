@@ -15,6 +15,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { useMe } from '@/components/permission-provider';
 import type { ArrCategoryUse } from '@/lib/qbittorrent-category-usage';
 import { defaultCategoryFolder } from './category-links';
+import { FolderPickerButton } from './folder-picker';
 import { sendCategoryChange, useCategoryDetails } from './use-categories';
 
 type ArrWarning = { uses: ArrCategoryUse[]; unchecked: string[] };
@@ -204,7 +205,7 @@ export function CategoryForm({ editName }: { editName?: string }) {
             </>
           }
         >
-          <div className="grouped-row">
+          <div className="grouped-row gap-2">
             <Input
               value={savePath ?? ''}
               onChange={(e) => {
@@ -219,6 +220,15 @@ export function CategoryForm({ editName }: { editName?: string }) {
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
+            />
+            <FolderPickerButton
+              purpose="category"
+              value={savePath ?? ''}
+              onPick={(picked) => {
+                setSavePath(picked);
+                clearError('savePath');
+              }}
+              disabled={saving || removing}
             />
           </div>
         </GroupedSection>

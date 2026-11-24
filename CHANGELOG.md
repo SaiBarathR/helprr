@@ -42,6 +42,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   added and why. The ones not added stay in the form to fix or try again. Helprr
   downloads a link itself, only from addresses on the internet (never from your own
   network), so it can check the torrent and offer Choose Files for a single link.
+- **Pick a folder instead of typing it.** The folder button beside Add Torrent's Save at,
+  a torrent's Save Path (Location) and a category's Save Path opens a sheet that lists the
+  folders inside qBittorrent's download folders; tap into one and choose Use This Folder.
+  It lists only inside the download folders (for a category, only inside qBittorrent's
+  default save path) and needs the same permission as the field it fills. Typing a path
+  still works.
+- **Rename files and folders inside a torrent.** On Manage Files, each row's menu (or a
+  long press) has Rename. It needs the Manage torrents permission and changes the name
+  only, never the folder. When Sonarr, Radarr or Lidarr downloads into the torrent's
+  category, Helprr asks first: a renamed file can stop the app importing it.
 - **Share magnets and .torrent files to Helprr on Android.** Sharing a magnet link, a
   link to a .torrent file, or a .torrent file to the installed app opens Torrents → Add
   with it filled in, for users who may add torrents.
