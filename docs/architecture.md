@@ -176,6 +176,17 @@ of an older file does the same as for `upgraded` below (marker
 `src/lib/settings-import/notifications.ts`). A Service status link whose
 service doesn't match the instance's type opens that instance's own health,
 or nothing.
+For admins the same sheet (and a Prowlarr row's) adds the app's version,
+scheduled tasks and recent warnings, through the admin-only
+`/api/admin/arr-system/{status,tasks,tasks/[id],logs}?instanceId=` routes
+(`src/lib/server/arr-system.ts`): the instance is looked up by id and its own
+type picks the client. Run now sends only the task names in `RUNNABLE_TASKS`
+(`src/lib/arr-system.ts`); update checks, recycle-bin and history clean-up,
+import-list sync and Lidarr's folder rescan are left out. Log entries are
+rebuilt from id, time, level, logger, message and exception, each redacted
+(URLs to origins, credentials, magnets, the instance's key, bare 32-hex words)
+and then cut short. The version check never installs anything, and no push
+announces an app update.
 One upstream failure must not cancel every other source. Sonarr, Radarr, and
 Lidarr instances share two polling slots per cycle; an instance that fails twice
 in a row is skipped (without taking a slot) for 30 seconds, doubling to 5
