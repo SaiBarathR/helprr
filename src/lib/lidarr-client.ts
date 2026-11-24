@@ -524,4 +524,24 @@ export class LidarrClient {
   async getSystemStatus(): Promise<SystemStatus> {
     return this.get<SystemStatus>('/api/v1/system/status');
   }
+
+  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
+  async getUpdates(): Promise<unknown[]> {
+    return this.get<unknown[]>('/api/v1/update');
+  }
+
+  /** System → Tasks: each scheduled task with its interval and last and next run. */
+  async getSystemTasks(): Promise<unknown[]> {
+    return this.get<unknown[]>('/api/v1/system/task');
+  }
+
+  /** System → Logs, one page; `level: 'warn'` is warnings and worse. */
+  async getLogs(params: { page: number; pageSize: number; level: string }): Promise<unknown> {
+    return this.get<unknown>('/api/v1/log', { ...params, sortKey: 'time', sortDirection: 'descending' });
+  }
+
+  /** A scheduled task run now, by its task name. Callers allow-list the name (see lib/arr-system.ts). */
+  async runTask(name: string): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v1/command', { name });
+  }
 }

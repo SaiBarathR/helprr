@@ -565,6 +565,30 @@ export class ProwlarrClient {
     return this.post<CommandResponse>('/api/v1/command', { name, ...options });
   }
 
+  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
+  async getUpdates(): Promise<unknown[]> {
+    return this.get<unknown[]>('/api/v1/update');
+  }
+
+  /** System → Tasks: each scheduled task with its interval and last and next run. */
+  async getSystemTasks(): Promise<unknown[]> {
+    return this.get<unknown[]>('/api/v1/system/task');
+  }
+
+  /** System → Logs, one page; `level: 'warn'` is warnings and worse. */
+  async getLogs(params: { page: number; pageSize: number; level: string }): Promise<unknown> {
+    return this.get<unknown>('/api/v1/log', { ...params, sortKey: 'time', sortDirection: 'descending' });
+  }
+
+  /** A scheduled task run now, by its task name. Callers allow-list the name (see lib/arr-system.ts). */
+  async runTask(name: string): Promise<CommandResponse> {
+    return this.sendCommand(name);
+  }
+
+  async getCommand(id: number): Promise<CommandResponse> {
+    return this.get<CommandResponse>(`/api/v1/command/${id}`);
+  }
+
   async getAppProfiles(): Promise<ProwlarrAppProfile[]> {
     return this.get<ProwlarrAppProfile[]>('/api/v1/appprofile');
   }
