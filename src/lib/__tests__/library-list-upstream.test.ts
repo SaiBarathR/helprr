@@ -82,3 +82,24 @@ describe('film list when Radarr instances fail', () => {
     expect(labelsStartedFirst).toBe(true);
   });
 });
+
+describe('film list fields for the library filters', () => {
+  it('carries the root folder, and the cutoff flag only for a film with its file', async () => {
+    mocks.clients.mockResolvedValue([instance('r1')]);
+    mocks.library.mockResolvedValue({
+      items: [
+        { ...movie, id: 1, rootFolderPath: '/data/movies', hasFile: true, movieFile: { qualityCutoffNotMet: true } },
+        { ...movie, id: 2, hasFile: true, movieFile: { qualityCutoffNotMet: false } },
+        // A stale file record on a film without its file is not "below the cutoff".
+        { ...movie, id: 3, hasFile: false, movieFile: { qualityCutoffNotMet: true } },
+      ],
+      cached: false, available: true, complete: true,
+    });
+
+    const body = await (await list()).json();
+
+    expect(body.map((m: { id: number; rootFolderPath?: string; qualityCutoffNotMet: boolean }) => [m.id, m.rootFolderPath, m.qualityCutoffNotMet]))
+      .toEqual([[1, '/data/movies', true], [2, undefined, false], [3, undefined, false]]);
+    expect(body[0]).not.toHaveProperty('movieFile');
+  });
+});

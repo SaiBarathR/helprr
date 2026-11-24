@@ -81,6 +81,7 @@ export type LidarrArtistListItem = Pick<
   | 'added'
   | 'statistics'
   | 'path'
+  | 'rootFolderPath'
   | 'tags'
   | 'nextAlbum'
   | 'lastAlbum'

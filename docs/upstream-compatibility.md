@@ -599,6 +599,19 @@ Torrents settings page read and write the four keys as preferences, through an
 allow-list, since `setPreferences` also takes the Web UI password and the program run
 on completion.
 
+### Library filters (2026-11-24)
+
+Live on the dummy Sonarr `4.0.20.3014` and Radarr `7.0.3.10918`. `GET /api/v3/series`
+and `GET /api/v3/movie` give every item its `rootFolderPath`, which the Root folder
+filter uses; Radarr's list also embeds each film's `movieFile` with
+`qualityCutoffNotMet`, which the Movies Cutoff Unmet filter reads (a film without its
+file is never below the cutoff). A series has no cutoff state, so the Series filter
+reads `GET /api/v3/wanted/cutoff` with `monitored=true`, `includeSeries=false`,
+`includeEpisodeFile=false` and `includeImages=false` in one page of up to 20 000: Sonarr
+ignores an unknown `sortKey` and always orders that list by air date, which can skip
+or repeat rows across page edges. Lidarr's artist list (not qualified here) falls back
+to the folder above the artist's own when it has no `rootFolderPath`.
+
 ## Before reporting an upstream compatibility problem
 
 1. In **Settings → Instances**, re-test the affected connection and record the exact

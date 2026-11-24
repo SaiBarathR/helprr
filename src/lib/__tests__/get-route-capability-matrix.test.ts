@@ -252,6 +252,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/sonarr/[id]',
     'GET /api/sonarr/episodefile',
     'GET /api/sonarr/history/series',
+    'GET /api/sonarr/cutoff-unmet',
     'GET /api/sonarr',
   ],
   'cap:settings.instances': [

@@ -10,6 +10,8 @@ import { MediaTable } from '@/components/media/media-table';
 import { ViewSelector } from '@/components/media/view-selector';
 import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
+import { useLibraryFilterMenu } from '@/components/media/library-filter-menu';
+import { toast } from 'sonner';
 import {
   ActiveFilterBar,
   FilterDot,
@@ -115,6 +117,7 @@ const filterOptions = [
   { value: 'ended', label: 'Ended' },
   { value: 'missing', label: 'Missing' },
   { value: 'upcoming', label: 'Upcoming' },
+  { value: 'cutoffUnmet', label: 'Cutoff Unmet' },
 ] as const;
 
 const sortOptions = [
@@ -247,6 +250,33 @@ export default function SeriesPage() {
   const setInstanceFilter = useUIStore((s) => s.setSeriesInstanceFilter);
   const watchFilter = useUIStore((s) => s.seriesWatchFilter);
   const setWatchFilter = useUIStore((s) => s.setSeriesWatchFilter);
+  const facetFilter = useUIStore((s) => s.seriesFacetFilter);
+  const setFacetFilter = useUIStore((s) => s.setSeriesFacetFilter);
+  const savedFilters = useUIStore((s) => s.seriesSavedFilters);
+  const setSavedFilters = useUIStore((s) => s.setSeriesSavedFilters);
+  // A series carries no cutoff state, so Cutoff Unmet reads Sonarr's Wanted list, only while it is picked.
+  const cutoffFilterOn = filter.includes('cutoffUnmet');
+  const cutoffQuery = useQuery({
+    queryKey: queryKeys.cutoffUnmetSeries(),
+    queryFn: jsonFetcher<{ series: string[]; incomplete: string[] }>('/api/sonarr/cutoff-unmet'),
+    enabled: cutoffFilterOn,
+    staleTime: 60_000,
+  });
+  const cutoffUnmetKeys = useMemo(
+    () => (cutoffQuery.data ? new Set(cutoffQuery.data.series) : undefined),
+    [cutoffQuery.data]
+  );
+  const cutoffIncomplete = cutoffFilterOn ? cutoffQuery.data?.incomplete.join(', ') : undefined;
+  useEffect(() => {
+    if (cutoffIncomplete) toast.warning(`Cutoff Unmet may be missing series from ${cutoffIncomplete}.`);
+  }, [cutoffIncomplete]);
+  const cutoffFailed = cutoffFilterOn && cutoffQuery.isError;
+  useEffect(() => {
+    if (cutoffFailed) toast.error("Couldn't load Cutoff Unmet from Sonarr.");
+  }, [cutoffFailed]);
+  // Only Cutoff Unmet picked: every row waits on Sonarr's list. With other statuses
+  // (which match any one) their rows show while it loads.
+  const waitingForCutoff = cutoffFilterOn && filter.length === 1 && cutoffQuery.isPending;
   const visibleFieldsByMode = useUIStore((s) => s.seriesVisibleFields);
   const setVisibleFieldsForMode = useUIStore((s) => s.setSeriesVisibleFields);
   const search = useUIStore((s) => s.seriesSearch);
@@ -298,7 +328,7 @@ export default function SeriesPage() {
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [viewMode, posterSize, loading, series.length, search, filter, watchFilter, instanceFilter]);
+  }, [viewMode, posterSize, loading, series.length, search, filter, facetFilter, watchFilter, instanceFilter]);
 
   useEffect(() => {
     persistViewState(search);
@@ -340,13 +370,15 @@ export default function SeriesPage() {
 
   const baseRows = useMemo(() => deriveSeriesBaseRows(preparedRows, {
     filter: filter as SeriesFilter[],
+    facets: facetFilter,
+    cutoffUnmetKeys,
     instanceFilter,
     sort: sort as SeriesSortKey,
     sortDir,
     watchPredicate: canFilterByWatchStatus && watchMapReady && watchFilter !== 'all'
       ? (item) => matchesWatchFilter(watchFilter, watchLookup, 'sonarr', item.instanceId, item.id)
       : undefined,
-  }), [preparedRows, filter, instanceFilter, sort, sortDir, canFilterByWatchStatus, watchMapReady, watchFilter, watchLookup]);
+  }), [preparedRows, filter, facetFilter, cutoffUnmetKeys, instanceFilter, sort, sortDir, canFilterByWatchStatus, watchMapReady, watchFilter, watchLookup]);
 
   const filtered = useMemo(
     () => preparedItems(searchPreparedRows(baseRows, deferredSearch)),
@@ -714,10 +746,24 @@ export default function SeriesPage() {
     }
   }, [sort, sortDir, setSort, setSortDir]);
 
+  const filterMenu = useLibraryFilterMenu({
+    items: series,
+    status: filter,
+    setStatus: setFilter,
+    facets: facetFilter,
+    setFacets: setFacetFilter,
+    instance: instanceFilter,
+    setInstance: setInstanceFilter,
+    watch: watchFilter,
+    setWatch: setWatchFilter,
+    saved: savedFilters,
+    updateSaved: (update) => setSavedFilters(update(useUIStore.getState().seriesSavedFilters)),
+  });
   // The filter menu's choices, named so a filtered library is never mistaken
   // for the whole one. The search box is a filter too, but shows itself.
   const menuFilters: ActiveFilter[] = [
     ...multiSelectFilters(filter, filterOptions, setFilter),
+    ...filterMenu.facetChips,
     // Same gate as the filter itself: until the watch map loads it hides nothing.
     ...(canFilterByWatchStatus && watchMapReady && watchFilter !== 'all'
       ? [{
@@ -736,9 +782,7 @@ export default function SeriesPage() {
   ];
   const activeFilters = [...menuFilters, ...searchFilter(search, () => setSearch(''))];
   const clearFilters = () => {
-    setFilter([]);
-    setWatchFilter('all');
-    setInstanceFilter('all');
+    filterMenu.clearMenuFilters();
     setSearch('');
   };
   const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Title';
@@ -755,7 +799,9 @@ export default function SeriesPage() {
           <ResponsiveMenu
             title="Filter"
             titleInDropdown
-            contentClassName="w-48"
+            open={filterMenu.menuOpen}
+            onOpenChange={filterMenu.setMenuOpen}
+            contentClassName="w-60"
             trigger={(
               <button
                 className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
@@ -769,6 +815,7 @@ export default function SeriesPage() {
               </button>
             )}
           >
+            {filterMenu.savedSection}
             <ResponsiveMenuCheckboxItem
               checked={filter.length === 0}
               onCheckedChange={() => setFilter([])}
@@ -833,6 +880,7 @@ export default function SeriesPage() {
                 ))}
               </>
             )}
+            {filterMenu.facetGroups}
           </ResponsiveMenu>
 
           <ResponsiveMenu
@@ -948,7 +996,7 @@ export default function SeriesPage() {
       {!search && !selectionMode && <LeavingSoonShelf type="series" />}
 
       {(() => {
-        if (loading && series.length === 0) {
+        if ((loading && series.length === 0) || waitingForCutoff) {
           return <MediaGridSkeleton gridClassName={posterGridClass} />;
         }
 
@@ -973,7 +1021,9 @@ export default function SeriesPage() {
             <div className="text-center py-12 text-muted-foreground">
               {series.length === 0
                 ? 'No series found. Add your Sonarr connection in Settings.'
-                : 'No series match your filters.'}
+                : cutoffFailed
+                  ? "Couldn't load Cutoff Unmet from Sonarr."
+                  : 'No series match your filters.'}
             </div>
           );
         }
@@ -1097,11 +1147,13 @@ export default function SeriesPage() {
                 rating: 'rating',
                 episodeProgress: 'episodes',
               }}
-              resetPageKey={`${search}|${filter.join(',')}|${instanceFilter}|${watchFilter}|${sort}|${sortDir}`}
+              resetPageKey={`${search}|${filter.join(',')}|${JSON.stringify(facetFilter)}|${instanceFilter}|${watchFilter}|${sort}|${sortDir}`}
             />
           </div>
         );
       })()}
+
+      {filterMenu.dialogs}
 
       <RenamePreviewDialog
         open={renameTarget !== null}
