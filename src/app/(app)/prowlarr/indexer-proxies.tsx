@@ -85,7 +85,7 @@ export function IndexerProxiesSection({ canManage }: { canManage: boolean }) {
       <div className="flex min-h-9 items-center justify-between gap-2">
         <h2 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Indexer proxies</h2>
         {canManage && proxies.length > 1 && (
-          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={testAll} disabled={testingAll}>
+          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={testAll} disabled={testingAll || testingId !== null}>
             {testingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
             Test All
           </Button>
@@ -125,10 +125,11 @@ export function IndexerProxiesSection({ canManage }: { canManage: boolean }) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 px-2 text-xs shrink-0"
+                    className="relative touch-target h-8 px-2 text-xs shrink-0"
                     aria-label={`Test ${proxy.name}`}
                     onClick={() => void test(proxy)}
-                    disabled={testingId === proxy.id || testingAll}
+                    // One test at a time, so the spinner stays on the proxy being tested.
+                    disabled={testingId !== null || testingAll}
                   >
                     {testingId === proxy.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Test'}
                   </Button>

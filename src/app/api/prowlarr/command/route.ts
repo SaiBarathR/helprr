@@ -16,7 +16,7 @@ const ALLOWED_COMMANDS = new Set(['ApplicationIndexerSync', 'CheckHealth']);
  *
  * Expects a JSON body with a `name` from ALLOWED_COMMANDS. On success returns the command result as JSON.
  *
- * @returns On success, the JSON response from Prowlarr. A missing or unknown `name` is a 400 and nothing is sent. On other failures, a 500 response with `{ error: string }` describing the failure.
+ * @returns On success, the command's id, name and status. A missing or unknown `name` is a 400 and nothing is sent. On other failures, a 500 response with `{ error: string }` describing the failure.
  */
 async function postHandler(request: NextRequest) {
   const auth = await requireUserCapability('prowlarr.manage');
@@ -35,7 +35,8 @@ async function postHandler(request: NextRequest) {
 
     const client = await getProwlarrClient();
     const result = await client.sendCommand(name);
-    return NextResponse.json(result);
+    // As the status route: a command's body and message can name paths and hosts.
+    return NextResponse.json({ id: result.id, name: result.name, status: result.status });
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to send command');
   }

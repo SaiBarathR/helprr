@@ -72,7 +72,12 @@ export function useIndexerActions() {
     body: Omit<ProwlarrBulkEdit, 'ids'>,
   ): Promise<string | null> {
     const changes = new Map(targets.map((indexer) => [indexer.id, changeFor(indexer)]));
-    setPendingEdits((prev) => new Map([...prev, ...changes]));
+    // Laid over any edit still on its way for the same indexer, not in place of it.
+    setPendingEdits((prev) => {
+      const next = new Map(prev);
+      for (const [id, change] of changes) next.set(id, { ...prev.get(id), ...change });
+      return next;
+    });
     try {
       const res = await fetch('/api/prowlarr/indexers/bulk', {
         method: 'PUT',

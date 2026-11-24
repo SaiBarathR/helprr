@@ -88,6 +88,11 @@ describe('POST /api/prowlarr/command', () => {
     expect(mocks.prowlarr.sendCommand).toHaveBeenCalledWith(name);
   });
 
+  it('answers with the command id, name and status only', async () => {
+    const res = await post(prowlarrCommand as Handler, '/api/prowlarr/command', { name: 'CheckHealth' });
+    expect(await res.json()).toEqual({ id: 42, name: 'X', status: 'queued' });
+  });
+
   it('refuses CheckHealth without prowlarr.manage', async () => {
     mocks.requireUserCapability.mockResolvedValue(forbidden());
     const res = await post(prowlarrCommand as Handler, '/api/prowlarr/command', { name: 'CheckHealth' });
