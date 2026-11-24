@@ -243,6 +243,39 @@ describe('Add Torrent: options for qBittorrent', () => {
     expect(screen.getByRole('button', { name: /^Advanced.*· 1 set$/ })).toBeTruthy();
   });
 
+  it('sends the options with "Next: Choose Files", stopping the magnet once metadata arrives', async () => {
+    mocks.caps = new Set(['torrents.add', 'torrents.manage', 'torrents.delete']);
+    renderPage();
+    await userEvent.click(await screen.findByPlaceholderText('magnet:?xt=urn:btih:...'));
+    await userEvent.paste(MAGNET);
+    await chooseOptions();
+    await userEvent.click(screen.getByRole('button', { name: 'Next: Choose Files' }));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(JSON.parse(sent[0].body as string)).toMatchObject({
+      paused: false,
+      stopCondition: 'MetadataReceived',
+      tags: ['4k', 'mine'],
+      sequentialDownload: true,
+      firstLastPiecePrio: true,
+    });
+  });
+
+  it('sends none of them when the files are picked for Sonarr/Radarr', async () => {
+    mocks.caps = new Set([...LINKER, 'torrents.manage', 'torrents.delete']);
+    renderPage();
+    await userEvent.click(await screen.findByPlaceholderText('magnet:?xt=urn:btih:...'));
+    await userEvent.paste(MAGNET);
+    await userEvent.click(screen.getByRole('radio', { name: /Add to qBittorrent only/ }));
+    await chooseOptions();
+    await userEvent.click(screen.getByRole('radio', { name: /Send to Sonarr or Radarr/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Next: choose files' }));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    const body = JSON.parse(sent[0].body as string);
+    for (const key of ['tags', 'sequentialDownload', 'firstLastPiecePrio']) expect(body).not.toHaveProperty(key);
+  });
+
   it('offers speed limits only to a user who may change bandwidth', async () => {
     mocks.caps = new Set(['torrents.add']);
     renderPage();

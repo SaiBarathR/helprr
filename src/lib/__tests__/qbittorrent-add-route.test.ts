@@ -156,6 +156,31 @@ describe.each(['magnet', 'file'] as const)('adding a %s', (path) => {
     expect(sentOptions()).toMatchObject({ autoTMM: true, category: 'movies' });
   });
 
+  it.each([
+    // qBittorrent 5.1.4 creates it and, under automatic management, saves to "/escape".
+    ['a parent hop under automatic management', { autoTMM: true, category: '../escape' }],
+    ['a parent hop under qBittorrent\'s default management', { category: '../../config' }],
+    ['a category qBittorrent does not have', { autoTMM: true, category: 'brand-new' }],
+  ])('refuses %s before adding anything', async (_label, body) => {
+    const res = await post(body);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "category must be one of qBittorrent's categories" });
+    expect(add()).not.toHaveBeenCalled();
+  });
+
+  it('refuses more than 50 tags', async () => {
+    const res = await post({ tags: Array.from({ length: 51 }, (_, i) => `t${i}`) });
+    expect(res.status).toBe(400);
+    expect(add()).not.toHaveBeenCalled();
+  });
+
+  it('refuses an upload limit alone from a user without the bandwidth grant', async () => {
+    mocks.requireUser.mockResolvedValue({ ok: true, user: MEMBER, session: {} });
+    const res = await post({ upLimit: 1024 });
+    expect(res.status).toBe(403);
+    expect(add()).not.toHaveBeenCalled();
+  });
+
   it('refuses speed limits from a user without the bandwidth grant', async () => {
     mocks.requireUser.mockResolvedValue({ ok: true, user: MEMBER, session: {} });
     const res = await post({ dlLimit: 1024 });

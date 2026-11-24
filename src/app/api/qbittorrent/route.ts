@@ -177,6 +177,15 @@ async function validateSavepath(client: QBittorrentClient, savepath: string): Pr
   );
 }
 
+// qBittorrent creates a category it doesn't know, saving to <default save path>/<name>
+// with ".." resolved, so under automatic management (asked for, or qBittorrent's
+// default) "../x" would put the payload outside every download folder. A known
+// category's folder is one of the download roots already.
+async function validateCategory(client: QBittorrentClient, category: string): Promise<NextResponse | null> {
+  if (Object.hasOwn(await client.getCategories(), category)) return null;
+  return NextResponse.json({ error: "category must be one of qBittorrent's categories" }, { status: 400 });
+}
+
 /** The add options a user may set, and that go together; null when they pass. */
 function checkAddOptions(user: User, options: AddTorrentOptions, savepath: string | undefined): NextResponse | null {
   // Speed limits are their own grant on an existing torrent; adding one doesn't skip it.
@@ -300,6 +309,13 @@ async function postHandler(request: NextRequest) {
         if (savepathError) {
           logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file', validationFailed: true });
           return savepathError;
+        }
+      }
+      if (category) {
+        const categoryError = await validateCategory(client, category);
+        if (categoryError) {
+          logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file', validationFailed: true });
+          return categoryError;
         }
       }
 
@@ -426,6 +442,13 @@ async function postHandler(request: NextRequest) {
       if (savepathError) {
         logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet', validationFailed: true });
         return savepathError;
+      }
+    }
+    if (category) {
+      const categoryError = await validateCategory(client, category);
+      if (categoryError) {
+        logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet', validationFailed: true });
+        return categoryError;
       }
     }
     const stopCondition = body.stopCondition === 'MetadataReceived' || body.stopCondition === 'FilesChecked'

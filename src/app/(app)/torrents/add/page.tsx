@@ -65,12 +65,19 @@ type SpeedUnit = 'KB/s' | 'MB/s';
 type SpeedDraft = { value: string; unit: SpeedUnit };
 const NO_SPEED_LIMIT: SpeedDraft = { value: '', unit: 'MB/s' };
 
-/** Bytes per second; 0 when empty, null when it is not a speed. */
+// qBittorrent reads add-time limits as a 32-bit int of bytes per second (just under 2048 MB/s).
+const MAX_SPEED_LIMIT = 2_147_483_647;
+// What the server takes in one add (qBittorrent itself has no cap).
+const MAX_TAGS = 50;
+
+/** Bytes per second; 0 when empty, null when it is not a speed qBittorrent takes. */
 function speedLimitBytes({ value, unit }: SpeedDraft): number | null {
   if (!value.trim()) return 0;
   const number = Number(value);
   if (!Number.isFinite(number) || number < 0) return null;
-  return Math.round(number * (unit === 'MB/s' ? 1024 * 1024 : 1024));
+  // A tiny limit stays a limit instead of rounding to 0, which means none.
+  const bytes = number > 0 ? Math.max(1, Math.round(number * (unit === 'MB/s' ? 1024 * 1024 : 1024))) : 0;
+  return bytes > MAX_SPEED_LIMIT ? null : bytes;
 }
 
 async function parseApiResult(res: Response): Promise<ApiResult> {
@@ -198,7 +205,8 @@ function AddTorrentPageContent() {
       // them automatically once metadata arrives, before downloading data.
       // Direct add skips review and just honors the "Start torrent" checkbox.
       const paused = review ? addMode === 'file' : !startTorrent;
-      const savepath = autoPicksFolder ? undefined : savePath.trim() || undefined;
+      // From what is sent: the Sonarr/Radarr file picker sends no options, so its save path stays.
+      const savepath = options.autoTMM === true ? undefined : savePath.trim() || undefined;
 
       const res = addMode === 'magnet'
         ? await fetch('/api/qbittorrent', {
@@ -266,7 +274,7 @@ function AddTorrentPageContent() {
     const dl = canBandwidth ? speedLimitBytes(dlLimit) : 0;
     const up = canBandwidth ? speedLimitBytes(upLimit) : 0;
     if (dl === null || up === null) {
-      toast.error('Invalid speed value');
+      toast.error('Enter a speed limit from 0 to 2047 MB/s');
       return null;
     }
     return {
@@ -297,7 +305,8 @@ function AddTorrentPageContent() {
   }
 
   if (reviewHash) {
-    const displayName = rename.trim() ||
+    // The name is only sent with a qBittorrent-only add, not the Sonarr/Radarr fallback.
+    const displayName = (!fallback && rename.trim()) ||
       (addMode === 'magnet'
         ? magnetDisplayName(magnetLink)
         : torrentFile?.name.replace(/\.torrent$/i, '')) || 'New Torrent';
@@ -448,14 +457,14 @@ function AddTorrentPageContent() {
           <div className="space-y-1.5">
             <span className="text-xs font-medium text-muted-foreground">Tags</span>
             {tags.length > 0 && (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-x-2 gap-y-3">
                 {tags.map((tag) => (
                   <Button
                     key={tag}
                     type="button"
                     variant="secondary"
                     size="sm"
-                    className="max-w-full"
+                    className="relative max-w-full touch-target-y"
                     aria-label={`Remove tag ${tag}`}
                     onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
                   >
@@ -470,6 +479,10 @@ function AddTorrentPageContent() {
               suggestions={tagSuggestions}
               pending={false}
               onAdd={(tag) => {
+                if (!tags.includes(tag) && tags.length >= MAX_TAGS) {
+                  toast.error(`Up to ${MAX_TAGS} tags`);
+                  return false;
+                }
                 setTags((prev) => (prev.includes(tag) ? prev : [...prev, tag]));
                 return true;
               }}
