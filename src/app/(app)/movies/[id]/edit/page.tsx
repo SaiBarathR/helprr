@@ -150,7 +150,7 @@ export default function MovieEditPage() {
                 value={String(qualityProfileId)}
                 onValueChange={(v) => setQualityProfileId(Number(v))}
               >
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-[180px] min-w-0">
                   <SelectValue placeholder="Select profile" />
                 </SelectTrigger>
                 <SelectContent>
@@ -170,7 +170,7 @@ export default function MovieEditPage() {
                 value={minimumAvailability}
                 onValueChange={setMinimumAvailability}
               >
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-[180px] min-w-0">
                   <SelectValue placeholder="Select availability" />
                 </SelectTrigger>
                 <SelectContent>
@@ -186,7 +186,7 @@ export default function MovieEditPage() {
               <div className="grouped-row">
                 <Label className="text-sm shrink-0">Root Folder</Label>
                 <Select value={rootFolder} onValueChange={setRootFolder}>
-                  <SelectTrigger className="w-[180px]" title={rootFolder || undefined}>
+                  <SelectTrigger className="w-[180px] min-w-0" title={rootFolder || undefined}>
                     <SelectValue placeholder="Select folder">{rootFolder ? <span className="truncate">{rootFolder}</span> : null}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>

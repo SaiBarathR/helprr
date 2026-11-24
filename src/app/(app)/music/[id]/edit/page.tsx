@@ -150,7 +150,7 @@ export default function ArtistEditPage() {
             <div className="grouped-row">
               <Label className="text-sm shrink-0">Quality Profile</Label>
               <Select value={String(qualityProfileId)} onValueChange={(v) => setQualityProfileId(Number(v))}>
-                <SelectTrigger className="w-[180px]"><SelectValue placeholder="Select profile" /></SelectTrigger>
+                <SelectTrigger className="w-[180px] min-w-0"><SelectValue placeholder="Select profile" /></SelectTrigger>
                 <SelectContent>
                   {qualityProfiles.map((qp) => (
                     <SelectItem key={qp.id} value={String(qp.id)}>{qp.name}</SelectItem>
@@ -162,7 +162,7 @@ export default function ArtistEditPage() {
             <div className="grouped-row">
               <Label className="text-sm shrink-0">Metadata Profile</Label>
               <Select value={String(metadataProfileId)} onValueChange={(v) => setMetadataProfileId(Number(v))}>
-                <SelectTrigger className="w-[180px]"><SelectValue placeholder="Select profile" /></SelectTrigger>
+                <SelectTrigger className="w-[180px] min-w-0"><SelectValue placeholder="Select profile" /></SelectTrigger>
                 <SelectContent>
                   {metadataProfiles.map((mp) => (
                     <SelectItem key={mp.id} value={String(mp.id)}>{mp.name}</SelectItem>
@@ -174,7 +174,7 @@ export default function ArtistEditPage() {
             <div className="grouped-row">
               <Label className="text-sm shrink-0">Monitor New Albums</Label>
               <Select value={monitorNewItems} onValueChange={setMonitorNewItems}>
-                <SelectTrigger className="w-[180px]"><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectTrigger className="w-[180px] min-w-0"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All new albums</SelectItem>
                   <SelectItem value="none">None</SelectItem>
@@ -186,7 +186,7 @@ export default function ArtistEditPage() {
               <div className="grouped-row">
                 <Label className="text-sm shrink-0">Root Folder</Label>
                 <Select value={rootFolder} onValueChange={setRootFolder}>
-                  <SelectTrigger className="w-[180px]" title={rootFolder || undefined}><SelectValue placeholder="Select folder">{rootFolder ? <span className="truncate">{rootFolder}</span> : null}</SelectValue></SelectTrigger>
+                  <SelectTrigger className="w-[180px] min-w-0" title={rootFolder || undefined}><SelectValue placeholder="Select folder">{rootFolder ? <span className="truncate">{rootFolder}</span> : null}</SelectValue></SelectTrigger>
                   <SelectContent>
                     {rootFolders.map((rf) => (
                       <SelectItem key={rf.id} value={rf.path}>{rf.path}</SelectItem>

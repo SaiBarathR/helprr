@@ -159,7 +159,7 @@ export default function SeriesEditPage() {
                 value={String(qualityProfileId)}
                 onValueChange={(v) => setQualityProfileId(Number(v))}
               >
-                <SelectTrigger id="quality-profile" className="w-[180px] border-0 bg-transparent text-right">
+                <SelectTrigger id="quality-profile" className="w-[180px] min-w-0 border-0 bg-transparent text-right">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -183,7 +183,7 @@ export default function SeriesEditPage() {
                 Type
               </Label>
               <Select value={seriesType} onValueChange={setSeriesType}>
-                <SelectTrigger id="series-type" className="w-[180px] border-0 bg-transparent text-right">
+                <SelectTrigger id="series-type" className="w-[180px] min-w-0 border-0 bg-transparent text-right">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -243,7 +243,7 @@ export default function SeriesEditPage() {
                     setRootFolderTouched(true);
                   }}
                 >
-                  <SelectTrigger id="root-folder" className="w-[180px] border-0 bg-transparent text-right" title={rootFolder || undefined}>
+                  <SelectTrigger id="root-folder" className="w-[180px] min-w-0 border-0 bg-transparent text-right" title={rootFolder || undefined}>
                     <SelectValue placeholder="Select folder">{rootFolder ? <span className="truncate">{rootFolder}</span> : null}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
