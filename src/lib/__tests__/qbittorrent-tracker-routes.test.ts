@@ -97,10 +97,30 @@ describe('GET /api/qbittorrent/[hash]/details', () => {
     expect(body.magnet).toBe(MAGNET);
   });
 
-  it("leaves out the torrent's comment, which the drawer does not show, for everyone", async () => {
+  it("gives a member the torrent's comment and creator with links cut to their host and the passkey removed", async () => {
+    mocks.client.getTorrentProperties.mockResolvedValue({
+      comment: `Details: https://tracker.invalid/torrents.php?id=7&torrent_pass=${QUERY_KEY}\nkey ${KEY}`,
+      created_by: `https://tracker.invalid/u/${KEY}`,
+      creation_date: 1700000000, piece_size: 262144, pieces_have: 3, pieces_num: 10, last_seen: 1700000500, reannounce: 51,
+      infohash_v2: 'not-on-the-allow-list',
+    });
+    const body = await (await details()).json();
+    expectNoPasskey(body);
+    expect(body.properties.comment).toBe('Details: https://tracker.invalid\nkey [REDACTED]');
+    expect(body.properties.created_by).toBe('https://tracker.invalid');
+    expect(body.properties).toMatchObject({ creation_date: 1700000000, piece_size: 262144, pieces_have: 3, pieces_num: 10, last_seen: 1700000500, reannounce: 51 });
+    expect(body.properties).not.toHaveProperty('infohash_v2');
+  });
+
+  it("gives an admin the torrent's comment as written", async () => {
     signInAs('admin');
     const body = await (await details()).json();
-    expect(body.properties).not.toHaveProperty('comment');
+    expect(body.properties.comment).toBe(`Details: ${ANNOUNCE}`);
+  });
+
+  it('sends an empty comment when qBittorrent has none', async () => {
+    mocks.client.getTorrentProperties.mockResolvedValue({ save_path: '/data' });
+    expect((await (await details()).json()).properties).toMatchObject({ comment: '', created_by: '' });
   });
 
   it('has no magnet to copy when qBittorrent no longer lists the torrent', async () => {

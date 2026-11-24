@@ -75,11 +75,15 @@ function messageWithoutSecrets(message: string, secrets: string[]): string {
   return text;
 }
 
+// The pieces of every tracker URL of the torrent, longest first.
+const trackerSecrets = (trackers: TorrentTracker[]) =>
+  [...new Set(trackers.flatMap((tracker) => (isPseudoTracker(tracker.url) ? [] : urlSecrets(tracker.url))))]
+    .sort((a, b) => b.length - a.length);
+
 /** The tracker list as this user may see it: full for an admin, hosts and state for anyone else. */
 export function trackersForViewer(trackers: TorrentTracker[], fullUrls: boolean): TorrentTracker[] {
   if (fullUrls) return trackers;
-  const secrets = [...new Set(trackers.flatMap((tracker) => (isPseudoTracker(tracker.url) ? [] : urlSecrets(tracker.url))))]
-    .sort((a, b) => b.length - a.length);
+  const secrets = trackerSecrets(trackers);
   return trackers.map((tracker) => ({
     url: isPseudoTracker(tracker.url) ? tracker.url : trackerOrigin(tracker.url) ?? 'Tracker',
     status: tracker.status,
@@ -105,4 +109,16 @@ export function magnetForViewer(magnetUri: unknown, fullUrls: boolean): string |
     .split('&')
     .filter((part) => /^(?:xt|dn)=/i.test(part));
   return kept.some((part) => /^xt=/i.test(part)) ? `magnet:?${kept.join('&')}` : null;
+}
+
+/**
+ * The torrent's comment (or "created by") as this user may see it. Whoever
+ * made the torrent wrote it, and a private tracker can put the torrent's page
+ * or a download link with the passkey in it: for an admin as written, for
+ * anyone else with the same cleaning as a tracker message (links cut to their
+ * host, this torrent's tracker keys removed). Shown as plain text either way.
+ */
+export function torrentTextForViewer(comment: unknown, trackers: TorrentTracker[], fullUrls: boolean): string {
+  if (typeof comment !== 'string') return '';
+  return fullUrls ? comment : messageWithoutSecrets(comment, trackerSecrets(trackers));
 }

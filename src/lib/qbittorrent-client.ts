@@ -29,6 +29,37 @@ export interface TorrentTracker {
   msg: string;
 }
 
+/** A peer as sync/torrentPeers sends it; a delta sends only the fields that changed. */
+export interface TorrentPeer {
+  ip: string;
+  port: number;
+  client: string;
+  peer_id_client: string;
+  /** BT, μTP or Web. */
+  connection: string;
+  /** Only while qBittorrent resolves peer countries (`show_flags`). */
+  country?: string;
+  country_code?: string;
+  flags: string;
+  flags_desc: string;
+  progress: number;
+  relevance: number;
+  dl_speed: number;
+  up_speed: number;
+  downloaded: number;
+  uploaded: number;
+  files: string;
+}
+
+/** sync/torrentPeers: peers keyed by `ip:port` (`[ipv6]:port`). */
+export interface TorrentPeersSync {
+  rid: number;
+  full_update?: boolean;
+  show_flags?: boolean;
+  peers?: Record<string, Partial<TorrentPeer>>;
+  peers_removed?: string[];
+}
+
 export interface QBittorrentCategory {
   name: string;
   /** Empty: qBittorrent's default save path plus the name (in subcategory mode, the parent's folder plus the last part). */
@@ -287,6 +318,35 @@ export class QBittorrentClient {
 
   async getTorrentTrackers(hash: string, signal?: AbortSignal): Promise<TorrentTracker[]> {
     return this.get<TorrentTracker[]>('/api/v2/torrents/trackers', { hash }, signal);
+  }
+
+  /**
+   * One torrent's peers since `rid` (0: all of them). qBittorrent keeps the
+   * last answer per Web UI session, not per torrent: when `rid` is not the
+   * answer it gave last, the next one is a full update again.
+   */
+  async getTorrentPeers(hash: string, rid: number, signal?: AbortSignal): Promise<TorrentPeersSync> {
+    return this.get<TorrentPeersSync>('/api/v2/sync/torrentPeers', { hash, rid }, signal);
+  }
+
+  /** `ip:port` each (`[ipv6]:port`); qBittorrent answers how many it added and how many failed. */
+  async addPeers(hash: string, peers: string[]): Promise<{ added: number; failed: number } | null> {
+    const params = new URLSearchParams();
+    params.append('hashes', hash);
+    params.append('peers', peers.join('|'));
+    const result = await this.post<Record<string, { added?: unknown; failed?: unknown }> | string>('/api/v2/torrents/addPeers', params.toString());
+    const counts = typeof result === 'object' && result ? Object.values(result)[0] : undefined;
+    return counts && typeof counts.added === 'number' && typeof counts.failed === 'number'
+      ? { added: counts.added, failed: counts.failed }
+      : null;
+  }
+
+  /** Bans `ip:port` peers for every torrent, kept in qBittorrent's banned IP list (by IP) until removed there. */
+  async banPeers(peers: string[]): Promise<void> {
+    if (peers.length === 0) throw new Error('banPeers needs at least one peer');
+    const params = new URLSearchParams();
+    params.append('peers', peers.join('|'));
+    await this.post('/api/v2/transfer/banPeers', params.toString());
   }
 
   private isNotFound(error: unknown): boolean {

@@ -1131,6 +1131,29 @@ change: a third-party tracker on it leaks the torrent, and a replaced passkey tr
 can only be restored by someone who can see it. Tracker changes delete nothing
 and are not operation-audited, like tags, location and rename.
 
+The details route copies `torrents/properties` out by an allow-list. The torrent's
+comment and "created by" are free text whoever made the torrent wrote, where a
+private tracker can put a passkey link: an admin gets them as written, anyone else
+with the tracker-message cleaning above (`torrentTextForViewer`), and the drawer
+shows both as plain text.
+
+A peer's IP address is personal data, and qBittorrent's `sync/torrentPeers` keys
+every peer by `ip:port`. The peers route (`GET /api/qbittorrent/[hash]/peers?rid=`,
+`torrents.view`) passes the page's `rid` on, so qBittorrent answers with what
+changed since (or a full list when that rid is no longer the last answer of
+Helprr's one Web UI session), and rebuilds each peer from an allow-list
+(`src/lib/qbittorrent-peers.ts`): client, country, connection, flags, progress,
+relevance, speeds and totals for everyone; the address only for an admin. Peers are
+keyed by an HMAC of the torrent and the address under `JWT_SECRET`, so the page can
+merge the deltas (`src/lib/qbittorrent-peer-view.ts`) without being sent the
+address. Adding peers (`POST`, `torrents.manage`) takes at most 50 `ip:port` lines,
+IPv6 as `[address]:port`, checked with `net.isIP`. A ban (`POST .../peers/ban`) is
+global and kept in qBittorrent's banned IP list until removed there, so it is an
+admin's only: the browser names the peer by its key and the server bans the address
+qBittorrent lists under that key now. Each ban is a `SETTINGS_UPDATED` row in the
+security audit (target: the torrent's hash; the address is not recorded). An add's
+request body, which holds addresses, stays out of the failed-request log.
+
 Adding torrents (`POST /api/qbittorrent`, `torrents.add`) takes up to 20 magnets and
 http(s) `.torrent` links, one per line, or up to 20 files, in one request. A link
 is fetched by Helprr, not handed to qBittorrent's `urls=`: qBittorrent answers
