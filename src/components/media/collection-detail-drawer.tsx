@@ -54,7 +54,6 @@ export async function addCollectionMovie(collection: CollectionSummary, tmdbId: 
     collectionId: collection.id,
     tmdbId,
     instanceId: collection.instanceId,
-    search: true,
   });
 }
 

@@ -30,30 +30,10 @@ import {
 } from 'lucide-react';
 import type { QBittorrentTorrent } from '@/types';
 import { useCan } from '@/components/permission-provider';
-import { PAUSED_STATES, formatBytes, formatEta, formatSpeed, formatTorrentSize, torrentSizeUnknown } from './torrent-list';
+import { PAUSED_STATES, formatBytes, torrentStateBadge, formatEta, formatSpeed, formatTorrentSize, torrentSizeUnknown } from './torrent-list';
 
 export function getStateBadge(state: string) {
-  const stateMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-    downloading: { label: 'Downloading', variant: 'default' },
-    stalledDL: { label: 'Stalled', variant: 'secondary' },
-    uploading: { label: 'Seeding', variant: 'default' },
-    stalledUP: { label: 'Seeding', variant: 'secondary' },
-    pausedDL: { label: 'Paused', variant: 'outline' },
-    pausedUP: { label: 'Paused', variant: 'outline' },
-    stoppedDL: { label: 'Stopped', variant: 'outline' },
-    stoppedUP: { label: 'Stopped', variant: 'outline' },
-    queuedDL: { label: 'Queued', variant: 'secondary' },
-    queuedUP: { label: 'Queued', variant: 'secondary' },
-    checkingDL: { label: 'Checking', variant: 'secondary' },
-    checkingUP: { label: 'Checking', variant: 'secondary' },
-    forcedDL: { label: 'Forced DL', variant: 'default' },
-    forcedUP: { label: 'Forced UL', variant: 'default' },
-    missingFiles: { label: 'Missing', variant: 'destructive' },
-    error: { label: 'Error', variant: 'destructive' },
-    moving: { label: 'Moving', variant: 'secondary' },
-  };
-
-  const s = stateMap[state] || { label: state, variant: 'secondary' as const };
+  const s = torrentStateBadge(state);
   return <Badge variant={s.variant} className="text-[10px] px-1.5 py-0">{s.label}</Badge>;
 }
 

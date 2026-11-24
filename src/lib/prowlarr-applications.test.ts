@@ -9,6 +9,7 @@ const app = (implementation: string, baseUrl: string): ProwlarrApplication => ({
   implementationName: implementation,
   syncLevel: 'fullSync',
   enable: true,
+  tags: [3],
   fields: [{ name: 'baseUrl', value: baseUrl }, { name: 'apiKey', value: 'secret-key' }],
 });
 
@@ -80,5 +81,9 @@ describe('findUnsyncedConnections', () => {
 describe('toApplicationSummary', () => {
   it('drops the fields holding the API key', () => {
     expect(JSON.stringify(toApplicationSummary(app('Sonarr', 'http://sonarr:8989')))).not.toMatch(/secret-key|fields|baseUrl/);
+  });
+
+  it('keeps the tag ids so the Apps tab can name them', () => {
+    expect(toApplicationSummary(app('Sonarr', 'http://sonarr:8989')).tags).toEqual([3]);
   });
 });

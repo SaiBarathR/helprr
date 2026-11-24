@@ -38,7 +38,6 @@ import {
   CheckCircle,
   XCircle,
   Search,
-  Rss,
   Download,
   Database,
   Info,
@@ -57,6 +56,7 @@ import dynamic from 'next/dynamic';
 import { fmtNum } from '@/components/widgets/prowlarr-stats-shared';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
+import { HistoryEventIcon, historyEventLabel } from './history-events';
 import { useCan } from '@/components/permission-provider';
 import { useAppRouter } from '@/components/layout/navigation-provider';
 import { IndexerSheet, BlockedStatusDetails, formatDate, getActiveBlockedStatus } from './indexer-sheet';
@@ -786,19 +786,6 @@ const HISTORY_FILTERS = [
 type HistoryFilterValue = typeof HISTORY_FILTERS[number]['value'];
 
 /**
- * Render an icon corresponding to a history event type.
- *
- * @param eventType - The event type string (e.g., "indexerRss", "grab", or values containing "fail") used to determine which icon to render.
- * @returns The icon React element that visually represents the provided event type.
- */
-function EventIcon({ eventType }: { eventType: string }) {
-  if (eventType === 'indexerRss') return <Rss className="h-3.5 w-3.5 text-amber-400 shrink-0" />;
-  if (eventType === 'grab') return <Download className="h-3.5 w-3.5 text-green-400 shrink-0" />;
-  if (eventType.toLowerCase().includes('fail')) return <XCircle className="h-3.5 w-3.5 text-rose-400 shrink-0" />;
-  return <Search className="h-3.5 w-3.5 text-blue-400 shrink-0" />;
-}
-
-/**
  * Parses a comma-separated string of category IDs into an array of integers.
  *
  * @param raw - A comma-separated list of category IDs (e.g., "1,2,3"); may be `undefined` or empty.
@@ -844,8 +831,8 @@ function HistoryDrawer({
           <div className="px-4 pb-8 flex-1 min-h-0 overflow-y-auto space-y-3">
             {/* Event type + success badge */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] px-2 py-1 rounded-full bg-muted text-muted-foreground font-mono">
-                {record.eventType}
+              <span className="text-[10px] px-2 py-1 rounded-full bg-muted text-muted-foreground">
+                {historyEventLabel(record.eventType)}
               </span>
               {record.successful !== undefined && (
                 <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${record.successful ? 'bg-green-500/10 text-green-400' : 'bg-rose-500/10 text-rose-400'
@@ -1044,7 +1031,7 @@ function HistoryTab() {
                     className="w-full px-4 py-3 flex items-start gap-2.5 text-left hover:bg-accent/50 transition-colors"
                   >
                   <div className="mt-0.5 shrink-0">
-                    <EventIcon eventType={record.eventType} />
+                    <HistoryEventIcon eventType={record.eventType} successful={record.successful} />
                   </div>
                   <div className="flex-1 min-w-0 space-y-1">
                     {/* Query + queryType badge */}
