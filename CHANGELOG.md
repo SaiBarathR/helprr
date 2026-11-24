@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.1] - 2026-11-24
+
+Follow-ups to the 1.18.0 security review: indexer page links without keys, grabs that
+always reach the instance searched, a checked Lidarr grab, and a memory limit for Redis.
+There is no database change; to get the Redis limit, take this release's Compose file
+(see **For admins**).
+
 ### Security
 
 - Indexer page links in interactive search and history (the release's details and
@@ -22,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### For admins
 
+- **No database change.** Going back to 1.18.0 needs only the version.
 - **The Compose file limits Redis to 256 MB** (Helprr uses tens of MB). Past the limit
   Redis refuses writes instead of dropping keys, so the sign-in and two-step limits it
   holds stay in force. Download the release's `docker-compose.yml` (CasaOS and TrueNAS:
