@@ -96,7 +96,8 @@ export async function readSystemStatus(client: SystemClient): Promise<ArrSystemS
     version,
     branch: versionString(raw.branch),
     updateVersion: latestVersion && latest?.installed !== true && latestVersion !== version ? latestVersion : null,
-    updateChecked: list !== null,
+    // An empty list (a branch with no releases) says nothing either way.
+    updateChecked: list !== null && list.length > 0,
   };
 }
 
@@ -145,14 +146,24 @@ const LEVELS = new Set(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
  * Log text as shown to an admin. The apps log the URLs they call (an indexer's
  * with its key or passkey, a download client's with its password), magnets,
  * and sometimes a key on its own. URLs are cut to their origin and the usual
- * credential redaction runs (as for Prowlarr's text); then the instance's own
- * key and any bare 32-hex word, the shape of every *arr API key, are blanked.
- * Redacted whole, then cut short, so a cut can't leave half a secret behind.
+ * credential redaction runs (as for Prowlarr's text). Then, for shapes those
+ * miss in free text: a path after any `://` (a URL glued to the word before
+ * it), a percent-encoded URL's path, `user:pass@host` without a scheme,
+ * `password: x` / `"apiKey":"x"`, the instance's own key, and any bare 32-hex
+ * word, the shape of every *arr API key. Redacted whole, then cut short, so a
+ * cut can't leave half a secret behind.
  */
 export function redactLogText(text: unknown, apiKey: string, max: number): string {
   let value = typeof text === 'string' ? text : '';
   if (apiKey.length >= 16) value = value.split(apiKey).join('[REDACTED]');
-  value = redactProwlarrText(value).replace(/\b[0-9a-f]{32}\b/gi, '[REDACTED]');
+  value = redactProwlarrText(value)
+    .replace(/:\/\/([^\s/"'<>]+)\/[^\s"'<>]*/g, '://$1')
+    .replace(/(%3A%2F%2F[^\s%/"'<>]+)%2F[^\s&"'<>]*/gi, '$1')
+    // Bounded, so a long run of word characters can't make it retry quadratically.
+    // CSS punctuation is left out, or an HTML error page's `font-display:swap}@font-face` would match.
+    .replace(/([^\s:@/"'<>;{}()]{1,64}):[^\s:@/"'<>;{}()]{1,128}@(?=[\w.[-])/g, '$1:[REDACTED]@')
+    .replace(/(\b(?:password|passwd|passkey|token|api[_-]?key|secret)["']?\s*[:=]\s*["']?)[^\s"',;&]+/gi, '$1[REDACTED]')
+    .replace(/\b[0-9a-f]{32}\b/gi, '[REDACTED]');
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 

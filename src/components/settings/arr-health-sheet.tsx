@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, ExternalLink, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,7 @@ import {
   arrSystemStatusQuery,
   type SystemService,
 } from '@/components/settings/arr-system-panels';
-import type { ArrSystemStatus } from '@/lib/arr-system';
+import type { ArrLogLevel, ArrSystemStatus } from '@/lib/arr-system';
 import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import type { HealthService } from '@/lib/arr-health-link';
@@ -149,6 +150,10 @@ export function ArrHealthSheet({
     ...arrSystemStatusQuery(target?.instanceId ?? ''),
     enabled: admin && target !== null,
   });
+  // Kept here, not in the tabs (which unmount when left): runs in progress
+  // ("<instance>:<task>") and the log level.
+  const [running, setRunning] = useState<ReadonlySet<string>>(() => new Set());
+  const [logLevel, setLogLevel] = useState<ArrLogLevel>('warn');
   const checks = visibleHealthChecks(query.data);
   const healthText = query.isLoading
     ? 'Checking…'
@@ -196,10 +201,10 @@ export function ArrHealthSheet({
           className="mx-auto w-full max-w-md flex-1 min-h-0 gap-0"
         >
           <div className="px-4 pb-3">
-            <TabsList variant="segmented" className="sm:w-full">
-              {healthService && <TabsTrigger value="health" className="sm:flex-1">Health</TabsTrigger>}
-              <TabsTrigger value="tasks" className="sm:flex-1">Tasks</TabsTrigger>
-              <TabsTrigger value="logs" className="sm:flex-1">Logs</TabsTrigger>
+            <TabsList variant="segmented">
+              {healthService && <TabsTrigger value="health">Health</TabsTrigger>}
+              <TabsTrigger value="tasks">Tasks</TabsTrigger>
+              <TabsTrigger value="logs">Logs</TabsTrigger>
             </TabsList>
           </div>
           {healthService && (
@@ -209,10 +214,10 @@ export function ArrHealthSheet({
             </TabsContent>
           )}
           <TabsContent value="tasks" className="min-h-0 overflow-y-auto px-4">
-            <ArrTasksPanel instanceId={target.instanceId} />
+            <ArrTasksPanel instanceId={target.instanceId} running={running} setRunning={setRunning} />
           </TabsContent>
           <TabsContent value="logs" className="min-h-0 overflow-y-auto px-4">
-            <ArrLogsPanel instanceId={target.instanceId} />
+            <ArrLogsPanel instanceId={target.instanceId} level={logLevel} onLevelChange={setLogLevel} />
           </TabsContent>
         </Tabs>
         <DrawerFooter className="mx-auto w-full max-w-md">

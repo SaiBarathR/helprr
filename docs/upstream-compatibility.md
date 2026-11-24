@@ -599,6 +599,22 @@ Torrents settings page read and write the four keys as preferences, through an
 allow-list, since `setPreferences` also takes the Web UI password and the program run
 on completion.
 
+### System version, tasks and logs (2026-11-24)
+
+Live, read only, on the dummy Sonarr `4.0.20.3014` and Radarr `7.0.3.10918` (Docker)
+and Prowlarr `3.0.2.5780`; Lidarr from the shared `/api/v1` contract. `GET
+/api/{v3,v1}/system/status` gives `version` and `branch`. `GET /update` lists releases
+newest first with `latest`, `installed` and `installable` (`installable` is false under
+Docker, which still lists newer releases), so an update is the `latest` entry when it is
+not `installed`. `GET /system/task` gives `taskName`, `name`, `interval` (minutes),
+`lastExecution`, `nextExecution` and `lastDuration` (`d.hh:mm:ss.fffffff`). Radarr
+calls its update check `ApplicationCheckUpdate`; Sonarr, Lidarr and Prowlarr
+`ApplicationUpdateCheck`. `GET /log?page&pageSize&sortKey=time&sortDirection=descending
+&level=warn` returns warnings and worse (`level=error` errors only), with `id`, `time`,
+`level`, `logger`, `message`, and in Prowlarr also `exception` and `exceptionType`;
+messages and exceptions reach 28 KB. `POST /command {name}` with `CheckHealth` was run
+once on the dummy Sonarr and completed.
+
 ## Before reporting an upstream compatibility problem
 
 1. In **Settings → Instances**, re-test the affected connection and record the exact

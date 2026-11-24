@@ -148,6 +148,11 @@ describe('GET status', () => {
     expect((await (await statusGet(req('/api/admin/arr-system/status?instanceId=son-1'))).json()).updateVersion).toBeNull();
   });
 
+  it('says the check could not be made when the update list is empty', async () => {
+    mocks.client.getUpdates.mockResolvedValue([]);
+    expect((await (await statusGet(req('/api/admin/arr-system/status?instanceId=son-1'))).json()).updateChecked).toBe(false);
+  });
+
   it('still answers with the version when the update list fails', async () => {
     mocks.client.getUpdates.mockRejectedValue(new Error('services.sonarr.tv unreachable'));
     expect(await (await statusGet(req('/api/admin/arr-system/status?instanceId=son-1'))).json())
@@ -335,12 +340,40 @@ describe('GET logs', () => {
     expect(entry.time).toBe('2026-11-24T17:45:57.000Z');
   });
 
-  it('cuts a long message after redacting it', async () => {
-    const long = `${'x'.repeat(1990)} http://host/path?apikey=TAILSECRET ${'y'.repeat(5000)}`;
+  it('cuts a long message after redacting it, so a key across the cut leaves nothing behind', async () => {
+    // The 32-hex key starts at 1990 and runs past the 2000-character cut:
+    // cut first, its first ten characters would stay, no longer a whole key.
+    const long = `${'x'.repeat(1989)} fedcba9876543210fedcba9876543210 ${'y'.repeat(5000)}`;
     mocks.client.getLogs.mockResolvedValue({ totalRecords: 1, records: [{ id: 1, time: '2026-11-24T17:45:57Z', level: 'error', logger: 'L', message: long }] });
     const [entry] = (await (await logsGet(req('/api/admin/arr-system/logs?instanceId=son-1'))).json()).entries;
     expect(entry.message.length).toBeLessThanOrEqual(2001);
-    expect(entry.message).not.toContain('TAILSECRET');
+    expect(entry.message).not.toContain('fedcba98');
     expect(entry.level).toBe('error');
+  });
+
+  it.each([
+    ['a URL glued to the word before it', 'foo_https://tracker.example/announce/PASSKEY1/x', 'PASSKEY1'],
+    ['a URL glued to a number', 'Error 404https://tracker.example/rss/PASSKEY2', 'PASSKEY2'],
+    ['credentials without a scheme', 'Connecting to admin:hunter2pw@192.168.1.5:8080', 'hunter2pw'],
+    ['a percent-encoded URL', 'url=https%3A%2F%2Ftracker.example%2Fannounce%2FPASSKEY5', 'PASSKEY5'],
+    ['a password field', 'Password: hunter4pw', 'hunter4pw'],
+    ['a JSON password', '{"password":"hunter3pw"}', 'hunter3pw'],
+    ['a JSON api key', '{"apiKey": "NOTHEXKEY777"}', 'NOTHEXKEY777'],
+    ['an api_key field', 'api_key: NOTHEXKEY888', 'NOTHEXKEY888'],
+  ])('redacts %s', async (_label, message, secret) => {
+    mocks.client.getLogs.mockResolvedValue({ totalRecords: 1, records: [{ id: 1, time: '2026-11-24T17:45:57Z', level: 'warn', logger: 'L', message }] });
+    const [entry] = (await (await logsGet(req('/api/admin/arr-system/logs?instanceId=son-1'))).json()).entries;
+    expect(entry.message).not.toContain(secret);
+  });
+
+  it('redacts 50 pathological 28 KB entries quickly', async () => {
+    const shapes = ['a.'.repeat(14_000), '//a:'.repeat(7_000), 'a'.repeat(28_000), 'a:b'.repeat(9_000), `${'x'.repeat(27_000)}://h/`];
+    mocks.client.getLogs.mockResolvedValue({
+      totalRecords: 50,
+      records: Array.from({ length: 50 }, (_, i) => ({ id: i + 1, time: '2026-11-24T17:45:57Z', level: 'warn', logger: 'L', message: shapes[i % shapes.length], exception: shapes[(i + 1) % shapes.length] })),
+    });
+    const started = performance.now();
+    expect((await logsGet(req('/api/admin/arr-system/logs?instanceId=son-1'))).status).toBe(200);
+    expect(performance.now() - started).toBeLessThan(2_000);
   });
 });

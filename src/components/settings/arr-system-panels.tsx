@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Play } from 'lucide-react';
 import { toast } from 'sonner';
@@ -10,7 +10,7 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { pollCommandAt } from '@/lib/arr-command';
 import { ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
-import { invalidateMovies, invalidateSeries } from '@/lib/query-invalidation';
+import { invalidateMovies, invalidateMusic, invalidateSeries } from '@/lib/query-invalidation';
 import { formatDistanceToNowShort } from '@/lib/format';
 import { formatDateTime } from '@/lib/date-format';
 import { cn } from '@/lib/utils';
@@ -65,12 +65,24 @@ const REFRESHES: Partial<Record<string, (client: ReturnType<typeof useQueryClien
   RefreshSeries: invalidateSeries,
   RefreshMovie: invalidateMovies,
   RefreshCollections: invalidateMovies,
+  RefreshArtist: invalidateMusic,
 };
 
-/** System → Tasks of one instance, with Run now for the tasks the server allows. */
-export function ArrTasksPanel({ instanceId }: { instanceId: string }) {
+/**
+ * System → Tasks of one instance, with Run now for the tasks the server allows.
+ * The running set is the sheet's (`running`), so leaving the tab mid-run and
+ * coming back still shows the run and can't start it again.
+ */
+export function ArrTasksPanel({
+  instanceId,
+  running,
+  setRunning,
+}: {
+  instanceId: string;
+  running: ReadonlySet<string>;
+  setRunning: (update: (prev: ReadonlySet<string>) => ReadonlySet<string>) => void;
+}) {
   const queryClient = useQueryClient();
-  const [running, setRunning] = useState<ReadonlySet<string>>(() => new Set());
   const query = useQuery({
     queryKey: queryKeys.arrSystem('tasks', instanceId),
     queryFn: jsonFetcher<ArrSystemTask[]>('/api/admin/arr-system/tasks', instanceId),
@@ -80,10 +92,11 @@ export function ArrTasksPanel({ instanceId }: { instanceId: string }) {
 
   const setTask = (name: string, on: boolean) => setRunning((prev) => {
     const next = new Set(prev);
-    if (on) next.add(name);
-    else next.delete(name);
+    if (on) next.add(`${instanceId}:${name}`);
+    else next.delete(`${instanceId}:${name}`);
     return next;
   });
+  const isRunning = (name: string) => running.has(`${instanceId}:${name}`);
 
   async function run(task: ArrSystemTask) {
     setTask(task.taskName, true);
@@ -100,9 +113,9 @@ export function ArrTasksPanel({ instanceId }: { instanceId: string }) {
       }
       const started = (await res.json()) as { id?: number };
       toast.success(`${task.name} started`);
-      const status = started.id
-        ? await pollCommandAt(withInstanceQuery(`/api/admin/arr-system/tasks/${started.id}`, instanceId))
-        : 'completed';
+      // Without an id there is nothing to follow; "started" is all that is known.
+      if (!started.id) return;
+      const status = await pollCommandAt(withInstanceQuery(`/api/admin/arr-system/tasks/${started.id}`, instanceId));
       if (status === 'completed') {
         REFRESHES[task.taskName]?.(queryClient);
         toast.success(`${task.name} finished`);
@@ -139,11 +152,11 @@ export function ArrTasksPanel({ instanceId }: { instanceId: string }) {
               variant="outline"
               size="sm"
               className="shrink-0"
-              disabled={running.has(task.taskName)}
+              disabled={isRunning(task.taskName)}
               aria-label={`Run ${task.name} now`}
               onClick={() => void run(task)}
             >
-              {running.has(task.taskName) ? <Loader2 className="animate-spin" /> : <Play />}
+              {isRunning(task.taskName) ? <Loader2 className="animate-spin" /> : <Play />}
               Run
             </Button>
           )}
@@ -162,7 +175,15 @@ const LEVEL_LABEL: Record<string, string> = { fatal: 'Fatal', error: 'Error', wa
 
 function LogEntryRow({ entry }: { entry: ArrLogEntry }) {
   const [expanded, setExpanded] = useState(false);
-  const long = entry.message.length > 240 || entry.exception !== '';
+  // Offered when the four lines cut the message off (measured, as the width
+  // decides) or there is an exception to show.
+  const messageRef = useRef<HTMLParagraphElement>(null);
+  const [clamped, setClamped] = useState(false);
+  useLayoutEffect(() => {
+    const el = messageRef.current;
+    if (el && !expanded) setClamped(el.scrollHeight > el.clientHeight + 1);
+  }, [entry.message, expanded]);
+  const long = clamped || entry.exception !== '';
   return (
     <div className="grouped-row grouped-row-stacked gap-1">
       <div className="flex min-w-0 items-center gap-1.5 text-xs">
@@ -178,7 +199,9 @@ function LogEntryRow({ entry }: { entry: ArrLogEntry }) {
           {formatDistanceToNowShort(entry.time)}
         </time>
       </div>
-      <p className={cn('text-sm [overflow-wrap:anywhere]', !expanded && 'line-clamp-4')}>{entry.message}</p>
+      <p ref={messageRef} className={cn('text-sm whitespace-pre-line [overflow-wrap:anywhere]', !expanded && 'line-clamp-4')}>
+        {entry.message}
+      </p>
       {expanded && entry.exception && (
         <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/50 p-2 font-mono text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
           {entry.exception}
@@ -198,19 +221,38 @@ function LogEntryRow({ entry }: { entry: ArrLogEntry }) {
   );
 }
 
-/** System → Logs of one instance: warnings and errors (or errors only), newest first. */
-export function ArrLogsPanel({ instanceId }: { instanceId: string }) {
-  const [level, setLevel] = useState<ArrLogLevel>('warn');
+/** The last page the logs route serves (it clamps the page number). */
+const LAST_LOG_PAGE = 1000;
+
+/**
+ * System → Logs of one instance: warnings and errors (or errors only), newest
+ * first. The level is the sheet's, so it holds across tabs.
+ */
+export function ArrLogsPanel({
+  instanceId,
+  level,
+  onLevelChange,
+}: {
+  instanceId: string;
+  level: ArrLogLevel;
+  onLevelChange: (level: ArrLogLevel) => void;
+}) {
   const query = useInfiniteQuery({
     queryKey: queryKeys.arrSystem('logs', instanceId, level),
     queryFn: ({ pageParam, signal }) =>
       jsonFetcher<ArrLogPage>(`/api/admin/arr-system/logs?level=${level}&page=${pageParam}`, instanceId)({ signal }),
     initialPageParam: 1,
     getNextPageParam: (last) =>
-      last.entries.length > 0 && last.page * last.pageSize < last.totalRecords ? last.page + 1 : undefined,
+      last.entries.length > 0 && last.page * last.pageSize < last.totalRecords && last.page < LAST_LOG_PAGE
+        ? last.page + 1
+        : undefined,
     staleTime: 30_000,
   });
-  const entries = query.data?.pages.flatMap((page) => page.entries) ?? [];
+  // Pages are offsets from the newest entry, so one logged between two pages
+  // pushes the last entry of one onto the next: shown once.
+  const seen = new Set<number>();
+  const entries = (query.data?.pages.flatMap((page) => page.entries) ?? []).filter((entry) =>
+    !seen.has(entry.id) && seen.add(entry.id));
   const total = query.data?.pages[0]?.totalRecords ?? 0;
 
   return (
@@ -228,7 +270,7 @@ export function ArrLogsPanel({ instanceId }: { instanceId: string }) {
           <Switch
             aria-label="Errors only"
             checked={level === 'error'}
-            onCheckedChange={(on) => setLevel(on ? 'error' : 'warn')}
+            onCheckedChange={(on) => onLevelChange(on ? 'error' : 'warn')}
           />
         </div>
       </GroupedSection>
@@ -241,7 +283,7 @@ export function ArrLogsPanel({ instanceId }: { instanceId: string }) {
       ) : (
         <GroupedSection
           className="mb-2"
-          footer="Addresses are cut to their host, and keys, passwords and magnet links are removed."
+          footer="Addresses are cut to their host, and keys, passwords and magnet links are removed where recognised."
         >
           {entries.map((entry) => <LogEntryRow key={entry.id} entry={entry} />)}
           {query.hasNextPage && (

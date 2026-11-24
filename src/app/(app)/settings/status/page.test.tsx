@@ -218,6 +218,21 @@ describe('Service status, for admins: versions, tasks and logs', () => {
     ]));
   });
 
+  it('keeps a run going across tabs, so it cannot be started twice', async () => {
+    mocks.statuses = withProwlarr;
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Prowlarr.*update available/ }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.click(await within(sheet).findByRole('button', { name: 'Run Check Health now' }));
+    await waitFor(() => expect(mocks.posts).toHaveLength(1));
+    await userEvent.click(within(sheet).getByRole('tab', { name: 'Logs' }));
+    await userEvent.click(within(sheet).getByRole('tab', { name: 'Tasks' }));
+    const button = await within(sheet).findByRole('button', { name: 'Run Check Health now' });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(button);
+    expect(mocks.posts).toHaveLength(1);
+  });
+
   it('pages through the log, and asks for errors only when switched', async () => {
     renderPage();
     await userEvent.click(await screen.findByRole('button', { name: /Anime.*2 health issues/ }));

@@ -11,16 +11,23 @@ export function isSystemServiceType(type: unknown): type is SystemServiceType {
 }
 
 /**
- * The scheduled tasks Run now may start, per app, by task name. A task is here
- * only if running it early does nothing the app wouldn't do on its own soon
- * anyway, and it can neither install an update nor delete or move files or
- * history. Left out, on purpose:
+ * The scheduled tasks Run now may start, per app, by task name: the app's own
+ * scheduled work, which can neither install an update nor delete files,
+ * library titles or history. Some do real work, as on their schedule: RSS
+ * Sync can grab, Refresh Monitored Downloads (every minute anyway) imports
+ * finished downloads, a refresh run by hand rescans every title rather than
+ * the stale ones, Refresh Collections adds a monitored collection's missing
+ * movies, and Prowlarr's Application Indexer Sync pushes indexers to the apps
+ * (removing others in Full Sync). RSS Sync and the refreshes are already
+ * admin-only library commands, and Indexer Sync a prowlarr.manage command.
+ * Left out, on purpose:
  * - ApplicationUpdateCheck (Radarr: ApplicationCheckUpdate): when the app is
  *   set to update automatically, a check that finds an update installs it.
  * - CleanUpRecycleBin: deletes files from disk.
- * - ImportListSync: adds titles, and its list clean-up can unmonitor or delete
- *   titles (Radarr can delete their files too).
- * - RescanFolders (Lidarr): imports the files it finds.
+ * - ImportListSync: its list clean-up can unmonitor or delete titles (Radarr
+ *   can delete their files too).
+ * - RescanFolders (Lidarr): scans every root folder and can add artists for
+ *   the files it finds.
  * - CleanUpHistory (Prowlarr): deletes history.
  * Any task not named here (a new one in a later version too) is shown without
  * Run now.
