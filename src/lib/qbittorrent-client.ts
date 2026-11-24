@@ -30,6 +30,38 @@ export interface TorrentTracker {
 
 export type QueueMove = 'topPrio' | 'increasePrio' | 'decreasePrio' | 'bottomPrio';
 
+export type ContentLayout = 'Original' | 'Subfolder' | 'NoSubfolder';
+
+/** The torrents/add options beyond category, save path and start/stop; each is sent only when set. */
+export interface AddTorrentOptions {
+  tags?: string[];
+  /** The torrent's name in qBittorrent; the files keep theirs. */
+  rename?: string;
+  sequentialDownload?: boolean;
+  firstLastPiecePrio?: boolean;
+  autoTMM?: boolean;
+  contentLayout?: ContentLayout;
+  skipChecking?: boolean;
+  addToTopOfQueue?: boolean;
+  /** Bytes per second. */
+  dlLimit?: number;
+  upLimit?: number;
+}
+
+// qBittorrent's own field names (checked against 5.1.4); booleans go as "true"/"false".
+function appendAddOptions(append: (key: string, value: string) => void, options: AddTorrentOptions): void {
+  if (options.tags?.length) append('tags', options.tags.join(','));
+  if (options.rename) append('rename', options.rename);
+  if (options.sequentialDownload !== undefined) append('sequentialDownload', String(options.sequentialDownload));
+  if (options.firstLastPiecePrio !== undefined) append('firstLastPiecePrio', String(options.firstLastPiecePrio));
+  if (options.autoTMM !== undefined) append('autoTMM', String(options.autoTMM));
+  if (options.contentLayout) append('contentLayout', options.contentLayout);
+  if (options.skipChecking !== undefined) append('skip_checking', String(options.skipChecking));
+  if (options.addToTopOfQueue !== undefined) append('addToTopOfQueue', String(options.addToTopOfQueue));
+  if (options.dlLimit) append('dlLimit', String(options.dlLimit));
+  if (options.upLimit) append('upLimit', String(options.upLimit));
+}
+
 /** qBittorrent's regular and alternative-mode speed limits, in bytes per second (0 = unlimited). */
 export const SPEED_LIMIT_PREFERENCES = ['dl_limit', 'up_limit', 'alt_dl_limit', 'alt_up_limit'] as const;
 export type SpeedLimitPreference = (typeof SPEED_LIMIT_PREFERENCES)[number];
@@ -299,7 +331,7 @@ export class QBittorrentClient {
     await this.post('/api/v2/torrents/filePrio', params.toString());
   }
 
-  async addMagnet(urls: string, options?: { category?: string; savepath?: string; paused?: boolean; stopCondition?: 'MetadataReceived' | 'FilesChecked' }): Promise<string> {
+  async addMagnet(urls: string, options?: AddTorrentOptions & { category?: string; savepath?: string; paused?: boolean; stopCondition?: 'MetadataReceived' | 'FilesChecked' }): Promise<string> {
     const params = new URLSearchParams();
     params.append('urls', urls);
     if (options?.category) params.append('category', options.category);
@@ -311,10 +343,11 @@ export class QBittorrentClient {
       params.append('paused', String(options.paused));
       params.append('stopped', String(options.paused));
     }
+    if (options) appendAddOptions((key, value) => params.append(key, value), options);
     return this.post<string>('/api/v2/torrents/add', params.toString());
   }
 
-  async addTorrentFile(fileBuffer: Uint8Array<ArrayBuffer>, filename: string, options?: { category?: string; savepath?: string; paused?: boolean }): Promise<void> {
+  async addTorrentFile(fileBuffer: Uint8Array<ArrayBuffer>, filename: string, options?: AddTorrentOptions & { category?: string; savepath?: string; paused?: boolean }): Promise<void> {
     const formData = new FormData();
     // Pass the view itself, not .buffer — a view over a pooled/offset buffer would
     // otherwise upload the whole backing allocation instead of the file bytes.
@@ -327,6 +360,7 @@ export class QBittorrentClient {
       formData.append('paused', String(options.paused));
       formData.append('stopped', String(options.paused));
     }
+    if (options) appendAddOptions((key, value) => formData.append(key, value), options);
     await this.postMultipart('/api/v2/torrents/add', formData);
   }
 

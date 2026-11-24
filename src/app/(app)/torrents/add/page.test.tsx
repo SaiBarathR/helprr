@@ -163,3 +163,92 @@ describe('Add Torrent: where it goes', () => {
     });
   });
 });
+
+describe('Add Torrent: options for qBittorrent', () => {
+  const MAGNET = 'magnet:?xt=urn:btih:382CC016FF22946008ECDDCB0DDA820F42B0CD5A';
+  let sent: RequestInit[];
+  beforeEach(() => {
+    sent = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/qbittorrent' && init?.method === 'POST') {
+        sent.push(init);
+        return json({ success: true, hash: 'abc' });
+      }
+      if (url === '/api/qbittorrent/options') return json({ tags: ['4k', 'movies'], queueingEnabled: true });
+      return json({});
+    }));
+  });
+
+  async function chooseOptions() {
+    await userEvent.click(await screen.findByRole('button', { name: 'Add tag 4k' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'New tag' }), 'mine{Enter}');
+    await userEvent.click(screen.getByRole('checkbox', { name: /Download in order/ }));
+  }
+
+  it('sends tags, in-order download and the advanced options with a magnet', async () => {
+    mocks.caps = new Set(['torrents.add', 'torrents.bandwidth']);
+    renderPage();
+    await userEvent.click(await screen.findByPlaceholderText('magnet:?xt=urn:btih:...'));
+    await userEvent.paste(MAGNET);
+    await chooseOptions();
+    await userEvent.click(screen.getByRole('button', { name: 'Advanced' }));
+    await userEvent.type(screen.getByLabelText('Name in qBittorrent'), 'My Film');
+    await userEvent.type(screen.getByLabelText('Download limit'), '2');
+    await userEvent.click(screen.getByRole('checkbox', { name: /Skip hash check/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /Add to top of queue/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add Torrent' }));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    const body = JSON.parse(sent[0].body as string);
+    expect(body).toMatchObject({
+      urls: MAGNET,
+      tags: ['4k', 'mine'],
+      sequentialDownload: true,
+      firstLastPiecePrio: true,
+      rename: 'My Film',
+      dlLimit: 2 * 1024 * 1024,
+      skipChecking: true,
+      addToTopOfQueue: true,
+    });
+    // Left to qBittorrent: not sent at all.
+    for (const key of ['upLimit', 'autoTMM', 'contentLayout']) expect(body).not.toHaveProperty(key);
+  });
+
+  it('sends the same options as form fields with a .torrent file', async () => {
+    mocks.caps = new Set(['torrents.add']);
+    const { container } = renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Torrent File/ }));
+    await userEvent.upload(container.querySelector('input[type="file"]') as HTMLInputElement, new File(['d4:infodee'], 'a.torrent'));
+    await chooseOptions();
+    await userEvent.click(screen.getByRole('button', { name: 'Add Torrent' }));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    const form = sent[0].body as FormData;
+    expect(form.getAll('tags')).toEqual(['4k', 'mine']);
+    expect(form.get('sequentialDownload')).toBe('true');
+    expect(form.get('firstLastPiecePrio')).toBe('true');
+    expect(form.has('rename')).toBe(false);
+  });
+
+  it('keeps the advanced options folded away, counting the ones set', async () => {
+    mocks.caps = new Set(['torrents.add', 'torrents.bandwidth']);
+    renderPage();
+    const advanced = await screen.findByRole('button', { name: 'Advanced' });
+    expect(advanced.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByLabelText('Name in qBittorrent')).toBeNull();
+
+    await userEvent.click(advanced);
+    await userEvent.click(screen.getByRole('checkbox', { name: /Skip hash check/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Advanced' }));
+    expect(screen.getByRole('button', { name: /^Advanced.*· 1 set$/ })).toBeTruthy();
+  });
+
+  it('offers speed limits only to a user who may change bandwidth', async () => {
+    mocks.caps = new Set(['torrents.add']);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Advanced' }));
+    expect(screen.getByLabelText('Name in qBittorrent')).toBeTruthy();
+    expect(screen.queryByLabelText('Download limit')).toBeNull();
+    expect(screen.queryByLabelText('Upload limit')).toBeNull();
+  });
+});
