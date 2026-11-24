@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
+import { resetQBittorrentSyncForTests } from '@/lib/qbittorrent-sync';
 
 /*
  * qBittorrent's transfer/info carries its last external IPv4 and IPv6 address:
@@ -27,7 +28,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/auth', () => ({ requireUser: vi.fn(), requireUserCapability: mocks.requireUserCapability }));
 vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: mocks.getQBittorrentClient }));
 vi.mock('@/lib/cache/qbittorrent-version', () => ({ getQbitCacheVersion: vi.fn(async () => 1) }));
-vi.mock('@/lib/cache/json-cache', () => ({ getCachedJson: vi.fn(async () => null), setCachedJson: vi.fn() }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
 vi.mock('@/lib/server-perf', () => ({ logApiDuration: vi.fn() }));
 
@@ -83,6 +83,14 @@ describe('qBittorrent transfer info and preferences reach a browser field by fie
         '/api/v2/transfer/info': transferInfo,
         '/api/v2/transfer/speedLimitsMode': 0,
         '/api/v2/torrents/info': [torrent],
+        // The summary's one read: server_state carries the same address, and more.
+        '/api/v2/sync/maindata': {
+          rid: 1,
+          full_update: true,
+          torrents: { [torrent.hash]: { ...torrent, hash: undefined } },
+          server_state: { ...transferInfo, use_alt_speed_limits: false, alltime_dl: 1, free_space_on_disk: 1, queueing: true },
+          trackers: {},
+        },
         '/api/v2/app/preferences': preferences,
         '/api/v2/app/defaultSavePath': '/downloads',
         '/api/v2/torrents/categories': { tv: { name: 'tv', savePath: '/downloads/tv' } },
@@ -102,6 +110,7 @@ describe('qBittorrent transfer info and preferences reach a browser field by fie
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getQBittorrentClient.mockResolvedValue(client);
+    resetQBittorrentSyncForTests();
     preferences = PREFERENCES;
   });
 

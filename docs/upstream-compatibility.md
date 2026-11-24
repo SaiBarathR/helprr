@@ -666,6 +666,23 @@ for a taken name or an unknown old path, and answer 200 while doing nothing for 
 `newPath` of `../x`. Helprr sends only a checked folder and a new path it builds
 from the old one's folder and a checked name.
 
+### qBittorrent incremental sync (2026-11-25)
+
+Live on a disposable qBittorrent `5.1.4`. `GET sync/maindata?rid=0` answers
+`full_update: true`, every torrent keyed by hash (no `hash` field of its own; the
+same fields as `torrents/info`, `magnet_uri` and `tracker` included), a `trackers`
+map of announce URL to hashes, and `server_state` with transfer/info's eight figures,
+`last_external_address_v4`/`_v6`, `use_alt_speed_limits`, `free_space_on_disk`,
+`alltime_dl`/`_ul` and `global_ratio` (text). `rid=<last>` answers only changed
+fields, `torrents_removed` and changed `server_state` keys. The rid is per Web UI
+session: a `rid=0` from the same session, a future rid or a new session's first read
+answers in full, but a repeated older rid is answered with the changes since the
+session's last answer, not in full, so reads must not overlap. `sync/torrentPeers`
+on the same session does not reset it. A restart forgets sessions: with sign-in
+required a stale cookie gets 403, and with "bypass authentication" for the client's
+subnet it gets a new session and `Set-Cookie: SID=…` with 200, so the client keeps
+any `SID` it is sent (`src/lib/qbittorrent-client.ts`, `src/lib/qbittorrent-sync.ts`).
+
 ### Library filters (2026-11-24)
 
 Live on the dummy Sonarr `4.0.20.3014` and Radarr `7.0.3.10918`. `GET /api/v3/series`

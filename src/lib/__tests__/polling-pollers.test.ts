@@ -250,12 +250,13 @@ const notified = (out: unknown[]) => out.flatMap((o) => {
 
 function qbitFixture() {
   mocks.connections.QBITTORRENT = { id: 'q1' };
-  mocks.qbit = { getTorrents: vi.fn(async () => [
-    { hash: 'a', name: 'A', progress: 1, state: 'uploading' },
-    { hash: 'b', name: 'B', progress: 1, state: 'stalledUP' },
-    { hash: 'c', name: 'C', progress: 0.1, state: 'stalledDL' },
-    { hash: 'd', name: 'D', progress: 0.4, state: 'downloading' },
-  ]) };
+  // The poll reads qBittorrent's sync/maindata (src/lib/qbittorrent-sync.ts): its first read is a full update.
+  mocks.qbit = { getMaindata: vi.fn(async () => ({ rid: 1, full_update: true, torrents: {
+    a: { name: 'A', progress: 1, state: 'uploading' },
+    b: { name: 'B', progress: 1, state: 'stalledUP' },
+    c: { name: 'C', progress: 0.1, state: 'stalledDL' },
+    d: { name: 'D', progress: 0.4, state: 'downloading' },
+  } })) };
 }
 
 function jellyfinFixture() {

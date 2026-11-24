@@ -4,7 +4,8 @@ import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { NotServiceApiError } from '@/lib/service-response';
 import { QUEUE_SEEDING_KEYS, pickQueueSeeding, type QueueSeedingPatch, type QueueSeedingPreferences } from '@/lib/qbittorrent-queue-seeding';
 import { normalizeTransferInfo } from '@/lib/qbittorrent-summary';
-import type { QBittorrentServerStats, QBittorrentTorrentInfo, QBittorrentTransferInfo } from '@/types';
+import { sha256Hex, stableStringify } from '@/lib/cache/keys';
+import type { QBittorrentTorrentInfo, QBittorrentTransferInfo } from '@/types';
 
 /** qBittorrent turned the Web UI username or password down (it answered "Fails."). */
 export class QBittorrentLoginError extends Error {}
@@ -153,6 +154,14 @@ interface TorrentProperties {
   up_speed: number;
 }
 
+/** "SID=…" from a response's Set-Cookie, or null without one. */
+function sessionCookie(setCookieHeader: string[] | undefined): string | null {
+  const sidMatch = setCookieHeader
+    ?.map((c: string) => c.match(/SID=([^;]+)/))
+    .find((m: RegExpMatchArray | null) => m !== null);
+  return sidMatch ? `SID=${sidMatch[1]}` : null;
+}
+
 export class QBittorrentClient {
   private client: AxiosInstance;
   private baseUrl: string;
@@ -161,11 +170,14 @@ export class QBittorrentClient {
   private cookie: string | null = null;
   private authPromise: Promise<void> | null = null;
   private torrentControlMode: 'unknown' | 'startStop' | 'pauseResume' = 'unknown';
+  /** One per connection setting, hashed so the password isn't in it (src/lib/qbittorrent-sync.ts). */
+  readonly connectionKey: string;
 
   constructor(url: string, password: string, username: string = 'admin', customHeaders?: Record<string, string>) {
     this.baseUrl = url.replace(/\/+$/, '');
     this.username = username;
     this.password = password;
+    this.connectionKey = sha256Hex(stableStringify([this.baseUrl, username, password, customHeaders ?? null]));
 
     this.client = axios.create({
       baseURL: this.baseUrl,
@@ -179,6 +191,18 @@ export class QBittorrentClient {
       httpAgent: keepAliveHttpAgent,
       httpsAgent: keepAliveHttpsAgent,
       beforeRedirect: refuseRedirectToAnotherHost,
+    });
+    // qBittorrent can open a new session without a sign-in: with "bypass
+    // authentication" for localhost or listed subnets it answers a stale cookie
+    // (after a restart) with a fresh one and no 403. Keep the session it hands
+    // back, or every request starts another one, and sync/maindata, whose rid
+    // belongs to one session, would answer each read in full.
+    this.client.interceptors.response.use((response) => {
+      if (response.config.url !== '/api/v2/auth/login') {
+        const session = sessionCookie(response.headers['set-cookie']);
+        if (session) this.cookie = session;
+      }
+      return response;
     });
   }
 
@@ -209,15 +233,8 @@ export class QBittorrentClient {
       },
     });
 
-    const setCookieHeader = response.headers['set-cookie'];
-    if (setCookieHeader) {
-      const sidMatch = setCookieHeader
-        .map((c: string) => c.match(/SID=([^;]+)/))
-        .find((m: RegExpMatchArray | null) => m !== null);
-      if (sidMatch) {
-        this.cookie = `SID=${sidMatch[1]}`;
-      }
-    }
+    const session = sessionCookie(response.headers['set-cookie']);
+    if (session) this.cookie = session;
 
     if (!this.cookie) {
       // "Fails." is qBittorrent refusing the username or password. Anything else with no
@@ -708,29 +725,12 @@ export class QBittorrentClient {
   }
 
   /**
-   * All-time totals and free disk space. Only sync/maindata has them, and only
-   * in a full update (rid=0), which also lists every torrent: callers cache it.
-   * Copied out field by field, so the torrent and tracker maps (magnets,
-   * tracker URLs with passkeys) never leave this method.
+   * sync/maindata as qBittorrent answers it, for src/lib/qbittorrent-sync.ts
+   * only: it holds every magnet, tracker URL (passkeys) and the public IP, and
+   * its rid is one per session, so a second reader would break the merge.
    */
-  async getServerStats(): Promise<QBittorrentServerStats> {
-    const data = await this.get<{ server_state?: unknown }>('/api/v2/sync/maindata', { rid: 0 });
-    const state = data?.server_state;
-    if (!state || typeof state !== 'object') throw new NotServiceApiError();
-    const { free_space_on_disk, alltime_dl, alltime_ul, global_ratio } = state as Record<string, unknown>;
-    const count = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null);
-    const downloaded = count(alltime_dl);
-    const uploaded = count(alltime_ul);
-    // qBittorrent sends the ratio as text in the host's locale ("1.43", "1,43",
-    // or "-" before any data): when it doesn't parse, work it out from the totals.
-    const sent = typeof global_ratio === 'string' && global_ratio.trim() !== '' ? count(Number(global_ratio)) : count(global_ratio);
-    const derived = downloaded && uploaded !== null ? Math.round((uploaded / downloaded) * 100) / 100 : null;
-    return {
-      freeSpaceOnDisk: count(free_space_on_disk),
-      alltimeDownloaded: downloaded,
-      alltimeUploaded: uploaded,
-      globalRatio: sent ?? derived,
-    };
+  async getMaindata(rid: number): Promise<unknown> {
+    return this.get<unknown>('/api/v2/sync/maindata', { rid });
   }
 
   // Global speed limits. Read and written as preferences, not through

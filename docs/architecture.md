@@ -1126,13 +1126,37 @@ or fail only, since Prowlarr's failure text can name the proxy's host.
 
 qBittorrent's `transfer/info` also carries `last_external_address_v4` and `_v6`,
 the owner's public IP. `/api/qbittorrent/transfer` and the summary (full, `view=delta`,
-`view=counters`, and the cache and delta history behind them) rebuild it with
+`view=counters`, and the delta history behind them) rebuild it with
 `normalizeTransferInfo` (`src/lib/qbittorrent-summary.ts`): speeds, session totals,
 rate limits, DHT nodes and connection status, for every user. The client's
 `getTransferInfo` applies it too, so a new caller can't pass the address on. Preferences are read
 through methods that copy out named keys (`getSpeedLimits`, `getSavePathPreferences`,
-`isQueueingEnabled`, `isSubcategoriesEnabled`, `getQueueSeedingPreferences`), since `app/preferences` holds the Web UI and proxy passwords, and
-`sync/maindata` only through `getServerStats`.
+`isQueueingEnabled`, `isSubcategoriesEnabled`, `getQueueSeedingPreferences`), since `app/preferences` holds the Web UI and proxy passwords.
+
+The torrents summary, the server stats (`/api/qbittorrent/transfer/stats`) and
+the qBittorrent poll read one merged `sync/maindata` state
+(`src/lib/qbittorrent-sync.ts`) instead of `torrents/info`, `transfer/info` and
+`transfer/speedLimitsMode`: after a first full update qBittorrent sends only what
+changed since the response id (rid) it last gave. The state is read again at
+most once per 2 s however many tabs poll, and at once when the qBittorrent cache
+version moves (every Helprr action bumps it), so a refetch after an action is
+current. qBittorrent keeps one rid per Web UI session and answers a repeated
+older rid with the changes since its last answer, not a full update, so reads
+are chained, never concurrent, and any failed or odd read starts the next from
+rid 0; a `full_update` (a new session, a restarted qBittorrent) replaces
+everything. The client keeps any `SID` qBittorrent sets, not only the sign-in's:
+with "bypass authentication" a restarted qBittorrent answers a stale cookie with a
+new session instead of a 403, and without it every read would start another
+session and come back in full. The state lives on `globalThis` for the current connection, since
+the routes and the poll started from instrumentation can load separate copies
+of the module; Helprr runs one Node process (`node server.js`), so it is not in
+Redis. It holds magnets, tracker URLs and server_state's public IP as qBittorrent
+sends them and never leaves the server so: rows go out through
+`projectTorrentForSummary`, figures through `normalizeTransferInfo` and
+`serverStatsFrom`, and the trackers map isn't kept. Only that module calls the
+client's `getMaindata`. The browser contract (full, `view=delta` with a server-owned cursor,
+`view=counters`, ETags) is unchanged; the summary takes only the `filter` the page
+sends and applies the page's own `matchesTorrentFilter`.
 
 Queueing and the global seeding limits (QBT-25, `/api/qbittorrent/queue-seeding`)
 are the only other preferences Helprr writes. `src/lib/qbittorrent-queue-seeding.ts`
@@ -1156,7 +1180,7 @@ credentials, keys and magnets removed. File paths are kept for the admin.
 
 qBittorrent's announce URLs carry a private tracker's passkey, in the path or the
 query, and so does each `tr=` of a torrent's magnet. The torrent lists
-(`/api/qbittorrent`, its summary and delta, and the caches behind them) are
+(`/api/qbittorrent`, its summary and delta, and the delta history behind them) are
 built field by field without `magnet_uri` or `tracker`; for the Tracker filter they
 carry only the current tracker's host name (`tracker_host`: no scheme, port, user
 info, path or query). The details route gives an

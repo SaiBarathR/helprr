@@ -23,6 +23,13 @@ const mocks = vi.hoisted(() => ({
     getTorrentTrackers: vi.fn(),
     getTransferInfo: vi.fn(),
     getSpeedLimitsMode: vi.fn(),
+    // The summary reads sync/maindata: a full update of whatever torrents/info lists.
+    getMaindata: vi.fn(async () => ({
+      rid: 1,
+      full_update: true,
+      torrents: Object.fromEntries((await mocks.client.getTorrents() as { hash: string }[]).map(({ hash, ...fields }) => [hash, fields])),
+      server_state: { connection_status: 'connected' },
+    })),
   },
 }));
 
@@ -42,6 +49,7 @@ vi.mock('@/lib/server-perf', () => ({ logApiDuration: vi.fn() }));
 import { GET as getDetails } from '@/app/api/qbittorrent/[hash]/details/route';
 import { GET as getList } from '@/app/api/qbittorrent/route';
 import { GET as getSummary } from '@/app/api/qbittorrent/summary/route';
+import { resetQBittorrentSyncForTests } from '@/lib/qbittorrent-sync';
 
 const torrentInfo = {
   hash: HASH, name: 'Some.Show.S01', size: 1, progress: 1, state: 'uploading', category: '', tags: '',
@@ -56,6 +64,7 @@ const details = () => getDetails(new NextRequest(`http://localhost/api/qbittorre
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetQBittorrentSyncForTests();
   signInAs('member');
   mocks.client.getTorrents.mockResolvedValue([torrentInfo]);
   mocks.client.getTorrentProperties.mockResolvedValue({ save_path: '/data', total_size: 1, seeds: 2, comment: `Details: ${ANNOUNCE}` });
