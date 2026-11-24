@@ -321,22 +321,29 @@ export class QBittorrentClient {
   }
 
   /**
-   * One torrent's peers since `rid` (0: all of them). qBittorrent keeps the
-   * last answer per Web UI session, not per torrent: when `rid` is not the
-   * answer it gave last, the next one is a full update again.
+   * One torrent's peers, always in full (rid 0): qBittorrent keeps one sync
+   * state per Web UI session for every torrent, and this client is one
+   * session for all of Helprr, so a rid could name another torrent's list.
+   * Helprr works out the deltas itself (src/lib/cache/qbittorrent-peer-delta.ts).
    */
-  async getTorrentPeers(hash: string, rid: number, signal?: AbortSignal): Promise<TorrentPeersSync> {
-    return this.get<TorrentPeersSync>('/api/v2/sync/torrentPeers', { hash, rid }, signal);
+  async getTorrentPeers(hash: string, signal?: AbortSignal): Promise<TorrentPeersSync> {
+    return this.get<TorrentPeersSync>('/api/v2/sync/torrentPeers', { hash, rid: 0 }, signal);
   }
 
-  /** `ip:port` each (`[ipv6]:port`); qBittorrent answers how many it added and how many failed. */
-  async addPeers(hash: string, peers: string[]): Promise<{ added: number; failed: number } | null> {
+  /**
+   * `ip:port` each (`[ipv6]:port`); qBittorrent answers how many it added and
+   * how many failed, 'missing' when it doesn't have the torrent (it skips an
+   * unknown hash and answers `{}`), null when the answer has no counts.
+   */
+  async addPeers(hash: string, peers: string[]): Promise<{ added: number; failed: number } | 'missing' | null> {
     const params = new URLSearchParams();
     params.append('hashes', hash);
     params.append('peers', peers.join('|'));
     const result = await this.post<Record<string, { added?: unknown; failed?: unknown }> | string>('/api/v2/torrents/addPeers', params.toString());
-    const counts = typeof result === 'object' && result ? Object.values(result)[0] : undefined;
-    return counts && typeof counts.added === 'number' && typeof counts.failed === 'number'
+    if (!result || typeof result !== 'object') return null;
+    const counts = Object.values(result)[0];
+    if (!counts) return 'missing';
+    return typeof counts.added === 'number' && typeof counts.failed === 'number'
       ? { added: counts.added, failed: counts.failed }
       : null;
   }

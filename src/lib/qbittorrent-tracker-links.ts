@@ -111,14 +111,18 @@ export function magnetForViewer(magnetUri: unknown, fullUrls: boolean): string |
   return kept.some((part) => /^xt=/i.test(part)) ? `magnet:?${kept.join('&')}` : null;
 }
 
+// A link written without its scheme (`tracker.example/rss.php?rsskey=…`): a host name or IPv4 address, then a path or query.
+const LINK_WITHOUT_SCHEME = /\b((?:(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}|\d{1,3}(?:\.\d{1,3}){3})(?::\d{1,5})?)[/?][^\s"'<>]*/gi;
+
 /**
  * The torrent's comment (or "created by") as this user may see it. Whoever
  * made the torrent wrote it, and a private tracker can put the torrent's page
  * or a download link with the passkey in it: for an admin as written, for
  * anyone else with the same cleaning as a tracker message (links cut to their
- * host, this torrent's tracker keys removed). Shown as plain text either way.
+ * host, this torrent's tracker keys removed), and links written without a
+ * scheme cut to their host as well. Shown as plain text either way.
  */
 export function torrentTextForViewer(comment: unknown, trackers: TorrentTracker[], fullUrls: boolean): string {
   if (typeof comment !== 'string') return '';
-  return fullUrls ? comment : messageWithoutSecrets(comment, trackerSecrets(trackers));
+  return fullUrls ? comment : messageWithoutSecrets(comment, trackerSecrets(trackers)).replace(LINK_WITHOUT_SCHEME, '$1');
 }

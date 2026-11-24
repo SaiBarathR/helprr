@@ -1,8 +1,9 @@
 /*
  * The peers list as the browser holds it (no imports, so the page can use it).
- * The server sends qBittorrent's sync/torrentPeers answer keyed by an opaque
- * key per peer (src/lib/qbittorrent-peers.ts): a full list, or since the last
- * `rid` only the fields that changed and the keys of peers that left.
+ * The server sends the list keyed by an opaque key per peer
+ * (src/lib/qbittorrent-peers.ts): in full, or since the list the page's
+ * `cursor` names only the fields that changed and the keys of peers that left
+ * (src/lib/cache/qbittorrent-peer-delta.ts).
  */
 
 export interface PeerView {
@@ -27,18 +28,22 @@ export interface PeerView {
 }
 
 export interface PeersDelta {
-  rid: number;
+  /** Names this list for the next request. */
+  cursor: string;
   fullUpdate: boolean;
   /** Whether qBittorrent resolves peer countries; null when it didn't say. */
   showFlags: boolean | null;
   peers: Record<string, Partial<PeerView>>;
   removed: string[];
+  /** Whether the torrent is private (null: qBittorrent didn't say); sent with a page's first request only. */
+  private?: boolean | null;
 }
 
 export interface PeersState {
-  rid: number;
+  cursor: string;
   showFlags: boolean | null;
   peers: Record<string, Partial<PeerView>>;
+  private: boolean | null;
 }
 
 /** The list after one answer: replaced on a full update, else changed fields merged and departed peers dropped. */
@@ -47,10 +52,10 @@ export function mergePeers(previous: PeersState | undefined, delta: PeersDelta):
   for (const key of delta.removed) delete peers[key];
   for (const [key, changed] of Object.entries(delta.peers)) peers[key] = { ...peers[key], ...changed };
   return {
-    rid: delta.rid,
-    // A delta leaves show_flags out unless it changed.
-    showFlags: delta.showFlags ?? previous?.showFlags ?? null,
+    cursor: delta.cursor,
+    showFlags: delta.showFlags,
     peers,
+    private: delta.private !== undefined ? delta.private : previous?.private ?? null,
   };
 }
 

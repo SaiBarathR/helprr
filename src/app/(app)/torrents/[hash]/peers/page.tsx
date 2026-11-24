@@ -56,13 +56,14 @@ export default function TorrentPeersPage() {
     void getRefreshIntervalMs('torrentsRefreshIntervalSecs', 5).then(setRefreshIntervalMs);
   }, []);
 
-  // Each poll asks for what changed since the list this page holds (its rid)
-  // and merges that in; qBittorrent sends the whole list when it can't.
+  // Each poll asks for what changed since the list this page holds (its
+  // cursor) and merges that in; the server sends the whole list when it can't.
   const peersQuery = useQuery({
     queryKey: peersKey,
     queryFn: async ({ signal }) => {
       const previous = queryClient.getQueryData<PeersState>(peersKey);
-      const res = await fetch(`/api/qbittorrent/${hash}/peers?rid=${previous?.rid ?? 0}`, { signal });
+      const query = previous ? `?cursor=${encodeURIComponent(previous.cursor)}` : '';
+      const res = await fetch(`/api/qbittorrent/${hash}/peers${query}`, { signal });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new ApiError(res.status, data?.error || 'Failed to load the peers');
       return mergePeers(previous, data as PeersDelta);
@@ -120,8 +121,12 @@ export default function TorrentPeersPage() {
     void peersQuery.refetch();
   };
 
-  const title = canManage ? 'Manage Peers' : 'Peers';
   const state = peersQuery.data;
+  // A private torrent's peers come from its tracker only: adding one is an
+  // admin's call, and unknown counts as private. UX only, the route decides.
+  const privateLocked = canManage && !isAdmin && state?.private !== false;
+  const canAdd = canManage && !privateLocked;
+  const title = canManage ? 'Manage Peers' : 'Peers';
   const rows = useMemo(() => (state ? sortPeers(state.peers, sort) : []), [state, sort]);
 
   const toolbar = (
@@ -147,7 +152,7 @@ export default function TorrentPeersPage() {
           </ResponsiveMenuCheckboxItem>
         ))}
       </ResponsiveMenu>
-      {canManage && (
+      {canAdd && (
         <button
           className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
           aria-label={adding ? 'Close add peers' : 'Add peers'}
@@ -183,7 +188,7 @@ export default function TorrentPeersPage() {
       {header}
 
       <div className="mt-3 pb-8">
-        {canManage && adding && (
+        {canAdd && adding && (
           <GroupedSection
             title="Add Peers"
             footer="One IP:port per line, IPv6 as [address]:port. qBittorrent tries to connect to them; one that answers shows in the list."
@@ -211,8 +216,17 @@ export default function TorrentPeersPage() {
 
         <GroupedSection
           title={`Peers (${rows.length})`}
-          footer={isAdmin ? undefined : 'Only admins see peer IP addresses.'}
+          footer={isAdmin
+            ? undefined
+            : privateLocked
+              ? 'Only admins see peer IP addresses. This torrent is private: only an admin can add peers to it.'
+              : 'Only admins see peer IP addresses.'}
         >
+          {peersQuery.isError && (
+            <div className="grouped-row" role="status">
+              <span className="text-xs text-destructive">Couldn’t refresh the peers. This is the last list Helprr got.</span>
+            </div>
+          )}
           {rows.length === 0 && (
             <div className="grouped-row">
               <span className="text-sm text-muted-foreground">No peers connected right now</span>
@@ -226,6 +240,8 @@ export default function TorrentPeersPage() {
               <QuickContextMenu
                 key={key}
                 label={`Actions for ${label}`}
+                // Long-press bans too; the row's ⋮ is the other way in.
+                allowSingleAction
                 groups={[
                   {
                     id: 'peer',
@@ -243,7 +259,15 @@ export default function TorrentPeersPage() {
                         {name}
                       </p>
                       <p className="text-xs text-muted-foreground break-words">
-                        {[isAdmin ? peer.address : null, peer.connection, peer.country, peer.flags].filter(Boolean).join(' · ')}
+                        {[isAdmin ? peer.address : null, peer.connection, peer.country].filter(Boolean).join(' · ')}
+                        {/* qBittorrent's letters (D, H, X…), explained in flags_desc. */}
+                        {peer.flags && (
+                          <span title={peer.flags_desc}>
+                            {(isAdmin && peer.address) || peer.connection || peer.country ? ' · ' : ''}
+                            {peer.flags}
+                            {peer.flags_desc && <span className="sr-only">: {peer.flags_desc.replace(/\n/g, ', ')}</span>}
+                          </span>
+                        )}
                       </p>
                     </div>
                     <div className="shrink-0 text-right text-xs tabular-nums space-y-0.5">

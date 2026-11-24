@@ -46,8 +46,7 @@ async function postHandler(
     if (typeof key !== 'string' || !PEER_KEY.test(key)) return refuse(400, 'Name the peer to ban', 'key');
 
     const client = await getQBittorrentClient();
-    // A full list (rid 0): the open peers page gets a full update on its next poll.
-    const address = findPeerAddress(hash, await client.getTorrentPeers(hash, 0, request.signal), key);
+    const address = findPeerAddress(hash, await client.getTorrentPeers(hash, request.signal), key);
     if (!address) return refuse(409, 'That peer is no longer connected', 'gone');
 
     await client.banPeers([address]);

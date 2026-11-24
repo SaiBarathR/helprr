@@ -24,11 +24,14 @@ export interface TorrentDetailData {
   private?: boolean | null;
 }
 
-function copyText(text: string, what: string) {
-  navigator.clipboard.writeText(text).then(
-    () => toast.success(`${what} copied`),
-    () => toast.error('Failed to copy')
-  );
+async function copyText(text: string, what: string) {
+  try {
+    // Throws outside a secure context too (Helprr over plain http), where there is no clipboard API.
+    await navigator.clipboard.writeText(text);
+    toast.success(`${what} copied`);
+  } catch {
+    toast.error('Failed to copy');
+  }
 }
 
 /** One torrent's details: transfer, session, settings (read-only), timing, network, torrent info, magnet, files and trackers (read-only). */
@@ -230,11 +233,17 @@ export function TorrentDetailDrawer({
                 </div>
                 {detailHash && (
                   <div className="grid grid-cols-2 gap-2 mt-2">
-                    <Button variant="outline" size="sm" className="text-xs" onClick={() => copyText(torrentNameByHash.get(detailHash) || detailHash, 'Name')}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                      disabled={!torrentNameByHash.get(detailHash)}
+                      onClick={() => void copyText(torrentNameByHash.get(detailHash) || '', 'Name')}
+                    >
                       <Copy className="mr-2 h-3.5 w-3.5" />
                       Copy Name
                     </Button>
-                    <Button variant="outline" size="sm" className="text-xs" onClick={() => copyText(detailHash, 'Hash')}>
+                    <Button variant="outline" size="sm" className="text-xs" onClick={() => void copyText(detailHash, 'Hash')}>
                       <Hash className="mr-2 h-3.5 w-3.5" />
                       Copy Hash
                     </Button>
@@ -252,7 +261,7 @@ export function TorrentDetailDrawer({
                     className="w-full text-xs"
                     onClick={() => {
                       if (!detailData.magnet) return;
-                      copyText(detailData.magnet, 'Magnet URI');
+                      void copyText(detailData.magnet, 'Magnet URI');
                     }}
                   >
                     <Copy className="mr-2 h-3.5 w-3.5" />

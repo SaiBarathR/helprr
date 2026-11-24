@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
   recordSettingsUpdated: vi.fn(),
   client: {
+    getTorrents: vi.fn(),
     getTorrentPeers: vi.fn(),
     addPeers: vi.fn(),
     banPeers: vi.fn(),
@@ -59,6 +60,7 @@ beforeEach(() => {
   mocks.requireUserCapability.mockResolvedValue(user('member'));
   mocks.requireAdmin.mockResolvedValue(user('admin'));
   mocks.client.getTorrentPeers.mockResolvedValue(FULL);
+  mocks.client.getTorrents.mockResolvedValue([{ hash: HASH, private: false }]);
   mocks.client.addPeers.mockResolvedValue({ added: 1, failed: 0 });
   mocks.client.banPeers.mockResolvedValue(undefined);
 });
@@ -74,7 +76,8 @@ describe('GET /api/qbittorrent/[hash]/peers', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expectNoAddress(body);
-    expect(body).toMatchObject({ rid: 1, fullUpdate: true, showFlags: true, removed: [] });
+    expect(body).toMatchObject({ fullUpdate: true, showFlags: true, removed: [], private: false });
+    expect(body.cursor).toMatch(/^[a-f0-9]{64}$/);
     const keys = Object.keys(body.peers);
     expect(keys).toEqual([peerKey(HASH, V4), peerKey(HASH, V6)]);
     expect(body.peers[keys[0]]).toEqual({
@@ -92,17 +95,43 @@ describe('GET /api/qbittorrent/[hash]/peers', () => {
     expect(body.peers[peerKey(HASH, V4)]).not.toHaveProperty('files');
   });
 
-  it('passes the rid on and maps a delta’s changes and departures to the same keys', async () => {
-    mocks.client.getTorrentPeers.mockResolvedValue({ rid: 3, peers: { [V4]: { dl_speed: 9 } }, peers_removed: [V6] });
-    const body = await (await get('?rid=2')).json();
-    expect(mocks.client.getTorrentPeers).toHaveBeenCalledWith(HASH, 2, expect.anything());
-    expect(body).toEqual({ rid: 3, fullUpdate: false, showFlags: null, peers: { [peerKey(HASH, V4)]: { dl_speed: 9 } }, removed: [peerKey(HASH, V6)] });
+  it('sends what changed since the cursor: changed fields, new peers, and the keys of peers that left', async () => {
+    const first = await (await get()).json();
+    mocks.client.getTorrentPeers.mockResolvedValue({
+      rid: 1, full_update: true, show_flags: true,
+      peers: { [V4]: { ...peer('198.51.100.7', 51413), dl_speed: 9 }, '203.0.113.9:1': peer('203.0.113.9', 1) },
+    });
+    const body = await (await get(`?cursor=${first.cursor}`)).json();
+    expect(body).toMatchObject({ fullUpdate: false, removed: [peerKey(HASH, V6)] });
+    expect(body.peers[peerKey(HASH, V4)]).toEqual({ dl_speed: 9 });
+    expect(body.peers[peerKey(HASH, '203.0.113.9:1')]).toMatchObject({ client: 'qBittorrent/5.1.4' });
+    expect(body).not.toHaveProperty('private');
     expectNoAddress(body);
+    expect(mocks.client.getTorrents).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['-1', 'abc', '1e3', '99999999'])('asks for a full list for rid %j', async (rid) => {
-    await get(`?rid=${rid}`);
-    expect(mocks.client.getTorrentPeers).toHaveBeenCalledWith(HASH, 0, expect.anything());
+  it('always asks qBittorrent for the full list: its rid is shared by every torrent and user', async () => {
+    const first = await (await get()).json();
+    await get(`?cursor=${first.cursor}`);
+    expect(mocks.client.getTorrentPeers.mock.calls.map((call) => call.slice(0, 1))).toEqual([[HASH], [HASH]]);
+  });
+
+  it('never diffs against another user’s, another torrent’s or another view’s list', async () => {
+    const memberFirst = await (await get()).json();
+    // An admin polling the same torrent, and the same member's cursor on another torrent.
+    mocks.requireUserCapability.mockResolvedValue(user('admin'));
+    const adminBody = await (await get(`?cursor=${memberFirst.cursor}`)).json();
+    expect(adminBody.fullUpdate).toBe(true);
+    mocks.requireUserCapability.mockResolvedValue(user('member'));
+    const OTHER = 'b'.repeat(40);
+    const other = await (await GET(new NextRequest(`http://localhost/api/qbittorrent/${OTHER}/peers?cursor=${memberFirst.cursor}`), { params: Promise.resolve({ hash: OTHER }) })).json();
+    expect(other.fullUpdate).toBe(true);
+  });
+
+  it.each(['abc', 'f'.repeat(64), '../x'])('sends the full list for an unknown cursor %j', async (cursor) => {
+    const body = await (await get(`?cursor=${encodeURIComponent(cursor)}`)).json();
+    expect(body.fullUpdate).toBe(true);
+    expect(Object.keys(body.peers)).toHaveLength(2);
   });
 
   it('keys the same peer differently on another torrent', () => {
@@ -127,6 +156,29 @@ describe('POST /api/qbittorrent/[hash]/peers (add)', () => {
     expect(mocks.client.addPeers).not.toHaveBeenCalled();
   });
 
+  it.each([true, undefined])('keeps a member from adding peers to a private torrent (private: %j)', async (flag) => {
+    mocks.requireUserCapability.mockResolvedValue(user('member'));
+    mocks.client.getTorrents.mockResolvedValue([{ hash: HASH, private: flag }]);
+    const res = await post({ peers: [V4] });
+    expect(res.status).toBe(403);
+    expect(mocks.client.addPeers).not.toHaveBeenCalled();
+  });
+
+  it('lets an admin add peers to a private torrent', async () => {
+    mocks.requireUserCapability.mockResolvedValue(user('admin'));
+    mocks.client.getTorrents.mockResolvedValue([{ hash: HASH, private: true }]);
+    expect((await post({ peers: [V4] })).status).toBe(200);
+    expect(mocks.client.addPeers).toHaveBeenCalledWith(HASH, [V4]);
+  });
+
+  it('answers 404 when qBittorrent doesn’t have the torrent', async () => {
+    mocks.client.getTorrents.mockResolvedValue([]);
+    expect((await post({ peers: [V4] })).status).toBe(404);
+    mocks.requireUserCapability.mockResolvedValue(user('admin'));
+    mocks.client.addPeers.mockResolvedValue('missing');
+    expect((await post({ peers: [V4] })).status).toBe(404);
+  });
+
   it('sends IPv4 and bracketed IPv6 peers once each, in qBittorrent’s form', async () => {
     const res = await post({ peers: [` ${V4} `, '[2001:DB8::7]:6881', V4, ''] });
     expect(res.status).toBe(200);
@@ -143,6 +195,15 @@ describe('POST /api/qbittorrent/[hash]/peers (add)', () => {
     [['[198.51.100.7]:6881']],
     [['[fe80::1%eth0]:6881']],
     [['host.example:6881']],
+    [['127.0.0.1:6881']],
+    [['0.0.0.0:6881']],
+    [['239.1.1.1:6881']],
+    [['255.255.255.255:6881']],
+    [['[::1]:6881']],
+    [['[::]:6881']],
+    [['[ff02::1]:6881']],
+    [['[::ffff:127.0.0.1]:6881']],
+    [Array.from({ length: 201 }, () => '')],
     [['198.51.100.7:6881|203.0.113.1:6881']],
     [[`${'1'.repeat(70)}:1`]],
     [[42]],
@@ -167,7 +228,7 @@ describe('POST /api/qbittorrent/[hash]/peers/ban', () => {
   it('bans the address qBittorrent lists under the key, not one the browser sends, and audits it without the address', async () => {
     const res = await ban({ key: peerKey(HASH, V6), address: '203.0.113.99:1', peers: '203.0.113.99:1' });
     expect(res.status).toBe(200);
-    expect(mocks.client.getTorrentPeers).toHaveBeenCalledWith(HASH, 0, expect.anything());
+    expect(mocks.client.getTorrentPeers).toHaveBeenCalledWith(HASH, expect.anything());
     expect(mocks.client.banPeers).toHaveBeenCalledWith([V6]);
     expect(mocks.recordSettingsUpdated).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: 'admin-1' }), 'qBittorrent banned peers', ['banned_IPs'], HASH);
     expect(JSON.stringify(mocks.recordSettingsUpdated.mock.calls)).not.toContain('2001:db8');

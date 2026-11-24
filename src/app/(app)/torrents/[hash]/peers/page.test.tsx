@@ -46,7 +46,7 @@ beforeEach(() => {
   mocks.caps = new Set(['torrents.view']);
   mocks.role = 'member';
   posts = [];
-  answers = [{ rid: 1, fullUpdate: true, showFlags: true, peers: { k1: row('Transmission 4.0'), k2: row('Deluge 2.1', { dl_speed: 0 }) }, removed: [] }];
+  answers = [{ cursor: 'c1', fullUpdate: true, showFlags: true, private: false, peers: { k1: row('Transmission 4.0'), k2: row('Deluge 2.1', { dl_speed: 0 }) }, removed: [] }];
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
     if (init?.method === 'POST') {
       posts.push({ url, body: JSON.parse(String(init.body)) });
@@ -73,13 +73,13 @@ describe('Peers', () => {
     expect(screen.getAllByRole('img', { name: 'Canada' })[0].textContent).toBe('🇨🇦');
     expect(screen.queryByRole('button', { name: /More actions/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Add peers' })).toBeNull();
-    expect(fetchMock).toHaveBeenCalledWith('/api/qbittorrent/abc/peers?rid=0', expect.anything());
+    expect(fetchMock).toHaveBeenCalledWith('/api/qbittorrent/abc/peers', expect.anything());
   });
 
-  it('asks for what changed since its rid and merges it in', async () => {
+  it('asks for what changed since its cursor and merges it in', async () => {
     answers = [
       answers[0],
-      { rid: 2, fullUpdate: false, showFlags: null, peers: { k1: { client: 'Transmission 4.1' } }, removed: ['k2'] },
+      { cursor: 'c2', fullUpdate: false, showFlags: true, peers: { k1: { client: 'Transmission 4.1' } }, removed: ['k2'] },
     ];
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><TorrentPeersPage /></QueryClientProvider>);
@@ -87,7 +87,25 @@ describe('Peers', () => {
     await client.refetchQueries({ queryKey: ['qbittorrent', 'abc', 'peers'] });
     expect(await screen.findByText('Transmission 4.1')).toBeTruthy();
     expect(screen.queryByText('Deluge 2.1')).toBeNull();
-    expect(fetchMock).toHaveBeenLastCalledWith('/api/qbittorrent/abc/peers?rid=1', expect.anything());
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/qbittorrent/abc/peers?cursor=c1', expect.anything());
+  });
+
+  it('keeps the last list and says so when a refresh fails', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><TorrentPeersPage /></QueryClientProvider>);
+    expect(await screen.findByText('Transmission 4.0')).toBeTruthy();
+    fetchMock.mockImplementation(async () => Response.json({ error: 'qBittorrent is down' }, { status: 502 }));
+    await client.refetchQueries({ queryKey: ['qbittorrent', 'abc', 'peers'] }).catch(() => {});
+    expect(await screen.findByText(/Couldn’t refresh the peers/)).toBeTruthy();
+    expect(screen.getByText('Transmission 4.0')).toBeTruthy();
+  });
+
+  it.each([true, null])('offers a member no Add Peers on a private torrent (private: %j)', async (flag) => {
+    mocks.caps = new Set(['torrents.view', 'torrents.manage']);
+    answers = [{ ...(answers[0] as object), private: flag }];
+    render(<TorrentPeersPage />, { wrapper });
+    expect(await screen.findByText(/only an admin can add peers to it/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Add peers' })).toBeNull();
   });
 
   it('lets torrents.manage add peers, one per line, without banning', async () => {
@@ -119,7 +137,7 @@ describe('Peers', () => {
   });
 
   it('says when nobody is connected', async () => {
-    answers = [{ rid: 1, fullUpdate: true, showFlags: true, peers: {}, removed: [] }];
+    answers = [{ cursor: 'c1', fullUpdate: true, showFlags: true, private: false, peers: {}, removed: [] }];
     render(<TorrentPeersPage />, { wrapper });
     expect(await screen.findByText('No peers connected right now')).toBeTruthy();
   });

@@ -112,6 +112,14 @@ describe('GET /api/qbittorrent/[hash]/details', () => {
     expect(body.properties).not.toHaveProperty('infohash_v2');
   });
 
+  it('cuts a link written without its scheme to its host for a member', async () => {
+    mocks.client.getTorrentProperties.mockResolvedValue({
+      comment: 'RSS: tracker.example/rss.php?rsskey=s3cr3tRssKey99 or 203.0.113.4:8080/dl/s3cr3tPath42/x.torrent. Ubuntu CD releases.ubuntu.com',
+    });
+    const body = await (await details()).json();
+    expect(body.properties.comment).toBe('RSS: tracker.example or 203.0.113.4:8080 Ubuntu CD releases.ubuntu.com');
+  });
+
   it("gives an admin the torrent's comment as written", async () => {
     signInAs('admin');
     const body = await (await details()).json();
