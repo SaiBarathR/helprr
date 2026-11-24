@@ -180,11 +180,11 @@ export default function MoviesPage() {
   const me = useMe();
   const isAdmin = me?.role === 'admin';
   // An admin's toolbar row also holds the ⋯ menu, so it makes room: below md
-  // Refresh folds into the menu, and below 360px so does Select (the selection
+  // Refresh folds into the menu, and below 367px so does Select (the selection
   // bar has its own Cancel). The buttons hide at the same widths in CSS, where
-  // max-md is width < 768px and max-[359px] is width < 359px.
+  // max-md is width < 768px and max-[367px] is width < 367px.
   const belowMd = useIsMobile(767.98);
-  const below360 = useIsMobile(358.98);
+  const below367 = useIsMobile(366.98);
   const canFilterByWatchStatus = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
   const watchLookup = useWatchLookup(canFilterByWatchStatus);
   const watchMapReady = useWatchMapReady(canFilterByWatchStatus);
@@ -904,7 +904,7 @@ export default function MoviesPage() {
               <TooltipTrigger asChild>
                 <button
                   onClick={() => (selectionMode ? exit() : enter())}
-                  className={`${isAdmin ? 'max-[359px]:hidden ' : ''}p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
+                  className={`${isAdmin ? 'max-[367px]:hidden ' : ''}p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
                     selectionMode ? 'bg-primary text-primary-foreground' : 'hover:bg-accent active:bg-accent/80'
                   }`}
                   aria-label={selectionMode ? 'Exit selection' : 'Select movies'}
@@ -917,13 +917,15 @@ export default function MoviesPage() {
             </Tooltip>
           )}
 
-          {/* Below 360px the row has no room for it; pull to refresh does the same. */}
+          {/* With Select and Add the row needs a 367px screen (354px of buttons in
+              a row 12px narrower than the screen); below that it has no room for
+              this, and pull to refresh does the same. */}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={refresh}
                 disabled={refreshing}
-                className={`${isAdmin ? 'max-md:hidden' : 'max-[359px]:hidden'} p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default`}
+                className={`${isAdmin ? 'max-md:hidden' : 'max-[367px]:hidden'} p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default`}
                 aria-label="Refresh Movies"
               >
                 <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
@@ -934,7 +936,7 @@ export default function MoviesPage() {
 
           {isAdmin && (
             <LibraryCommandsMenu service="radarr" busy={refreshing}>
-              {below360 && !selectionMode && (
+              {below367 && !selectionMode && (
                 <ResponsiveMenuActionItem onSelect={enter}>
                   <ListChecks className="h-4 w-4" />
                   Select movies
@@ -954,7 +956,7 @@ export default function MoviesPage() {
               <TooltipTrigger asChild>
                 <Link
                   href="/movies/add"
-                  className="relative touch-target touch-target-center ml-1 max-[359px]:ml-0 md:ml-0 md:p-2 md:min-h-[44px] md:min-w-[44px] p-1 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                  className="relative touch-target touch-target-center ml-1 max-[367px]:ml-0 md:ml-0 md:p-2 md:min-h-[44px] md:min-w-[44px] p-1 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
                   aria-label="Add Movie"
                 >
                   <Plus className="md:h-5 md:w-5 h-6 w-6" />
