@@ -18,6 +18,7 @@ export const queryKeys = {
   mediaManagementConfig: (svc: ArrService, id?: string) => [svc, 'mediamanagement', inst(id)] as const,
   tags: (svc: ArrService, id?: string) => [svc, 'tags', inst(id)] as const,
   rootFolders: (svc: ArrService, id?: string) => [svc, 'rootfolders', inst(id)] as const,
+  arrHealth: (svc: ArrService, id?: string) => [svc, 'health', inst(id)] as const,
   metadataProfiles: (id?: string) => ['lidarr', 'metadataprofiles', inst(id)] as const,
 
   // ── Library lists ────────────────────────────────────────────────

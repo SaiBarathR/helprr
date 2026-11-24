@@ -1,21 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getLidarrClient } from '@/lib/service-helpers';
-import { requireUserCapability } from '@/lib/auth';
+import { NextRequest } from 'next/server';
+import { requireUserAllCapabilities } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { upstreamErrorResponse } from '@/lib/api-error';
+import { arrHealthResponse } from '@/lib/server/arr-health-route';
 
+// One instance's health checks. Gated like Lidarr's health push: notify.health
+// (the messages name hosts and paths) and music.view (they can name an artist).
 async function getHandler(request: NextRequest) {
-  const auth = await requireUserCapability('music.view');
+  const auth = await requireUserAllCapabilities(['notify.health', 'music.view']);
   if (!auth.ok) return auth.response;
-
-  try {
-    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
-    const client = await getLidarrClient(instanceId);
-    const health = await client.getHealth();
-    return NextResponse.json(health);
-  } catch (error) {
-    return upstreamErrorResponse(error, 'Failed to fetch health');
-  }
+  return arrHealthResponse('LIDARR', request);
 }
 
 export const GET = withApiLogging(getHandler, 'api/lidarr/health');

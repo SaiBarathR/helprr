@@ -1,4 +1,4 @@
-// Prowlarr: its own health warnings (failing indexers, app sync, proxies) as notifications.
+// Prowlarr: its own health warnings (failing indexers, app sync, proxies) and their all-clear, as notifications.
 import crypto from 'crypto';
 import { prisma } from '@/lib/db';
 import { getProwlarrClient } from '@/lib/service-helpers';
@@ -8,6 +8,7 @@ import { logger } from '@/lib/logger';
 import { noteJobFailure } from '@/lib/polling-job-report';
 import { redactProwlarrText } from '@/lib/prowlarr-redact';
 import { notifyAndLog } from './shared';
+import { healthTransition } from './health-transition';
 
 export async function pollProwlarr() {
   let client;
@@ -40,7 +41,8 @@ export async function pollProwlarr() {
   // Sorted, so the same warnings in another order are not a change.
   const messages = health.map((check) => redactProwlarrText(String(check.message ?? ''))).sort();
   const healthHash = crypto.createHash('md5').update(JSON.stringify(messages)).digest('hex');
-  if (state.lastHealthHash && healthHash !== state.lastHealthHash && messages.length > 0) {
+  const decision = healthTransition(connection.id, state.lastHealthHash, healthHash, messages.length);
+  if (decision.notify === 'warning') {
     const sent = await notifyAndLog({
       eventType: 'healthWarning',
       title: 'Prowlarr Health Warning',
@@ -54,10 +56,21 @@ export async function pollProwlarr() {
     }, { service: 'prowlarr', instanceId: connection.id, reason: 'health-changed', healthCount: messages.length });
     // Not recorded (null): keep the old hash so the next cycle tries again.
     if (sent === null) return;
+  } else if (decision.notify === 'restored') {
+    const sent = await notifyAndLog({
+      eventType: 'healthRestored',
+      title: 'Prowlarr Health Restored',
+      body: 'All health checks pass again',
+      url: '/prowlarr',
+      metadata: { source: 'prowlarr', redirect: '/prowlarr' },
+      // When the all-clear began: the same on a retry after a failed save.
+      dedupeKey: `prowlarr-health-restored:${decision.clearSince}`,
+    }, { service: 'prowlarr', instanceId: connection.id, reason: 'health-restored' });
+    if (sent === null) return;
   }
 
   await prisma.pollingState.update({
     where: { serviceConnectionId: connection.id },
-    data: { lastHealthHash: healthHash },
+    data: { lastHealthHash: decision.save },
   });
 }

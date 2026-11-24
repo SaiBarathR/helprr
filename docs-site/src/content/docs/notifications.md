@@ -12,7 +12,7 @@ inbox. It also keeps alerts coming when push on a phone goes quiet.
 Each person adds their own channels and picks which events go to each one, from the
 events they already receive. Channels follow that person's quiet hours, and grouped
 bursts arrive as one message, the same as push. Service down and restored, health
-warnings and security alerts still come through during quiet hours. Quiet hours, the
+warnings and their all-clear, and security alerts still come through during quiet hours. Quiet hours, the
 calendar feed and other times worked out for you follow **Your time zone** in
 **Settings → Preferences** (by default the same as the server's).
 

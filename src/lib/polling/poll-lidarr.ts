@@ -10,6 +10,8 @@ import { PollNotificationCollector } from '@/lib/notification-grouping';
 import { fetchAllQueueRecords } from '@/lib/activity-queue';
 import { getMediaHrefFromIds } from '@/lib/media-href';
 import crypto from 'crypto';
+import { redactHealthMessage } from '@/lib/arr-health';
+import { arrHealthHref } from '@/lib/arr-health-link';
 import { importFailureBody, downloadFailureBody, buildTagMap, mediaFilterMeta, readQueueSnapshots, errorMessage, getPollingState, historyCursorFromState, fetchNewHistoryPages, advanceHistoryCursor, notifyAndLog, instanceTitle, type CycleContext, type QueueSnapshot } from './shared';
 
 export async function pollLidarr(context: CycleContext) {
@@ -174,11 +176,11 @@ export async function pollLidarr(context: CycleContext) {
         await notifyAndLog({
           eventType: 'healthWarning',
           title: instanceTitle('Lidarr Health Warning', instanceLabel, n),
-          body: health.map((h) => h.message).join('; ').slice(0, 200),
-          url: '/settings',
+          body: health.map((h) => redactHealthMessage(h.message)).join('; ').slice(0, 200),
+          url: arrHealthHref('lidarr', instanceId),
           // Tagged like Lidarr's other events, so the music.view rule (push and the
           // digest without Lidarr) applies: a health message can name an artist.
-          metadata: { source: 'lidarr', instanceId },
+          metadata: { source: 'lidarr', instanceId, redirect: arrHealthHref('lidarr', instanceId) },
         }, { service: 'lidarr', instanceId, reason: 'health-changed', healthCount: health.length });
       }
 
