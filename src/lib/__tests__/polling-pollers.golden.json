@@ -16,7 +16,12 @@
     "eventType": "healthWarning",
     "title": "Main · Sonarr Health Warning",
     "body": "Main indexer is down",
-    "url": "/settings"
+    "url": "/settings/status?health=sonarr&instance=i1",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "i1",
+     "redirect": "/settings/status?health=sonarr&instance=i1"
+    }
    }
   },
   {
@@ -227,7 +232,12 @@
     "eventType": "healthWarning",
     "title": "Main · Radarr Health Warning",
     "body": "Main indexer is down",
-    "url": "/settings"
+    "url": "/settings/status?health=radarr&instance=i1",
+    "metadata": {
+     "source": "radarr",
+     "instanceId": "i1",
+     "redirect": "/settings/status?health=radarr&instance=i1"
+    }
    }
   },
   {
@@ -430,10 +440,11 @@
     "eventType": "healthWarning",
     "title": "Main · Lidarr Health Warning",
     "body": "Main indexer is down",
-    "url": "/settings",
+    "url": "/settings/status?health=lidarr&instance=i1",
     "metadata": {
      "source": "lidarr",
-     "instanceId": "i1"
+     "instanceId": "i1",
+     "redirect": "/settings/status?health=lidarr&instance=i1"
     }
    }
   },
@@ -1265,7 +1276,12 @@
     "eventType": "healthWarning",
     "title": "Sonarr Health Warning",
     "body": "Main indexer is down",
-    "url": "/settings"
+    "url": "/settings/status?health=sonarr&instance=i1",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "i1",
+     "redirect": "/settings/status?health=sonarr&instance=i1"
+    }
    }
   },
   {
@@ -1459,7 +1475,12 @@
     "eventType": "healthWarning",
     "title": "Anime · Radarr Health Warning",
     "body": "Anime indexer is down",
-    "url": "/settings"
+    "url": "/settings/status?health=radarr&instance=i2",
+    "metadata": {
+     "source": "radarr",
+     "instanceId": "i2",
+     "redirect": "/settings/status?health=radarr&instance=i2"
+    }
    }
   },
   {

@@ -453,7 +453,7 @@ export default function NotificationsPage() {
       if (source === 'qbittorrent') return '/torrents';
       if (source === 'jellyfin') return '/jellyfin';
 
-      if (notification.eventType === 'healthWarning') return '/settings';
+      if (notification.eventType === 'healthWarning' || notification.eventType === 'healthRestored') return '/settings/status';
       if (notification.eventType === 'upcomingPremiere') return '/calendar';
       if (
         notification.eventType === 'grabbed'

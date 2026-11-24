@@ -232,6 +232,7 @@ export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability>
   importFailed: 'notify.media',
   upcomingPremiere: 'notify.media',
   healthWarning: 'notify.health',
+  healthRestored: 'notify.health',
   serviceDown: 'notify.health',
   serviceRestored: 'notify.health',
   diskLowSpace: 'notify.health',

@@ -44,6 +44,10 @@ export function projectTorrentForSummary(torrent: QBittorrentTorrentInfo | QBitt
     auto_tmm: torrent.auto_tmm,
     max_ratio: torrent.max_ratio,
     max_seeding_time: torrent.max_seeding_time,
+    max_inactive_seeding_time: torrent.max_inactive_seeding_time,
+    ratio_limit: torrent.ratio_limit,
+    seeding_time_limit: torrent.seeding_time_limit,
+    inactive_seeding_time_limit: torrent.inactive_seeding_time_limit,
     private: torrent.private,
   };
 }
@@ -72,13 +76,22 @@ export function passiveTorrentRefreshIntervalMs(baseMs: number, connection?: { s
   return Math.max(baseMs * 3, 15_000);
 }
 
+// One definition for the Torrents filters and the widget counters, so a torrent
+// is counted under the filter that shows it. Like qBittorrent's own filters,
+// Seeding means seeding now: a stopped finished torrent is Paused only.
+export const DOWNLOADING_STATES = new Set([
+  'downloading', 'metaDL', 'forcedMetaDL', 'allocating', 'stalledDL', 'queuedDL', 'checkingDL', 'forcedDL',
+]);
+export const SEEDING_STATES = new Set(['uploading', 'stalledUP', 'queuedUP', 'checkingUP', 'forcedUP']);
+// qBittorrent 5.x renamed pausedDL/pausedUP to stoppedDL/stoppedUP.
+export const PAUSED_STATES = new Set(['pausedDL', 'pausedUP', 'stoppedDL', 'stoppedUP']);
+
 export function torrentCounters(torrents: QBittorrentTorrent[]) {
   let downloading = 0, seeding = 0, paused = 0;
   for (const torrent of torrents) {
-    const state = torrent.state.toLowerCase();
-    if (['downloading', 'metadl', 'forcedmetadl', 'queueddl', 'checkingdl', 'forceddl', 'allocating', 'stalleddl'].includes(state)) downloading++;
-    else if (['uploading', 'stalledup', 'queuedup', 'checkingup', 'forcedup'].includes(state)) seeding++;
-    else if (['paused', 'pauseddl', 'pausedup', 'stoppeddl', 'stoppedup'].includes(state)) paused++;
+    if (DOWNLOADING_STATES.has(torrent.state)) downloading++;
+    else if (SEEDING_STATES.has(torrent.state)) seeding++;
+    else if (PAUSED_STATES.has(torrent.state)) paused++;
   }
   return { total: torrents.length, downloading, seeding, paused };
 }

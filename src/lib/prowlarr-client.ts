@@ -96,6 +96,7 @@ export interface ProwlarrApplication {
   implementationName: string;
   syncLevel: string;
   enable: boolean;
+  tags: number[];
   fields?: { name: string; value?: unknown }[];
 }
 

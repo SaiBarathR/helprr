@@ -12,7 +12,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { deleteTorrentsAudited, TORRENT_DELETE_REFUSALS } from '@/lib/file-audit';
-import { isInsideDownloadRoots, parseLocation, parseTags } from '@/lib/qbittorrent-inputs';
+import { isInsideDownloadRoots, parseLocation, parseShareLimits, parseTags } from '@/lib/qbittorrent-inputs';
 import { projectTorrentsForSummary } from '@/lib/qbittorrent-summary';
 
 const MAGNET_VERIFY_TIMEOUT_MS = 5000;
@@ -120,14 +120,12 @@ async function runTorrentAction(
     case 'setCategory':
       await client.setCategory(hash, typeof body.category === 'string' ? body.category : '');
       break;
-    case 'setShareLimits':
-      await client.setShareLimits(
-        hash,
-        numberOr(body.ratioLimit, -2),
-        numberOr(body.seedingTimeLimit, -2),
-        numberOr(body.inactiveSeedingTimeLimit, -2),
-      );
+    case 'setShareLimits': {
+      const limits = parseShareLimits(body);
+      if (!limits) return NextResponse.json({ error: 'Enter a valid ratio and seeding time for each limit' }, { status: 400 });
+      await client.setShareLimits(hash, limits.ratioLimit, limits.seedingTimeLimit, limits.inactiveSeedingTimeLimit);
       break;
+    }
     case 'recheck':
       await client.recheckTorrent(hash);
       break;

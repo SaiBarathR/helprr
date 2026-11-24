@@ -157,6 +157,16 @@ failed every probe for `AppSettings.serviceDownAlertDelaySecs` (default 120,
 0 = the first failure). So `serviceRestored` follows only a sent `serviceDown`,
 apart from a service that was already down when it was first seen. When the
 run of failures began is kept in memory, so a restart starts the wait again.
+Sonarr, Radarr and Prowlarr health (`src/lib/polling/health-transition.ts`)
+keeps `PollingState.lastHealthHash`: a changed, non-empty list sends
+`healthWarning`; an empty list after one with issues sends `healthRestored`
+once it has stayed empty for two minutes (in memory, like the reachability
+wait). Until then the stored hash keeps the list with issues, so a check that
+clears and returns inside the wait sends nothing. The Sonarr, Radarr and Lidarr
+pushes open that instance's health sheet on Settings → Service status
+(`/settings/status?health=<service>&instance=<id>`), read through
+`/api/{sonarr,radarr,lidarr}/health` (admins and `notify.health`; Lidarr also
+`music.view`), rebuilt from source, type, message and an https help link.
 One upstream failure must not cancel every other source. Sonarr, Radarr, and
 Lidarr instances share two polling slots per cycle; an instance that fails twice
 in a row is skipped (without taking a slot) for 30 seconds, doubling to 5

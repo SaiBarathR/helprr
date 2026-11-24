@@ -1,16 +1,20 @@
 'use client';
 
 import Link from '@/components/ui/app-link';
-import { ChevronLeft, Download, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLayoutEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { ChevronLeft, ChevronRight, Download, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { ApiError, ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { PollingHealthSection } from '@/components/settings/polling-health-section';
+import { ArrHealthSheet, arrHealthQuery, healthSummary, visibleHealthChecks } from '@/components/settings/arr-health-sheet';
 import { cn } from '@/lib/utils';
-import { useMe } from '@/components/permission-provider';
+import { hasCapability, useMe, type MePayload } from '@/components/permission-provider';
+import { parseArrHealthLink, type HealthService } from '@/lib/arr-health-link';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
 import type { UpdateCheckResult } from '@/lib/update-check';
 import type { SecretsStatus } from '@/lib/generated-secrets';
@@ -23,6 +27,15 @@ interface ServiceHealthStatus {
   label: string;
   ok: boolean;
   error?: string;
+}
+
+const HEALTH_SERVICE: Partial<Record<string, HealthService>> = { SONARR: 'sonarr', RADARR: 'radarr', LIDARR: 'lidarr' };
+const SERVICE_NAME: Record<HealthService, string> = { sonarr: 'Sonarr', radarr: 'Radarr', lidarr: 'Lidarr' };
+
+// Who may read an instance's health: as for its push, notify.health (and
+// music.view for Lidarr). The health routes check the same.
+function canReadHealth(me: MePayload | null, service: HealthService): boolean {
+  return hasCapability(me, 'notify.health') && (service !== 'lidarr' || hasCapability(me, 'music.view'));
 }
 
 export default function ServiceStatusPage() {
@@ -63,10 +76,55 @@ export default function ServiceStatusPage() {
     enabled: isAdmin,
     staleTime: 5 * 60 * 1000,
   });
-  const refreshing = isFetching && !loading;
+  // The Sonarr/Radarr/Lidarr instances that are up and whose health this user may read.
+  const healthRows = statuses.flatMap((s) => {
+    const service = HEALTH_SERVICE[s.type];
+    return service && s.ok && canReadHealth(me, service) ? [{ service, instanceId: s.instanceId }] : [];
+  });
+  const healthQueries = useQueries({ queries: healthRows.map((row) => arrHealthQuery(row.service, row.instanceId)) });
+  const healthByInstance = new Map(healthRows.map((row, index) => [row.instanceId, healthQueries[index]]));
+  const refreshing = (isFetching && !loading) || healthQueries.some((q) => q.isFetching && !q.isLoading);
+
+  // The open health sheet: a row tapped, or a health push's link
+  // (?health=sonarr&instance=<id>), handled once per link.
+  const searchParams = useSearchParams();
+  const link = parseArrHealthLink(searchParams);
+  const linkKey = link ? `${link.service}:${link.instanceId}` : null;
+  const [handledLink, setHandledLink] = useState<string | null>(null);
+  const [healthTarget, setHealthTarget] = useState<{ service: HealthService; instanceId: string } | null>(null);
+  const [healthOpen, setHealthOpen] = useState(false);
+  if (link && linkKey !== handledLink && me) {
+    setHandledLink(linkKey);
+    if (canReadHealth(me, link.service)) {
+      setHealthTarget(link);
+      setHealthOpen(true);
+    }
+  } else if (!link && handledLink) {
+    setHandledLink(null);
+  }
+  // Drop a handled link from the URL, so Back to this page or a reload doesn't
+  // open the sheet again. A layout effect, so it runs before the sheet's own
+  // history entry is pushed (a passive effect) and edits this page's entry,
+  // not the sheet's. The router's state is kept so Back here doesn't reload.
+  useLayoutEffect(() => {
+    if (!handledLink) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('health') === null) return;
+    params.delete('health');
+    params.delete('instance');
+    const query = params.toString();
+    window.history.replaceState(window.history.state, '', query ? `/settings/status?${query}` : '/settings/status');
+  }, [handledLink]);
+  const targetStatus = healthTarget ? statuses.find((s) => s.instanceId === healthTarget.instanceId) : undefined;
+  const healthTitle = !healthTarget
+    ? ''
+    : targetStatus && targetStatus.label && targetStatus.label !== targetStatus.name
+      ? `${targetStatus.name} · ${targetStatus.label}`
+      : SERVICE_NAME[healthTarget.service];
 
   function handleRefresh() {
     void refetch();
+    for (const q of healthQueries) void q.refetch();
   }
 
   const downCount = statuses.filter((s) => !s.ok).length;
@@ -129,37 +187,76 @@ export default function ServiceStatusPage() {
         </GroupedSection>
       ) : (
         <GroupedSection>
-          {statuses.map((s) => (
-            <div key={s.instanceId} className="grouped-row items-start">
-              <div className="min-w-0 flex-1 pr-3">
-                <div className="text-sm font-medium">
-                  {s.name}
-                  {s.label && s.label !== s.name && (
-                    <span className="text-muted-foreground font-normal"> · {s.label}</span>
+          {statuses.map((s) => {
+            const health = healthByInstance.get(s.instanceId);
+            const checks = health?.data ? visibleHealthChecks(health.data) : null;
+            const content = (
+              <>
+                <div className="min-w-0 flex-1 pr-3 text-left">
+                  <div className="text-sm font-medium">
+                    {s.name}
+                    {s.label && s.label !== s.name && (
+                      <span className="text-muted-foreground font-normal"> · {s.label}</span>
+                    )}
+                  </div>
+                  {!s.ok && s.error && (
+                    <div className="text-xs text-red-400/90 light:text-red-600 mt-0.5 break-words">{s.error}</div>
+                  )}
+                  {health && (
+                    <div
+                      className={cn(
+                        'text-xs mt-0.5',
+                        checks && checks.some((c) => c.type === 'error')
+                          ? 'text-rose-400 light:text-rose-600'
+                          : checks && checks.length > 0
+                            ? 'text-amber-400 light:text-amber-700'
+                            : 'text-muted-foreground',
+                      )}
+                    >
+                      {checks ? healthSummary(checks) : health.isError ? 'Health unavailable' : 'Checking health…'}
+                    </div>
                   )}
                 </div>
-                {!s.ok && s.error && (
-                  <div className="text-xs text-red-400/90 light:text-red-600 mt-0.5 break-words">{s.error}</div>
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  <span
+                    className={cn('h-2 w-2 rounded-full', s.ok ? 'bg-emerald-500' : 'bg-red-500')}
+                    aria-hidden
+                  />
+                  <span
+                    className={cn(
+                      'text-xs font-medium',
+                      s.ok ? 'text-emerald-400 light:text-emerald-700' : 'text-red-400 light:text-red-600',
+                    )}
+                  >
+                    {s.ok ? 'Online' : 'Offline'}
+                  </span>
+                  {health && <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />}
+                </div>
+              </>
+            );
+            const service = HEALTH_SERVICE[s.type];
+            return health && service ? (
+              <button
+                key={s.instanceId}
+                type="button"
+                className="grouped-row w-full items-start active:bg-foreground/5 transition-colors"
+                onClick={() => {
+                  setHealthTarget({ service, instanceId: s.instanceId });
+                  setHealthOpen(true);
+                }}
+              >
+                {content}
+              </button>
+            ) : (
+              <div key={s.instanceId} className="grouped-row items-start">
+                {content}
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span
-                  className={cn('h-2 w-2 rounded-full', s.ok ? 'bg-emerald-500' : 'bg-red-500')}
-                  aria-hidden
-                />
-                <span
-                  className={cn(
-                    'text-xs font-medium',
-                    s.ok ? 'text-emerald-400 light:text-emerald-700' : 'text-red-400 light:text-red-600',
-                  )}
-                >
-                  {s.ok ? 'Online' : 'Offline'}
-                </span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </GroupedSection>
       )}
+
+      <ArrHealthSheet target={healthTarget} open={healthOpen} title={healthTitle} onOpenChange={setHealthOpen} />
 
       {isAdmin && (
         <div className="mt-6">

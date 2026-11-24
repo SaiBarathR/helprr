@@ -10,6 +10,7 @@ import { PollNotificationCollector } from '@/lib/notification-grouping';
 import { fetchAllQueueRecords } from '@/lib/activity-queue';
 import { getMediaHrefFromIds } from '@/lib/media-href';
 import crypto from 'crypto';
+import { notifyArrHealth } from './health-transition';
 import { movieArrivals, notifyWatchlistArrivals } from './watchlist-available';
 import { importFailureBody, downloadFailureBody, buildTagMap, mediaFilterMeta, readQueueSnapshots, errorMessage, getPollingState, historyCursorFromState, fetchNewHistoryPages, advanceHistoryCursor, notifyAndLog, instanceTitle, type CycleContext, type QueueSnapshot } from './shared';
 
@@ -203,14 +204,9 @@ export async function pollRadarr(context: CycleContext) {
         healthCount: health.length,
         changed: Boolean(state.lastHealthHash && healthHash !== state.lastHealthHash),
       }, { scope: 'polling' });
-      if (state.lastHealthHash && healthHash !== state.lastHealthHash && health.length > 0) {
-        await notifyAndLog({
-          eventType: 'healthWarning',
-          title: instanceTitle('Radarr Health Warning', instanceLabel, n),
-          body: health.map((h) => h.message).join('; ').slice(0, 200),
-          url: '/settings',
-        }, { service: 'radarr', instanceId, reason: 'health-changed', healthCount: health.length });
-      }
+      const savedHealthHash = await notifyArrHealth({
+        service: 'radarr', instanceId, instanceLabel, instanceCount: n, state, health, healthHash,
+      });
 
       await collector.flush({ enabled: groupingEnabled, notify: notifyAndLog });
 
@@ -222,7 +218,7 @@ export async function pollRadarr(context: CycleContext) {
           lastHistoryDate: cursor.lastHistoryDate,
           lastHistoryId: cursor.lastHistoryId,
           lastHistorySeenIds: cursor.lastHistorySeenIds,
-          lastHealthHash: healthHash,
+          lastHealthHash: savedHealthHash,
         },
       });
       logger.debug('Radarr polling state updated', {
