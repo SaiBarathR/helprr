@@ -30,6 +30,7 @@ vi.mock('@/components/ui/select', () => ({
 import { ApiError } from '@/lib/query-fetch';
 import QBittorrentSettingsPage from './page';
 
+const LIMITS = { downloadLimit: 0, uploadLimit: 0, altDownloadLimit: 307200, altUploadLimit: 102400 };
 const TRANSFER = {
   dl_info_speed: 0, dl_info_data: 2.7 * 1024 ** 3, up_info_speed: 0, up_info_data: 634.3 * 1024 ** 2,
   dl_rate_limit: 0, up_rate_limit: 0, dht_nodes: 365, connection_status: 'connected',
@@ -47,7 +48,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   mocks.caps = new Set(['torrents.bandwidth']);
   mocks.ui.torrentsView = 'auto';
-  limitReads = [{ downloadLimit: 0, uploadLimit: 0, speedLimitsMode: 0 }];
+  limitReads = [{ ...LIMITS, speedLimitsMode: 0 }];
   limitGets = 0;
   posts = [];
   postResponse = async () => Response.json({ success: true });
@@ -92,6 +93,20 @@ async function renderPage() {
 const altSwitch = () => document.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Alternative Speed Limits"]');
 const rowText = (label: string) =>
   [...document.querySelectorAll('.grouped-row')].find((el) => el.textContent?.startsWith(label))?.textContent;
+// Opens a limit row's editor, types a value in the unit it opens with (MB/s, or KB/s
+// for a limit under 1 MB/s) and saves.
+async function saveLimit(label: string, value: string) {
+  const row = [...document.querySelectorAll<HTMLButtonElement>('button.grouped-row')]
+    .find((el) => el.textContent?.startsWith(label))!;
+  await act(async () => row.click());
+  const input = document.querySelector('form input') as HTMLInputElement;
+  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+  await act(async () => {
+    setValue.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => document.querySelector('form')!.requestSubmit());
+}
 
 describe('qBittorrent settings page', () => {
   it('shows the transfer stats', async () => {
@@ -103,23 +118,44 @@ describe('qBittorrent settings page', () => {
     expect(rowText('Connection Status')).toBe('Connection Statusconnected');
   });
 
-  it("flips alternative limits at once, then shows that mode's limits", async () => {
-    // First read before the toggle; qBittorrent then reports the alternative
-    // limits, which are the ones in force once the mode is on.
+  it('flips alternative mode at once and keeps both sets of limits', async () => {
+    // Global and alternative limits are separate preferences: the mode decides
+    // which set qBittorrent uses, not what either row shows.
     limitReads = [
-      { downloadLimit: 0, uploadLimit: 0, speedLimitsMode: 0 },
-      { downloadLimit: 102400, uploadLimit: 51200, speedLimitsMode: 1 },
+      { ...LIMITS, downloadLimit: 1048576, speedLimitsMode: 0 },
+      { ...LIMITS, downloadLimit: 1048576, speedLimitsMode: 1 },
     ];
     await renderPage();
     await waitFor(() => expect(altSwitch()).not.toBeNull());
 
     await act(async () => altSwitch()!.click());
     await waitFor(() => expect(altSwitch()!.getAttribute('aria-checked')).toBe('true'));
-    await waitFor(() => expect(rowText('Global Download Limit')).toContain('100 KB/s'));
+    await waitFor(() => expect(limitGets).toBe(2));
+    await wait(20);
 
     expect(posts).toEqual([{ action: 'toggleSpeedLimitsMode' }]);
     expect(mocks.toast.success).toHaveBeenCalledWith('Alternative speed mode toggled');
-    expect(rowText('Global Upload Limit')).toContain('50 KB/s');
+    expect(rowText('Global Download Limit')).toContain('1 MB/s');
+    expect(rowText('Global Upload Limit')).toContain('Unlimited');
+    expect(rowText('Alternative Download Limit')).toContain('300 KB/s');
+    expect(rowText('Alternative Upload Limit')).toContain('100 KB/s');
+    expect(altSwitch()!.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('keeps an alternative limit saved while the toggle was being confirmed', async () => {
+    // The confirming read left before the save landed: it has the new mode
+    // but the old limit.
+    limitReads = [{ ...LIMITS, speedLimitsMode: 0 }, { ...LIMITS, speedLimitsMode: 1 }];
+    await renderPage();
+    await waitFor(() => expect(altSwitch()).not.toBeNull());
+    await act(async () => altSwitch()!.click());
+
+    await saveLimit('Alternative Download Limit', '2');
+    await waitFor(() => expect(rowText('Alternative Download Limit')).toContain('2 KB/s'));
+    await waitFor(() => expect(limitGets).toBe(2));
+    await wait(20);
+
+    expect(rowText('Alternative Download Limit')).toContain('2 KB/s');
     expect(altSwitch()!.getAttribute('aria-checked')).toBe('true');
   });
 
@@ -148,7 +184,7 @@ describe('qBittorrent settings page', () => {
 
   it('sends a 401 from the confirmation read to the login redirect', async () => {
     limitReads = [
-      { downloadLimit: 0, uploadLimit: 0, speedLimitsMode: 0 },
+      { ...LIMITS, speedLimitsMode: 0 },
       Response.json({ error: 'Unauthorized' }, { status: 401 }),
     ];
     await renderPage();
@@ -163,15 +199,18 @@ describe('qBittorrent settings page', () => {
 
   it('retries a confirmation read that fails', async () => {
     limitReads = [
-      { downloadLimit: 0, uploadLimit: 0, speedLimitsMode: 0 },
+      { ...LIMITS, speedLimitsMode: 0 },
       Response.json({ error: 'upstream' }, { status: 502 }),
-      { downloadLimit: 102400, uploadLimit: 51200, speedLimitsMode: 1 },
+      { ...LIMITS, speedLimitsMode: 1 },
     ];
     await renderPage();
     await waitFor(() => expect(altSwitch()).not.toBeNull());
     await act(async () => altSwitch()!.click());
 
-    await waitFor(() => expect(rowText('Global Download Limit')).toContain('100 KB/s'));
+    // The third read confirms the mode, so no fourth one is made.
+    await waitFor(() => expect(limitGets).toBe(3));
+    await wait(500);
+    expect(limitGets).toBe(3);
     expect(altSwitch()!.getAttribute('aria-checked')).toBe('true');
     expect(mocks.handleAuthError).not.toHaveBeenCalled();
   });
@@ -215,19 +254,25 @@ describe('qBittorrent settings page', () => {
   it('saves a global limit', async () => {
     await renderPage();
     await waitFor(() => expect(altSwitch()).not.toBeNull());
-    const row = [...document.querySelectorAll<HTMLButtonElement>('button.grouped-row')]
-      .find((el) => el.textContent?.startsWith('Global Download Limit'))!;
-    await act(async () => row.click());
-    const input = document.querySelector('form input') as HTMLInputElement;
-    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
-    await act(async () => {
-      setValue.call(input, '100');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    await act(async () => document.querySelector('form')!.requestSubmit());
+    await saveLimit('Global Download Limit', '100');
     await waitFor(() => expect(rowText('Global Download Limit')).toContain('100 MB/s'));
 
     expect(posts).toEqual([{ action: 'setDownloadLimit', limit: 100 * 1024 * 1024 }]);
+    expect(rowText('Alternative Download Limit')).toContain('300 KB/s');
+  });
+
+  it.each([
+    ['Alternative Download Limit', 'setAltDownloadLimit', 'Global Download Limit'],
+    ['Alternative Upload Limit', 'setAltUploadLimit', 'Global Upload Limit'],
+  ])('saves the %s without touching the global one', async (label, action, globalLabel) => {
+    await renderPage();
+    await waitFor(() => expect(altSwitch()).not.toBeNull());
+    await saveLimit(label, '5');
+    // 300 KB/s and 100 KB/s are under 1 MB/s, so the editor opens in KB/s.
+    await waitFor(() => expect(rowText(label)).toContain('5 KB/s'));
+
+    expect(posts).toEqual([{ action, limit: 5 * 1024 }]);
+    expect(rowText(globalLabel)).toContain('Unlimited');
   });
 
   it('shows the limits read-only without the bandwidth permission', async () => {
@@ -239,6 +284,8 @@ describe('qBittorrent settings page', () => {
     expect(document.querySelector('button.grouped-row')).toBeNull();
     expect(rowText('Global Download Limit')).toBe('Global Download LimitUnlimited');
     expect(rowText('Alternative Speed Limits')).toBe('Alternative Speed LimitsOff');
+    expect(rowText('Alternative Download Limit')).toBe('Alternative Download Limit300 KB/s');
+    expect(rowText('Alternative Upload Limit')).toBe('Alternative Upload Limit100 KB/s');
   });
 
   it('switches the torrent list layout and can return to automatic', async () => {

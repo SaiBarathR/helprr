@@ -96,9 +96,11 @@ export default function QBittorrentSettingsPage() {
   const speedModeToggle = useRef(0);
 
   // qBittorrent may apply the switch asynchronously: an immediate re-read can
-  // still show the old mode. Keep the optimistic mode until a read confirms it,
-  // then take that read. If it never confirms, show what qBittorrent reports
-  // rather than leave the switch stuck on a mode it doesn't have.
+  // still show the old mode. Keep the optimistic mode until a read confirms it.
+  // If it never confirms, show what qBittorrent reports rather than leave the
+  // switch stuck on a mode it doesn't have. Only the mode is taken from the
+  // read: the limits don't depend on it, and a limit saved meanwhile may be
+  // newer than this read.
   const confirmSpeedMode = async (mode: number, toggle: number) => {
     let fresh: TransferLimits | undefined;
     for (let attempt = 0; attempt < 5 && fresh?.speedLimitsMode !== mode; attempt++) {
@@ -114,7 +116,9 @@ export default function QBittorrentSettingsPage() {
         // A failed read proves nothing either way; try again.
       }
     }
-    if (fresh && toggle === speedModeToggle.current) queryClient.setQueryData(LIMITS_KEY, fresh);
+    if (!fresh || toggle !== speedModeToggle.current) return;
+    const { speedLimitsMode } = fresh;
+    queryClient.setQueryData<TransferLimits>(LIMITS_KEY, (old) => (old ? { ...old, speedLimitsMode } : fresh));
   };
 
   const speedModeMutation = useMutation({
