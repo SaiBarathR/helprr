@@ -6,8 +6,10 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SearchTab } from './search-tab';
 
+// A test can seed the view state a returning user would have.
+const seeded = vi.hoisted(() => new Map<string, unknown>());
 vi.mock('@/lib/hooks/use-route-view-state', () => ({
-  useRouteViewState: <T,>(_name: string, initial: T) => useState<T>(initial),
+  useRouteViewState: <T,>(name: string, initial: T) => useState<T>((seeded.has(name) ? seeded.get(name) : initial) as T),
 }));
 
 // jsdom lacks these; the options sheet (vaul) calls them.
@@ -38,6 +40,7 @@ function answer(body: unknown) {
 }
 
 beforeEach(() => {
+  seeded.clear();
   vi.stubGlobal('fetch', vi.fn());
   answer({ results: [result('a', 'Big Buck Bunny', '2026-01-01')], total: 1 });
 });
@@ -137,5 +140,33 @@ describe('SearchTab', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Search' }));
 
     expect(await screen.findByText(/gone or disabled/)).toBeTruthy();
+  });
+
+  it('sends a remembered indexer pick as it is, so a gone one is refused rather than widened to all', async () => {
+    // 3 is disabled now; dropping it would leave no pick, which means every indexer.
+    seeded.set('searchIndexers', [3]);
+    setup();
+    await screen.findByRole('button', { name: 'Search options, 1 set' });
+    await userEvent.type(screen.getByRole('textbox'), 'bunny');
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    await waitFor(() => expect(searches()).toHaveLength(1));
+    expect(new URL(String(searches()[0][0]), 'http://x').searchParams.get('indexerIds')).toBe('3');
+  });
+
+  it('searches by a movie id alone, lower-casing a capitalised IMDb id', async () => {
+    seeded.set('searchType', 'movie');
+    seeded.set('searchIds', { imdbId: 'TT0111161' });
+    setup();
+    const button = screen.getByRole('button', { name: 'Search' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+
+    await userEvent.click(button);
+
+    await waitFor(() => expect(searches()).toHaveLength(1));
+    const sent = new URL(String(searches()[0][0]), 'http://x').searchParams;
+    expect(sent.get('type')).toBe('movie');
+    expect(sent.get('imdbId')).toBe('tt0111161');
+    expect(sent.get('q')).toBe('');
   });
 });

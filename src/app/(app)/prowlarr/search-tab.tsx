@@ -69,7 +69,10 @@ function idsForType(type: ProwlarrSearchType, ids: SearchIds): SearchIds {
   const kept: SearchIds = {};
   for (const field of PROWLARR_SEARCH_ID_FIELDS[type]) {
     const value = ids[field]?.trim();
-    if (value) kept[field] = field === 'imdbId' && /^\d+$/.test(value) ? `tt${value}` : value;
+    if (!value) continue;
+    // IMDb ids are lower case ("tt…"); a phone may capitalise the first letter.
+    const id = field === 'imdbId' ? value.toLowerCase() : value;
+    kept[field] = field === 'imdbId' && /^\d+$/.test(id) ? `tt${id}` : id;
   }
   return kept;
 }
@@ -119,11 +122,11 @@ export function SearchTab() {
     () => (indexersQuery.data ?? []).filter((indexer) => indexer.enable).sort((a, b) => a.name.localeCompare(b.name)),
     [indexersQuery.data],
   );
-  // A remembered pick can name an indexer that has since gone or been disabled.
-  const indexerIds = useMemo(
-    () => pickedIndexers.filter((id) => enabledIndexers.some((indexer) => indexer.id === id)).sort((a, b) => a - b),
-    [pickedIndexers, enabledIndexers],
-  );
+  // Sent as remembered, even when the list hasn't loaded or an indexer has
+  // since gone or been disabled: dropping those ids could leave none, which
+  // means every indexer, private trackers the user left out included. The
+  // server refuses a stale pick and says to pick again.
+  const indexerIds = useMemo(() => [...pickedIndexers].sort((a, b) => a - b), [pickedIndexers]);
   const typedIds = idsForType(type, ids);
   const hasId = Boolean(typedIds.tvdbId || typedIds.imdbId || typedIds.tmdbId);
   const optionCount = (type === 'search' ? 0 : 1) + Object.keys(typedIds).length + (indexerIds.length > 0 ? 1 : 0);
@@ -177,7 +180,9 @@ export function SearchTab() {
 
   function toggleIndexer(id: number) {
     setPickedIndexers(() => {
-      const current = indexerIds.length > 0 ? indexerIds : enabledIndexers.map((indexer) => indexer.id);
+      // Editing the pick drops any id that is gone.
+      const enabledIds = enabledIndexers.map((indexer) => indexer.id);
+      const current = indexerIds.length > 0 ? indexerIds.filter((value) => enabledIds.includes(value)) : enabledIds;
       const next = current.includes(id) ? current.filter((value) => value !== id) : [...current, id];
       // Every one picked, or none left, is the same as all.
       return next.length === 0 || next.length === enabledIndexers.length ? [] : next;
@@ -438,7 +443,7 @@ export function SearchTab() {
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  {indexersQuery.isLoading ? 'Loading…' : indexersQuery.isError ? 'Failed to load indexers. Searches use all of them.' : 'No enabled indexers.'}
+                  {indexersQuery.isLoading ? 'Loading…' : indexersQuery.isError ? 'Failed to load indexers.' : 'No enabled indexers.'}
                 </p>
               )}
             </section>
