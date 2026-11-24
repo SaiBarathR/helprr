@@ -72,6 +72,17 @@ describe('Categories screen', () => {
     ]);
   });
 
+  it('shows a subcategory\'s default folder under its parent\'s folder in subcategory mode', async () => {
+    const details = {
+      categories: { tv: { name: 'tv', savePath: '/data/tv' }, 'tv/anime': { name: 'tv/anime', savePath: '' } },
+      defaultSavePath: '/downloads',
+      subcategories: true,
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(details)));
+    renderWithQuery(<TorrentCategoriesPage />);
+    expect(await screen.findByText('/data/tv/anime (default)')).toBeTruthy();
+  });
+
   it('only lists them for a member', async () => {
     mocks.me = { role: 'member' };
     renderWithQuery(<TorrentCategoriesPage />);
@@ -119,6 +130,8 @@ describe('Category form', () => {
     await user.click(screen.getByRole('button', { name: 'Remove' }));
     expect(await screen.findByText('Sonarr (Sonarr Anime) uses tv in its download client qBittorrent.')).toBeTruthy();
     expect(screen.getByText('Did not answer, so not checked: Radarr.')).toBeTruthy();
+    // The dialog the admin confirms still says what happens to the torrents.
+    expect(screen.getByText('Torrents in it lose the category. Their files stay where they are.')).toBeTruthy();
     expect(mocks.back).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Remove Anyway' }));
     await waitFor(() => expect(mocks.back).toHaveBeenCalled());

@@ -43,9 +43,14 @@ export async function findArrCategoryUses(categories: string[], subcategories: b
       return;
     }
     for (const downloadClient of result.value as DownloadClient[]) {
-      if (downloadClient.implementation !== 'QBittorrent') continue;
-      for (const field of downloadClient.fields ?? []) {
-        if (!CATEGORY_FIELD.test(field.name) || typeof field.value !== 'string' || !removed(field.value)) continue;
+      if (downloadClient?.implementation !== 'QBittorrent') continue;
+      // Settings that can't be read can't rule a use out.
+      if (!Array.isArray(downloadClient.fields)) {
+        if (!usage.unchecked.includes(connection.label)) usage.unchecked.push(connection.label);
+        continue;
+      }
+      for (const field of downloadClient.fields) {
+        if (typeof field?.name !== 'string' || !CATEGORY_FIELD.test(field.name) || typeof field.value !== 'string' || !removed(field.value)) continue;
         usage.uses.push({ app, instance: connection.label, downloadClient: downloadClient.name, category: field.value });
       }
     }

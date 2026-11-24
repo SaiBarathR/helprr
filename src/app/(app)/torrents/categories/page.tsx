@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { useMe } from '@/components/permission-provider';
-import { categoryFolder, NEW_CATEGORY_HREF, editCategoryHref } from '../_components/category-links';
+import { defaultCategoryFolder, editCategoryHref, NEW_CATEGORY_HREF } from '../_components/category-links';
 import { useCategoryDetails } from '../_components/use-categories';
 
 export default function TorrentCategoriesPage() {
@@ -50,7 +50,7 @@ export default function TorrentCategoriesPage() {
                   <div className="min-w-0 flex-1 flex flex-col">
                     <span className="text-[15px] font-medium truncate">{category.name}</span>
                     <span className="text-xs text-muted-foreground truncate">
-                      {categoryFolder(category, details.defaultSavePath)}
+                      {category.savePath || (details.defaultSavePath ? `${defaultCategoryFolder(category.name, details)} (default)` : 'Default folder')}
                     </span>
                   </div>
                 );

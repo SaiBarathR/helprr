@@ -10,16 +10,29 @@ const MAX_RENAME_LENGTH = 255;
 const MAX_SPEED_LIMIT = 2_147_483_647;
 const CONTENT_LAYOUTS: readonly ContentLayout[] = ['Original', 'Subfolder', 'NoSubfolder'];
 // C0, DEL and C1 (U+0085 among them).
-const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/;
+export const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/;
 // What qBittorrent's QString::trimmed() strips: JS whitespace plus U+0085, which
 // JS keeps. A path must be checked as qBittorrent will read it, or a trailing
 // U+0085 turns "<root>/.." into a segment that only looks harmless here.
 const QT_TRIM = /^[\s\u0085]+|[\s\u0085]+$/g;
 
-function normalizeSavePath(value: string): string | null {
-  const normalized = value.replace(QT_TRIM, '').replace(/\\/g, '/').replace(/\/+$/, '');
+// A drive letter or a UNC share: the only roots under which a backslash separates folders.
+const WINDOWS_ROOT = /^(?:[A-Za-z]:[\\/]|\\\\)/;
+
+/**
+ * The path as qBittorrent will read it under a root of that kind, or null when
+ * it can't be checked. On Linux and macOS a backslash is part of a folder's
+ * name, not a separator (qBittorrent 5.1.4 keeps "/downloads\\x" as it is: a
+ * folder beside /downloads), so a path holding one is refused there. A part
+ * made of dots (and spaces, which Windows drops from the end of a part, so
+ * ".. " is ".." there) is refused, bar ".".
+ */
+function normalizeSavePath(value: string, windows: boolean): string | null {
+  const trimmed = value.replace(QT_TRIM, '');
+  if (!windows && trimmed.includes('\\')) return null;
+  const normalized = trimmed.replace(/\\/g, '/').replace(/\/+$/, '');
   if (!normalized) return null;
-  if (normalized.split('/').some((segment) => segment === '..')) return null;
+  if (normalized.split('/').some((segment) => segment !== '.' && /^[\s\u0085.]*\.[\s\u0085.]*$/.test(segment))) return null;
   return normalized;
 }
 
@@ -30,20 +43,22 @@ function normalizeSavePath(value: string): string | null {
  * silently imply "may write torrent payloads anywhere qBittorrent can".
  */
 export async function isInsideDownloadRoots(client: QBittorrentClient, savepath: string): Promise<boolean> {
-  const normalized = normalizeSavePath(savepath);
-  if (!normalized) return false;
   const [defaultSavePath, categories] = await Promise.all([
     client.getDefaultSavePath(),
     client.getCategories(),
   ]);
-  return isUnderRoots(normalized, [defaultSavePath, ...Object.values(categories).map((category) => category.savePath)]);
+  return isUnderRoots(savepath, [defaultSavePath, ...Object.values(categories).map((category) => category.savePath)]);
 }
 
-function isUnderRoots(normalized: string, roots: string[]): boolean {
-  return roots
-    .map((root) => (root ? normalizeSavePath(root) : null))
-    .filter((root): root is string => Boolean(root))
-    .some((root) => normalized === root || normalized.startsWith(`${root}/`));
+// Each root is read as the system it names would read it; a root that can't be is no root.
+function isUnderRoots(savepath: string, roots: string[]): boolean {
+  return roots.some((root) => {
+    if (!root) return false;
+    const windows = WINDOWS_ROOT.test(root.replace(QT_TRIM, ''));
+    const base = normalizeSavePath(root, windows);
+    const path = normalizeSavePath(savepath, windows);
+    return base !== null && path !== null && (path === base || path.startsWith(`${base}/`));
+  });
 }
 
 /**
@@ -54,8 +69,7 @@ function isUnderRoots(normalized: string, roots: string[]): boolean {
  * earlier category.
  */
 export function isInsideFolder(savepath: string, root: string): boolean {
-  const normalized = normalizeSavePath(savepath);
-  return normalized !== null && isUnderRoots(normalized, [root]);
+  return isUnderRoots(savepath, [root]);
 }
 
 const MAX_CATEGORY_NAME_LENGTH = 100;

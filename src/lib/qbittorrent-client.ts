@@ -30,13 +30,13 @@ export interface TorrentTracker {
 
 export interface QBittorrentCategory {
   name: string;
-  /** Empty: qBittorrent's default save path plus the category's name. */
+  /** Empty: qBittorrent's default save path plus the name (in subcategory mode, the parent's folder plus the last part). */
   savePath: string;
   /** qBittorrent 5: its own incomplete-downloads folder, false for none, absent or null for the global setting. */
   download_path?: string | false | null;
 }
 
-export type QueueMove ='topPrio' | 'increasePrio' | 'decreasePrio' | 'bottomPrio';
+export type QueueMove = 'topPrio' | 'increasePrio' | 'decreasePrio' | 'bottomPrio';
 
 export type ContentLayout = 'Original' | 'Subfolder' | 'NoSubfolder';
 

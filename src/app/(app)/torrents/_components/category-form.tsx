@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { useMe } from '@/components/permission-provider';
 import type { ArrCategoryUse } from '@/lib/qbittorrent-category-usage';
+import { defaultCategoryFolder } from './category-links';
 import { sendCategoryChange, useCategoryDetails } from './use-categories';
 
 type ArrWarning = { uses: ArrCategoryUse[]; unchecked: string[] };
@@ -78,14 +79,16 @@ export function CategoryForm({ editName }: { editName?: string }) {
   const categoryName = editing ? editName : name.trim();
   const path = (savePath ?? '').trim();
   const root = details.defaultSavePath.replace(/[\\/]+$/, '');
+  const implicitFolder = root ? defaultCategoryFolder(categoryName || 'name', details) : null;
   const canSave = !saving && !removing && (editing ? path !== (existing?.savePath ?? '') : categoryName !== '');
   // In subcategory mode qBittorrent removes "a/…" with "a".
   const subcategories = editing && details.subcategories
     ? Object.keys(details.categories).filter((key) => key.startsWith(`${editName}/`)).sort()
     : [];
 
-  const done = async (message: string) => {
-    await queryClient.invalidateQueries({ queryKey: ['qbittorrent', 'categories'] });
+  // Not awaited: the page goes back at once, and a removed category's refetch would flash "no longer in qBittorrent".
+  const done = (message: string) => {
+    void queryClient.invalidateQueries({ queryKey: ['qbittorrent', 'categories'] });
     toast.success(message);
     router.back();
   };
@@ -100,7 +103,7 @@ export function CategoryForm({ editName }: { editName?: string }) {
       toast.error(result.error);
       return;
     }
-    await done(editing ? 'Category saved' : `Created ${categoryName}`);
+    done(editing ? 'Category saved' : `Created ${categoryName}`);
   };
 
   const remove = async () => {
@@ -118,7 +121,7 @@ export function CategoryForm({ editName }: { editName?: string }) {
       return;
     }
     setConfirmRemove(false);
-    await done(`Removed ${editName}`);
+    done(`Removed ${editName}`);
   };
 
   return (
@@ -153,15 +156,24 @@ export function CategoryForm({ editName }: { editName?: string }) {
 
         <GroupedSection
           title="Save Path"
-          footer={root
-            ? `Leave it empty for qBittorrent's default folder (${root}/${categoryName || 'name'}). A folder of its own must be inside ${root}.`
-            : "Leave it empty for qBittorrent's default folder."}
+          footer={
+            <>
+              {implicitFolder
+                ? `Leave it empty for qBittorrent's default folder (${implicitFolder}). A folder of its own must be inside ${root}.`
+                : "Leave it empty for qBittorrent's default folder."}
+              {editing && (
+                <span className="block mt-1">
+                  Saving a new folder moves its torrents under automatic management there, unless qBittorrent is set to switch them to manual management.
+                </span>
+              )}
+            </>
+          }
         >
           <div className="grouped-row">
             <Input
               value={savePath ?? ''}
               onChange={(e) => setSavePath(e.target.value)}
-              placeholder={root ? `${root}/${categoryName || 'name'}` : 'Default folder'}
+              placeholder={implicitFolder ?? 'Default folder'}
               aria-label="Save path"
               disabled={saving || removing}
               autoCapitalize="none"
@@ -199,28 +211,29 @@ export function CategoryForm({ editName }: { editName?: string }) {
         open={confirmRemove}
         onOpenChange={(open) => { if (!open && !removing) setConfirmRemove(false); }}
         title={arrWarning ? `${editName} may be in use` : `Remove ${editName}?`}
-        description={arrWarning ? (
+        description={
           <>
-            {arrWarning.uses.map((use) => (
-              <span key={`${use.instance}|${use.downloadClient}|${use.category}`} className="block">
-                {use.instance === use.app ? use.app : `${use.app} (${use.instance})`} uses {use.category} in its download client {use.downloadClient}.
-              </span>
-            ))}
-            {arrWarning.unchecked.length > 0 && (
-              <span className="block">Did not answer, so not checked: {arrWarning.unchecked.join(', ')}.</span>
+            {arrWarning && (
+              <>
+                {arrWarning.uses.map((use) => (
+                  <span key={`${use.instance}|${use.downloadClient}|${use.category}`} className="block">
+                    {use.instance === use.app ? use.app : `${use.app} (${use.instance})`} uses {use.category} in its download client {use.downloadClient}.
+                  </span>
+                ))}
+                {arrWarning.unchecked.length > 0 && (
+                  <span className="block">Did not answer, so not checked: {arrWarning.unchecked.join(', ')}.</span>
+                )}
+                <span className="block mt-2 mb-2">
+                  Removing it stops their imports until their download client gets another category.
+                </span>
+              </>
             )}
-            <span className="block mt-2">
-              Removing it stops their imports until their download client gets another category.
-            </span>
-          </>
-        ) : (
-          <>
             <span className="block">Torrents in it lose the category. Their files stay where they are.</span>
             {subcategories.length > 0 && (
               <span className="block mt-2">Its subcategories go too: {subcategories.join(', ')}.</span>
             )}
           </>
-        )}
+        }
         confirmLabel={arrWarning ? 'Remove Anyway' : 'Remove'}
         destructive
         busy={removing}

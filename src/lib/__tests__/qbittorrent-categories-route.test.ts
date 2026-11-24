@@ -207,9 +207,28 @@ describe('editing a category', () => {
   });
 
   it('refuses a category qBittorrent does not have', async () => {
-    for (const name of ['nope', 'constructor', '__proto__', 7]) {
+    for (const name of ['nope', 'constructor', '__proto__']) {
       expect((await edit({ name, savePath: '' })).status).toBe(404);
     }
+    expect(mocks.qbit.editCategory).not.toHaveBeenCalled();
+  });
+
+  it('needs the name and the save path, so a left-out path never resets it', async () => {
+    expect((await edit({ name: 'tv' })).status).toBe(400);
+    expect((await edit({ name: 7, savePath: '' })).status).toBe(400);
+    expect(mocks.qbit.editCategory).not.toHaveBeenCalled();
+  });
+
+  it('refuses the default folder for a name made elsewhere that would leave the download folders', async () => {
+    mocks.qbit.getCategories.mockResolvedValue({ '../escape': { name: '../escape', savePath: '/downloads/escape' } });
+    expect((await edit({ name: '../escape', savePath: '' })).status).toBe(400);
+    expect(mocks.qbit.editCategory).not.toHaveBeenCalled();
+    // Its own folder inside the default save path stays allowed, and so does removing it.
+    expect((await edit({ name: '../escape', savePath: '/downloads/escape2' })).status).toBe(200);
+  });
+
+  it('refuses a save path with a backslash on a Linux qBittorrent', async () => {
+    expect((await edit({ name: 'tv', savePath: '/downloads\\x' })).status).toBe(400);
     expect(mocks.qbit.editCategory).not.toHaveBeenCalled();
   });
 });
@@ -258,6 +277,21 @@ describe('removing categories', () => {
     expect((await remove({ categories: ['tv'] })).status).toBe(200);
     mocks.qbit.isSubcategoriesEnabled.mockResolvedValue(true);
     expect((await remove({ categories: ['tv'] })).status).toBe(409);
+  });
+
+  it('skips other download clients and empty or non-category fields', async () => {
+    mocks.sonarr = [arr('Sonarr', [
+      { name: 'Deluge', implementation: 'Deluge', fields: [{ name: 'tvCategory', value: 'tv' }] },
+      qbitClient('', { tvImportedCategory: '', host: 'tv', urlBase: 'tv' }),
+    ])];
+    expect((await remove({ categories: ['tv'] })).status).toBe(200);
+  });
+
+  it('counts a qBittorrent client whose settings can\'t be read as unchecked', async () => {
+    mocks.radarr = [arr('Radarr', [{ name: 'qBittorrent', implementation: 'QBittorrent', fields: { tvCategory: 'tv' } }, null])];
+    const res = await remove({ categories: ['tv'] });
+    expect(res.status).toBe(409);
+    expect((await res.json()).unchecked).toEqual(['Radarr']);
   });
 
   it('asks for a confirm when an arr instance does not answer', async () => {

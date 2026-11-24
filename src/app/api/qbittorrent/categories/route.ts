@@ -10,13 +10,11 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 import { readJsonBody } from '@/lib/bulk-editor';
 import { logger } from '@/lib/logger';
 import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
-import { isInsideFolder, parseLocation, parseNewCategoryName } from '@/lib/qbittorrent-inputs';
+import { CONTROL_CHARACTERS, isInsideFolder, parseLocation, parseNewCategoryName } from '@/lib/qbittorrent-inputs';
 import { findArrCategoryUses } from '@/lib/qbittorrent-category-usage';
 
 const ROUTE = '/api/qbittorrent/categories';
 const MAX_REMOVE = 50;
-// Removal joins the names with newlines, so a name holding one can't be sent.
-const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/;
 
 async function getHandler(request: NextRequest) {
   const auth = await requireUserCapability('torrents.view');
@@ -133,14 +131,20 @@ async function patchHandler(request: NextRequest) {
     if (!json.ok || !json.body || typeof json.body !== 'object') return badRequest('Malformed JSON');
     const body = json.body as Record<string, unknown>;
 
+    // Both named: qBittorrent can't rename a category, and its edit sets the save path, empty or not.
+    if (typeof body.name !== 'string' || typeof body.savePath !== 'string') return badRequest('Send the name and the save path');
+    const name = body.name;
+
     const client = await getQBittorrentClient();
-    const categories = await client.getCategories();
-    // Only an existing one, by its exact name: qBittorrent can't rename a category.
-    const existing = typeof body.name === 'string' && Object.hasOwn(categories, body.name) ? categories[body.name] : null;
+    const [categories, subcategories] = await Promise.all([client.getCategories(), client.isSubcategoriesEnabled()]);
+    const existing = Object.hasOwn(categories, name) ? categories[name] : null;
     if (!existing) return NextResponse.json({ error: 'That category is no longer in qBittorrent' }, { status: 404 });
-    const name = body.name as string;
     const savePath = await checkSavePath(client, body.savePath, existing.savePath);
     if (!savePath.ok) return savePath.response;
+    // An empty path saves in <default>/<name>: for a name made elsewhere (such as "../x") that is outside every download folder.
+    if (!savePath.savePath && existing.savePath && !parseNewCategoryName(name, subcategories).ok) {
+      return badRequest('This name would put its default folder outside the download folders: give it a save path');
+    }
 
     await client.editCategory(name, savePath.savePath, existing.download_path);
     await bumpQbitCacheVersion();
