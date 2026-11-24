@@ -143,7 +143,7 @@ async function getHandler(request: NextRequest) {
 }
 
 // Add a missing movie from a collection, applying that collection's own defaults
-// (quality profile / root folder / minimum availability / search) the way Radarr does.
+// (quality profile / root folder / minimum availability / search / tags) the way Radarr does.
 async function postHandler(request: NextRequest) {
   const auth = await requireUserCapability('movies.add');
   if (!auth.ok) return auth.response;
@@ -203,6 +203,7 @@ async function postHandler(request: NextRequest) {
       rootFolderPath,
       monitored: true,
       minimumAvailability: collection.minimumAvailability ?? 'released',
+      tags: collection.tags ?? [],
       addOptions: { searchForMovie: search ?? collection.searchOnAdd ?? true, monitor: 'movieOnly' },
     } as Partial<RadarrMovie>;
 

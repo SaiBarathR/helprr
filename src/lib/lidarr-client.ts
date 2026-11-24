@@ -318,11 +318,14 @@ export class LidarrClient {
   }
 
   // Calendar — albums releasing in the window
-  async getCalendar(start: string, end: string): Promise<LidarrCalendarEntry[]> {
+  // Lidarr leaves out unmonitored albums, and albums of unmonitored artists,
+  // unless asked; the poller relies on that default.
+  async getCalendar(start: string, end: string, { unmonitored = false } = {}): Promise<LidarrCalendarEntry[]> {
     return this.get<LidarrCalendarEntry[]>('/api/v1/calendar', {
       start,
       end,
       includeArtist: true,
+      ...(unmonitored ? { unmonitored: true } : {}),
     });
   }
 

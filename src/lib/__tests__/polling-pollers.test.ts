@@ -144,6 +144,7 @@ import { PollingService } from '@/lib/polling-service';
 import { createPollingCycleContext } from '@/lib/polling-cycle';
 import { jobReports, type JobReport } from '@/lib/polling-job-report';
 import { ConfigurationError } from '@/lib/config-error';
+import { EMPTY_HEALTH_HASH, HEALTH_CLEAR_HOLD_MS, resetHealthTracking } from '@/lib/polling/health-transition';
 
 const SETTINGS = {
   notificationGroupingEnabled: false,
@@ -409,6 +410,13 @@ describe('pollers on fixed fixtures (golden)', () => {
     // under its zone-less key (the UTC-midnight rule) and is not sent again.
     mocks.recipients = [{ id: 'u1', timeZone: 'America/New_York' }];
     expectGolden('checkUpcoming', await run('checkUpcoming'));
+    // Premiere alerts are for monitored items only: the *arrs' calendar default,
+    // never the Calendar page's unmonitored=true.
+    const calendars = [...mocks.sonarr, ...mocks.radarr, ...mocks.lidarr] as Array<{ client: { getCalendar: ReturnType<typeof vi.fn> } }>;
+    for (const { client } of calendars) {
+      expect(client.getCalendar).toHaveBeenCalled();
+      for (const call of client.getCalendar.mock.calls) expect(call).toHaveLength(2);
+    }
   });
 
   it("checkActivityDigest: yesterday's events summarized once the digest hour has passed", async () => {
@@ -471,6 +479,100 @@ describe('pollers on fixed fixtures (golden)', () => {
     failing.client.getHistory = vi.fn(async () => { throw new Error('history down'); });
     mocks.radarr = [failing, arrInstance('i2', 'Anime', 'radarr', true)];
     expectGolden('pollRadarr:instanceFails', await run('pollRadarr'));
+  });
+
+  it.each([
+    ['pollSonarr', 'sonarr', 'Sonarr'],
+    ['pollRadarr', 'radarr', 'Radarr'],
+  ] as const)('%s: health that clears sends one restored push after the hold, then nothing', async (method, kind, name) => {
+    resetHealthTracking();
+    const instance = arrInstance('i1', 'Main', kind, true);
+    instance.client.getHealth = vi.fn(async () => []);
+    mocks[kind] = [instance];
+    const state = mocks.states.get('i1')!;
+    const cycle = async () => {
+      mocks.out = [];
+      state.updatedAt = new Date();
+      const out = await run(method);
+      const healthEvents = out.flatMap((o) => {
+        const event = (o as { notify?: { eventType: string } }).notify;
+        return event?.eventType.startsWith('health') ? [event] : [];
+      });
+      const update = out.find((o) => 'pollingState.update' in (o as object)) as { 'pollingState.update': { data: { lastHealthHash: string } } };
+      state.lastHealthHash = update['pollingState.update'].data.lastHealthHash;
+      return healthEvents;
+    };
+
+    // Clear, but not for long enough: nothing sent and the old hash kept.
+    expect(await cycle()).toEqual([]);
+    expect(state.lastHealthHash).toBe('previous-hash');
+
+    vi.setSystemTime(NOW + HEALTH_CLEAR_HOLD_MS);
+    expect(await cycle()).toEqual([{
+      eventType: 'healthRestored',
+      title: `${name} Health Restored`,
+      body: 'All health checks pass again',
+      url: `/settings/status?health=${kind}&instance=i1`,
+      metadata: { source: kind, instanceId: 'i1', redirect: `/settings/status?health=${kind}&instance=i1` },
+      // Keyed on when the all-clear began (the first clear poll), not on updatedAt.
+      dedupeKey: `${kind}-health-restored:i1:${NOW}`,
+    }]);
+    expect(state.lastHealthHash).toBe(EMPTY_HEALTH_HASH);
+
+    vi.setSystemTime(NOW + 3 * HEALTH_CLEAR_HOLD_MS);
+    expect(await cycle()).toEqual([]);
+  });
+
+  it.each([
+    ['pollSonarr', 'sonarr'],
+    ['pollRadarr', 'radarr'],
+  ] as const)('%s: a warning that clears and returns inside the hold sends nothing; pushes not recorded are retried', async (method, kind) => {
+    resetHealthTracking();
+    const instance = arrInstance('i1', 'Main', kind, false);
+    const issues = [{ message: 'Main indexer is down' }];
+    let health: Array<{ message: string }> = issues;
+    instance.client.getHealth = vi.fn(async () => health);
+    mocks[kind] = [instance];
+    const notifyEvent = vi.mocked((await import('@/lib/notification-service')).notifyEvent);
+    const cycle = async () => {
+      mocks.out = [];
+      const out = await run(method);
+      const update = out.find((o) => 'pollingState.update' in (o as object)) as { 'pollingState.update': { data: { lastHealthHash: string } } };
+      const state = mocks.states.get('i1')!;
+      state.lastHealthHash = update['pollingState.update'].data.lastHealthHash;
+      state.lastQueueIds = [];
+      return out.flatMap((o) => {
+        const event = (o as { notify?: { eventType: string } }).notify;
+        return event?.eventType.startsWith('health') ? [event.eventType] : [];
+      });
+    };
+
+    await cycle(); // first run: the baseline, with issues
+    const withIssues = mocks.states.get('i1')!.lastHealthHash;
+    health = [];
+    expect(await cycle()).toEqual([]);
+    vi.setSystemTime(NOW + HEALTH_CLEAR_HOLD_MS - 1000);
+    health = issues;
+    expect(await cycle()).toEqual([]);
+    expect(mocks.states.get('i1')!.lastHealthHash).toBe(withIssues);
+
+    // A restore that could not be recorded keeps the old hash, and the next cycle sends it.
+    health = [];
+    await cycle();
+    vi.setSystemTime(NOW + 3 * HEALTH_CLEAR_HOLD_MS);
+    notifyEvent.mockRejectedValueOnce(new Error('history insert failed'));
+    expect(await cycle()).toEqual([]);
+    expect(mocks.states.get('i1')!.lastHealthHash).toBe(withIssues);
+    expect(await cycle()).toEqual(['healthRestored']);
+    expect(mocks.states.get('i1')!.lastHealthHash).toBe(EMPTY_HEALTH_HASH);
+
+    // So does a warning that could not be recorded.
+    health = issues;
+    notifyEvent.mockRejectedValueOnce(new Error('history insert failed'));
+    expect(await cycle()).toEqual([]);
+    expect(mocks.states.get('i1')!.lastHealthHash).toBe(EMPTY_HEALTH_HASH);
+    expect(await cycle()).toEqual(['healthWarning']);
+    expect(mocks.states.get('i1')!.lastHealthHash).toBe(withIssues);
   });
 
   it('pollSonarr: clients that cannot be built fail the job and send nothing', async () => {

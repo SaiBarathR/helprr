@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { TagSelector } from '@/components/media/tag-selector';
 import { Loader2 } from 'lucide-react';
@@ -56,6 +57,9 @@ export default function SeriesEditPage() {
   const [rootFolder, setRootFolder] = useState('');
   const [rootFolderTouched, setRootFolderTouched] = useState(false);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
+  // Without a move Sonarr points the series at a folder its files are not in.
+  const [moveFiles, setMoveFiles] = useState(true);
+  const [confirmMove, setConfirmMove] = useState(false);
 
   useEffect(() => {
     if (seriesQuery.isError) toast.error('Failed to load series data');
@@ -75,7 +79,16 @@ export default function SeriesEditPage() {
     setRootFolder(series.path ? parentPath(series.path) : '');
   }, [series]);
 
-  async function handleSave() {
+  const movedPath = rootFolderTouched && series?.path ? pathInRootFolder(series.path, rootFolder) : null;
+  const moving = movedPath !== null && moveFiles;
+
+  function handleSave() {
+    // Moving files is a disk operation: confirm it first, as the bulk editor does.
+    if (moving) setConfirmMove(true);
+    else void save();
+  }
+
+  async function save() {
     if (!series) return;
     setSaving(true);
     try {
@@ -88,11 +101,9 @@ export default function SeriesEditPage() {
         tags: selectedTags,
       };
 
-      const movedPath = rootFolderTouched && series.path ? pathInRootFolder(series.path, rootFolder) : null;
       if (movedPath) updatedSeries.path = movedPath;
 
-      const moveFiles = rootFolderTouched;
-      const url = `/api/sonarr/${series.id}${moveFiles ? '?moveFiles=true' : ''}`;
+      const url = `/api/sonarr/${series.id}${moving ? '?moveFiles=true' : ''}`;
 
       const res = await arrMutationFetch(instance, url, {
         method: 'PUT',
@@ -113,6 +124,7 @@ export default function SeriesEditPage() {
       toast.error('Failed to update series');
     } finally {
       setSaving(false);
+      setConfirmMove(false);
     }
   }
 
@@ -243,10 +255,22 @@ export default function SeriesEditPage() {
                 </Select>
               </div>
             )}
+            {movedPath && (
+              <div className="grouped-row">
+                <Label htmlFor="move-files" className="text-sm shrink-0">
+                  Move Files
+                </Label>
+                <Switch id="move-files" checked={moveFiles} onCheckedChange={setMoveFiles} />
+              </div>
+            )}
           </div>
-          <p className="px-4 pt-2 text-xs text-muted-foreground">
-            Moving series to the same root folder can be used to rename series folders to match updated title or naming format.
-          </p>
+          {movedPath && (
+            <p className="px-4 pt-2 text-xs text-muted-foreground">
+              {moveFiles
+                ? 'Sonarr moves the series’ files into this folder.'
+                : 'Only the saved path changes; files stay where they are until you move them.'}
+            </p>
+          )}
         </div>
 
         {/* Tags */}
@@ -284,6 +308,17 @@ export default function SeriesEditPage() {
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmMove}
+        onOpenChange={(open) => { if (!open && !saving) setConfirmMove(false); }}
+        title={`Move files for ${series.title}?`}
+        description={`Sonarr will move the files of ${series.title} into ${movedPath ?? ''}. Files move on disk, which can take a while.`}
+        confirmLabel="Move files"
+        destructive
+        busy={saving}
+        onConfirm={save}
+      />
     </div>
   );
 }

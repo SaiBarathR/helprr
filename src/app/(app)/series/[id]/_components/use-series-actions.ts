@@ -10,7 +10,7 @@ import { ApiError, arrMutationFetch } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { episodesWithFileKey } from '@/lib/series-query-cache';
 import { pollCommand } from '@/lib/arr-command';
-import { buildMonitorUpdate, MONITOR_OPTIONS } from './format';
+import { seriesMonitorLabel } from '@/lib/series-monitor';
 
 /**
  * What the series page does to Sonarr (and Jellyfin's lookup): monitoring,
@@ -163,26 +163,17 @@ export function useSeriesActions({
     if (!series || !monitorOption) return;
     setActionLoading('applyMonitor');
     try {
-      await arrMutationFetch(instance, '/api/sonarr/command', {
+      // Sonarr sets each episode's flag by its own rules for the choice.
+      const res = await arrMutationFetch(instance, '/api/sonarr/seasonpass', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'MonitoredEpisodeCommand' in {} ? 'MonitoredEpisodeCommand' : 'RefreshSeries',
-          seriesId: series.id,
-        }),
+        body: JSON.stringify({ ids: [series.id], monitor: monitorOption }),
       });
-      // Update series monitored state via PUT
-      const updateRes = await arrMutationFetch(instance, `/api/sonarr/${series.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildMonitorUpdate(series, monitorOption)),
-      });
-      if (updateRes.ok) {
-        const updated: SonarrSeries = await updateRes.json();
-        queryClient.setQueryData(queryKeys.detail('sonarr', seriesId, instance), updated);
-        // Monitor option also shifts episode monitored flags → refresh list + episodes.
+      if (res.ok) {
+        // Episode flags, season flags and (for None) the series' own flag changed:
+        // refetch the series, its episodes and the list.
         invalidateSeries(queryClient, { itemId: seriesId, instanceId: instance });
-        toast.success(`Monitor set to: ${MONITOR_OPTIONS.find((o) => o.value === monitorOption)?.label}`);
+        toast.success(`Monitor set to: ${seriesMonitorLabel(monitorOption)}`);
         setShowMonitorEdit(false);
       } else {
         toast.error('Failed to update monitor');

@@ -6,11 +6,11 @@ import {
   DrawerDescription, DrawerFooter, DrawerClose,
 } from '@/components/ui/drawer';
 import { Loader2 } from 'lucide-react';
-import { MONITOR_OPTIONS } from './format';
+import { SERIES_MONITOR_OPTIONS } from '@/lib/series-monitor';
 import type { SeriesActions } from './use-series-actions';
 
 /** Choose which episodes Sonarr monitors, then Apply. */
-export function SeriesMonitorDrawer({ title, actions }: { title: string; actions: SeriesActions }) {
+export function SeriesMonitorDrawer({ title, seriesMonitored, actions }: { title: string; seriesMonitored: boolean; actions: SeriesActions }) {
   const { showMonitorEdit, setShowMonitorEdit, monitorOption, setMonitorOption, actionLoading } = actions;
   return (
     <Drawer open={showMonitorEdit} onOpenChange={setShowMonitorEdit}>
@@ -19,13 +19,15 @@ export function SeriesMonitorDrawer({ title, actions }: { title: string; actions
           <DrawerTitle>Monitor</DrawerTitle>
           <DrawerDescription>
             Choose which episodes to monitor for {title}.
+            {/* Sonarr's choices leave the series' own flag alone, as its own menu does. */}
+            {!seriesMonitored && ' The series itself is unmonitored, so Sonarr grabs nothing until you monitor it.'}
           </DrawerDescription>
         </DrawerHeader>
         {/* The options scroll so Apply and Cancel stay on a short phone's screen. */}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
           <div className="grouped-section">
             <div className="grouped-section-content">
-              {MONITOR_OPTIONS.map((option) => (
+              {SERIES_MONITOR_OPTIONS.map((option) => (
                 <button
                   key={option.value}
                   onClick={() => setMonitorOption(option.value)}

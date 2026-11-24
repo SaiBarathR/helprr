@@ -198,7 +198,7 @@ const FILTERABLE_EVENTS = new Set(['grabbed', 'imported', 'downloadFailed', 'imp
 // Security alerts too: a burst of failed sign-ins at night is worth waking for.
 // A test push is asked for on the spot; held by quiet hours it read as
 // "No devices received the test" on a setup that works.
-const QUIET_HOURS_BYPASS_EVENTS = new Set(['healthWarning', 'serviceDown', 'serviceRestored', 'securityAlert', 'test']);
+const QUIET_HOURS_BYPASS_EVENTS = new Set(['healthWarning', 'healthRestored', 'serviceDown', 'serviceRestored', 'securityAlert', 'test']);
 
 interface QuietHoursSettings {
   quietHoursEnabled: boolean;

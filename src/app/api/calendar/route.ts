@@ -30,6 +30,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const fullDay = searchParams.get('fullDay') === 'true';
     const type = searchParams.get('type');
     const includeScheduled = searchParams.get('includeScheduled') === 'true';
+    // The Calendar page asks for unmonitored items too and hides them itself
+    // behind its "monitored only" switch; the widgets keep the *arrs' default.
+    const includeUnmonitored = searchParams.get('unmonitored') === 'true';
     // The zone whose days the window's film and album releases are matched on,
     // and, for a now-anchored window, whose today and day boundaries it uses:
     // the Calendar page and the Today widget send this device's, as they show
@@ -63,7 +66,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       ? new Intl.DateTimeFormat('en', { timeZone: requestedTimeZone }).resolvedOptions().timeZone
       : (await getOrCreateAppSettings()).timeZone;
     const anchorKey = explicitWindow ? '' : getLocalDateKey(new Date(), releaseTimeZone);
-    const cacheKeySeed = `${start ?? ''}|${end ?? ''}|${days ?? ''}|${fullDay}|${anchorKey}|${releaseTimeZone}`;
+    const cacheKeySeed = `${start ?? ''}|${end ?? ''}|${days ?? ''}|${fullDay}|${anchorKey}|${releaseTimeZone}|${includeUnmonitored}`;
     const cachedEvents = !includeScheduled
       ? await getCachedJson<CalendarEvent[]>('calendar', cacheKeySeed)
       : null;
@@ -129,7 +132,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       end = endDate.toISOString();
     }
 
-    const { events, cacheable } = await fetchServiceCalendarEvents(start!, end!, releaseTimeZone);
+    const { events, cacheable } = await fetchServiceCalendarEvents(start!, end!, releaseTimeZone, { includeUnmonitored });
     if (cacheable) {
       await setCachedJson('calendar', cacheKeySeed, events, 120);
     }

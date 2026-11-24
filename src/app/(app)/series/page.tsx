@@ -41,6 +41,7 @@ import { matchesWatchFilter } from '@/lib/watch-status-filter';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { BulkActionBar } from '@/components/media/bulk-action-bar';
 import type { BulkEditChanges } from '@/components/media/bulk-edit-sheet';
+import { sendSeriesBulkEdit } from '@/lib/series-monitor';
 import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { invalidateAfterLibraryRemove } from '@/lib/query-invalidation';
@@ -467,10 +468,7 @@ export default function SeriesPage() {
 
   const handleBulkEdit = useCallback(async (changes: BulkEditChanges) => {
     const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedSeries, (instanceId, ids) =>
-      fetch(`/api/sonarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, ...changes }),
-      }));
+      sendSeriesBulkEdit(instanceId, ids, changes));
     reportBulk('Updated', ok, fail, { noun: 'series', pluralNoun: 'series', reason: firstError });
     await refetchSeries();
     if (fail === 0) exit();
@@ -1137,6 +1135,7 @@ export default function SeriesPage() {
             instanceId: selectedInstance,
             isAdmin,
             canChangePath,
+            canEditMonitoring: canMonitor,
             canOrganize: canSearch && canManageFiles,
             onApply: handleBulkEdit,
             onOrganize: handleOrganize,

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import type { Capability } from '@/lib/capabilities';
+import { parentPath } from '@/lib/paths';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Server-side payload-diff guard for Sonarr/Radarr PUT (locked decision #7).
@@ -94,6 +95,15 @@ function isUnder(child: string, parent: string): boolean {
   const c = normPath(child);
   const p = normPath(parent);
   return c === p || c.startsWith(`${p}/`) || c.startsWith(`${p}\\`);
+}
+
+/**
+ * Whether `path` is a folder directly inside one of the instance's root folders:
+ * the only places the Edit page moves a title to, and what the bulk editor checks.
+ */
+export function inRootFolder(path: string, rootFolders: { path: string }[]): boolean {
+  const parent = normPath(parentPath(path));
+  return rootFolders.some((folder) => normPath(folder.path) === parent);
 }
 
 function pathChanged(currentPath: string | undefined, body: Record<string, unknown>): boolean {

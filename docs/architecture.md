@@ -157,6 +157,16 @@ failed every probe for `AppSettings.serviceDownAlertDelaySecs` (default 120,
 0 = the first failure). So `serviceRestored` follows only a sent `serviceDown`,
 apart from a service that was already down when it was first seen. When the
 run of failures began is kept in memory, so a restart starts the wait again.
+Sonarr, Radarr and Prowlarr health (`src/lib/polling/health-transition.ts`)
+keeps `PollingState.lastHealthHash`: a changed, non-empty list sends
+`healthWarning`; an empty list after one with issues sends `healthRestored`
+once it has stayed empty for two minutes (in memory, like the reachability
+wait). Until then the stored hash keeps the list with issues, so a check that
+clears and returns inside the wait sends nothing. The Sonarr, Radarr and Lidarr
+pushes open that instance's health sheet on Settings → Service status
+(`/settings/status?health=<service>&instance=<id>`), read through
+`/api/{sonarr,radarr,lidarr}/health` (admins and `notify.health`; Lidarr also
+`music.view`), rebuilt from source, type, message and an https help link.
 One upstream failure must not cancel every other source. Sonarr, Radarr, and
 Lidarr instances share two polling slots per cycle; an instance that fails twice
 in a row is skipped (without taking a slot) for 30 seconds, doubling to 5
@@ -781,7 +791,12 @@ changing the root folder of library items from the bulk editor (`MOVE_MEDIA`:
 one row per request and instance, with the item ids, the folder, and whether files
 were to be moved; success means the *arr accepted the change and queued any move, not
 that the move finished; it needs the service's `changePath` capability, and the folder must
-be one of that instance's root folders),
+be one of that instance's root folders), moving one title's files from its Edit page
+(`MOVE_MEDIA` too, when the PUT carries `moveFiles=true`: the title, its old and new path in
+the details; a member needs the service's `changePath` capability to ask for a move at all,
+even with the path unchanged, and the new path must be a folder directly in one of that
+instance's root folders, as it must for a member's path change. A path change without a move
+is not audited there),
 removing several queue items from Activity's Select mode (`REMOVE_QUEUE`: one
 row per request and instance, the queue ids and removal options in its details;
 the client sends at most 1000 ids per request, one request at a time per

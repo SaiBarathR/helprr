@@ -1,4 +1,5 @@
 import type { QBittorrentTorrent } from '@/types';
+import { DOWNLOADING_STATES, PAUSED_STATES, SEEDING_STATES } from '@/lib/qbittorrent-summary';
 import type { TorrentsFilterPreference as FilterType, TorrentsSortKeyPreference as SortKey } from '@/lib/store';
 
 export const TORRENT_ROW_HEIGHT = 160;
@@ -72,14 +73,40 @@ export const filterOptions: { value: FilterType; label: string }[] = [
   { value: 'active', label: 'Active' },
 ];
 
-const DOWNLOADING_STATES = new Set([
-  'downloading', 'metaDL', 'allocating', 'stalledDL', 'queuedDL', 'checkingDL', 'forcedDL',
-]);
-const SEEDING_STATES = new Set([
-  'uploading', 'stalledUP', 'queuedUP', 'checkingUP', 'forcedUP', 'pausedUP', 'stoppedUP',
-]);
-// qBittorrent 5.x renamed pausedDL/pausedUP to stoppedDL/stoppedUP.
-export const PAUSED_STATES = new Set(['pausedDL', 'pausedUP', 'stoppedDL', 'stoppedUP']);
+export { PAUSED_STATES };
+
+type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
+
+// Every state qBittorrent's API documents (4.x and 5.x). Forced states use the
+// solid badge like the running ones; a state added later shows as sent.
+const STATE_BADGES: Record<string, { label: string; variant: BadgeVariant }> = {
+  downloading: { label: 'Downloading', variant: 'default' },
+  metaDL: { label: 'Metadata', variant: 'secondary' },
+  forcedMetaDL: { label: 'Forced meta', variant: 'default' },
+  allocating: { label: 'Allocating', variant: 'secondary' },
+  stalledDL: { label: 'Stalled', variant: 'secondary' },
+  uploading: { label: 'Seeding', variant: 'default' },
+  stalledUP: { label: 'Seeding', variant: 'secondary' },
+  pausedDL: { label: 'Paused', variant: 'outline' },
+  pausedUP: { label: 'Paused', variant: 'outline' },
+  stoppedDL: { label: 'Stopped', variant: 'outline' },
+  stoppedUP: { label: 'Stopped', variant: 'outline' },
+  queuedDL: { label: 'Queued', variant: 'secondary' },
+  queuedUP: { label: 'Queued', variant: 'secondary' },
+  checkingDL: { label: 'Checking', variant: 'secondary' },
+  checkingUP: { label: 'Checking', variant: 'secondary' },
+  checkingResumeData: { label: 'Checking', variant: 'secondary' },
+  forcedDL: { label: 'Forced DL', variant: 'default' },
+  forcedUP: { label: 'Forced UL', variant: 'default' },
+  moving: { label: 'Moving', variant: 'secondary' },
+  missingFiles: { label: 'Missing', variant: 'destructive' },
+  error: { label: 'Error', variant: 'destructive' },
+  unknown: { label: 'Unknown', variant: 'outline' },
+};
+
+export function torrentStateBadge(state: string): { label: string; variant: BadgeVariant } {
+  return STATE_BADGES[state] ?? { label: state, variant: 'secondary' };
+}
 
 export function matchesTorrentFilter(t: QBittorrentTorrent, f: FilterType): boolean {
   switch (f) {

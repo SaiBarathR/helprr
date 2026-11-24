@@ -1,6 +1,5 @@
 import { parse } from 'date-fns';
 import { formatDate, formatTime } from '@/lib/date-format';
-import type { SonarrSeries } from '@/types';
 import type { SeriesAniListResponse } from '@/types/anilist';
 
 export function formatCountdown(seconds: number): string {
@@ -45,49 +44,4 @@ export function formatAniListMappingState(state: SeriesAniListResponse['mapping'
   if (state === 'AUTO_MATCH') return 'Auto matched';
   if (state === 'AUTO_UNMATCHED') return 'No confident match';
   return 'Not mapped';
-}
-
-export const MONITOR_OPTIONS = [
-  { value: 'all', label: 'All Episodes' },
-  { value: 'future', label: 'Future Episodes' },
-  { value: 'missing', label: 'Missing Episodes' },
-  { value: 'existing', label: 'Existing Episodes' },
-  { value: 'recent', label: 'Recent Episodes' },
-  { value: 'pilot', label: 'Pilot Episode' },
-  { value: 'firstSeason', label: 'First Season' },
-  { value: 'lastSeason', label: 'Last Season' },
-  { value: 'monitorSpecials', label: 'Monitor Specials' },
-  { value: 'unmonitorSpecials', label: 'Unmonitor Specials' },
-  { value: 'none', label: 'None' },
-];
-
-/** The series as Sonarr should store it for a monitoring option chosen in the Monitor drawer. */
-export function buildMonitorUpdate(series: SonarrSeries, monitorOption: string) {
-  return {
-    ...series,
-    monitored: monitorOption !== 'none',
-    seasons: series.seasons.map((s) => {
-      switch (monitorOption) {
-        case 'all':
-          return { ...s, monitored: true };
-        case 'future':
-          return { ...s, monitored: true };
-        case 'none':
-          return { ...s, monitored: false };
-        case 'firstSeason':
-          return { ...s, monitored: s.seasonNumber === 1 };
-        case 'lastSeason': {
-          const maxSeason = Math.max(...series.seasons.filter((ss) => ss.seasonNumber > 0).map((ss) => ss.seasonNumber));
-          return { ...s, monitored: s.seasonNumber === maxSeason };
-        }
-        case 'monitorSpecials':
-          return { ...s, monitored: true };
-        case 'unmonitorSpecials':
-          return { ...s, monitored: s.seasonNumber !== 0 ? s.monitored : false };
-        default:
-          return { ...s, monitored: true };
-      }
-    }),
-    addOptions: { monitor: monitorOption },
-  };
 }

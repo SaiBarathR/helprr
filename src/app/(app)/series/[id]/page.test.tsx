@@ -197,6 +197,7 @@ beforeEach(() => {
     'GET /api/discover/tv/95396/season/1': () => Response.json({ episodes: [{ id: 1, episodeNumber: 1, name: 'Good News About Hell', stillPath: null, airDate: '2022-02-18', runtime: 57, voteAverage: 8.1, overview: 'Mark is promoted.' }, { id: 4, episodeNumber: 4, name: 'The You You Are', stillPath: null, airDate: null, runtime: null, voteAverage: 0, overview: '' }] }),
     'PUT /api/sonarr/7': (init) => Response.json(JSON.parse(String(init!.body))),
     'POST /api/sonarr/command': () => Response.json({ id: 55 }),
+    'POST /api/sonarr/seasonpass': () => Response.json({ success: true }),
     'DELETE /api/sonarr/7': () => new Response(null, { status: 200 }),
   };
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
@@ -419,15 +420,15 @@ describe('series detail page (characterization)', () => {
 
     await user.click(menu().getByRole('menuitem', { name: 'Monitor' }));
     const drawer = screen.getByRole('dialog');
+    // Unmonitored above: the choice changes episodes only, and the drawer says so.
+    expect(drawer.textContent).toContain('grabs nothing until you monitor it');
     await user.click(within(drawer).getByRole('button', { name: 'Last Season' }));
     await user.click(within(drawer).getByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Monitor set to: Last Season'));
-    const [command, put] = mocks.sent.slice(2);
-    expect(command).toEqual({ method: 'POST', path: '/api/sonarr/command?instanceId=son-1', body: { name: 'RefreshSeries', seriesId: 7 } });
-    const body = put.body as { monitored: boolean; addOptions: unknown; seasons: Array<{ seasonNumber: number; monitored: boolean }> };
-    expect(body.monitored).toBe(true);
-    expect(body.addOptions).toEqual({ monitor: 'lastSeason' });
-    expect(body.seasons.map((s) => [s.seasonNumber, s.monitored])).toEqual([[0, false], [1, false], [2, true]]);
+    // One season pass call: Sonarr sets the episode flags itself, with no refresh or series PUT.
+    expect(mocks.sent.slice(2)).toEqual([
+      { method: 'POST', path: '/api/sonarr/seasonpass?instanceId=son-1', body: { ids: [7], monitor: 'lastSeason' } },
+    ]);
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 

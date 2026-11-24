@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
-import { diffArtistEdit, type LibraryEditCaps, type LibraryEditDiff } from '@/lib/library-edit-guard';
+import { diffArtistEdit, inRootFolder, type LibraryEditCaps, type LibraryEditDiff } from '@/lib/library-edit-guard';
+import { resolveConnection } from '@/lib/arr-instances';
 import { can, type PermissionUser } from '@/lib/permissions';
 import type { Capability } from '@/lib/capabilities';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { runWithOperationAudit } from '@/lib/file-audit';
+import { parentPath } from '@/lib/paths';
 
 function parsePositiveId(id: string): { value: number } | { error: NextResponse } {
   const parsed = Number(id);
@@ -93,17 +95,55 @@ async function putHandler(
 
     // Admins edit freely; members are diffed against the live artist and 403'd for
     // changing monitoring / tags / root folder without the matching capability.
+    // A file move counts as a root-folder change whatever the body's path says.
+    let pathChanges = moveFiles;
+    let current: Awaited<ReturnType<typeof client.getArtistById>> | null = null;
     if (auth.user.role !== 'admin') {
-      const current = await client.getArtistById(pathId);
-      const guardError = guardResolvedLibraryEdit(auth.user, diffArtistEdit(current, update), {
+      current = await client.getArtistById(pathId);
+      const diff = diffArtistEdit(current, update);
+      pathChanges ||= diff.path;
+      const guardError = guardResolvedLibraryEdit(auth.user, { ...diff, path: diff.path || moveFiles }, {
         tags: 'music.editTags',
         path: 'music.changePath',
         monitoring: 'music.editMonitoring',
       });
       if (guardError) return guardError;
+    } else if (moveFiles) {
+      // Only names the move in its audit row, so a failed read must not fail the edit.
+      current = await client.getArtistById(pathId).catch(() => null);
     }
 
-    const result = await client.updateArtist(update, moveFiles);
+    // A new path goes only into one of this instance's root folders, as the Edit page
+    // offers and the bulk editor checks, never anywhere else the *arr can write.
+    const newPath = typeof update.path === 'string' ? update.path : null;
+    if (pathChanges && (!newPath || !inRootFolder(newPath, await client.getRootFolders()))) {
+      return NextResponse.json({ error: 'path must be in one of this instance’s root folders' }, { status: 400 });
+    }
+
+    const save = () => client.updateArtist(update, moveFiles);
+    // Moving files rewrites the artist's folder on disk, so it goes through the
+    // operation audit like the bulk editor's root-folder change.
+    const result = moveFiles
+      ? await runWithOperationAudit({
+          user: auth.user,
+          service: 'LIDARR',
+          // The resolved connection, so a request that names no instance still records
+          // which instance's files were moved.
+          instanceId: (await resolveConnection('LIDARR', instanceId)).id,
+          operation: 'MOVE_MEDIA',
+          targetType: 'artist',
+          targetId: pathId,
+          targetTitle: current?.artistName ?? `Artist #${pathId}`,
+          itemCount: 1,
+          details: {
+            targetIds: [pathId],
+            fromPath: current?.path ?? null,
+            path: newPath,
+            rootFolderPath: newPath ? parentPath(newPath) : null,
+            moveFiles: true,
+          },
+        }, save)
+      : await save();
     await invalidateTaggedLibrary('lidarr', instanceId);
     return NextResponse.json(result);
   } catch (error) {
