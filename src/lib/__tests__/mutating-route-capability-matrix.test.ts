@@ -242,7 +242,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'DELETE /api/sonarr/editor',
     'DELETE /api/sonarr/episodefile',
   ],
-  'cap:series.editMonitoring': ['PUT /api/sonarr/episode/monitor'],
+  'cap:series.editMonitoring': ['PUT /api/sonarr/episode/monitor', 'POST /api/sonarr/seasonpass'],
   'cap:series.editTags': ['POST /api/sonarr/tags'],
   'cap:series.manageFiles': [
     'PUT /api/sonarr/episodefile',
@@ -613,7 +613,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(272);
+    expect(handlers.size).toBe(273);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

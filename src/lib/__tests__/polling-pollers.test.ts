@@ -409,6 +409,13 @@ describe('pollers on fixed fixtures (golden)', () => {
     // under its zone-less key (the UTC-midnight rule) and is not sent again.
     mocks.recipients = [{ id: 'u1', timeZone: 'America/New_York' }];
     expectGolden('checkUpcoming', await run('checkUpcoming'));
+    // Premiere alerts are for monitored items only: the *arrs' calendar default,
+    // never the Calendar page's unmonitored=true.
+    const calendars = [...mocks.sonarr, ...mocks.radarr, ...mocks.lidarr] as Array<{ client: { getCalendar: ReturnType<typeof vi.fn> } }>;
+    for (const { client } of calendars) {
+      expect(client.getCalendar).toHaveBeenCalled();
+      for (const call of client.getCalendar.mock.calls) expect(call).toHaveLength(2);
+    }
   });
 
   it("checkActivityDigest: yesterday's events summarized once the digest hour has passed", async () => {

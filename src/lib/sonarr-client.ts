@@ -3,6 +3,7 @@ import { ARR_RELEASE_TIMEOUT_MS } from '@/lib/arr-release-timeout';
 import { historyPageWithoutLinks, withoutHistoryLinks, withoutReleaseLinks } from '@/lib/arr-release-links';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
+import type { SeriesMonitorOption } from '@/lib/series-monitor';
 import type {
   SonarrSeries,
   SonarrEpisode,
@@ -135,6 +136,16 @@ export class SonarrClient {
 
   // Bulk editor — one request for monitored/tags/settings across many series. Sonarr
   // applies only the fields present; moveFiles moves each series' files into rootFolderPath.
+  // Applies a Monitoring choice to each series' episodes, as Sonarr's own Monitoring
+  // menu does: the series-level monitored flag is left alone, except that 'none'
+  // unmonitors the series too.
+  async setSeriesMonitoring(seriesIds: number[], monitor: SeriesMonitorOption): Promise<void> {
+    await this.post('/api/v3/seasonpass', {
+      series: seriesIds.map((id) => ({ id })),
+      monitoringOptions: { monitor },
+    });
+  }
+
   async seriesEditor(body: {
     seriesIds: number[];
     monitored?: boolean;
@@ -342,11 +353,14 @@ export class SonarrClient {
   }
 
   // Calendar
-  async getCalendar(start: string, end: string): Promise<SonarrCalendarEntry[]> {
+  // Sonarr leaves out unmonitored episodes, and episodes of unmonitored series,
+  // unless asked; the poller's premiere alerts rely on that default.
+  async getCalendar(start: string, end: string, { unmonitored = false } = {}): Promise<SonarrCalendarEntry[]> {
     return this.get<SonarrCalendarEntry[]>('/api/v3/calendar', {
       start,
       end,
       includeSeries: true,
+      ...(unmonitored ? { unmonitored: true } : {}),
     });
   }
 

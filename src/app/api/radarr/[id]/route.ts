@@ -8,6 +8,7 @@ import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { runWithOperationAudit } from '@/lib/file-audit';
+import { parentPath } from '@/lib/paths';
 
 function parsePositiveId(id: string): { value: number } | { error: NextResponse } {
   const parsed = Number(id);
@@ -98,17 +99,45 @@ async function putHandler(
     // for changing monitoring / tags / root folder without the matching capability.
     // Skipping the fetch for admins avoids an extra upstream round-trip and keeps a
     // transient detail-fetch error from failing an otherwise-valid admin edit.
+    // A file move counts as a root-folder change whatever the body's path says.
+    let current: Awaited<ReturnType<typeof client.getMovieById>> | null = null;
     if (auth.user.role !== 'admin') {
-      const current = await client.getMovieById(pathId);
-      const guardError = guardResolvedLibraryEdit(auth.user, diffMovieEdit(current, update), {
+      current = await client.getMovieById(pathId);
+      const diff = diffMovieEdit(current, update);
+      const guardError = guardResolvedLibraryEdit(auth.user, { ...diff, path: diff.path || moveFiles }, {
         tags: 'movies.editTags',
         path: 'movies.changePath',
         monitoring: 'movies.editMonitoring',
       });
       if (guardError) return guardError;
+    } else if (moveFiles) {
+      // Only names the move in its audit row, so a failed read must not fail the edit.
+      current = await client.getMovieById(pathId).catch(() => null);
     }
 
-    const result = await client.updateMovie(update, moveFiles);
+    const save = () => client.updateMovie(update, moveFiles);
+    // Moving files rewrites the movie's folder on disk, so it goes through the
+    // operation audit like the bulk editor's root-folder change.
+    const newPath = typeof update.path === 'string' ? update.path : null;
+    const result = moveFiles
+      ? await runWithOperationAudit({
+          user: auth.user,
+          service: 'RADARR',
+          instanceId,
+          operation: 'MOVE_MEDIA',
+          targetType: 'movie',
+          targetId: pathId,
+          targetTitle: current?.title ?? `Movie #${pathId}`,
+          itemCount: 1,
+          details: {
+            targetIds: [pathId],
+            fromPath: current?.path ?? null,
+            path: newPath,
+            rootFolderPath: newPath ? parentPath(newPath) : null,
+            moveFiles: true,
+          },
+        }, save)
+      : await save();
     await invalidateTaggedLibrary('radarr', instanceId);
     return NextResponse.json(result);
   } catch (error) {

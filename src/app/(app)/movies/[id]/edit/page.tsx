@@ -14,6 +14,8 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { TagSelector } from '@/components/media/tag-selector';
 import { Loader2 } from 'lucide-react';
@@ -52,6 +54,9 @@ export default function MovieEditPage() {
   const [minimumAvailability, setMinimumAvailability] = useState('');
   const [rootFolder, setRootFolder] = useState('');
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
+  // Without a move Radarr points the movie at a folder its files are not in.
+  const [moveFiles, setMoveFiles] = useState(true);
+  const [confirmMove, setConfirmMove] = useState(false);
 
   // Seed the form once the movie loads (and re-seed if the cached movie
   // changes). Guarded during render.
@@ -65,8 +70,9 @@ export default function MovieEditPage() {
   }
 
   const saveMutation = useMutation({
-    mutationFn: async (updatedMovie: RadarrMovie) => {
-      const res = await fetch(withInstanceQuery(`/api/radarr/${updatedMovie.id}`, instance), {
+    mutationFn: async ({ updatedMovie, move }: { updatedMovie: RadarrMovie; move: boolean }) => {
+      const url = `/api/radarr/${updatedMovie.id}${move ? '?moveFiles=true' : ''}`;
+      const res = await fetch(withInstanceQuery(url, instance), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedMovie),
@@ -75,7 +81,7 @@ export default function MovieEditPage() {
       // MutationCache handler, which redirects to /login.
       if (!res.ok) throw new ApiError(res.status, 'Failed to update movie');
     },
-    onSuccess: (_data, updatedMovie) => {
+    onSuccess: (_data, { updatedMovie }) => {
       invalidateMovies(queryClient, { itemId: updatedMovie.id, instanceId: instance });
       toast.success('Movie updated');
       router.back();
@@ -87,8 +93,10 @@ export default function MovieEditPage() {
     },
   });
   const saving = saveMutation.isPending;
+  const movedPath = movie?.path ? pathInRootFolder(movie.path, rootFolder) : null;
+  const moving = movedPath !== null && moveFiles;
 
-  function handleSave() {
+  function save() {
     if (!movie) return;
 
     const updatedMovie: RadarrMovie = {
@@ -99,10 +107,15 @@ export default function MovieEditPage() {
     };
 
     // Update root folder path if changed
-    const movedPath = movie.path ? pathInRootFolder(movie.path, rootFolder) : null;
     if (movedPath) updatedMovie.path = movedPath;
 
-    saveMutation.mutate(updatedMovie);
+    saveMutation.mutate({ updatedMovie, move: moving }, { onSettled: () => setConfirmMove(false) });
+  }
+
+  function handleSave() {
+    // Moving files is a disk operation: confirm it first, as the bulk editor does.
+    if (moving) setConfirmMove(true);
+    else save();
   }
 
   if (loading && !movie) {
@@ -185,7 +198,20 @@ export default function MovieEditPage() {
                 </Select>
               </div>
             )}
+            {movedPath && (
+              <div className="grouped-row">
+                <Label htmlFor="move-files" className="text-sm shrink-0">Move Files</Label>
+                <Switch id="move-files" checked={moveFiles} onCheckedChange={setMoveFiles} />
+              </div>
+            )}
           </div>
+          {movedPath && (
+            <p className="px-4 pt-2 text-xs text-muted-foreground">
+              {moveFiles
+                ? 'Radarr moves the movie’s files into this folder.'
+                : 'Only the saved path changes; files stay where they are until you move them.'}
+            </p>
+          )}
         </div>
 
         {/* Tags Section */}
@@ -223,6 +249,17 @@ export default function MovieEditPage() {
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmMove}
+        onOpenChange={(open) => { if (!open && !saving) setConfirmMove(false); }}
+        title={`Move files for ${movie.title}?`}
+        description={`Radarr will move the files of ${movie.title} into ${movedPath ?? ''}. Files move on disk, which can take a while.`}
+        confirmLabel="Move files"
+        destructive
+        busy={saving}
+        onConfirm={save}
+      />
     </div>
   );
 }

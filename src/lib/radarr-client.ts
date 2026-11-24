@@ -220,8 +220,9 @@ export class RadarrClient {
   }
 
   // Calendar
-  async getCalendar(start: string, end: string): Promise<RadarrCalendarEntry[]> {
-    return this.get<RadarrCalendarEntry[]>('/api/v3/calendar', { start, end });
+  // Radarr leaves out unmonitored films unless asked; the poller relies on that default.
+  async getCalendar(start: string, end: string, { unmonitored = false } = {}): Promise<RadarrCalendarEntry[]> {
+    return this.get<RadarrCalendarEntry[]>('/api/v3/calendar', { start, end, ...(unmonitored ? { unmonitored: true } : {}) });
   }
 
   // Collections

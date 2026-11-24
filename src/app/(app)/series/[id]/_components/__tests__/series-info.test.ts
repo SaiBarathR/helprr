@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SonarrSeries } from '@/types';
-import { buildMonitorUpdate, formatAniListMappingState, formatCountdown, formatDateValue } from '../format';
+import { formatAniListMappingState, formatCountdown, formatDateValue } from '../format';
 import { buildSeasonDetailRows, buildSeriesInfoRows, seriesStatusBadge } from '../series-info';
 
 const seasons = [{ seasonNumber: 0, monitored: true }, { seasonNumber: 1, monitored: true }, { seasonNumber: 2, monitored: false }, { seasonNumber: 3, monitored: true }];
@@ -18,17 +18,6 @@ describe('series page formatting', () => {
     expect(formatDateValue(null)).toBeNull();
     expect(formatAniListMappingState('MANUAL_NONE')).toBe('Manually unmapped');
     expect(formatAniListMappingState(undefined)).toBe('Not mapped');
-  });
-
-  it('builds the series Sonarr should store for each monitoring option', () => {
-    const monitoredOf = (option: string) => buildMonitorUpdate(series(), option).seasons.map((s) => s.monitored);
-    expect(monitoredOf('firstSeason')).toEqual([false, true, false, false]);
-    expect(monitoredOf('lastSeason')).toEqual([false, false, false, true]);
-    expect(monitoredOf('none')).toEqual([false, false, false, false]);
-    expect(monitoredOf('unmonitorSpecials')).toEqual([false, true, false, true]);
-    expect(monitoredOf('all')).toEqual([true, true, true, true]);
-    expect(buildMonitorUpdate(series(), 'none')).toEqual(expect.objectContaining({ monitored: false, addOptions: { monitor: 'none' } }));
-    expect(buildMonitorUpdate(series(), 'future').monitored).toBe(true);
   });
 
   it('marks a series DOWNLOADED only when every episode has a file', () => {

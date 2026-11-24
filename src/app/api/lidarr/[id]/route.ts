@@ -8,6 +8,7 @@ import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { runWithOperationAudit } from '@/lib/file-audit';
+import { parentPath } from '@/lib/paths';
 
 function parsePositiveId(id: string): { value: number } | { error: NextResponse } {
   const parsed = Number(id);
@@ -93,17 +94,45 @@ async function putHandler(
 
     // Admins edit freely; members are diffed against the live artist and 403'd for
     // changing monitoring / tags / root folder without the matching capability.
+    // A file move counts as a root-folder change whatever the body's path says.
+    let current: Awaited<ReturnType<typeof client.getArtistById>> | null = null;
     if (auth.user.role !== 'admin') {
-      const current = await client.getArtistById(pathId);
-      const guardError = guardResolvedLibraryEdit(auth.user, diffArtistEdit(current, update), {
+      current = await client.getArtistById(pathId);
+      const diff = diffArtistEdit(current, update);
+      const guardError = guardResolvedLibraryEdit(auth.user, { ...diff, path: diff.path || moveFiles }, {
         tags: 'music.editTags',
         path: 'music.changePath',
         monitoring: 'music.editMonitoring',
       });
       if (guardError) return guardError;
+    } else if (moveFiles) {
+      // Only names the move in its audit row, so a failed read must not fail the edit.
+      current = await client.getArtistById(pathId).catch(() => null);
     }
 
-    const result = await client.updateArtist(update, moveFiles);
+    const save = () => client.updateArtist(update, moveFiles);
+    // Moving files rewrites the artist's folder on disk, so it goes through the
+    // operation audit like the bulk editor's root-folder change.
+    const newPath = typeof update.path === 'string' ? update.path : null;
+    const result = moveFiles
+      ? await runWithOperationAudit({
+          user: auth.user,
+          service: 'LIDARR',
+          instanceId,
+          operation: 'MOVE_MEDIA',
+          targetType: 'artist',
+          targetId: pathId,
+          targetTitle: current?.artistName ?? `Artist #${pathId}`,
+          itemCount: 1,
+          details: {
+            targetIds: [pathId],
+            fromPath: current?.path ?? null,
+            path: newPath,
+            rootFolderPath: newPath ? parentPath(newPath) : null,
+            moveFiles: true,
+          },
+        }, save)
+      : await save();
     await invalidateTaggedLibrary('lidarr', instanceId);
     return NextResponse.json(result);
   } catch (error) {

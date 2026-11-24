@@ -52,9 +52,38 @@ describe('fetchServiceCalendarEvents release days', () => {
 
   it('asks Radarr and Lidarr for a day more on each side, and Sonarr for the window', async () => {
     await fetchServiceCalendarEvents('2026-11-01T07:00:00.000Z', '2026-12-01T07:59:59.999Z', 'America/Los_Angeles');
-    expect(mocks.sonarr).toHaveBeenCalledWith('2026-11-01T07:00:00.000Z', '2026-12-01T07:59:59.999Z');
-    expect(mocks.radarr).toHaveBeenCalledWith('2026-10-31T07:00:00.000Z', '2026-12-02T07:59:59.999Z');
-    expect(mocks.lidarr).toHaveBeenCalledWith('2026-10-31T07:00:00.000Z', '2026-12-02T07:59:59.999Z');
+    const monitoredOnly = { unmonitored: false };
+    expect(mocks.sonarr).toHaveBeenCalledWith('2026-11-01T07:00:00.000Z', '2026-12-01T07:59:59.999Z', monitoredOnly);
+    expect(mocks.radarr).toHaveBeenCalledWith('2026-10-31T07:00:00.000Z', '2026-12-02T07:59:59.999Z', monitoredOnly);
+    expect(mocks.lidarr).toHaveBeenCalledWith('2026-10-31T07:00:00.000Z', '2026-12-02T07:59:59.999Z', monitoredOnly);
+  });
+
+  it('asks every *arr for unmonitored items too when the caller wants them', async () => {
+    await fetchServiceCalendarEvents('2026-11-01T07:00:00.000Z', '2026-12-01T07:59:59.999Z', 'America/Los_Angeles', { includeUnmonitored: true });
+    for (const client of [mocks.sonarr, mocks.radarr, mocks.lidarr]) {
+      expect(client.mock.lastCall?.[2]).toEqual({ unmonitored: true });
+    }
+  });
+
+  it('counts an episode or album as monitored only while its series or artist is too', async () => {
+    const episode = (id: number, monitored: boolean, seriesMonitored: boolean) => ({
+      id, seriesId: id, seasonNumber: 1, episodeNumber: id, title: `Ep ${id}`, airDateUtc: '2026-11-10T01:00:00Z',
+      hasFile: false, monitored, series: { title: `Series ${id}`, images: [], runtime: 0, monitored: seriesMonitored },
+    });
+    mocks.sonarr.mockResolvedValue([episode(1, true, true), episode(2, true, false), episode(3, false, true)]);
+    mocks.lidarr.mockResolvedValue([
+      { ...album(5, '2026-11-02T00:00:00Z'), artist: { artistName: 'On', monitored: true } },
+      { ...album(6, '2026-11-03T00:00:00Z'), artist: { artistName: 'Off', monitored: false } },
+    ]);
+    const { events } = await fetchServiceCalendarEvents('2026-11-01T07:00:00.000Z', '2026-12-01T07:59:59.999Z', 'America/Los_Angeles', { includeUnmonitored: true });
+    const monitored = Object.fromEntries(events.map((e) => [e.id, e.monitored]));
+    expect(monitored).toMatchObject({
+      'sonarr-sonarr-1': true,
+      'sonarr-sonarr-2': false,
+      'sonarr-sonarr-3': false,
+      'lidarr-lidarr-5': true,
+      'lidarr-lidarr-6': false,
+    });
   });
 
   it('keeps the event date as upstream gave it', async () => {

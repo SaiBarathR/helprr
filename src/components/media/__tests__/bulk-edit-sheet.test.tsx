@@ -166,6 +166,24 @@ describe('bulk "More" sheet', () => {
     expect(screen.getByRole('dialog', { name: 'Edit 3 series' })).toBeTruthy();
   });
 
+  it("offers Sonarr's Monitoring choices to a member who may change monitoring, on any selection", async () => {
+    const bulkEdit = renderBar({ isAdmin: false, canChangePath: false, canOrganize: false, canEditMonitoring: true, instanceId: null });
+    await userEvent.click(screen.getByRole('button', { name: 'More' }));
+    expect(screen.queryByLabelText('Quality Profile')).toBeNull();
+    expect(screen.queryByLabelText('Root Folder')).toBeNull();
+    await pick('Monitor', 'Future Episodes');
+    expect(screen.getByText(/Sonarr sets which episodes/)).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Apply to 3 series' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(bulkEdit.onApply).toHaveBeenCalledWith({ monitor: 'future' });
+  });
+
+  it('keeps the Monitoring choices to Sonarr', async () => {
+    renderBar({ service: 'radarr', canEditMonitoring: true }, 2, 'movies');
+    await userEvent.click(screen.getByRole('button', { name: 'More' }));
+    expect(screen.queryByLabelText('Monitor')).toBeNull();
+  });
+
   it('hides More when the user can change none of it', () => {
     renderBar({ isAdmin: false, canChangePath: false, canOrganize: false });
     expect(screen.queryByRole('button', { name: 'More' })).toBeNull();

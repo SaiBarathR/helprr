@@ -457,11 +457,22 @@ export default function SeriesPage() {
   }, [selectedSeries]);
 
   const handleBulkEdit = useCallback(async (changes: BulkEditChanges) => {
-    const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedSeries, (instanceId, ids) =>
-      fetch(`/api/sonarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, ...changes }),
-      }));
+    // A Monitoring choice goes to Sonarr's season pass, after the editor's settings.
+    const { monitor, ...settings } = changes;
+    const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedSeries, async (instanceId, ids) => {
+      const query = instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : '';
+      if (Object.keys(settings).length > 0) {
+        const res = await fetch(`/api/sonarr/editor${query}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids, ...settings }),
+        });
+        if (!res.ok || monitor === undefined) return res;
+      }
+      return fetch(`/api/sonarr/seasonpass${query}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, monitor }),
+      });
+    });
     reportBulk('Updated', ok, fail, { noun: 'series', pluralNoun: 'series', reason: firstError });
     await refetchSeries();
     if (fail === 0) exit();
@@ -1111,6 +1122,7 @@ export default function SeriesPage() {
             instanceId: selectedInstance,
             isAdmin,
             canChangePath,
+            canEditMonitoring: canMonitor,
             canOrganize: canSearch && canManageFiles,
             onApply: handleBulkEdit,
             onOrganize: handleOrganize,
