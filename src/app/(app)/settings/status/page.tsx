@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { PollingHealthSection } from '@/components/settings/polling-health-section';
 import { ArrHealthSheet, arrHealthQuery, healthSummary, visibleHealthChecks } from '@/components/settings/arr-health-sheet';
+import { arrSystemStatusQuery, versionSummary, type SystemService } from '@/components/settings/arr-system-panels';
 import { cn } from '@/lib/utils';
 import { hasCapability, useMe, type MePayload } from '@/components/permission-provider';
 import { parseArrHealthLink, type HealthService } from '@/lib/arr-health-link';
@@ -30,7 +31,9 @@ interface ServiceHealthStatus {
 }
 
 const HEALTH_SERVICE: Partial<Record<string, HealthService>> = { SONARR: 'sonarr', RADARR: 'radarr', LIDARR: 'lidarr' };
-const SERVICE_NAME: Record<HealthService, string> = { sonarr: 'Sonarr', radarr: 'Radarr', lidarr: 'Lidarr' };
+const SERVICE_NAME: Record<SystemService, string> = { sonarr: 'Sonarr', radarr: 'Radarr', lidarr: 'Lidarr', prowlarr: 'Prowlarr' };
+// Whose version, tasks and logs an admin can open (admins only, routes too).
+const SYSTEM_SERVICE: Partial<Record<string, SystemService>> = { ...HEALTH_SERVICE, PROWLARR: 'prowlarr' };
 
 // Who may read an instance's health: as for its push, notify.health (and
 // music.view for Lidarr). The health routes check the same.
@@ -83,7 +86,12 @@ export default function ServiceStatusPage() {
   });
   const healthQueries = useQueries({ queries: healthRows.map((row) => arrHealthQuery(row.service, row.instanceId)) });
   const healthByInstance = new Map(healthRows.map((row, index) => [row.instanceId, healthQueries[index]]));
-  const refreshing = (isFetching && !loading) || healthQueries.some((q) => q.isFetching && !q.isLoading);
+  // For admins, each reachable Sonarr/Radarr/Lidarr/Prowlarr's version and offered update.
+  const systemRows = isAdmin ? statuses.filter((s) => s.ok && SYSTEM_SERVICE[s.type]) : [];
+  const systemQueries = useQueries({ queries: systemRows.map((s) => arrSystemStatusQuery(s.instanceId)) });
+  const systemByInstance = new Map(systemRows.map((s, index) => [s.instanceId, systemQueries[index]]));
+  const refreshing = (isFetching && !loading) || healthQueries.some((q) => q.isFetching && !q.isLoading)
+    || systemQueries.some((q) => q.isFetching && !q.isLoading);
 
   // The open health sheet: a row tapped, or a health push's link
   // (?health=sonarr&instance=<id>), handled once per link.
@@ -91,7 +99,7 @@ export default function ServiceStatusPage() {
   const link = parseArrHealthLink(searchParams);
   const linkKey = link ? `${link.service}:${link.instanceId}` : null;
   const [handledLink, setHandledLink] = useState<string | null>(null);
-  const [healthTarget, setHealthTarget] = useState<{ service: HealthService; instanceId: string } | null>(null);
+  const [healthTarget, setHealthTarget] = useState<{ service: SystemService; instanceId: string } | null>(null);
   const [healthOpen, setHealthOpen] = useState(false);
   if (link && linkKey !== handledLink && me) {
     setHandledLink(linkKey);
@@ -121,8 +129,9 @@ export default function ServiceStatusPage() {
   // with none), never one service's title over another's. So a link waits for
   // the list (cached for a minute); only when the list fails or lacks the
   // instance does the link's own service stand.
-  const targetService = targetStatus ? HEALTH_SERVICE[targetStatus.type] : loading ? undefined : healthTarget?.service;
-  const sheetTarget = healthTarget && targetService && canReadHealth(me, targetService)
+  const targetService = targetStatus ? SYSTEM_SERVICE[targetStatus.type] : loading ? undefined : healthTarget?.service;
+  const sheetTarget = healthTarget && targetService
+    && (targetService === 'prowlarr' ? isAdmin : canReadHealth(me, targetService))
     ? { service: targetService, instanceId: healthTarget.instanceId }
     : null;
   // A link that came to nothing is done with, so a later refetch can't open it.
@@ -136,6 +145,7 @@ export default function ServiceStatusPage() {
   function handleRefresh() {
     void refetch();
     for (const q of healthQueries) void q.refetch();
+    for (const q of systemQueries) void q.refetch();
   }
 
   const downCount = statuses.filter((s) => !s.ok).length;
@@ -200,6 +210,8 @@ export default function ServiceStatusPage() {
         <GroupedSection>
           {statuses.map((s) => {
             const health = healthByInstance.get(s.instanceId);
+            const system = systemByInstance.get(s.instanceId);
+            const version = versionSummary(system?.data);
             const checks = health?.data ? visibleHealthChecks(health.data) : null;
             const content = (
               <>
@@ -227,6 +239,16 @@ export default function ServiceStatusPage() {
                       {checks ? healthSummary(checks) : health.isError ? 'Health unavailable' : 'Checking health…'}
                     </div>
                   )}
+                  {version && (
+                    <div
+                      className={cn(
+                        'text-xs mt-0.5',
+                        system?.data?.updateVersion ? 'text-amber-400 light:text-amber-700' : 'text-muted-foreground',
+                      )}
+                    >
+                      {version}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span
@@ -241,12 +263,12 @@ export default function ServiceStatusPage() {
                   >
                     {s.ok ? 'Online' : 'Offline'}
                   </span>
-                  {health && <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />}
+                  {(health || system) && <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />}
                 </div>
               </>
             );
-            const service = HEALTH_SERVICE[s.type];
-            return health && service ? (
+            const service = SYSTEM_SERVICE[s.type];
+            return (health || system) && service ? (
               <button
                 key={s.instanceId}
                 type="button"
@@ -267,7 +289,13 @@ export default function ServiceStatusPage() {
         </GroupedSection>
       )}
 
-      <ArrHealthSheet target={sheetTarget} open={healthOpen} title={healthTitle} onOpenChange={setHealthOpen} />
+      <ArrHealthSheet
+        target={sheetTarget}
+        open={healthOpen}
+        title={healthTitle}
+        admin={isAdmin}
+        onOpenChange={setHealthOpen}
+      />
 
       {isAdmin && (
         <div className="mt-6">

@@ -115,6 +115,7 @@ const UNRELATED_SOURCES = [
   'pollProwlarr',
   'pollManualDownloads',
   'pollServiceReachability',
+  'checkArrUpdates',
   'sweepTasteProfiles',
 ] as const;
 
@@ -328,7 +329,7 @@ describe('cache warming health', () => {
     // incomplete. Radarr and Lidarr have none, which is not a failure.
     mocks.loadLibrary.mockImplementation(async (opts: { getInstances: () => Promise<unknown[]> }) => {
       await opts.getInstances();
-      return { items: [], cached: false, available: false, complete: false };
+      return { items: [], cached: false, available: false, complete: false, failedInstanceIds: ['s1'] };
     });
     vi.spyOn(services, 'getRadarrClients').mockResolvedValue([] as never);
     vi.spyOn(services, 'getLidarrClients').mockResolvedValue([] as never);
@@ -359,7 +360,7 @@ describe('an Arr instance that keeps failing', () => {
     mocks.loadLibrary.mockImplementation(async (opts: { getInstances: () => Promise<Array<{ client: unknown }>>; fetchOne: (client: unknown) => Promise<unknown> }) => {
       const instances = await opts.getInstances();
       await Promise.allSettled(instances.map((instance) => opts.fetchOne(instance.client)));
-      return { items: [], cached: false, available: false, complete: false };
+      return { items: [], cached: false, available: false, complete: false, failedInstanceIds: ['s1'] };
     });
 
     for (let i = 0; i < 3; i += 1) await internal.poll();
@@ -385,7 +386,7 @@ describe('cache warming that joins a load already running', () => {
     vi.spyOn(services, 'getRadarrClients').mockResolvedValue([] as never);
     vi.spyOn(services, 'getLidarrClients').mockResolvedValue([] as never);
     // Joined an in-flight load: the loader never asks this warm for instances.
-    mocks.loadLibrary.mockResolvedValue({ items: [], cached: false, available: false, complete: false });
+    mocks.loadLibrary.mockResolvedValue({ items: [], cached: false, available: false, complete: false, failedInstanceIds: ['s1'] });
 
     await internal.poll();
 

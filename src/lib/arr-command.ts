@@ -1,4 +1,4 @@
-type ArrService = 'radarr' | 'sonarr' | 'lidarr';
+type ArrService = 'radarr' | 'sonarr' | 'lidarr' | 'prowlarr';
 
 const POLL_INTERVAL_MS = 1_500;
 const POLL_TIMEOUT_MS = 60_000;
@@ -13,12 +13,17 @@ const POLL_TIMEOUT_MS = 60_000;
  * still running after POLL_TIMEOUT_MS. Never rejects — refresh is best-effort UI.
  */
 export async function pollCommand(service: ArrService, id: number, instanceId?: string): Promise<string> {
-  const deadline = Date.now() + POLL_TIMEOUT_MS;
   // Poll the same instance the command was created on; without it the status
   // route falls back to the default instance and 404s on a non-default command.
   const url = instanceId
     ? `/api/${service}/command/${id}?instanceId=${instanceId}`
     : `/api/${service}/command/${id}`;
+  return pollCommandAt(url);
+}
+
+/** pollCommand for a status route of another shape (Run now's, which also covers Prowlarr). */
+export async function pollCommandAt(url: string): Promise<string> {
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));

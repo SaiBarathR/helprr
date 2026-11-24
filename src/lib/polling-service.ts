@@ -13,7 +13,7 @@ import { logger, redact } from '@/lib/logger';
 import { jobReports, noteJobFailure, noteJobSkipped, type JobReport } from '@/lib/polling-job-report';
 import { arrInstanceBackoff, createPollingCycleContext, InstanceBackoff } from '@/lib/polling-cycle';
 import { refreshScheduledAlertOccurrences, checkScheduledAlerts } from '@/lib/scheduled-alerts/delivery';
-import { getCachedTaggedLibrary } from '@/lib/cache/tagged-library';
+import { getCachedTaggedLibrary, type TaggedLibraryResult } from '@/lib/cache/tagged-library';
 import { runRetentionSweep } from '@/lib/retention';
 import { rebuildTasteProfile, PROFILE_MAX_AGE_MS } from '@/lib/recommendations/profile-store';
 import { PROFILE_VERSION } from '@/lib/recommendations/profile-types';
@@ -36,6 +36,8 @@ import { checkUpcoming as checkUpcomingPoller } from '@/lib/polling/upcoming';
 import { checkActivityDigest as checkActivityDigestPoller } from '@/lib/polling/activity-digest';
 import { checkDatabaseBackup as checkDatabaseBackupPoller } from '@/lib/polling/database-backup';
 import { checkUpdateAvailable, UPDATE_CHECK_INTERVAL_MS, UPDATE_CHECK_RETRY_MS } from '@/lib/polling/update-available';
+import { notifyLibraryChanges } from '@/lib/polling/library-changes';
+import { ARR_UPDATE_CHECK_INTERVAL_MS, ARR_UPDATE_RETRY_MS, checkArrUpdates } from '@/lib/polling/arr-updates';
 
 // How long daily disk-usage snapshots are kept (the trend only needs ~7 days,
 // but a longer tail makes the growth-rate fit more stable + survives gaps).
@@ -72,6 +74,8 @@ async function warmLibrary<C, T extends object>(
   getInstances: () => Promise<Array<{ connection: { id: string; label: string; updatedAt: Date }; client: C }>>,
   fetchOne: (client: C) => Promise<T[]>,
   backoff: InstanceBackoff,
+  // Reads the list this warm got (the library change alerts).
+  onRead?: (instances: Array<{ connection: { id: string; label: string; updatedAt: Date } }>, result: TaggedLibraryResult<T>) => Promise<void>,
 ): Promise<void> {
   // An instance the polls are skipping would only wait out its timeout, and a
   // load missing it is never cached, so this warm could not succeed anyway.
@@ -80,6 +84,7 @@ async function warmLibrary<C, T extends object>(
     backoff.remainingMs({ id: connection.id, version: connection.updatedAt.getTime() }) > 0);
   if (skipped) throw new Error(`${scope}: ${skipped.connection.label} is skipped after repeated failures`);
   const result = await getCachedTaggedLibrary({ scope, cacheKeySeed: 'all', getInstances, fetchOne });
+  if (onRead) await onRead(instances, result);
   // Counted here: a load this warm joined (or a cache hit) never asks for them.
   if (!result.complete && instances.length > 0) {
     throw new Error(`${scope}: an instance did not answer`);
@@ -179,6 +184,8 @@ export class PollingService {
   private lastRetentionPruneAt = 0;
   // Epoch ms the next update check is due (0 = on the first cycle).
   private nextUpdateCheckAt = 0;
+  // Epoch ms the next Sonarr/Radarr/Lidarr/Prowlarr update check is due.
+  private nextArrUpdateCheckAt = 0;
   // Tracks the bandwidth-schedule rule (and limits) we last pushed to
   // qBittorrent so we only re-send on actual changes. Process-restart loses
   // this — the next cycle will re-apply once (idempotent).
@@ -312,6 +319,7 @@ export class PollingService {
         sourceTask('checkActivityDigest', () => this.checkActivityDigest(context)),
         sourceTask('checkDatabaseBackup', () => this.checkDatabaseBackup(context)),
         sourceTask('checkUpdateAvailable', () => this.checkUpdateAvailable(context)),
+        sourceTask('checkArrUpdates', () => this.checkArrUpdates(context)),
         sourceTask('applyBandwidthSchedule', () => this.applyBandwidthSchedule(context)),
         sourceTask('checkRetention', () => this.checkRetention(context)),
         sourceTask('checkAnimeAutoMap', () => this.checkAnimeAutoMap(context)),
@@ -336,7 +344,7 @@ export class PollingService {
       if (activeArrSources.length === 0) {
         await context.runSource(
           'warmCaches',
-          () => this.runPollSource('warmCaches', () => this.warmCaches(), warmReport),
+          () => this.runPollSource('warmCaches', () => this.warmCaches(context), warmReport),
         ).catch((e) => {
           warmReport.failure ??= errorMessage(e);
           logger.error('Cache warming failed', e, { scope: 'polling' });
@@ -712,12 +720,13 @@ export class PollingService {
     }
   }
 
-  private async warmCaches(): Promise<void> {
+  private async warmCaches(context: CycleContext): Promise<void> {
+    const grouping = async () => (await context.getSettings()).notificationGroupingEnabled;
     // allSettled + per-scope logging: one failing scope must not abort or mask
     // the other warmups.
     const warms = [
-      { scope: 'sonarr', run: () => warmLibrary('sonarr', getSonarrClients, (c) => c.getSeries(), this.instanceBackoff) },
-      { scope: 'radarr', run: () => warmLibrary('radarr', getRadarrClients, (c) => c.getMovies(), this.instanceBackoff) },
+      { scope: 'sonarr', run: () => warmLibrary('sonarr', getSonarrClients, (c) => c.getSeries(), this.instanceBackoff, (instances, result) => notifyLibraryChanges('sonarr', instances, result, grouping)) },
+      { scope: 'radarr', run: () => warmLibrary('radarr', getRadarrClients, (c) => c.getMovies(), this.instanceBackoff, (instances, result) => notifyLibraryChanges('radarr', instances, result, grouping)) },
       { scope: 'lidarr', run: () => warmLibrary('lidarr', getLidarrClients, (c) => c.getArtists(), this.instanceBackoff) },
     ] as const;
     const results = await Promise.allSettled(warms.map((w) => w.run()));
@@ -866,6 +875,15 @@ export class PollingService {
     // Set first, so a slow or failing check is not retried every cycle.
     this.nextUpdateCheckAt = now + UPDATE_CHECK_RETRY_MS;
     if (await checkUpdateAvailable()) this.nextUpdateCheckAt = now + UPDATE_CHECK_INTERVAL_MS;
+  }
+
+  // The apps' own update lists, once a day (hourly while nobody takes the push, or after a failure).
+  private async checkArrUpdates(context: CycleContext): Promise<void> {
+    const now = context.startedAtMs;
+    if (now < this.nextArrUpdateCheckAt) { noteJobSkipped(); return; }
+    // Set first, so a slow or failing check is not retried every cycle.
+    this.nextArrUpdateCheckAt = now + ARR_UPDATE_RETRY_MS;
+    if (await checkArrUpdates()) this.nextArrUpdateCheckAt = now + ARR_UPDATE_CHECK_INTERVAL_MS;
   }
 
   // Run bounded database and image-cache retention once/day. Database errors

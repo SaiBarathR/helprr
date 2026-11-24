@@ -443,3 +443,55 @@ describe('usersWhoCouldReceive', () => {
     mocks.findUsers.mockResolvedValue([]);
   });
 });
+
+// AR-17: titles added or deleted, files deleted or renamed, and app updates are
+// opt-in (a device from before them has no row, and reads as off), media ones
+// gated by notify.media, the app update for admins only.
+describe('library, file and app update events', () => {
+  const device = (name: string, preferences: Array<{ eventType: string; enabled: boolean }>, user: Record<string, unknown> = {}) => ({
+    ...subscription,
+    id: name,
+    endpoint: `${subscription.endpoint}-${name}`,
+    consecutiveFailures: 0,
+    lastFailedAt: null,
+    lastSucceededAt: null,
+    preferences: preferences.map((p) => ({ tagFilter: null, qualityFilter: null, mutedUserFilter: null, ...p })),
+    user: { id: `user-${name}`, status: 'active', role: 'member', template: 'member', permissions: {}, settings: null, ...user },
+  });
+  const sentTo = () => mocks.sendNotification.mock.calls
+    .map(([target]) => (target as { endpoint: string }).endpoint.replace(`${subscription.endpoint}-`, ''));
+  const admin = { role: 'admin', template: 'admin' };
+
+  it.each(['titleAdded', 'titleDeleted', 'fileDeleted', 'fileRenamed'])('%s reaches only a device turned on for it, of someone with notify.media', async (eventType) => {
+    mocks.findMany.mockResolvedValueOnce([
+      device('from-before', [{ eventType: 'imported', enabled: true }]),
+      device('admin-from-before', [], admin),
+      device('on', [{ eventType, enabled: true }]),
+      device('off', [{ eventType, enabled: false }]),
+      device('no-media', [{ eventType, enabled: true }], { permissions: { 'notify.media': false } }),
+    ]);
+    await notifyEvent({ eventType, title: 'Series Added', body: 'Pluribus (2025)', metadata: { source: 'sonarr', instanceId: 's1', seriesId: 3 } });
+    expect(sentTo()).toEqual(['on']);
+  });
+
+  it('an app update reaches only admins who turned it on, never a member granted notify.health', async () => {
+    mocks.findMany.mockResolvedValueOnce([
+      device('admin-unset', [], admin),
+      device('admin-on', [{ eventType: 'arrUpdateAvailable', enabled: true }], admin),
+      device('member-health', [{ eventType: 'arrUpdateAvailable', enabled: true }], { permissions: { 'notify.health': true } }),
+    ]);
+    await notifyEvent({ eventType: 'arrUpdateAvailable', title: 'Prowlarr update available', body: 'Prowlarr 3.1.0.5799 is out', metadata: { source: 'prowlarr' } });
+    expect(sentTo()).toEqual(['admin-on']);
+  });
+
+  it('nobody could receive them until someone turns them on', async () => {
+    const user = (id: string, preferences: Array<{ enabled: boolean }>, extra: Record<string, unknown> = {}) => ({
+      id, status: 'active', role: 'admin', template: 'admin', permissions: {}, settings: null,
+      pushSubscriptions: [{ preferences }], notificationChannels: [], ...extra,
+    });
+    mocks.findUsers.mockResolvedValueOnce([user('unset', [])]);
+    expect(await usersWhoCouldReceive('fileRenamed', { source: 'sonarr' })).toEqual([]);
+    mocks.findUsers.mockResolvedValueOnce([user('unset', []), user('on', [{ enabled: true }]), user('channel', [], { notificationChannels: [{ id: 'c1' }] })]);
+    expect((await usersWhoCouldReceive('fileRenamed', { source: 'sonarr' })).map((u) => u.id)).toEqual(['on', 'channel']);
+  });
+});

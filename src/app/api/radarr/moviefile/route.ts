@@ -8,6 +8,7 @@ import {
   coercePositiveIntArray,
   sanitizeTitle,
   checkOwnership,
+  MAX_EDITION_LENGTH,
 } from '@/lib/manage-files-guard';
 import { recordFileAudit } from '@/lib/file-audit';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
@@ -60,7 +61,11 @@ function parseEdits(value: unknown): MovieFileEdit[] | null {
       if (!Number.isInteger(n) || n < 0) return null;
       edit.indexerFlags = n;
     }
-    if (o.edition !== undefined) edit.edition = String(o.edition);
+    if (o.edition !== undefined) {
+      // '' clears the edition; anything else is a short name for the file name token.
+      if (typeof o.edition !== 'string' || o.edition.length > MAX_EDITION_LENGTH) return null;
+      edit.edition = o.edition.trim();
+    }
     edits.push(edit);
   }
   return edits;

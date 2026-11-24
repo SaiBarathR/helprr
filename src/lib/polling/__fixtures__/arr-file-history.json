@@ -1,0 +1,461 @@
+{
+  "_note": "Real Sonarr 4.0.20 and Radarr 7.0.3 history rows (read 2026-11-25), newest first, trimmed: file paths, release groups and sizes removed, rename targets kept relative to the title folder.",
+  "sonarr": [
+    {
+      "id": 9611,
+      "date": "2026-11-03T05:53:51Z",
+      "eventType": "episodeFileRenamed",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "HDTV-1080p"
+        }
+      },
+      "qualityCutoffNotMet": false,
+      "data": {
+        "relativePath": "Season 01/Monster (2004) - S01E04 - 004 - Night of the Execution [HDTV-1080p][AC3 2.0][JA+EN][x265 10bit].mkv"
+      },
+      "seriesId": 301,
+      "episodeId": 13555,
+      "series": {
+        "id": 301,
+        "title": "Monster",
+        "year": 2004,
+        "tvdbId": 74599
+      },
+      "episode": {
+        "id": 13555,
+        "seasonNumber": 1,
+        "episodeNumber": 4,
+        "title": "Night of the Execution"
+      }
+    },
+    {
+      "id": 9610,
+      "date": "2026-11-03T05:53:51Z",
+      "eventType": "episodeFileRenamed",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "HDTV-1080p"
+        }
+      },
+      "qualityCutoffNotMet": false,
+      "data": {
+        "relativePath": "Season 01/Monster (2004) - S01E03 - 003 - Murder Case [HDTV-1080p][AC3 2.0][JA+EN][x265 10bit].mkv"
+      },
+      "seriesId": 301,
+      "episodeId": 13554,
+      "series": {
+        "id": 301,
+        "title": "Monster",
+        "year": 2004,
+        "tvdbId": 74599
+      },
+      "episode": {
+        "id": 13554,
+        "seasonNumber": 1,
+        "episodeNumber": 3,
+        "title": "Murder Case"
+      }
+    },
+    {
+      "id": 9609,
+      "date": "2026-11-03T05:53:51Z",
+      "eventType": "episodeFileRenamed",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "HDTV-1080p"
+        }
+      },
+      "qualityCutoffNotMet": false,
+      "data": {
+        "relativePath": "Season 01/Monster (2004) - S01E02 - 002 - Downfall [HDTV-1080p][AC3 2.0][JA+EN][x265 10bit].mkv"
+      },
+      "seriesId": 301,
+      "episodeId": 13553,
+      "series": {
+        "id": 301,
+        "title": "Monster",
+        "year": 2004,
+        "tvdbId": 74599
+      },
+      "episode": {
+        "id": 13553,
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "title": "Downfall"
+      }
+    },
+    {
+      "id": 9608,
+      "date": "2026-11-03T05:53:51Z",
+      "eventType": "episodeFileRenamed",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "HDTV-1080p"
+        }
+      },
+      "qualityCutoffNotMet": false,
+      "data": {
+        "relativePath": "Season 01/Monster (2004) - S01E01 - 001 - Herr Dr. Tenma [HDTV-1080p][AC3 2.0][JA+EN][x265 10bit].mkv"
+      },
+      "seriesId": 301,
+      "episodeId": 13552,
+      "series": {
+        "id": 301,
+        "title": "Monster",
+        "year": 2004,
+        "tvdbId": 74599
+      },
+      "episode": {
+        "id": 13552,
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "title": "Herr Dr. Tenma"
+      }
+    },
+    {
+      "id": 9606,
+      "date": "2026-11-03T04:30:42Z",
+      "eventType": "episodeFileDeleted",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "Bluray-720p"
+        }
+      },
+      "qualityCutoffNotMet": true,
+      "data": {
+        "reason": "Manual"
+      },
+      "seriesId": 301,
+      "episodeId": 13554,
+      "series": {
+        "id": 301,
+        "title": "Monster",
+        "year": 2004,
+        "tvdbId": 74599
+      },
+      "episode": {
+        "id": 13554,
+        "seasonNumber": 1,
+        "episodeNumber": 3,
+        "title": "Murder Case"
+      }
+    },
+    {
+      "id": 9605,
+      "date": "2026-11-03T04:30:37Z",
+      "eventType": "episodeFileDeleted",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "Bluray-576p"
+        }
+      },
+      "qualityCutoffNotMet": true,
+      "data": {
+        "reason": "Manual"
+      },
+      "seriesId": 301,
+      "episodeId": 13553,
+      "series": {
+        "id": 301,
+        "title": "Monster",
+        "year": 2004,
+        "tvdbId": 74599
+      },
+      "episode": {
+        "id": 13553,
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "title": "Downfall"
+      }
+    },
+    {
+      "id": 9604,
+      "date": "2026-11-03T04:30:32Z",
+      "eventType": "episodeFileDeleted",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "HDTV-1080p"
+        }
+      },
+      "qualityCutoffNotMet": false,
+      "data": {
+        "reason": "Manual"
+      },
+      "seriesId": 301,
+      "episodeId": 13552,
+      "series": {
+        "id": 301,
+        "title": "Monster",
+        "year": 2004,
+        "tvdbId": 74599
+      },
+      "episode": {
+        "id": 13552,
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "title": "Herr Dr. Tenma"
+      }
+    },
+    {
+      "id": 9556,
+      "date": "2026-10-24T11:43:29Z",
+      "eventType": "downloadFolderImported",
+      "sourceTitle": "Merry Berry Love (2026) s01e03 [Mkv - 1080p H264 - MultiLang Aac 2.0 - MultiSubs]",
+      "quality": {
+        "quality": {
+          "name": "HDTV-1080p"
+        }
+      },
+      "qualityCutoffNotMet": false,
+      "data": {},
+      "seriesId": 308,
+      "episodeId": 13946,
+      "series": {
+        "id": 308,
+        "title": "Merry Berry Love",
+        "year": 2026,
+        "tvdbId": 470369
+      },
+      "episode": {
+        "id": 13946,
+        "seasonNumber": 1,
+        "episodeNumber": 3,
+        "title": "Episode 3"
+      }
+    },
+    {
+      "id": 9555,
+      "date": "2026-10-24T11:43:29Z",
+      "eventType": "episodeFileDeleted",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "WEBDL-1080p"
+        }
+      },
+      "qualityCutoffNotMet": false,
+      "data": {
+        "reason": "Upgrade"
+      },
+      "seriesId": 308,
+      "episodeId": 13946,
+      "series": {
+        "id": 308,
+        "title": "Merry Berry Love",
+        "year": 2026,
+        "tvdbId": 470369
+      },
+      "episode": {
+        "id": 13946,
+        "seasonNumber": 1,
+        "episodeNumber": 3,
+        "title": "Episode 3"
+      }
+    },
+    {
+      "id": 8910,
+      "date": "2026-09-08T17:33:35Z",
+      "eventType": "episodeFileDeleted",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "WEBRip-1080p"
+        }
+      },
+      "qualityCutoffNotMet": true,
+      "data": {
+        "reason": "MissingFromDisk"
+      },
+      "seriesId": 203,
+      "episodeId": 9406,
+      "series": {
+        "id": 203,
+        "title": "Something in the Rain",
+        "year": 2018,
+        "tvdbId": 342849
+      },
+      "episode": {
+        "id": 9406,
+        "seasonNumber": 1,
+        "episodeNumber": 16,
+        "title": "When Everything is Over"
+      }
+    },
+    {
+      "id": 8909,
+      "date": "2026-09-08T17:33:35Z",
+      "eventType": "episodeFileDeleted",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "WEBRip-1080p"
+        }
+      },
+      "qualityCutoffNotMet": true,
+      "data": {
+        "reason": "MissingFromDisk"
+      },
+      "seriesId": 203,
+      "episodeId": 9405,
+      "series": {
+        "id": 203,
+        "title": "Something in the Rain",
+        "year": 2018,
+        "tvdbId": 342849
+      },
+      "episode": {
+        "id": 9405,
+        "seasonNumber": 1,
+        "episodeNumber": 15,
+        "title": "Let's Leave Together"
+      }
+    },
+    {
+      "id": 7841,
+      "date": "2026-06-14T13:21:14Z",
+      "eventType": "episodeFileRenamed",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "HDTV-1080p"
+        }
+      },
+      "qualityCutoffNotMet": false,
+      "data": {
+        "relativePath": "Season 01/Haikyu!! (2014) - S01E02 - 002 - Karasuno High School Volleyball Club [HDTV-1080p][Opus 2.0][EN+JA][x265 10bit].mkv"
+      },
+      "seriesId": 47,
+      "episodeId": 3145,
+      "series": {
+        "id": 47,
+        "title": "Haikyu!!",
+        "year": 2014,
+        "tvdbId": 278157
+      },
+      "episode": {
+        "id": 3145,
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "title": "Karasuno High School Volleyball Club"
+      }
+    }
+  ],
+  "radarr": [
+    {
+      "id": 1208,
+      "date": "2026-11-15T19:31:01Z",
+      "eventType": "downloadFolderImported",
+      "sourceTitle": "Fackham.Hall.2025.UHD.BluRay.2160p.DTS-HD.MA.5.1.HDR10P.HEVC.HYBRID.REMUX-FraMeS",
+      "quality": {
+        "quality": {
+          "name": "Remux-2160p"
+        }
+      },
+      "qualityCutoffNotMet": false,
+      "data": {},
+      "movieId": 608,
+      "movie": {
+        "id": 608,
+        "title": "Fackham Hall",
+        "year": 2025,
+        "tmdbId": 1175174
+      }
+    },
+    {
+      "id": 1207,
+      "date": "2026-11-15T19:31:01Z",
+      "eventType": "movieFileDeleted",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "WEBDL-2160p"
+        }
+      },
+      "qualityCutoffNotMet": false,
+      "data": {
+        "reason": "Upgrade"
+      },
+      "movieId": 608,
+      "movie": {
+        "id": 608,
+        "title": "Fackham Hall",
+        "year": 2025,
+        "tmdbId": 1175174
+      }
+    },
+    {
+      "id": 1026,
+      "date": "2026-07-18T08:30:55Z",
+      "eventType": "movieFileRenamed",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "HDTV-1080p"
+        }
+      },
+      "qualityCutoffNotMet": false,
+      "data": {
+        "relativePath": "Maa Inti Bangaram (2026) HDTV-1080p.mp4"
+      },
+      "movieId": 549,
+      "movie": {
+        "id": 549,
+        "title": "Maa Inti Bangaram",
+        "year": 2026,
+        "tmdbId": 1227241
+      }
+    },
+    {
+      "id": 1025,
+      "date": "2026-07-18T08:30:18Z",
+      "eventType": "movieFileDeleted",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "WEBRip-1080p"
+        }
+      },
+      "qualityCutoffNotMet": false,
+      "data": {
+        "reason": "MissingFromDisk"
+      },
+      "movieId": 549,
+      "movie": {
+        "id": 549,
+        "title": "Maa Inti Bangaram",
+        "year": 2026,
+        "tmdbId": 1227241
+      }
+    },
+    {
+      "id": 1022,
+      "date": "2026-07-17T02:04:38Z",
+      "eventType": "movieFileDeleted",
+      "sourceTitle": "(file path removed)",
+      "quality": {
+        "quality": {
+          "name": "WEBDL-1080p"
+        }
+      },
+      "qualityCutoffNotMet": false,
+      "data": {
+        "reason": "Manual"
+      },
+      "movieId": 549,
+      "movie": {
+        "id": 549,
+        "title": "Maa Inti Bangaram",
+        "year": 2026,
+        "tmdbId": 1227241
+      }
+    }
+  ]
+}

@@ -78,6 +78,15 @@ const GROUP_NOUNS: Record<string, string> = {
   'lidarr:imported': 'Albums Imported',
   'sonarr:upgraded': 'Episodes Upgraded',
   'radarr:upgraded': 'Movies Upgraded',
+  'sonarr:titleAdded': 'Series Added',
+  'radarr:titleAdded': 'Movies Added',
+  'sonarr:titleDeleted': 'Series Deleted',
+  'radarr:titleDeleted': 'Movies Deleted',
+  'sonarr:fileDeleted': 'Episode Files Deleted',
+  'radarr:fileDeleted': 'Movie Files Deleted',
+  // One "Files Renamed" per series or movie, so a group counts those.
+  'sonarr:fileRenamed': 'Series Renamed',
+  'radarr:fileRenamed': 'Movies Renamed',
   '*:downloadFailed': 'Downloads Failed',
   '*:importFailed': 'Manual Imports Required',
   'qbittorrent:torrentAdded': 'Torrents Added',
@@ -110,6 +119,8 @@ function tabRedirect(source: string | undefined, eventType: string): string {
   if (eventType === 'grabbed') return `/activity?tab=queue&source=${source}`;
   if (eventType === 'downloadFailed' || eventType === 'importFailed') return `/activity?tab=failed&source=${source}`;
   if (eventType === 'imported' || eventType === 'upgraded') return '/activity/history';
+  if (eventType === 'titleAdded' || eventType === 'titleDeleted') return source === 'radarr' ? '/movies' : '/series';
+  if (eventType === 'fileDeleted' || eventType === 'fileRenamed') return '/activity/history';
   return '/notifications';
 }
 

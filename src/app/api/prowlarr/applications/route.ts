@@ -16,7 +16,7 @@ async function getHandler(): Promise<NextResponse> {
     const applications = await client.getApplications();
     const connections = await prisma.serviceConnection.findMany({
       where: { type: { in: ['SONARR', 'RADARR', 'LIDARR'] } },
-      select: { type: true, url: true, label: true },
+      select: { id: true, type: true, url: true, label: true },
     });
     return NextResponse.json({
       applications: applications.map(toApplicationSummary),

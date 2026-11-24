@@ -7,6 +7,9 @@
 
 import type { ArrQualityModel } from '@/types';
 
+/** A movie file's edition (Radarr's {Edition Tags}): a name, not prose. */
+export const MAX_EDITION_LENGTH = 100;
+
 /** A positive integer, or null. */
 export function coercePositiveInt(value: unknown): number | null {
   const n = typeof value === 'number' ? value : Number(value);

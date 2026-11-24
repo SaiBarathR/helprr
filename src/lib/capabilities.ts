@@ -234,6 +234,10 @@ export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability>
   upgraded: 'notify.media',
   downloadFailed: 'notify.media',
   importFailed: 'notify.media',
+  titleAdded: 'notify.media',
+  titleDeleted: 'notify.media',
+  fileDeleted: 'notify.media',
+  fileRenamed: 'notify.media',
   upcomingPremiere: 'notify.media',
   healthWarning: 'notify.health',
   healthRestored: 'notify.health',
@@ -272,6 +276,7 @@ export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability>
   // Admin-only on top of this (ADMIN_ONLY_EVENT_TYPES): a member granted
   // notify.health still never receives them.
   updateAvailable: 'notify.health',
+  arrUpdateAvailable: 'notify.health',
   securityAlert: 'notify.health',
   // Only people who can use Random can join a Tonight pick, so only they get invited.
   tonightPickInvite: 'random.view',
@@ -283,5 +288,6 @@ export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability>
  */
 export const ADMIN_ONLY_EVENT_TYPES: ReadonlySet<NotificationEventType> = new Set<NotificationEventType>([
   'updateAvailable',
+  'arrUpdateAvailable',
   'securityAlert',
 ]);

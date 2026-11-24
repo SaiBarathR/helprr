@@ -20,6 +20,11 @@ const AUTH_CALLS = new Set([
 
 const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   admin: [
+    // One Sonarr/Radarr/Lidarr/Prowlarr instance's version, tasks, a run's state, and its redacted log.
+    'GET /api/admin/arr-system/status',
+    'GET /api/admin/arr-system/tasks',
+    'GET /api/admin/arr-system/tasks/[id]',
+    'GET /api/admin/arr-system/logs',
     'GET /api/admin/database-backup',
     'GET /api/admin/polling-status',
     'GET /api/admin/support-bundle',
@@ -28,6 +33,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/anilist/library',
     'GET /api/anilist/list-entry',
     'GET /api/anilist/viewer',
+    // The add form's guesses for one arr connection's addresses.
+    'GET /api/prowlarr/applications/from-connection',
     'GET /api/anime/automap/status',
     'GET /api/cleanup/library/config',
     'GET /api/file-audit',
@@ -79,6 +86,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   ],
   'cap:activity.view': [
     'GET /api/activity/blocklist',
+    'GET /api/activity/blocklist/title',
     'GET /api/activity/history',
     'GET /api/activity/queue',
     'GET /api/activity/recent',
@@ -176,14 +184,17 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'cap:movies.view': [
     'GET /api/radarr/credit',
     'GET /api/radarr/[id]',
+    'GET /api/radarr/qualityprofiles/[id]',
     'GET /api/radarr/collections',
     'GET /api/radarr/history/movie',
+    'GET /api/radarr/extrafile',
     'GET /api/radarr/moviefile',
     'GET /api/radarr',
   ],
   'cap:music.view': [
     'GET /api/lidarr/[id]/albums',
     'GET /api/lidarr/[id]',
+    'GET /api/lidarr/qualityprofiles/[id]',
     'GET /api/lidarr/album/[albumId]',
     'GET /api/lidarr/album/[albumId]/tracks',
     'GET /api/lidarr/history/artist',
@@ -198,6 +209,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'cap:prowlarr.manage': [
     // Download client names for a grab; their fields stay on the server.
     'GET /api/prowlarr/downloadclients',
+    // A command's status (Re-check health); only its id, name and status.
+    'GET /api/prowlarr/command/[id]',
   ],
   'cap:prowlarr.view': [
     'GET /api/prowlarr/applications',
@@ -205,6 +218,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/prowlarr/health',
     'GET /api/prowlarr/history',
     'GET /api/prowlarr/indexers',
+    'GET /api/prowlarr/indexerproxies',
     'GET /api/prowlarr/stats',
     'GET /api/prowlarr/status',
     'GET /api/prowlarr/tags',
@@ -250,6 +264,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/sonarr/[id]/anime/candidates',
     'GET /api/sonarr/[id]/anime',
     'GET /api/sonarr/[id]',
+    'GET /api/sonarr/qualityprofiles/[id]',
     'GET /api/sonarr/episodefile',
     'GET /api/sonarr/history/series',
     'GET /api/sonarr/cutoff-unmet',
@@ -597,7 +612,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(297);
+    expect(handlers.size).toBe(309);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

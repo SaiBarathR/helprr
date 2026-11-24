@@ -24,6 +24,8 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ActiveFilterBar } from '@/components/ui/active-filter-bar';
 import { ResponsiveMenu, ResponsiveMenuCheckboxItem } from '@/components/ui/responsive-menu';
 import {
   Drawer,
@@ -47,6 +49,7 @@ import {
   Power,
   AlertTriangle,
   ChevronDown,
+  ListChecks,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -59,14 +62,24 @@ import { fmtNum } from '@/components/widgets/prowlarr-stats-shared';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { HistoryEventIcon, historyEventLabel } from './history-events';
+import { HISTORY_FILTERS, HistoryFilterBar, type HistoryFilterValue, type HistorySort } from './history-filters';
 import { useCan } from '@/components/permission-provider';
 import { useAppRouter } from '@/components/layout/navigation-provider';
 import { IndexerSheet, BlockedStatusDetails, formatDate, getActiveBlockedStatus } from './indexer-sheet';
-import { prowlarrStatsQuery, type DateRange } from './prowlarr-stats-query';
+import { NO_STATS_FILTERS, prowlarrStatsQuery, type DateRange, type StatsFilters } from './prowlarr-stats-query';
+import { StatsFilterMenu, statsActiveFilters } from './stats-filters';
+import { prowlarrTagsQuery } from './prowlarr-tags-query';
 import { SearchTab } from './search-tab';
 import { ApplicationsTab } from './applications-tab';
 import { refreshProwlarrHealth, useIndexerActions, useIndexersWithPending, type IndexerActions } from './use-indexer-actions';
-import { formatTime as formatDisplayTime } from '@/lib/date-format';
+import { formatDate as formatShortDate, formatTime as formatDisplayTime, localDateStamp } from '@/lib/date-format';
+import { pollCommand } from '@/lib/arr-command';
+import { useUIStore } from '@/lib/store';
+import { DEFAULT_PROWLARR_INDEXER_VIEW } from '@/lib/prowlarr-indexer-view';
+import { applyIndexerView, hasIndexerFilters } from './indexer-list';
+import { IndexerToolbar, indexerActiveFilters } from './indexer-toolbar';
+import { IndexerBulkBar } from './indexer-bulk-bar';
+import { IndexerProxiesSection } from './indexer-proxies';
 
 // Recharts is heavy and only the Stats tab renders charts, so load the chart
 // module on demand (client-only) instead of bundling it into the page chunk.
@@ -77,6 +90,7 @@ const StatsBarChart = dynamic(() => import('./stats-bar-chart'), {
 import {
   isProwlarrTestAllResponse,
   isProwlarrIndexerBlocked,
+  type ProwlarrAppProfile,
   type ProwlarrIndexerSummary,
   type ProwlarrIndexerStatus,
   type ProwlarrTestAllResponse,
@@ -89,13 +103,17 @@ import type { HealthCheck } from '@/types/arr';
 import { PageTitle } from '@/components/layout/page-title';
 
 /**
- * Format an ISO 8601 timestamp into a localized short time string.
+ * Format an ISO 8601 timestamp into a localized short time string, with the day
+ * in front when it is not today: history can be read oldest first, a month back.
  *
  * @param iso - The ISO 8601 timestamp string to format.
- * @returns The time portion formatted according to the user's locale with hour and two-digit minute (e.g., "3:05 PM").
+ * @returns The time portion formatted according to the user's locale (e.g., "3:05 PM", or "Oct 25 3:05 PM" on another day).
  */
 function formatTime(iso: string): string {
-  return formatDisplayTime(iso);
+  const time = formatDisplayTime(iso);
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime()) || localDateStamp(date) === localDateStamp()) return time;
+  return `${formatShortDate(date, { month: 'short', day: 'numeric' })} ${time}`;
 }
 
 /**
@@ -191,6 +209,9 @@ const HEALTH_LABEL: Record<string, string> = { error: 'Error', warning: 'Warning
  * check cannot be read.
  */
 function ProwlarrHealthBanner() {
+  const queryClient = useQueryClient();
+  const canManage = useCan('prowlarr.manage');
+  const [checking, setChecking] = useState(false);
   const healthQuery = useQuery({
     queryKey: ['prowlarr', 'health'],
     queryFn: jsonFetcher<HealthCheck[]>('/api/prowlarr/health'),
@@ -205,8 +226,36 @@ function ProwlarrHealthBanner() {
     .sort((a, b) => HEALTH_ORDER[a.type] - HEALTH_ORDER[b.type]);
   if (checks.length === 0) return null;
 
+  // Prowlarr reruns its checks on a schedule and after changes; this runs
+  // them now (after fixing an indexer, say) and reads them once they finish.
+  async function recheck() {
+    setChecking(true);
+    try {
+      const res = await fetch('/api/prowlarr/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'CheckHealth' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || typeof data.id !== 'number') {
+        toast.error(typeof data.error === 'string' ? data.error : 'Health check failed');
+        return;
+      }
+      const status = await pollCommand('prowlarr', data.id);
+      if (status === 'completed') toast.success('Health checked');
+      else if (status === 'timeout') toast('The health check is still running', { description: 'The warnings update when it finishes.' });
+      else toast.error('Health check failed');
+    } catch {
+      toast.error('Health check failed');
+    } finally {
+      setChecking(false);
+      await queryClient.invalidateQueries({ queryKey: ['prowlarr', 'health'] });
+    }
+  }
+
   return (
-    <div role="status" aria-label="Prowlarr health" className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 space-y-2">
+    <div role="status" aria-label="Prowlarr health" className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+      <div className="min-w-0 flex-1 space-y-2">
       {checks.map((check, index) => (
         <div key={`${check.source}-${index}`} className="flex items-start gap-2 text-xs">
           <AlertTriangle
@@ -231,6 +280,19 @@ function ProwlarrHealthBanner() {
           </p>
         </div>
       ))}
+      </div>
+      {canManage && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="relative touch-target -my-1 h-8 shrink-0 gap-1.5 px-2 text-xs"
+          onClick={() => void recheck()}
+          disabled={checking}
+        >
+          {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          Re-check
+        </Button>
+      )}
     </div>
   );
 }
@@ -246,9 +308,18 @@ function ProwlarrHealthBanner() {
  * @returns A JSX element representing the Indexers tab UI.
  */
 
-function IndexersTab({ actions, onOpen }: { actions: IndexerActions; onOpen: (id: number) => void }) {
+function IndexersTab({ actions, onOpen, toolbar }: {
+  actions: IndexerActions;
+  onOpen: (id: number) => void;
+  /** Sync All and Test All, run by the page. */
+  toolbar: { syncing: boolean; testingAll: boolean; onSyncAll: () => void; onTestAll: () => void };
+}) {
   const canManage = useCan('prowlarr.manage');
   const { testingId, deletingId, pendingEdits, setConfirmDelete, handleTest, handleToggle } = actions;
+  const view = useUIStore((state) => state.prowlarrIndexerView);
+  const setView = useUIStore((state) => state.setProwlarrIndexerView);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(() => new Set());
 
   const indexersQuery = useQuery({
     queryKey: ['prowlarr', 'indexers'],
@@ -263,48 +334,154 @@ function IndexersTab({ actions, onOpen }: { actions: IndexerActions; onOpen: (id
     select: ensureArray,
   });
 
+  const tagsQuery = useQuery(prowlarrTagsQuery);
+  const profilesQuery = useQuery({
+    queryKey: ['prowlarr', 'appprofile'],
+    queryFn: jsonFetcher<ProwlarrAppProfile[]>('/api/prowlarr/appprofile'),
+    select: ensureArray,
+    staleTime: 5 * 60_000,
+  });
+  const tags = tagsQuery.data ?? [];
+  const profiles = profilesQuery.data ?? [];
+
   const indexers = useIndexersWithPending(indexersQuery.data, pendingEdits);
-  const statuses = statusQuery.data ?? [];
+  const statusData = statusQuery.data;
+  const statuses = useMemo(() => statusData ?? [], [statusData]);
+  const shown = useMemo(() => applyIndexerView(indexers, statuses, view), [indexers, statuses, view]);
+  // Actions reach only what is selected and still shown, never a row a
+  // filter has hidden since it was picked.
+  const selected = shown.filter((indexer) => selectedIds.has(indexer.id));
+  const allSelected = shown.length > 0 && selected.length === shown.length;
+  const filtered = hasIndexerFilters(view);
+
+  // A saved tag or app profile Prowlarr no longer has would hide every
+  // indexer with no chip to clear it; once the lists load, drop it.
+  const tagsData = tagsQuery.data;
+  const profilesData = profilesQuery.data;
+  useEffect(() => {
+    if (tagsData && view.tags.some((id) => !tagsData.some((tag) => tag.id === id))) {
+      setView({ tags: view.tags.filter((id) => tagsData.some((tag) => tag.id === id)) });
+    }
+    if (profilesData && view.appProfiles.some((id) => !profilesData.some((profile) => profile.id === id))) {
+      setView({ appProfiles: view.appProfiles.filter((id) => profilesData.some((profile) => profile.id === id)) });
+    }
+  }, [tagsData, profilesData, view.tags, view.appProfiles, setView]);
+
+  function exitSelection() {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Rendered while the list loads or fails too, so Sync All and Test All
+  // stay where they are.
+  const toolbarRow = (
+    <IndexerToolbar
+      view={view}
+      setView={setView}
+      indexers={indexers}
+      tags={tags}
+      profiles={profiles}
+      canManage={!!canManage}
+      {...toolbar}
+    />
+  );
 
   if (indexersQuery.isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
+      <>
+        {toolbarRow}
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </>
     );
   }
 
   const offline = isQueryOffline(indexersQuery);
   if (offline || indexersQuery.isError) {
     return (
-      <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
-        <p>{offline ? "You're offline" : 'Failed to load indexers'}</p>
-        <p className="text-sm mt-2">
-          {offline ? 'Indexers load again when the connection returns.' : 'Make sure Prowlarr is configured in Settings.'}
-        </p>
-      </div>
+      <>
+        {toolbarRow}
+        <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
+          <p>{offline ? "You're offline" : 'Failed to load indexers'}</p>
+          <p className="text-sm mt-2">
+            {offline ? 'Indexers load again when the connection returns.' : 'Make sure Prowlarr is configured in Settings.'}
+          </p>
+        </div>
+      </>
     );
   }
 
   return (
     <>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm text-muted-foreground">{indexers.length} indexer{indexers.length !== 1 ? 's' : ''}</p>
+      {toolbarRow}
+
+      <ActiveFilterBar
+        filters={indexerActiveFilters(view, setView, tags, profiles)}
+        onClearAll={() => setView({ ...DEFAULT_PROWLARR_INDEXER_VIEW, sort: view.sort, sortDirection: view.sortDirection })}
+      />
+
+      {/* The count and Select share one row, as on Activity's queue. */}
+      <div className="flex min-h-8 items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          {filtered ? `${shown.length} of ${indexers.length}` : indexers.length} indexer{indexers.length !== 1 ? 's' : ''}
+        </p>
+        {canManage && indexers.length > 0 && (
+          <Button
+            variant={selectionMode ? 'default' : 'ghost'}
+            size="sm"
+            className="relative touch-target h-8 md:h-11"
+            onClick={() => (selectionMode ? exitSelection() : setSelectionMode(true))}
+            aria-pressed={selectionMode}
+          >
+            <ListChecks className="h-4 w-4" />
+            {selectionMode ? 'Done' : 'Select'}
+          </Button>
+        )}
       </div>
 
       {indexers.length === 0 ? (
         <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
           No indexers configured.
         </div>
+      ) : shown.length === 0 ? (
+        <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
+          No indexers match these filters.
+        </div>
       ) : (
         <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50">
-          {indexers.map((indexer) => {
+          {shown.map((indexer) => {
             const blockedStatus = getActiveBlockedStatus(indexer.id, statuses);
+            const isSelected = selectedIds.has(indexer.id);
             return (
               <QuickContextMenu
                 key={indexer.id}
                 label={`Actions for ${indexer.name}`}
+                disabled={selectionMode}
                 groups={[
+                  {
+                    id: 'select',
+                    actions: canManage
+                      ? [{
+                          id: 'select',
+                          label: 'Select',
+                          icon: <ListChecks className="h-4 w-4" />,
+                          onSelect: () => {
+                            setSelectionMode(true);
+                            setSelectedIds((prev) => new Set(prev).add(indexer.id));
+                          },
+                        }]
+                      : [],
+                  },
                   {
                     id: 'manage',
                     actions: canManage
@@ -336,14 +513,16 @@ function IndexersTab({ actions, onOpen }: { actions: IndexerActions; onOpen: (id
                   },
                 ]}
               >
-                <div className="relative px-4 py-3 flex items-center gap-3">
+                <div className={`relative px-4 py-3 flex items-center gap-3 ${selectionMode && isSelected ? 'bg-primary/10' : ''}`}>
+                  {selectionMode && <Checkbox checked={isSelected} tabIndex={-1} aria-hidden className="pointer-events-none" />}
                   <IndexerStatusDot indexer={indexer} statuses={statuses} />
                   <div className="flex-1 min-w-0">
                     {/* Stretched over the row; the row's own controls sit above it. */}
                     <button
                       type="button"
                       data-context-menu-row
-                      onClick={() => onOpen(indexer.id)}
+                      onClick={() => (selectionMode ? toggleSelected(indexer.id) : onOpen(indexer.id))}
+                      aria-pressed={selectionMode ? isSelected : undefined}
                       className="block max-w-full truncate text-left text-sm font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
                     >
                       {indexer.name}
@@ -369,14 +548,16 @@ function IndexersTab({ actions, onOpen }: { actions: IndexerActions; onOpen: (id
                         >
                           Blocked
                         </Badge>
-                        <span className="relative z-10">
-                          <BlockedStatusTrigger status={blockedStatus} />
-                        </span>
+                        {!selectionMode && (
+                          <span className="relative z-10">
+                            <BlockedStatusTrigger status={blockedStatus} />
+                          </span>
+                        )}
                       </>
                     )}
                     </div>
                   </div>
-                  {canManage && (
+                  {canManage && !selectionMode && (
                     <div className="relative z-10 flex items-center gap-1 shrink-0">
                       <Switch
                         checked={indexer.enable}
@@ -433,6 +614,18 @@ function IndexersTab({ actions, onOpen }: { actions: IndexerActions; onOpen: (id
         </div>
       )}
 
+      {selectionMode && (
+        <IndexerBulkBar
+          selected={selected}
+          allSelected={allSelected}
+          onToggleAll={() => setSelectedIds(allSelected ? new Set() : new Set(shown.map((indexer) => indexer.id)))}
+          onCancel={exitSelection}
+          onDeleted={exitSelection}
+          tags={tags}
+          profiles={profiles}
+          actions={actions}
+        />
+      )}
     </>
   );
 }
@@ -487,19 +680,36 @@ function StatCard({ label, value, icon, iconBg }: StatCardProps) {
  */
 function StatsTab() {
   const [dateRange, setDateRange] = useRouteViewState<DateRange>('dateRange', '7d');
+  const [filters, setFilters] = useRouteViewState<StatsFilters>('statsFilters', NO_STATS_FILTERS);
+  const queryClient = useQueryClient();
 
-  const statsQuery = useQuery(prowlarrStatsQuery(dateRange));
+  // The shared caches the indexer list and the Apps tab fill; the menu just has fewer choices while they load.
+  const indexersQuery = useQuery({
+    queryKey: ['prowlarr', 'indexers'],
+    queryFn: jsonFetcher<ProwlarrIndexerSummary[]>('/api/prowlarr/indexers'),
+    select: ensureArray,
+  });
+  const tagsQuery = useQuery(prowlarrTagsQuery);
+  const filterIndexers = useMemo(
+    () => [...(indexersQuery.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+    [indexersQuery.data],
+  );
+  const filterTags = tagsQuery.data ?? [];
+  // A tag deleted in Prowlarr since it was picked would fail the whole request,
+  // and an indexer deleted since would leave a nameless chip over empty stats.
+  const appliedFilters = {
+    ...filters,
+    tags: tagsQuery.data ? filters.tags.filter((id) => filterTags.some((tag) => tag.id === id)) : filters.tags,
+    indexers: indexersQuery.data
+      ? filters.indexers.filter((id) => filterIndexers.some((indexer) => indexer.id === id))
+      : filters.indexers,
+  };
+
+  const statsQuery = useQuery(prowlarrStatsQuery(dateRange, appliedFilters));
+  const activeFilters = statsActiveFilters(appliedFilters, setFilters, filterIndexers, filterTags);
 
   const stats = statsQuery.data ?? null;
   const loading = statsQuery.isLoading;
-
-  if (statsQuery.isError) {
-    return (
-      <div className="rounded-xl bg-card border border-border p-8 text-center text-muted-foreground">
-        Failed to load stats
-      </div>
-    );
-  }
 
   const indexers = stats?.indexers ?? [];
   const userAgents: ProwlarrUserAgentStat[] = stats?.userAgents ?? [];
@@ -562,23 +772,46 @@ function StatsTab() {
 
   return (
     <div className="space-y-4">
-      {/* Date range pill selector */}
-      <div className="flex bg-card border border-border rounded-lg p-1 gap-0.5 w-fit">
-        {DATE_RANGES.map((r) => (
-          <button
-            key={r.value}
-            onClick={() => setDateRange(r.value)}
-            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${dateRange === r.value
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-              }`}
-          >
-            {r.label}
-          </button>
-        ))}
+      <div className="flex items-stretch gap-2">
+        {/* Date range pill selector */}
+        <div className="flex bg-card border border-border rounded-lg p-1 gap-0.5 w-fit">
+          {DATE_RANGES.map((r) => (
+            <button
+              key={r.value}
+              onClick={() => setDateRange(r.value)}
+              className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${dateRange === r.value
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+                }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <StatsFilterMenu filters={appliedFilters} onChange={setFilters} indexers={filterIndexers} tags={filterTags} />
       </div>
+      <ActiveFilterBar filters={activeFilters} onClearAll={() => setFilters(NO_STATS_FILTERS)} />
 
-      {loading ? (
+      {/* Below the filters, so a filter that broke the request can still be changed. */}
+      {statsQuery.isError ? (
+        <div className="rounded-xl bg-card border border-border p-8 text-center text-muted-foreground">
+          <p>Failed to load stats</p>
+          {activeFilters.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={() => {
+                setFilters(NO_STATS_FILTERS);
+                // A tag deleted in Prowlarr is the usual cause; the next list leaves it out.
+                void queryClient.invalidateQueries({ queryKey: prowlarrTagsQuery.queryKey });
+              }}
+            >
+              Clear filters
+            </Button>
+          )}
+        </div>
+      ) : loading ? (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="rounded-xl bg-card border border-border p-4 h-[72px] animate-pulse" />
@@ -764,7 +997,9 @@ function StatsTab() {
 
           {indexers.length === 0 && (
             <div className="rounded-xl bg-card border border-border p-10 text-center">
-              <p className="text-sm text-muted-foreground">No stats for this period.</p>
+              <p className="text-sm text-muted-foreground">
+                {activeFilters.length > 0 ? 'No stats for this period and these filters.' : 'No stats for this period.'}
+              </p>
             </div>
           )}
         </>
@@ -774,18 +1009,6 @@ function StatsTab() {
 }
 
 // ── History Tab ──────────────────────────────────────────────────────────────
-
-// eventType values: 1=Grabbed, 2=IndexerQuery, 3=IndexerRss
-// Failed uses successful=false instead of eventType
-const HISTORY_FILTERS = [
-  { label: 'All', value: '', eventType: undefined, successful: undefined },
-  { label: 'Grabbed', value: '1', eventType: '1', successful: undefined },
-  { label: 'Indexer Query', value: '2', eventType: '2', successful: undefined },
-  { label: 'Indexer RSS', value: '3', eventType: '3', successful: undefined },
-  { label: 'Failed', value: 'failed', eventType: undefined, successful: 'false' },
-] as const;
-
-type HistoryFilterValue = typeof HISTORY_FILTERS[number]['value'];
 
 /**
  * Parses a comma-separated string of category IDs into an array of integers.
@@ -905,6 +1128,7 @@ function HistoryTab({ indexerId, onIndexerChange }: {
 }) {
   const [selectedRecord, setSelectedRecord] = useState<ProwlarrHistoryRecord | null>(null);
   const [activeFilter, setActiveFilter] = useRouteViewState<HistoryFilterValue>('activeFilter', '');
+  const [sort, setSort] = useRouteViewState<HistorySort>('historySort', 'newest');
 
   const PAGE_SIZE = 20;
 
@@ -930,11 +1154,13 @@ function HistoryTab({ indexerId, onIndexerChange }: {
   const indexerLabel = indexerId === null ? 'All indexers' : indexerMap[indexerId] ?? `Indexer ${indexerId}`;
 
   const historyQuery = useInfiniteQuery({
-    queryKey: ['prowlarr', 'history', activeFilter, indexerId],
+    queryKey: ['prowlarr', 'history', activeFilter, indexerId, sort],
     queryFn: async ({ pageParam, signal }) => {
-      const f = HISTORY_FILTERS.find((x) => x.value === activeFilter)!;
+      // A filter saved before its pill went away falls back to All.
+      const f = HISTORY_FILTERS.find((x) => x.value === activeFilter) ?? HISTORY_FILTERS[0];
       const params = new URLSearchParams({ page: String(pageParam), pageSize: String(PAGE_SIZE) });
       if (indexerId !== null) params.set('indexerId', String(indexerId));
+      if (sort === 'oldest') params.set('sort', 'oldest');
       if (f.eventType) params.set('eventType', f.eventType);
       if (f.successful !== undefined) params.set('successful', f.successful);
       const res = await fetch(`/api/prowlarr/history?${params}`, { signal });
@@ -965,53 +1191,16 @@ function HistoryTab({ indexerId, onIndexerChange }: {
 
   return (
     <div className="space-y-3">
-      {/* Filter pills */}
-      <div className="flex gap-1.5 flex-wrap">
-        {HISTORY_FILTERS.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => setActiveFilter(f.value)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeFilter === f.value
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-card border border-border text-muted-foreground hover:text-foreground'
-              }`}
-          >
-            {f.label}
-          </button>
-        ))}
-        <ResponsiveMenu
-          title="Indexer"
-          titleInDropdown
-          closeOnPick
-          contentClassName="max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto"
-          trigger={(
-            <button
-              type="button"
-              aria-label={`Indexer: ${indexerLabel}`}
-              className={`flex min-w-0 items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${indexerId !== null
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-card border border-border text-muted-foreground hover:text-foreground'
-                }`}
-            >
-              <span className="max-w-[9rem] truncate">{indexerLabel}</span>
-              <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-            </button>
-          )}
-        >
-          <ResponsiveMenuCheckboxItem checked={indexerId === null} onCheckedChange={() => onIndexerChange(null)}>
-            All indexers
-          </ResponsiveMenuCheckboxItem>
-          {indexerOptions.map((indexer) => (
-            <ResponsiveMenuCheckboxItem
-              key={indexer.id}
-              checked={indexerId === indexer.id}
-              onCheckedChange={() => onIndexerChange(indexer.id)}
-            >
-              <span className="truncate">{indexer.name}</span>
-            </ResponsiveMenuCheckboxItem>
-          ))}
-        </ResponsiveMenu>
-      </div>
+      <HistoryFilterBar
+        activeFilter={activeFilter}
+        onFilterChange={setActiveFilter}
+        indexerId={indexerId}
+        indexerLabel={indexerLabel}
+        indexerOptions={indexerOptions}
+        onIndexerChange={onIndexerChange}
+        sort={sort}
+        onSortChange={setSort}
+      />
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
@@ -1325,41 +1514,6 @@ export default function ProwlarrPage() {
     }
   }
 
-  // Sync/Test controls live inside the Indexers tab, below the sticky tabs
-  // header, so nothing renders above the page header.
-  const manageActions = canManage && (
-    <div className="flex items-center gap-2 flex-wrap">
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-9 gap-1.5"
-        onClick={() => sendCommand('ApplicationIndexerSync', 'Sync All', setSyncing)}
-        disabled={syncing}
-      >
-        {syncing ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <RefreshCw className="h-4 w-4" />
-        )}
-        Sync All
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-9 gap-1.5"
-        onClick={handleTestAll}
-        disabled={testingAll}
-      >
-        {testingAll ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <CheckCircle className="h-4 w-4" />
-        )}
-        Test All
-      </Button>
-    </div>
-  );
-
   return (
     <div className="animate-content-in">
       <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['prowlarr'] })} />
@@ -1455,9 +1609,19 @@ export default function ProwlarrPage() {
 
         <ProwlarrHealthBanner />
 
-        <TabsContent value="indexers" className="mt-4 space-y-4">
-          {manageActions}
-          <IndexersTab actions={actions} onOpen={openIndexerSheet} />
+        {/* Sync/Test controls live inside the Indexers tab, below the sticky
+            tabs header, so nothing renders above the page header. */}
+        <TabsContent value="indexers" className="mt-4 space-y-3">
+          <IndexersTab
+            actions={actions}
+            onOpen={openIndexerSheet}
+            toolbar={{
+              syncing,
+              testingAll,
+              onSyncAll: () => void sendCommand('ApplicationIndexerSync', 'Sync All', setSyncing),
+              onTestAll: () => void handleTestAll(),
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="stats" className="mt-4">
@@ -1476,6 +1640,7 @@ export default function ProwlarrPage() {
 
         <TabsContent value="apps" className="mt-4">
           <ApplicationsTab />
+          <IndexerProxiesSection canManage={!!canManage} />
         </TabsContent>
       </Tabs>
     </div>

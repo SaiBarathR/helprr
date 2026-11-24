@@ -3,7 +3,7 @@ import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { urlsToOrigins } from '@/lib/url-origins';
 import { MAX_TORRENT_BYTES } from '@/lib/manual-downloads/release-source';
-import type { HealthCheck, Tag } from '@/types/arr';
+import type { ArrUpdate, HealthCheck, Tag } from '@/types/arr';
 
 interface SystemStatus {
   version: string;
@@ -37,6 +37,8 @@ export interface ProwlarrIndexer {
   description?: string;
   capabilities?: { categories?: { id: number; name: string }[] };
   appProfileId?: number;
+  /** When it was added, ISO 8601. */
+  added?: string;
 }
 
 /**
@@ -48,7 +50,7 @@ export interface ProwlarrIndexer {
  */
 export type ProwlarrIndexerSummary = Pick<
   ProwlarrIndexer,
-  'id' | 'name' | 'enable' | 'protocol' | 'privacy' | 'priority' | 'implementationName' | 'tags' | 'appProfileId'
+  'id' | 'name' | 'enable' | 'protocol' | 'privacy' | 'priority' | 'implementationName' | 'tags' | 'appProfileId' | 'added'
 > & { categories: string[] };
 
 export function toProwlarrIndexerSummary(indexer: ProwlarrIndexer): ProwlarrIndexerSummary {
@@ -62,6 +64,7 @@ export function toProwlarrIndexerSummary(indexer: ProwlarrIndexer): ProwlarrInde
     implementationName: indexer.implementationName,
     tags: indexer.tags,
     appProfileId: indexer.appProfileId,
+    added: indexer.added,
     categories: (indexer.capabilities?.categories ?? [])
       .map((category) => category.name)
       .filter((name) => typeof name === 'string'),
@@ -75,6 +78,38 @@ export interface ProwlarrBulkEdit {
   appProfileId?: number;
   tags?: number[];
   applyTags?: 'add' | 'remove' | 'replace';
+}
+
+export type ProwlarrSyncLevel = 'disabled' | 'addOnly' | 'fullSync';
+
+/** Prowlarr's app bulk editor: only the properties sent change. */
+export interface ProwlarrApplicationBulkEdit {
+  ids: number[];
+  syncLevel?: ProwlarrSyncLevel;
+  tags?: number[];
+  applyTags?: 'add' | 'remove' | 'replace';
+}
+
+/**
+ * A new app as Prowlarr's add form sends it, built on the server from one of
+ * Prowlarr's templates. Server-side only: `fields` holds the arr's API key.
+ */
+export interface ProwlarrNewApplication {
+  name: string;
+  implementation: string;
+  implementationName: string;
+  configContract: string;
+  syncLevel: ProwlarrSyncLevel;
+  tags: number[];
+  fields: { name: string; value?: unknown }[];
+}
+
+/** One of Prowlarr's app templates (its add form's starting point). */
+export interface ProwlarrApplicationTemplate {
+  implementation: string;
+  implementationName: string;
+  configContract: string;
+  fields: { name: string; value?: unknown }[];
 }
 
 export interface ProwlarrRelease {
@@ -105,6 +140,16 @@ export interface ProwlarrDownloadClient {
   protocol: string;
   enable: boolean;
   priority: number;
+  fields?: unknown;
+}
+
+/** Server-side only: `fields` holds the proxy's host, username and password. */
+export interface ProwlarrIndexerProxy {
+  id: number;
+  name: string;
+  implementation: string;
+  implementationName: string;
+  tags: number[];
   fields?: unknown;
 }
 
@@ -232,6 +277,15 @@ export interface ProwlarrHostStat {
   numberOfGrabs: number;
 }
 
+/** Stats filters as Prowlarr's indexerstats takes them: lists are comma-separated. */
+export interface ProwlarrStatsParams {
+  startDate?: string;
+  endDate?: string;
+  indexers?: string;
+  protocols?: string;
+  tags?: string;
+}
+
 export interface ProwlarrStats {
   indexers: ProwlarrIndexerStat[];
   userAgents: ProwlarrUserAgentStat[];
@@ -317,17 +371,17 @@ export class ProwlarrClient {
     }
   }
 
-  private async put<T>(endpoint: string, body?: unknown): Promise<T> {
+  private async put<T>(endpoint: string, body?: unknown, config?: { timeout?: number }): Promise<T> {
     try {
-      const response = await this.client.put<T>(endpoint, body);
+      const response = await this.client.put<T>(endpoint, body, config);
       return response.data;
     } catch (error) {
       throwUpstreamMessage(error);
     }
   }
 
-  private async delete<T>(endpoint: string): Promise<T> {
-    const response = await this.client.delete<T>(endpoint);
+  private async delete<T>(endpoint: string, body?: unknown): Promise<T> {
+    const response = await this.client.delete<T>(endpoint, body === undefined ? undefined : { data: body });
     return response.data;
   }
 
@@ -343,12 +397,24 @@ export class ProwlarrClient {
     await this.delete(`/api/v1/indexer/${id}`);
   }
 
+  /**
+   * Prowlarr deletes the ids it has, skips any it hasn't, and answers with an
+   * empty object either way, so the response says nothing about which went.
+   */
+  async deleteIndexers(ids: number[]): Promise<void> {
+    await this.delete('/api/v1/indexer/bulk', { ids });
+  }
+
   async testAllIndexers(): Promise<ProwlarrTestAllResponse> {
     return this.testAll('/api/v1/indexer/testall');
   }
 
   async testAllApplications(): Promise<ProwlarrTestAllResponse> {
     return this.testAll('/api/v1/applications/testall');
+  }
+
+  async testAllIndexerProxies(): Promise<ProwlarrTestAllResponse> {
+    return this.testAll('/api/v1/indexerproxy/testall');
   }
 
   private async testAll(endpoint: string): Promise<ProwlarrTestAllResponse> {
@@ -442,12 +508,62 @@ export class ProwlarrClient {
     await this.post('/api/v1/applications/test', application, { timeout: 60_000 });
   }
 
+  async getApplication(id: number): Promise<ProwlarrApplication> {
+    return this.get<ProwlarrApplication>(`/api/v1/applications/${id}`);
+  }
+
+  /**
+   * Save an app unchanged, as its Save button in Prowlarr does. Prowlarr tests
+   * it, then adds and updates that one app's indexers (it removes none; only
+   * the sync command does). Its command has no per-app form. The app goes back
+   * as Prowlarr gave it: Prowlarr sends its API key masked and keeps the stored
+   * one when the mask comes back.
+   */
+  async resaveApplication(application: ProwlarrApplication): Promise<void> {
+    await this.put(`/api/v1/applications/${application.id}`, application, { timeout: 60_000 });
+  }
+
+  /** Like the indexer bulk editor; its response holds whole apps, API keys included, so it is not returned. */
+  async bulkEditApplications(body: ProwlarrApplicationBulkEdit): Promise<void> {
+    await this.put('/api/v1/applications/bulk', body);
+  }
+
+  async getApplicationTemplates(): Promise<ProwlarrApplicationTemplate[]> {
+    return this.get<ProwlarrApplicationTemplate[]>('/api/v1/applications/schema');
+  }
+
+  /** Prowlarr refuses a failing test; it reaches the arr, and asks the arr to reach Prowlarr. */
+  async testNewApplication(application: ProwlarrNewApplication): Promise<void> {
+    await this.post('/api/v1/applications/test', application, { timeout: 60_000 });
+  }
+
+  /** Only the new app's id and name are kept from the response, which holds its settings. */
+  async addApplication(application: ProwlarrNewApplication): Promise<{ id: number; name: string }> {
+    const created = await this.post<ProwlarrApplication>('/api/v1/applications', application, { timeout: 60_000 });
+    return { id: created.id, name: created.name };
+  }
+
+  async getIndexerProxies(): Promise<ProwlarrIndexerProxy[]> {
+    return this.get<ProwlarrIndexerProxy[]>('/api/v1/indexerproxy');
+  }
+
+  /** As testApplication: the proxy is read and sent back, so its settings stay on the server. */
+  async testIndexerProxy(id: number): Promise<void> {
+    const proxy = await this.get<ProwlarrIndexerProxy>(`/api/v1/indexerproxy/${id}`);
+    await this.post('/api/v1/indexerproxy/test', proxy, { timeout: 60_000 });
+  }
+
   async getTags(): Promise<Tag[]> {
     return this.get<Tag[]>('/api/v1/tag');
   }
 
   async getHealth(): Promise<HealthCheck[]> {
     return this.get<HealthCheck[]>('/api/v1/health');
+  }
+
+  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
+  async getUpdates(): Promise<ArrUpdate[]> {
+    return this.get<ArrUpdate[]>('/api/v1/update');
   }
 
   async getIndexer(id: number): Promise<ProwlarrIndexer> {
@@ -464,17 +580,48 @@ export class ProwlarrClient {
     return this.get<ProwlarrIndexerStatus[]>('/api/v1/indexerstatus');
   }
 
-  async getIndexerStats(params?: { startDate?: string }): Promise<ProwlarrStats> {
+  async getIndexerStats(params?: ProwlarrStatsParams): Promise<ProwlarrStats> {
     return this.get<ProwlarrStats>('/api/v1/indexerstats', params as Record<string, unknown>);
   }
 
-  async getHistory({ indexerId, ...params }: { page?: number; pageSize?: number; indexerId?: number; eventType?: number; successful?: boolean } = {}): Promise<ProwlarrHistoryResponse> {
-    // Prowlarr filters history by `indexerIds` and ignores `indexerId`.
-    return this.get<ProwlarrHistoryResponse>('/api/v1/history', { ...params, indexerIds: indexerId });
+  async getHistory({ indexerId, sortDirection, ...params }: {
+    page?: number;
+    pageSize?: number;
+    indexerId?: number;
+    eventType?: number;
+    successful?: boolean;
+    sortDirection?: 'ascending' | 'descending';
+  } = {}): Promise<ProwlarrHistoryResponse> {
+    // Prowlarr filters history by `indexerIds` and ignores `indexerId`. Date
+    // is the only key it sorts history by.
+    return this.get<ProwlarrHistoryResponse>('/api/v1/history', {
+      ...params,
+      indexerIds: indexerId,
+      ...(sortDirection ? { sortKey: 'date', sortDirection } : {}),
+    });
   }
 
-  async sendCommand(name: string): Promise<CommandResponse> {
-    return this.post<CommandResponse>('/api/v1/command', { name });
+  async sendCommand(name: string, options?: { forceSync?: boolean }): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v1/command', { name, ...options });
+  }
+
+  /** System → Tasks: each scheduled task with its interval and last and next run. */
+  async getSystemTasks(): Promise<unknown[]> {
+    return this.get<unknown[]>('/api/v1/system/task');
+  }
+
+  /** System → Logs, one page; `level: 'warn'` is warnings and worse. */
+  async getLogs(params: { page: number; pageSize: number; level: string }): Promise<unknown> {
+    return this.get<unknown>('/api/v1/log', { ...params, sortKey: 'time', sortDirection: 'descending' });
+  }
+
+  /** A scheduled task run now, by its task name. Callers allow-list the name (see lib/arr-system.ts). */
+  async runTask(name: string): Promise<CommandResponse> {
+    return this.sendCommand(name);
+  }
+
+  async getCommand(id: number): Promise<CommandResponse> {
+    return this.get<CommandResponse>(`/api/v1/command/${id}`);
   }
 
   async getAppProfiles(): Promise<ProwlarrAppProfile[]> {

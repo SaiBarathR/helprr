@@ -98,6 +98,13 @@ applies an update. Back up and follow the normal update procedure after reviewin
 linked release notes. To stop the check, turn off **Check for updates** in
 **Settings → Service status**: Helprr then never asks GitHub, and shows no notice.
 
+On the same page admins see each Sonarr, Radarr, Lidarr and Prowlarr version, and
+**update available** when the app itself offers a newer one. Helprr never installs it:
+update the app the way you installed it. Tap the app's row for its **Tasks** (each
+scheduled task's interval and last and next run, with **Run** for the ones that can't
+install an update or delete files or history) and **Logs** (its recent warnings and
+errors, with addresses cut to their host and keys, passwords and magnet links removed).
+
 After an update, everyone sees a **What's new** card once, the first time they open
 Helprr, with the notes for each release since the version they last saw. Closing it
 hides it on every device. A new account, and builds that are not a release (such as

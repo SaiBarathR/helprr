@@ -176,6 +176,17 @@ of an older file does the same as for `upgraded` below (marker
 `src/lib/settings-import/notifications.ts`). A Service status link whose
 service doesn't match the instance's type opens that instance's own health,
 or nothing.
+For admins the same sheet (and a Prowlarr row's) adds the app's version,
+scheduled tasks and recent warnings, through the admin-only
+`/api/admin/arr-system/{status,tasks,tasks/[id],logs}?instanceId=` routes
+(`src/lib/server/arr-system.ts`): the instance is looked up by id and its own
+type picks the client. Run now sends only the task names in `RUNNABLE_TASKS`
+(`src/lib/arr-system.ts`); update checks, recycle-bin and history clean-up,
+import-list sync and Lidarr's folder rescan are left out. Log entries are
+rebuilt from id, time, level, logger, message and exception, each redacted
+(URLs to origins, credentials, magnets, the instance's key, bare 32-hex words)
+and then cut short. The version check never installs anything, and no push
+announces an app update.
 One upstream failure must not cancel every other source. Sonarr, Radarr, and
 Lidarr instances share two polling slots per cycle; an instance that fails twice
 in a row is skipped (without taking a slot) for 30 seconds, doubling to 5
@@ -1095,6 +1106,24 @@ to whatever client the id names, so the route first checks it is enabled and
 for the release's protocol. The client list leaves the server as id, name and
 protocol only: each client's `fields` hold its password.
 
+The Prowlarr page's commands go through `POST /api/prowlarr/command`, which
+sends only the names on its allow-list (`ApplicationIndexerSync` for Sync All,
+`CheckHealth` for the health banner's Re-check) and needs `prowlarr.manage`;
+`GET /api/prowlarr/command/[id]` follows one until it ends and passes on its id,
+name and status only. Select mode on the Indexers tab edits through
+`PUT /api/prowlarr/indexers/bulk` and deletes through
+`DELETE /api/prowlarr/indexers/bulk` (`prowlarr.manage`, at most 200 ids):
+every id must be one Prowlarr has, or nothing is sent, and since Prowlarr's
+answer does not say which went, the route reads the list again and reports each
+id as deleted or not. Indexer deletes, single or bulk, remove Prowlarr settings
+rather than media, files or downloads and are not in the operation audit. The
+indexer list's search, sort and filters run over the loaded list and are kept in
+the UI store (`prowlarrIndexerView`). Indexer proxies
+(`GET /api/prowlarr/indexerproxies`, `prowlarr.view`) leave the server as id,
+name, type, tags and the indexers sharing a tag with each; their `fields` (host,
+user name, password) never do. Test and Test All (`prowlarr.manage`) answer pass
+or fail only, since Prowlarr's failure text can name the proxy's host.
+
 qBittorrent's `transfer/info` also carries `last_external_address_v4` and `_v6`,
 the owner's public IP. `/api/qbittorrent/transfer` and the summary (full, `view=delta`,
 `view=counters`, and the cache and delta history behind them) rebuild it with
@@ -1415,6 +1444,37 @@ devices without a row get it on. A settings import of an older file does the
 same: a device rule for `imported` without one for `upgraded`, and the
 channels of a `users` section without `upgradedEvent: true`. Lidarr imports
 are always `imported`.
+
+The opt-in Sonarr/Radarr events (AR-17) are in `DEFAULT_OFF_EVENT_TYPES`
+(`src/lib/notification-events.ts`), so a device without a row and a channel
+that does not list them get none; that is also their starting state on devices,
+channels and settings files from before them, so no migration or import marker
+was needed. While nobody takes one (`usersWhoCouldReceive`), the pollers do not
+send it at all (`wantedNotices` in `src/lib/polling/shared.ts`), so it adds no
+row to the admins' notification list.
+- `fileDeleted` / `fileRenamed` (`notify.media`) come from the history poll
+  (`src/lib/polling/file-changes.ts`): an `episodeFileDeleted`/`movieFileDeleted`
+  row is one notification per file, except reason `Upgrade` (the other half of
+  `upgraded`); renames are one per series or movie per poll. Bodies name the
+  title, episode, quality and reason, or the new file name, never a disk path.
+- `titleAdded` / `titleDeleted` (`notify.media`): the arrs write no history for
+  them, so the cache warm (`warmLibrary` in `src/lib/polling-service.ts`) hands
+  each library read to `src/lib/polling/library-changes.ts`, which keeps every
+  instance's `[id, name]` list in Redis (`helprr:library-ids:<service>:<id>`,
+  30-day TTL) and compares. The first list, a list after the connection changed
+  (`updatedAt`) and an instance that did not answer only record or are skipped;
+  the new list is saved before sending, so a refused write sends nothing. It is
+  saved whether or not anyone takes the events. A deleted title opens the
+  library page.
+- `arrUpdateAvailable` (`notify.health`, admins only): `checkArrUpdates`
+  (`src/lib/polling/arr-updates.ts`) reads each Sonarr, Radarr, Lidarr and
+  Prowlarr `GET /update` once a day; while no admin takes it, the apps are not
+  asked and it looks again hourly (as after a failure). The release marked `latest` is announced when it is not the
+  installed one and is listed above it, once per version and instance (Redis
+  `helprr:arr-update:notified:<id>` plus the dedupe key). It opens Settings →
+  Service status.
+- "Manual Interaction Required" is the existing `importFailed` (a queue item in
+  `importBlocked`, or `importPending` with a warning), for Sonarr as for Radarr.
 
 "Now in your library" (`watchlistAvailable`, `src/lib/polling/watchlist-available.ts`)
 is sent from the Radarr/Sonarr history poll: a non-upgrade import of a title on
