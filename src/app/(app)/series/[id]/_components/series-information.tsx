@@ -2,14 +2,17 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Pencil } from 'lucide-react';
+import { AlternateTitlesRow } from '@/components/media/alternate-titles';
+import type { SonarrSeries } from '@/types';
 import type { SeriesAniListResponse } from '@/types/anilist';
 import { formatAniListMappingState } from './format';
 import type { InfoRow } from './series-info';
 import { QualityProfileValue } from '@/components/media/quality-profile-sheet';
 
-/** The Information section: the series' rows, each season's details, and (for an admin) the AniList mapping. */
+/** The Information section: the series' rows, its alternative titles, each season's details, and (for an admin) the AniList mapping. */
 export function SeriesInformation({
   infoRows,
+  alternateTitles,
   seasonDetailRows,
   showAniListMapping,
   animeMapping,
@@ -17,6 +20,7 @@ export function SeriesInformation({
   onEditMapping,
 }: {
   infoRows: InfoRow[];
+  alternateTitles: SonarrSeries['alternateTitles'];
   seasonDetailRows: InfoRow[];
   showAniListMapping: boolean;
   animeMapping: SeriesAniListResponse['mapping'] | null;
@@ -37,6 +41,7 @@ export function SeriesInformation({
             )}
           </div>
         ))}
+        <AlternateTitlesRow titles={alternateTitles} className="border-b border-border/30" />
         {seasonDetailRows.length > 0 && (
           <>
             <div className="pt-3 pb-1 text-xs uppercase tracking-wider text-muted-foreground">Season Details</div>

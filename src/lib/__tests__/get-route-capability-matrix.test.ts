@@ -84,6 +84,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   ],
   'cap:activity.view': [
     'GET /api/activity/blocklist',
+    'GET /api/activity/blocklist/title',
     'GET /api/activity/history',
     'GET /api/activity/queue',
     'GET /api/activity/recent',
@@ -184,6 +185,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/radarr/qualityprofiles/[id]',
     'GET /api/radarr/collections',
     'GET /api/radarr/history/movie',
+    'GET /api/radarr/extrafile',
     'GET /api/radarr/moviefile',
     'GET /api/radarr',
   ],
@@ -604,7 +606,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(303);
+    expect(handlers.size).toBe(305);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
