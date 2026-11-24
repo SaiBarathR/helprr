@@ -266,10 +266,12 @@ export default function TorrentsPage() {
     }
   }, [refetchSummary, pendingDeleteRef, pendingFieldRef, setTorrents, torrentsRef]);
 
-  const bulkAction = useCallback(async (action: string, extra?: Record<string, unknown>): Promise<boolean> => {
-    if (selectedTorrents.size === 0) return false;
-    const count = selectedTorrents.size;
-    const hashes = Array.from(selectedTorrents).join('|');
+  // `targets`: the torrents a drawer opened on, which a poll pruning the selection must not change.
+  const bulkAction = useCallback(async (action: string, extra?: Record<string, unknown>, targets?: string[]): Promise<boolean> => {
+    const list = targets ?? Array.from(selectedTorrents);
+    if (list.length === 0) return false;
+    const count = list.length;
+    const hashes = list.join('|');
     const verb = torrentActionMessage(action, 'bulk');
     const ok = (await torrentAction(hashes, action, extra, { silent: true })) !== false;
     if (ok) {
@@ -356,7 +358,7 @@ export default function TorrentsPage() {
   // A pick from the selection goes as one bulk action: one toast, and the selection clears.
   const pickCategory = useCallback((category: string) => (
     categoryDrawer.bulk
-      ? bulkAction('setCategory', { category })
+      ? bulkAction('setCategory', { category }, categoryDrawer.hash.split('|'))
       : torrentAction(categoryDrawer.hash, 'setCategory', { category })
   ), [bulkAction, categoryDrawer.bulk, categoryDrawer.hash, torrentAction]);
 

@@ -156,7 +156,7 @@ describe('torrent lists', () => {
 
   it.each([
     [`https://user:secret@Tracker.Invalid:8443/${KEY}/announce?passkey=${QUERY_KEY}`, 'tracker.invalid'],
-    [`udp://tracker.invalid:1337/announce`, 'tracker.invalid'],
+    [`udp://Tracker.Invalid:1337/announce`, 'tracker.invalid'],
     ['', ''],
     ['not a url', ''],
   ])('names the tracker of %j by host only', async (tracker, host) => {

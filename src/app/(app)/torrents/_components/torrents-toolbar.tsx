@@ -116,7 +116,7 @@ export function TorrentsToolbar({
               <ResponsiveMenuLabel>{group.title}</ResponsiveMenuLabel>
               {group.options.map((opt) => (
                 <ResponsiveMenuCheckboxItem
-                  key={opt.value || '(none)'}
+                  key={`v:${opt.value}`}
                   checked={group.selected.includes(opt.value)}
                   onCheckedChange={() => group.onChange(
                     group.selected.includes(opt.value)

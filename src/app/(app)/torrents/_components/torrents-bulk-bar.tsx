@@ -105,7 +105,7 @@ export function TorrentsBulkBar({
           align="end"
           trigger={(
             <button
-              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
+              className="relative touch-target min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
               aria-label="More actions"
             >
               <MoreHorizontal className="h-4 w-4" />

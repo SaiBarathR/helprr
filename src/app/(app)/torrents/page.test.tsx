@@ -464,6 +464,23 @@ describe('torrents page (characterization)', () => {
     }
   });
 
+  it('sets the category of the torrents the drawer opened on, even when a poll drops one from the selection', async () => {
+    const { user, client } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Alpha.Movie' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Charlie' }));
+    await user.click(within(screen.getByRole('button', { name: 'More actions' }).nextElementSibling as HTMLElement)
+      .getByRole('menuitem', { name: 'Set Category' }));
+    const drawer = screen.getByRole('dialog');
+    expect(within(drawer).getByRole('heading', { name: 'Set Category for 2 torrents' })).toBeTruthy();
+    mocks.summary = () => full([ALPHA, BRAVO]);
+    await act(() => client.refetchQueries({ queryKey: ['torrents'] }));
+    await waitFor(() => expect(names()).toEqual(['Alpha.Movie', 'Bravo.Show']));
+    await user.click(await within(drawer).findByRole('button', { name: /^tv/ }));
+    await waitFor(() => expect(posted()).toEqual([{ hash: 'aaa|ccc', action: 'setCategory', category: 'tv' }]));
+    expect(mocks.toast.success).toHaveBeenCalledWith('set category for 2 torrents');
+  });
+
   it('keeps the selection and says so when a bulk action fails', async () => {
     mocks.action = () => Response.json({ error: 'qBittorrent said no' }, { status: 502 });
     const { user } = renderPage();

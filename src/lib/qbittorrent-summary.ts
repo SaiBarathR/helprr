@@ -11,7 +11,8 @@ export type ProjectedTorrentSummary = QBittorrentTorrent;
 export function trackerHost(url: string | undefined): string {
   if (!url) return '';
   try {
-    return new URL(url).hostname;
+    // Lower case: URL leaves a udp:// host as written, and one tracker is one host.
+    return new URL(url).hostname.toLowerCase();
   } catch {
     return '';
   }
@@ -65,7 +66,7 @@ export function projectTorrentForSummary(torrent: QBittorrentTorrentInfo | QBitt
     seeding_time_limit: torrent.seeding_time_limit,
     inactive_seeding_time_limit: torrent.inactive_seeding_time_limit,
     private: torrent.private,
-    tracker_host: trackerHost('tracker' in torrent ? torrent.tracker : undefined),
+    tracker_host: 'tracker' in torrent ? trackerHost(torrent.tracker) : torrent.tracker_host ?? '',
   };
 }
 
