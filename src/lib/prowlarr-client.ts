@@ -87,6 +87,9 @@ export interface ProwlarrRelease {
   leechers?: number;
   publishDate?: string;
   protocol?: string;
+  grabs?: number | null;
+  indexerFlags?: unknown;
+  categories?: unknown;
   /** Server-side only: Prowlarr's download links carry its API key. */
   downloadUrl?: string;
   magnetUrl?: string;
@@ -94,6 +97,16 @@ export interface ProwlarrRelease {
 
 /** What one of Prowlarr's download links hands out: a .torrent, or the magnet it redirects to. */
 export type ProwlarrFetchedRelease = { kind: 'MAGNET'; magnetUrl: string } | { kind: 'TORRENT_FILE'; bytes: Buffer };
+
+/** Server-side only: `fields` holds the client's password. */
+export interface ProwlarrDownloadClient {
+  id: number;
+  name: string;
+  protocol: string;
+  enable: boolean;
+  priority: number;
+  fields?: unknown;
+}
 
 /** Server-side only: `fields` holds the arr's API key. */
 export interface ProwlarrApplication {
@@ -376,9 +389,22 @@ export class ProwlarrClient {
     return response.data;
   }
 
-  /** Prowlarr finds the release by indexer and guid in its own search cache. */
-  async grabRelease({ guid, indexerId }: { guid: string; indexerId: number }): Promise<void> {
-    await this.post('/api/v1/search', { guid, indexerId }, { timeout: 60_000 });
+  /**
+   * Prowlarr finds the release by indexer and guid in its own search cache.
+   * With no client id it picks one itself (the indexer's own, or by protocol
+   * and priority); with one it uses that client as is, so check it first.
+   */
+  async grabRelease({ guid, indexerId, downloadClientId }: { guid: string; indexerId: number; downloadClientId?: number }): Promise<void> {
+    await this.post('/api/v1/search', { guid, indexerId, ...(downloadClientId ? { downloadClientId } : {}) }, { timeout: 60_000 });
+  }
+
+  /** The standard category tree indexers are searched by. */
+  async getCategories(): Promise<unknown> {
+    return this.get<unknown>('/api/v1/indexer/categories');
+  }
+
+  async getDownloadClients(): Promise<ProwlarrDownloadClient[]> {
+    return this.get<ProwlarrDownloadClient[]>('/api/v1/downloadclient');
   }
 
   /**

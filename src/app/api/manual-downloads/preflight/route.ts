@@ -26,7 +26,7 @@ async function postHandler(request: Request) {
         if (monitorTarget && !can(auth.user, SERVICE_MONITOR_CAPABILITY[service])) {
           throw new ManualDownloadForbiddenError('Changing monitoring is not allowed for this account.');
         }
-        // A Prowlarr search result also needs what searching needs.
+        // Sending a Prowlarr result needs prowlarr.manage, not only prowlarr.search.
         if (prowlarr && !can(auth.user, 'prowlarr.manage')) throw new ManualDownloadForbiddenError();
       },
       prowlarrSource: (token) => prowlarrReleaseSource(auth.user.id, token),
