@@ -10,10 +10,28 @@ import type { FallbackInput, FileDecision } from './fallback';
  */
 
 export class ManualDownloadRequestError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly status = 400) {
     super(message);
     this.name = 'ManualDownloadRequestError';
   }
+}
+
+/** The account may not make this request. */
+export class ManualDownloadForbiddenError extends Error {
+  constructor(message = 'Forbidden') {
+    super(message);
+    this.name = 'ManualDownloadForbiddenError';
+  }
+}
+
+export interface ManualDownloadRequestOptions {
+  /**
+   * Checks what was asked before the release is read (a Prowlarr release is
+   * fetched from Prowlarr); throws ManualDownloadForbiddenError to refuse.
+   */
+  authorize?: (request: { service: ManualDownloadService; monitorTarget: boolean; prowlarr: boolean }) => void;
+  /** Reads a Prowlarr search result by its release token; without it one is refused. */
+  prowlarrSource?: (token: string) => Promise<ReleaseSource>;
 }
 
 /** What each service's manual download needs on top of torrents.add and activity.manage. */
@@ -58,7 +76,7 @@ export interface ManualDownloadRequest {
   clientRequestId?: string;
 }
 
-export async function readManualDownloadRequest(form: FormData): Promise<ManualDownloadRequest> {
+export async function readManualDownloadRequest(form: FormData, options: ManualDownloadRequestOptions = {}): Promise<ManualDownloadRequest> {
   const raw = form.get('request');
   if (typeof raw !== 'string') throw new ManualDownloadRequestError('Missing request.');
   let body: Record<string, unknown>;
@@ -76,11 +94,21 @@ export async function readManualDownloadRequest(form: FormData): Promise<ManualD
   if (body.clientRequestId !== undefined && (typeof body.clientRequestId !== 'string' || !/^[A-Za-z0-9-]{8,64}$/.test(body.clientRequestId))) {
     throw new ManualDownloadRequestError('Invalid request id.');
   }
+  // A Prowlarr search result: its token stands for the release, which only the server holds.
+  const prowlarrRelease = body.prowlarrRelease;
+  if (prowlarrRelease !== undefined && (typeof prowlarrRelease !== 'string' || !prowlarrRelease || prowlarrRelease.length > 64)) {
+    throw new ManualDownloadRequestError('Invalid release.');
+  }
+  options.authorize?.({ service, monitorTarget: body.monitorTarget === true, prowlarr: prowlarrRelease !== undefined });
 
   let source: ReleaseSource;
   try {
     const torrent = form.get('torrent');
-    if (torrent instanceof File) {
+    if (typeof prowlarrRelease === 'string') {
+      // Only the token is read: a link or file sent beside it is ignored.
+      if (!options.prowlarrSource) throw new ManualDownloadRequestError('Invalid release.');
+      source = await options.prowlarrSource(prowlarrRelease);
+    } else if (torrent instanceof File) {
       if (torrent.size > MAX_TORRENT_BYTES) throw new ReleaseSourceError('That .torrent file is too large.');
       source = parseTorrentFile(Buffer.from(await torrent.arrayBuffer()));
     } else if (typeof body.magnetUrl === 'string') {

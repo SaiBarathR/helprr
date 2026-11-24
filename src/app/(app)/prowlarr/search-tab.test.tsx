@@ -12,6 +12,14 @@ vi.mock('@/lib/hooks/use-route-view-state', () => ({
   useRouteViewState: <T,>(name: string, initial: T) => useState<T>((seeded.has(name) ? seeded.get(name) : initial) as T),
 }));
 
+const caps = vi.hoisted(() => ({ granted: new Set<string>() }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => caps.granted.has(cap) }));
+// The form is covered on its own; here, what the sheet hands it.
+const form = vi.hoisted(() => ({ props: [] as Array<Record<string, unknown>> }));
+vi.mock('@/components/torrents/manual-download-form', () => ({
+  ManualDownloadForm: (props: Record<string, unknown>) => { form.props.push(props); return <p>manual download form</p>; },
+}));
+
 // jsdom lacks these; the options sheet (vaul) calls them.
 HTMLElement.prototype.setPointerCapture ??= () => {};
 HTMLElement.prototype.releasePointerCapture ??= () => {};
@@ -41,6 +49,8 @@ function answer(body: unknown) {
 
 beforeEach(() => {
   seeded.clear();
+  caps.granted = new Set();
+  form.props = [];
   vi.stubGlobal('fetch', vi.fn());
   answer({ results: [result('a', 'Big Buck Bunny', '2026-01-01')], total: 1 });
 });
@@ -168,5 +178,43 @@ describe('SearchTab', () => {
     expect(sent.get('type')).toBe('movie');
     expect(sent.get('imdbId')).toBe('tt0111161');
     expect(sent.get('q')).toBe('');
+  });
+
+  describe('Send to Sonarr or Radarr', () => {
+    const SEND_CAPS = ['torrents.add', 'activity.manage', 'movies.add'];
+    async function searchFor(results: unknown[]) {
+      answer({ results, total: results.length });
+      const view = setup();
+      await userEvent.type(screen.getByRole('textbox'), 'bunny');
+      await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+      return view;
+    }
+
+    it('is offered beside the grab for torrents, and opens the form with the release token', async () => {
+      caps.granted = new Set(SEND_CAPS);
+      await searchFor([result('tok-a', 'Big Buck Bunny', '2026-01-01'), { ...result('tok-b', 'Bunny NZB', '2026-01-01'), protocol: 'usenet' }]);
+      await screen.findByText('Big Buck Bunny');
+
+      expect(screen.getByRole('button', { name: 'Grab Big Buck Bunny' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Grab Bunny NZB' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Send to Sonarr or Radarr: Bunny NZB' })).toBeNull();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Send to Sonarr or Radarr: Big Buck Bunny' }));
+
+      expect(await screen.findByText('manual download form')).toBeTruthy();
+      expect(form.props.at(-1)).toEqual(expect.objectContaining({
+        release: { kind: 'prowlarr', token: 'tok-a' }, suggestedName: 'Big Buck Bunny', prefill: null,
+      }));
+    });
+
+    it('is not offered without every capability a manual download needs', async () => {
+      for (const missing of SEND_CAPS) {
+        caps.granted = new Set(SEND_CAPS.filter((cap) => cap !== missing));
+        const view = await searchFor([result('tok-a', 'Big Buck Bunny', '2026-01-01')]);
+        await screen.findByText('Big Buck Bunny');
+        expect(screen.queryByRole('button', { name: /^Send to Sonarr or Radarr/ }), missing).toBeNull();
+        view.unmount();
+      }
+    });
   });
 });

@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { urlsToOrigins } from '@/lib/url-origins';
+import { MAX_TORRENT_BYTES } from '@/lib/manual-downloads/release-source';
 import type { HealthCheck, Tag } from '@/types/arr';
 
 interface SystemStatus {
@@ -86,7 +87,13 @@ export interface ProwlarrRelease {
   leechers?: number;
   publishDate?: string;
   protocol?: string;
+  /** Server-side only: Prowlarr's download links carry its API key. */
+  downloadUrl?: string;
+  magnetUrl?: string;
 }
+
+/** What one of Prowlarr's download links hands out: a .torrent, or the magnet it redirects to. */
+export type ProwlarrFetchedRelease = { kind: 'MAGNET'; magnetUrl: string } | { kind: 'TORRENT_FILE'; bytes: Buffer };
 
 /** Server-side only: `fields` holds the arr's API key. */
 export interface ProwlarrApplication {
@@ -372,6 +379,32 @@ export class ProwlarrClient {
   /** Prowlarr finds the release by indexer and guid in its own search cache. */
   async grabRelease({ guid, indexerId }: { guid: string; indexerId: number }): Promise<void> {
     await this.post('/api/v1/search', { guid, indexerId }, { timeout: 60_000 });
+  }
+
+  /**
+   * Fetch a searched release through Prowlarr's own download link, as Sonarr or
+   * Radarr would. Only a link on this Prowlarr is fetched (it came from this
+   * Prowlarr's search, but is checked anyway), and redirects are not followed:
+   * a magnet is read from the redirect, and a redirect to the indexer's own
+   * site (the indexer's "Redirect" setting) is refused.
+   */
+  async fetchReleaseLink(link: string): Promise<ProwlarrFetchedRelease> {
+    const base = new URL(this.client.defaults.baseURL ?? '');
+    const url = new URL(link);
+    if (url.origin !== base.origin || !url.pathname.startsWith(base.pathname.replace(/\/?$/, '/'))) {
+      throw new Error('Prowlarr gave a download link on another server.');
+    }
+    const response = await this.client.get<ArrayBuffer>(url.toString(), {
+      responseType: 'arraybuffer',
+      maxRedirects: 0,
+      maxContentLength: MAX_TORRENT_BYTES,
+      timeout: 60_000,
+      validateStatus: (status) => status === 200 || (status >= 300 && status < 400),
+    });
+    if (response.status === 200) return { kind: 'TORRENT_FILE', bytes: Buffer.from(response.data) };
+    const location = String(response.headers.location ?? '');
+    if (/^magnet:\?/i.test(location)) return { kind: 'MAGNET', magnetUrl: location };
+    throw new Error('Prowlarr sends this indexer’s downloads to the indexer’s own site.');
   }
 
   async getApplications(): Promise<ProwlarrApplication[]> {

@@ -3,7 +3,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Check, Download, Loader2, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Check, Download, Loader2, Search, Send, SlidersHorizontal, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,6 +22,7 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { Input } from '@/components/ui/input';
+import { useCan } from '@/components/permission-provider';
 import { formatBytes } from '@/lib/format';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { ApiError, ensureArray, jsonFetcher } from '@/lib/query-fetch';
@@ -38,6 +39,7 @@ import {
   type ProwlarrSearchType,
 } from '@/lib/prowlarr-search';
 import type { ProwlarrSearchResponse, ProwlarrSearchResult } from '@/app/api/prowlarr/search/route';
+import { SendToArrSheet } from './send-to-arr-sheet';
 
 const CATEGORIES = [
   { id: 2000, label: 'Movies' },
@@ -87,7 +89,7 @@ function formatAge(publishDate: string | null): string | null {
 
 /**
  * Search every indexer, or the ones picked, and send a release to Prowlarr's
- * own download client. This tab is a full page, so the search field's keyboard
+ * own download client, or (a torrent) to Sonarr or Radarr for one title. This tab is a full page, so the search field's keyboard
  * is safe here. A search can take as long as the slowest indexer, so it can be
  * cancelled. The type, ids and indexers sit in one Options sheet, so the
  * toolbar stays one row on a phone.
@@ -111,6 +113,13 @@ export function SearchTab() {
   const [confirm, setConfirm] = useState<ProwlarrSearchResult | null>(null);
   const [grabbing, setGrabbing] = useState(false);
   const [grabbed, setGrabbed] = useState<ReadonlySet<string>>(() => new Set());
+  const [sending, setSending] = useState<ProwlarrSearchResult | null>(null);
+  // What a manual download needs; the server checks it all again, with prowlarr.manage.
+  const canAddTorrents = useCan('torrents.add');
+  const canManageActivity = useCan('activity.manage');
+  const canAddMovies = useCan('movies.add');
+  const canAddSeries = useCan('series.add');
+  const canSendToArr = canAddTorrents && canManageActivity && (canAddMovies || canAddSeries);
 
   // The same list (and cache) as the Indexers tab.
   const indexersQuery = useQuery({
@@ -345,6 +354,17 @@ export function SearchTab() {
                       {age && <span>{age}</span>}
                     </div>
                   </div>
+                  {canSendToArr && release.protocol === 'torrent' && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
+                      aria-label={`Send to Sonarr or Radarr: ${release.title}`}
+                      onClick={() => setSending(release)}
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="icon"
@@ -458,6 +478,12 @@ export function SearchTab() {
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
+
+      <SendToArrSheet
+        release={sending}
+        defaultService={submitted?.type === 'tvsearch' ? 'SONARR' : submitted?.type === 'movie' ? 'RADARR' : undefined}
+        onClose={() => setSending(null)}
+      />
 
       <Dialog open={!!confirm} onOpenChange={(open) => !open && setConfirm(null)}>
         <DialogContent className="max-w-sm">

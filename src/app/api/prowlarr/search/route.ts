@@ -59,7 +59,8 @@ function isIntId(value: string): boolean {
  * Search every indexer, or the ones picked. A search hits private trackers too,
  * so it needs prowlarr.manage, not view. Only display fields leave the server:
  * a release's guid, download, magnet and info links can all carry a passkey or
- * Prowlarr's own key, so the browser gets a token in place of the guid.
+ * Prowlarr's own key, so the browser gets a token in place of the guid, and
+ * the links wait with it for a send to Sonarr or Radarr.
  *
  * A typed search (TV, movie) can name ids, which go to Prowlarr as its query
  * tokens (`{TvdbId:…}`). Every value is checked here first, and the free text
@@ -123,7 +124,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const tokens = await issueReleaseTokens(
       PROWLARR_SCOPE,
       auth.user.id,
-      releases.map(({ guid, indexerId }) => ({ guid, indexerId })),
+      releases.map(({ guid, indexerId, protocol, downloadUrl, magnetUrl }) => ({ guid, indexerId, protocol, downloadUrl, magnetUrl })),
     );
     const results: ProwlarrSearchResult[] = releases.map((release, index) => ({
       id: tokens[index],

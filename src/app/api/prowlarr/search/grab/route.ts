@@ -32,7 +32,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     if (!release) return NextResponse.json({ error: EXPIRED }, { status: 410 });
 
     const client = await getProwlarrClient();
-    await client.grabRelease(release);
+    // The token also holds the release's links: only the guid and indexer go to Prowlarr.
+    await client.grabRelease({ guid: release.guid, indexerId: release.indexerId });
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
