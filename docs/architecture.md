@@ -1055,6 +1055,21 @@ another user, instance or app, or an expired one, is an expired result. The
 download-client routes return only what the choice shows, not each client's
 settings (host, port, user name).
 
+A Prowlarr search result's token also holds its protocol and Prowlarr's
+download links (`downloadUrl`, `magnetUrl`, which carry Prowlarr's key), so a
+torrent result can be sent to Sonarr or Radarr as a manual download: the
+manual-download routes take `prowlarrRelease: <token>` in place of a magnet or
+file, check `prowlarr.manage` with the other capabilities before anything is
+fetched, and the server fetches the release through Prowlarr
+(`src/lib/manual-downloads/prowlarr-release.ts`: the magnet first, then the
+.torrent; only a link on the connected Prowlarr's origin and base path; no
+redirect followed, a `magnet:` redirect read as the magnet). Each fetch is a
+grab in Prowlarr's history and a hit on the indexer (a private tracker may count
+it), so a magnet or a .torrent up to 512 KB is kept in Redis for 10 minutes per
+user and token, and a Check and the Send after it read the same release; a
+larger .torrent is fetched again. Usenet results are not offered: manual
+downloads follow torrents only.
+
 qBittorrent's announce URLs carry a private tracker's passkey, in the path or the
 query, and so does each `tr=` of a torrent's magnet. The torrent lists
 (`/api/qbittorrent`, its summary and delta, and the caches behind them) are

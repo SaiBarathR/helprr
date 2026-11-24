@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { ManualDownloadRequestError, readFallbackRequest, readFileDecisions, readManualDownloadRequest } from '../request';
+import { describe, expect, it, vi } from 'vitest';
+import { ManualDownloadForbiddenError, ManualDownloadRequestError, readFallbackRequest, readFileDecisions, readManualDownloadRequest } from '../request';
 
 const HASH = '382cc016ff22946008ecddcb0dda820f42b0cd5a';
 const MAGNET = `magnet:?xt=urn:btih:${HASH}&dn=Night.of.the.Living.Dead.1968.1080p.BluRay.x264-GRP`;
@@ -32,6 +32,32 @@ describe('readManualDownloadRequest', () => {
     const { input } = await readManualDownloadRequest(form({ ...base, magnetUrl: undefined, service: 'SONARR' }, new Blob([torrent])));
     expect(input.source).toEqual(expect.objectContaining({ kind: 'TORRENT_FILE', name: 'a.mkv' }));
     expect(input.add).toBeUndefined();
+  });
+
+  it('reads a Prowlarr result by its token only: a magnet or file sent beside it is ignored', async () => {
+    const prowlarr = { kind: 'MAGNET' as const, infoHash: 'A'.repeat(40), name: 'From.Prowlarr', magnetUrl: 'magnet:?xt=urn:btih:' + 'a'.repeat(40) };
+    const prowlarrSource = vi.fn(async () => prowlarr);
+    const authorize = vi.fn();
+    const { input } = await readManualDownloadRequest(form({ ...base, prowlarrRelease: 'tok-1', monitorTarget: true }, new Blob(['x'])), { authorize, prowlarrSource });
+    expect(authorize).toHaveBeenCalledWith({ service: 'RADARR', monitorTarget: true, prowlarr: true });
+    expect(prowlarrSource).toHaveBeenCalledWith('tok-1');
+    expect(input.source).toBe(prowlarr);
+    expect(input.releaseTitle).toBe('From.Prowlarr');
+  });
+
+  it('checks access before it reads a Prowlarr result, and refuses one it cannot read', async () => {
+    const prowlarrSource = vi.fn();
+    const authorize = () => { throw new ManualDownloadForbiddenError(); };
+    await expect(readManualDownloadRequest(form({ ...base, prowlarrRelease: 'tok-1' }), { authorize, prowlarrSource })).rejects.toThrow(ManualDownloadForbiddenError);
+    expect(prowlarrSource).not.toHaveBeenCalled();
+
+    await expect(readManualDownloadRequest(form({ ...base, prowlarrRelease: 'tok-1' }))).rejects.toThrow(ManualDownloadRequestError);
+    // Fail closed: a resolver without an access check reads nothing.
+    await expect(readManualDownloadRequest(form({ ...base, prowlarrRelease: 'tok-1' }), { prowlarrSource })).rejects.toThrow('Invalid release.');
+    for (const bad of ['', 5, 'x'.repeat(65)]) {
+      await expect(readManualDownloadRequest(form({ ...base, prowlarrRelease: bad }), { authorize: () => {}, prowlarrSource })).rejects.toThrow('Invalid release.');
+    }
+    expect(prowlarrSource).not.toHaveBeenCalled();
   });
 
   it('defaults Sonarr add options', async () => {

@@ -3,13 +3,27 @@ import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-query';
 import { SearchTab } from './search-tab';
 
 // A test can seed the view state a returning user would have.
 const seeded = vi.hoisted(() => new Map<string, unknown>());
 vi.mock('@/lib/hooks/use-route-view-state', () => ({
   useRouteViewState: <T,>(name: string, initial: T) => useState<T>((seeded.has(name) ? seeded.get(name) : initial) as T),
+}));
+
+const caps = vi.hoisted(() => ({ granted: new Set<string>() }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => caps.granted.has(cap) }));
+// The form is covered on its own; here, what the sheet hands it.
+const form = vi.hoisted(() => ({ props: [] as Array<Record<string, unknown>> }));
+vi.mock('@/components/torrents/manual-download-form', () => ({
+  MANUAL_DOWNLOAD_MUTATION_KEY: ['manual-downloads', 'submit'],
+  ManualDownloadForm: function Form(props: Record<string, unknown>) {
+    form.props.push(props);
+    // A check that never answers, under the form's own mutation key.
+    const check = useMutation({ mutationKey: ['manual-downloads', 'submit'], mutationFn: () => new Promise(() => {}) });
+    return <><p>manual download form</p><button type="button" onClick={() => check.mutate()}>Start check</button></>;
+  },
 }));
 
 // jsdom lacks these; the options sheet (vaul) calls them.
@@ -41,6 +55,8 @@ function answer(body: unknown) {
 
 beforeEach(() => {
   seeded.clear();
+  caps.granted = new Set();
+  form.props = [];
   vi.stubGlobal('fetch', vi.fn());
   answer({ results: [result('a', 'Big Buck Bunny', '2026-01-01')], total: 1 });
 });
@@ -168,5 +184,64 @@ describe('SearchTab', () => {
     expect(sent.get('type')).toBe('movie');
     expect(sent.get('imdbId')).toBe('tt0111161');
     expect(sent.get('q')).toBe('');
+  });
+
+  describe('Send to Sonarr or Radarr', () => {
+    const SEND_CAPS = ['torrents.add', 'activity.manage', 'movies.add'];
+    async function searchFor(results: unknown[]) {
+      answer({ results, total: results.length });
+      const view = setup();
+      await userEvent.type(screen.getByRole('textbox'), 'bunny');
+      await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+      return view;
+    }
+
+    it('is offered beside the grab for torrents, and opens the form with the release token', async () => {
+      caps.granted = new Set(SEND_CAPS);
+      await searchFor([result('tok-a', 'Big Buck Bunny', '2026-01-01'), { ...result('tok-b', 'Bunny NZB', '2026-01-01'), protocol: 'usenet' }]);
+      await screen.findByText('Big Buck Bunny');
+
+      expect(screen.getByRole('button', { name: 'Grab Big Buck Bunny' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Grab Bunny NZB' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Send to Sonarr or Radarr: Bunny NZB' })).toBeNull();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Send to Sonarr or Radarr: Big Buck Bunny' }));
+
+      expect(await screen.findByText('manual download form')).toBeTruthy();
+      expect(form.props.at(-1)).toEqual(expect.objectContaining({
+        release: { kind: 'prowlarr', token: 'tok-a' }, suggestedName: 'Big Buck Bunny', prefill: null,
+      }));
+    });
+
+    it('stays open while a check or send is on its way', async () => {
+      caps.granted = new Set(SEND_CAPS);
+      await searchFor([result('tok-a', 'Big Buck Bunny', '2026-01-01')]);
+      await userEvent.click(await screen.findByRole('button', { name: 'Send to Sonarr or Radarr: Big Buck Bunny' }));
+      await screen.findByText('manual download form');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Start check' }));
+      await userEvent.keyboard('{Escape}');
+      expect(screen.getByText('manual download form')).toBeTruthy();
+    });
+
+    it('closes on Escape when nothing is on its way', async () => {
+      caps.granted = new Set(SEND_CAPS);
+      await searchFor([result('tok-a', 'Big Buck Bunny', '2026-01-01')]);
+      await userEvent.click(await screen.findByRole('button', { name: 'Send to Sonarr or Radarr: Big Buck Bunny' }));
+      await screen.findByText('manual download form');
+
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Send to Sonarr or Radarr' })).toBeNull());
+    });
+
+    it('is not offered without every capability a manual download needs', async () => {
+      for (const missing of SEND_CAPS) {
+        caps.granted = new Set(SEND_CAPS.filter((cap) => cap !== missing));
+        const view = await searchFor([result('tok-a', 'Big Buck Bunny', '2026-01-01')]);
+        await screen.findByText('Big Buck Bunny');
+        expect(screen.queryByRole('button', { name: /^Send to Sonarr or Radarr/ }), missing).toBeNull();
+        view.unmount();
+      }
+    });
   });
 });

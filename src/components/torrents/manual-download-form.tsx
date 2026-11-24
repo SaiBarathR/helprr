@@ -19,9 +19,13 @@ import { resolveAddPageInstance } from '@/lib/add-page-instances';
 import type { PreflightResult } from '@/lib/manual-downloads/preflight';
 import type { RadarrLookupResult, SonarrLookupResult } from '@/types';
 
-type Service = 'RADARR' | 'SONARR';
+export type Service = 'RADARR' | 'SONARR';
 
-export type ReleaseInput = { kind: 'magnet'; magnet: string } | { kind: 'file'; file: File | null };
+/** A pasted magnet, a picked .torrent, or a Prowlarr search result named by its release token. */
+export type ReleaseInput =
+  | { kind: 'magnet'; magnet: string }
+  | { kind: 'file'; file: File | null }
+  | { kind: 'prowlarr'; token: string };
 
 /** "Send again" from a linked download: the same title and release name; the magnet or file is given again. */
 export interface LinkPrefill {
@@ -56,6 +60,10 @@ interface ManualDownloadFormProps {
   /** Offered when the user may pick files: add the torrent stopped and choose its files next. */
   onChooseFiles?: (draft: FallbackDraft) => void;
   choosingFiles?: boolean;
+  /** The library to start with when there is no prefill. */
+  defaultService?: Service;
+  /** Cancel closes the sheet the form is in; by default it goes back to Torrents. */
+  onCancel?: () => void;
 }
 
 // Each picked .torrent file gets its own identity: two files with the same
@@ -87,14 +95,16 @@ const APP = { RADARR: 'Radarr', SONARR: 'Sonarr' } as const;
  * everything first (the preflight) and shows what Arr will do; sending is
  * only offered for the exact choices that were checked.
  */
-export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFiles, choosingFiles = false }: ManualDownloadFormProps) {
+export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFiles, choosingFiles = false, defaultService, onCancel }: ManualDownloadFormProps) {
   const router = useRouter();
   const canMovies = useCan('movies.add');
   const canSeries = useCan('series.add');
   const canMonitorMovies = useCan('movies.editMonitoring');
   const canMonitorSeries = useCan('series.editMonitoring');
 
-  const [service, setService] = useState<Service>(prefill?.service ?? (canMovies ? 'RADARR' : 'SONARR'));
+  const [service, setService] = useState<Service>(
+    prefill?.service ?? (defaultService && (defaultService === 'RADARR' ? canMovies : canSeries) ? defaultService : canMovies ? 'RADARR' : 'SONARR'),
+  );
   const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
   const [term, setTerm] = useState(prefill?.title ?? '');
   const [submittedTerm, setSubmittedTerm] = useState(prefill?.title ?? '');
@@ -182,7 +192,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFi
     resetChecks();
   }
 
-  const sourceReady = release.kind === 'magnet' ? release.magnet.trim().length > 0 : release.file !== null;
+  const sourceReady = release.kind === 'magnet' ? release.magnet.trim().length > 0 : release.kind === 'file' ? release.file !== null : true;
   const addOptions = target && !target.inLibrary
     ? {
         qualityProfileId: Number(profileId),
@@ -197,6 +207,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFi
         instanceId,
         externalId: target.externalId,
         ...(release.kind === 'magnet' ? { magnetUrl: release.magnet.trim() } : {}),
+        ...(release.kind === 'prowlarr' ? { prowlarrRelease: release.token } : {}),
         ...(releaseName.trim() ? { releaseTitle: releaseName.trim() } : {}),
         ...(addOptions ? { add: addOptions } : {}),
         ...(monitorTarget ? { monitorTarget: true } : {}),
@@ -408,7 +419,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFi
           id="link-release"
           value={releaseName}
           onChange={(event) => setNameOverride(event.target.value)}
-          placeholder={release.kind === 'file' ? "The torrent's own name" : 'The name in the magnet link'}
+          placeholder={release.kind === 'file' ? "The torrent's own name" : release.kind === 'prowlarr' ? 'The name the indexer gave it' : 'The name in the magnet link'}
           disabled={busy}
         />
       </Field>
@@ -474,7 +485,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFi
             {!sourceReady ? (release.kind === 'magnet' ? 'Paste a magnet link first.' : 'Choose a .torrent file first.') : !target ? `Choose the ${service === 'RADARR' ? 'movie' : 'series'} it is for.` : 'Choose a quality profile and root folder.'}
           </p>
         )}
-        <Button variant="outline" className="w-full" onClick={() => router.push('/torrents')} disabled={busy}>Cancel</Button>
+        <Button variant="outline" className="w-full" onClick={() => (onCancel ? onCancel() : router.push('/torrents'))} disabled={busy}>Cancel</Button>
       </div>
     </div>
   );

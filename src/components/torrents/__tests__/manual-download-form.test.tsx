@@ -103,6 +103,36 @@ describe('sending a release to Sonarr/Radarr', () => {
     expect(mocks.bodies.every(({ request }) => !('arrItemId' in request))).toBe(true);
   });
 
+  it('sends a Prowlarr search result by its token only, starting on the library the search was for', async () => {
+    mocks.preflight.push(() => json(plan()));
+    const onCancel = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ManualDownloadForm release={{ kind: 'prowlarr', token: 'tok-1' }} suggestedName="Night.of.the.Living.Dead.1968.720p" prefill={null} defaultService="SONARR" onCancel={onCancel} />
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+    // The title field is for a series: the form starts on Sonarr.
+    expect(screen.getByLabelText('Series')).toBeTruthy();
+    await user.type(screen.getByLabelText('Series'), 'night of the living dead');
+    await user.click(screen.getByRole('button', { name: 'Search Sonarr' }));
+    await user.click(await screen.findByRole('button', { name: /Night of the Living Dead \(1968\)/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Check' }).hasAttribute('disabled')).toBe(false));
+    await user.click(screen.getByRole('button', { name: 'Check' }));
+
+    await waitFor(() => expect(mocks.bodies).toHaveLength(1));
+    expect(mocks.bodies[0].request).toEqual(expect.objectContaining({
+      service: 'SONARR', instanceId: 's1', prowlarrRelease: 'tok-1', releaseTitle: 'Night.of.the.Living.Dead.1968.720p',
+    }));
+    expect(mocks.bodies[0].request).not.toHaveProperty('magnetUrl');
+    expect(mocks.bodies[0].torrent).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onCancel).toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
   it.each(['Radarr', 'Sonarr'])('omits zero and missing years in %s results and the chosen title', async (app) => {
     mocks.year = app === 'Radarr' ? 0 : undefined;
     renderForm();

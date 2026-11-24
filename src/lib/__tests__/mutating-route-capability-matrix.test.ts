@@ -678,6 +678,12 @@ describe('mutating API route capability matrix', () => {
     }
   });
 
+  it('makes a manual download of a Prowlarr search result also need prowlarr.manage', () => {
+    for (const route of ['POST /api/manual-downloads/preflight', 'POST /api/manual-downloads']) {
+      expect(handlers.get(route)!.handlerText, route).toContain("if (prowlarr && !can(auth.user, 'prowlarr.manage'))");
+    }
+  });
+
   it('locks dynamic, field-level, and ownership-aware policies to their fail-closed guards', () => {
     const known = new Set<string>(CAPABILITIES);
     for (const [route, policy] of Object.entries(SPECIAL_POLICIES)) {
