@@ -268,7 +268,7 @@ export default function SeriesDetailPage() {
     series.images?.find((i) => i.coverType === 'poster')?.url ??
     null;
 
-  const historyHref = `/series/${seriesId}/history${instance ? `?instance=${instance}` : ''}`;
+  const historyHref = `/series/${seriesId}/history${instance ? `?instance=${encodeURIComponent(instance)}` : ''}`;
   const seriesContextGroups: ContextActionGroup[] = [
     {
       id: 'activity',

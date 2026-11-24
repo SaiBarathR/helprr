@@ -662,7 +662,7 @@ export default function EpisodeDetailPage() {
               <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Quality</span>
               <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{episodeFile.quality?.quality?.name || 'Unknown'}</span>
             </div>
-            {((episodeFile.customFormats?.length ?? 0) > 0 || (episodeFile.customFormatScore ?? 0) !== 0) && (
+            {(episodeFile.customFormats?.some((cf) => cf.name) || (episodeFile.customFormatScore ?? 0) !== 0) && (
               <div className="flex justify-between items-center gap-4 px-4 py-2.5 border-b">
                 <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Custom Formats</span>
                 <CustomFormatChips
