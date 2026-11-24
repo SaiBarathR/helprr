@@ -28,3 +28,20 @@ describe('Prowlarr history: one indexer', () => {
     expect(paramsOfLastCall()).toEqual({ page: 2, pageSize: 50, eventType: 1, successful: false });
   });
 });
+
+describe('Prowlarr history: order', () => {
+  beforeEach(() => mocks.get.mockReset().mockResolvedValue({ data: { records: [], totalRecords: 0 } }));
+
+  // Date is the only key Prowlarr's history sorts by.
+  it('asks for oldest first by date', async () => {
+    const prowlarr = new ProwlarrClient('http://prowlarr.local', 'key');
+    await prowlarr.getHistory({ page: 1, sortDirection: 'ascending' });
+    expect(paramsOfLastCall()).toMatchObject({ sortKey: 'date', sortDirection: 'ascending' });
+  });
+
+  it('leaves the order to Prowlarr when none is asked for', async () => {
+    const prowlarr = new ProwlarrClient('http://prowlarr.local', 'key');
+    await prowlarr.getHistory({ page: 1 });
+    expect(paramsOfLastCall()).not.toHaveProperty('sortKey');
+  });
+});

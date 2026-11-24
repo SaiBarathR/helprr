@@ -9,7 +9,7 @@ import { redactProwlarrHistoryRecord } from '@/lib/prowlarr-redact';
 /**
  * Handle GET requests to retrieve Prowlarr history.
  *
- * Accepts query parameters: `page` (default 1), `pageSize` (default 50), `indexerId` (optional), `eventType` (optional), and `successful` (optional, `'true'` or `'false'`). Obtains a Prowlarr client, fetches history using the parsed parameters, and returns the result as JSON.
+ * Accepts query parameters: `page` (default 1), `pageSize` (default 50), `indexerId` (optional), `eventType` (optional), `successful` (optional, `'true'` or `'false'`) and `sort` (optional, `'oldest'` for oldest first; newest first otherwise). Obtains a Prowlarr client, fetches history using the parsed parameters, and returns the result as JSON.
  *
  * @param request - Incoming Next.js request containing the query parameters described above
  * @returns A JSON response containing the fetched history on success. On error, a JSON object `{ error: string }` is returned with HTTP status 500.
@@ -33,9 +33,11 @@ async function getHandler(request: NextRequest) {
     const eventType = optionalWholeNumber(searchParams.get('eventType'), 0);
     const successfulParam = searchParams.get('successful');
     const successful = successfulParam !== null ? successfulParam === 'true' : undefined;
+    // Newest first is Prowlarr's own default, so only oldest first is passed on.
+    const sortDirection = searchParams.get('sort') === 'oldest' ? 'ascending' : undefined;
 
     const client = await getProwlarrClient();
-    const history = await client.getHistory({ page, pageSize, indexerId, eventType, successful });
+    const history = await client.getHistory({ page, pageSize, indexerId, eventType, successful, sortDirection });
     return NextResponse.json({ ...history, records: (history.records ?? []).map(redactProwlarrHistoryRecord) });
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to fetch history');

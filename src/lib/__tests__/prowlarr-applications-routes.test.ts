@@ -30,8 +30,8 @@ beforeEach(() => {
     fields: [{ name: 'baseUrl', value: 'http://sonarr:8989' }, { name: 'apiKey', value: SECRET }],
   }]);
   mocks.findMany.mockResolvedValue([
-    { type: 'SONARR', url: 'http://100.1.1.1:8989', label: 'Sonarr' },
-    { type: 'RADARR', url: 'http://internal.example:7878', label: 'Radarr' },
+    { id: 'sonarr-1', type: 'SONARR', url: 'http://100.1.1.1:8989', label: 'Sonarr' },
+    { id: 'radarr-1', type: 'RADARR', url: 'http://internal.example:7878', label: 'Radarr' },
   ]);
 });
 
@@ -45,7 +45,7 @@ describe('GET /api/prowlarr/applications', () => {
     expect(text).not.toMatch(/8989|7878|internal\.example|fields/);
     expect(JSON.parse(text)).toEqual({
       applications: [{ id: 1, name: 'Sonarr', implementationName: 'Sonarr', syncLevel: 'fullSync', enable: true }],
-      unsynced: [{ type: 'RADARR', label: 'Radarr' }],
+      unsynced: [{ id: 'radarr-1', type: 'RADARR', label: 'Radarr' }],
     });
   });
 });
