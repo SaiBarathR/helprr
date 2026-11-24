@@ -18,6 +18,7 @@ vi.mock('@/lib/polling-job-report', () => ({ noteJobFailure: mocks.noteJobFailur
 vi.mock('./shared', () => ({ notifyAndLog: mocks.notifyAndLog }));
 
 import { pollProwlarr } from './poll-prowlarr';
+import { HEALTH_CLEAR_HOLD_MS, resetHealthTracking } from './health-transition';
 
 let saves = 0;
 const warning = (message: string) => ({ source: 'IndexerStatusCheck', type: 'warning', message, wikiUrl: '' });
@@ -33,6 +34,7 @@ async function cycle(lastHealthHash: string | null, health: unknown[]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetHealthTracking();
   mocks.getProwlarrClient.mockResolvedValue({ getHealth: mocks.getHealth });
   mocks.getDefaultConnection.mockResolvedValue({ id: 'prowlarr-1' });
 });
@@ -62,13 +64,77 @@ describe('pollProwlarr', () => {
     expect(mocks.notifyAndLog).toHaveBeenCalledTimes(1);
   });
 
-  it('stays quiet when health clears, and notifies when the same warning returns', async () => {
-    const failing = await cycle(null, [warning('A failing')]);
-    const clear = await cycle(failing, []);
-    expect(mocks.notifyAndLog).not.toHaveBeenCalled();
+  it('sends one restored push once health has stayed clear for the hold, then stays quiet', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-24T10:00:00Z') });
+    try {
+      const failing = await cycle(null, [warning('A failing')]);
+      // Clear, but not yet for the hold: nothing sent, the old hash kept.
+      expect(await cycle(failing, [])).toBe(failing);
+      vi.advanceTimersByTime(HEALTH_CLEAR_HOLD_MS);
+      const clear = await cycle(failing, []);
+      expect(clear).not.toBe(failing);
+      expect(mocks.notifyAndLog).toHaveBeenCalledTimes(1);
+      expect(mocks.notifyAndLog.mock.calls[0][0]).toEqual({
+        eventType: 'healthRestored',
+        title: 'Prowlarr Health Restored',
+        body: 'All health checks pass again',
+        url: '/prowlarr',
+        metadata: { source: 'prowlarr', redirect: '/prowlarr' },
+        dedupeKey: expect.stringMatching(/^prowlarr-health-restored:/),
+      });
 
-    await cycle(clear, [warning('A failing')]);
-    expect(mocks.notifyAndLog).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(HEALTH_CLEAR_HOLD_MS);
+      await cycle(clear, []);
+      expect(mocks.notifyAndLog).toHaveBeenCalledTimes(1);
+
+      // The same warning coming back later is a new warning.
+      await cycle(clear, [warning('A failing')]);
+      expect(mocks.notifyAndLog).toHaveBeenCalledTimes(2);
+      expect(mocks.notifyAndLog.mock.calls[1][0].eventType).toBe('healthWarning');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sends nothing when a warning clears and returns inside the hold', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-24T10:00:00Z') });
+    try {
+      const failing = await cycle(null, [warning('A failing')]);
+      await cycle(failing, []);
+      vi.advanceTimersByTime(HEALTH_CLEAR_HOLD_MS - 1000);
+      expect(await cycle(failing, [warning('A failing')])).toBe(failing);
+      vi.advanceTimersByTime(HEALTH_CLEAR_HOLD_MS);
+      // The hold starts again from the next clear poll.
+      expect(await cycle(failing, [])).toBe(failing);
+      expect(mocks.notifyAndLog).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('never sends a restored push when the first poll already found health clear', async () => {
+    const clear = await cycle(null, []);
+    await cycle(clear, []);
+    expect(mocks.notifyAndLog).not.toHaveBeenCalled();
+  });
+
+  it('retries a restored push that could not be recorded on the next cycle', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-24T10:00:00Z') });
+    try {
+      const failing = await cycle(null, [warning('A failing')]);
+      await cycle(failing, []);
+      vi.advanceTimersByTime(HEALTH_CLEAR_HOLD_MS);
+      mocks.notifyAndLog.mockResolvedValueOnce(null);
+      await cycle(failing, []);
+      expect(mocks.update).not.toHaveBeenCalled();
+
+      const clear = await cycle(failing, []);
+      expect(clear).not.toBe(failing);
+      expect(mocks.notifyAndLog).toHaveBeenCalledTimes(2);
+      expect(mocks.notifyAndLog.mock.calls[1][0].eventType).toBe('healthRestored');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps the old hash when the notification could not be recorded, so it retries', async () => {

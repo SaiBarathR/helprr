@@ -144,6 +144,7 @@ import { PollingService } from '@/lib/polling-service';
 import { createPollingCycleContext } from '@/lib/polling-cycle';
 import { jobReports, type JobReport } from '@/lib/polling-job-report';
 import { ConfigurationError } from '@/lib/config-error';
+import { EMPTY_HEALTH_HASH, HEALTH_CLEAR_HOLD_MS, resetHealthTracking } from '@/lib/polling/health-transition';
 
 const SETTINGS = {
   notificationGroupingEnabled: false,
@@ -471,6 +472,47 @@ describe('pollers on fixed fixtures (golden)', () => {
     failing.client.getHistory = vi.fn(async () => { throw new Error('history down'); });
     mocks.radarr = [failing, arrInstance('i2', 'Anime', 'radarr', true)];
     expectGolden('pollRadarr:instanceFails', await run('pollRadarr'));
+  });
+
+  it.each([
+    ['pollSonarr', 'sonarr', 'Sonarr'],
+    ['pollRadarr', 'radarr', 'Radarr'],
+  ] as const)('%s: health that clears sends one restored push after the hold, then nothing', async (method, kind, name) => {
+    resetHealthTracking();
+    const instance = arrInstance('i1', 'Main', kind, true);
+    instance.client.getHealth = vi.fn(async () => []);
+    mocks[kind] = [instance];
+    const state = mocks.states.get('i1')!;
+    const cycle = async () => {
+      mocks.out = [];
+      state.updatedAt = new Date();
+      const out = await run(method);
+      const healthEvents = out.flatMap((o) => {
+        const event = (o as { notify?: { eventType: string } }).notify;
+        return event?.eventType.startsWith('health') ? [event] : [];
+      });
+      const update = out.find((o) => 'pollingState.update' in (o as object)) as { 'pollingState.update': { data: { lastHealthHash: string } } };
+      state.lastHealthHash = update['pollingState.update'].data.lastHealthHash;
+      return healthEvents;
+    };
+
+    // Clear, but not for long enough: nothing sent and the old hash kept.
+    expect(await cycle()).toEqual([]);
+    expect(state.lastHealthHash).toBe('previous-hash');
+
+    vi.setSystemTime(NOW + HEALTH_CLEAR_HOLD_MS);
+    expect(await cycle()).toEqual([{
+      eventType: 'healthRestored',
+      title: `${name} Health Restored`,
+      body: 'All health checks pass again',
+      url: `/settings/status?health=${kind}&instance=i1`,
+      metadata: { source: kind, instanceId: 'i1', redirect: `/settings/status?health=${kind}&instance=i1` },
+      dedupeKey: `${kind}-health-restored:i1:${new Date(NOW + HEALTH_CLEAR_HOLD_MS).toISOString()}`,
+    }]);
+    expect(state.lastHealthHash).toBe(EMPTY_HEALTH_HASH);
+
+    vi.setSystemTime(NOW + 3 * HEALTH_CLEAR_HOLD_MS);
+    expect(await cycle()).toEqual([]);
   });
 
   it('pollSonarr: clients that cannot be built fail the job and send nothing', async () => {

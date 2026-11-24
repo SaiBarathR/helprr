@@ -186,7 +186,6 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/lidarr/[id]',
     'GET /api/lidarr/album/[albumId]',
     'GET /api/lidarr/album/[albumId]/tracks',
-    'GET /api/lidarr/health',
     'GET /api/lidarr/history/artist',
     'GET /api/lidarr',
     'GET /api/lidarr/trackfile',
@@ -436,6 +435,15 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/lidarr/release',
     'GET /api/lidarr/rename',
   ],
+  // Sonarr/Radarr health names hosts and paths: gated like the health push.
+  'cap:notify.health': [
+    'GET /api/radarr/health',
+    'GET /api/sonarr/health',
+  ],
+  // Lidarr's health push also needs music.view (a message can name an artist).
+  'all:notify.health|music.view': [
+    'GET /api/lidarr/health',
+  ],
   'all:torrents.view|activity.view': [
     'GET /api/manual-downloads',
     'GET /api/manual-downloads/[id]',
@@ -575,7 +583,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(288);
+    expect(handlers.size).toBe(290);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

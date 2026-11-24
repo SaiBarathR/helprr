@@ -46,6 +46,14 @@ setup** has a **Quiet hours** row that says when they are on now. Other notifica
 not sent during quiet hours (they still show in Notifications), except health warnings,
 a service going down or coming back, and security alerts.
 
+A Sonarr, Radarr or Lidarr **Health Warning** opens that instance's health in
+**Settings → Service status**: each check's type, message and a link to the app's
+own help. Tap an instance's row there to see it any time. When all of the
+warnings of Sonarr, Radarr or Prowlarr have cleared and stayed clear for 2 minutes,
+**Health Restored** follows (it waits for the end of quiet hours); a warning that
+clears and comes back within those 2 minutes sends nothing. Each device can turn it
+off in **Settings → Notifications → Sonarr / Radarr**.
+
 **Settings → Notifications → Service outages → Alert after** sets how long a service
 must stay unreachable before the "is unreachable" notification (2 minutes by default;
 Immediately, or up to 30 minutes). A shorter blip, such as the internet dropping for a
