@@ -416,6 +416,31 @@ export class QBittorrentClient {
     await this.post('/api/v2/torrents/setLocation', params.toString());
   }
 
+  /** One URL per line, all in tier 0 (a blank line would start the next tier); ones the torrent has are skipped. */
+  async addTrackers(hash: string, urls: string[]): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hash', hash);
+    params.append('urls', urls.join('\n'));
+    await this.post('/api/v2/torrents/addTrackers', params.toString());
+  }
+
+  /** qBittorrent answers 409 when `origUrl` is not on the torrent or `newUrl` already is. */
+  async editTracker(hash: string, origUrl: string, newUrl: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hash', hash);
+    params.append('origUrl', origUrl);
+    params.append('newUrl', newUrl);
+    await this.post('/api/v2/torrents/editTracker', params.toString());
+  }
+
+  /** qBittorrent splits `urls` on `|` and skips any it does not have. */
+  async removeTrackers(hash: string, urls: string[]): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hash', hash);
+    params.append('urls', urls.join('|'));
+    await this.post('/api/v2/torrents/removeTrackers', params.toString());
+  }
+
   async getTags(): Promise<string[]> {
     return this.get<string[]>('/api/v2/torrents/tags');
   }
