@@ -50,7 +50,7 @@ export const TORRENT_TABLE_COLUMN_LABELS: Record<TorrentsTableColumn, string> = 
   downloaded: 'Downloaded',
   uploaded: 'Uploaded',
   ratio_limit: 'Ratio limit',
-  seeding_time_limit: 'Seeding time limit',
+  seeding_time_limit: 'Seeding limit',
 };
 
 /** The wide-screen table's columns, and each row wrapped in its context menu. */
@@ -318,7 +318,7 @@ export function useTorrentTable({
     },
     {
       id: 'seeding_time_limit',
-      label: 'Seed limit',
+      label: 'Seeding limit',
       width: 96,
       align: 'right',
       cell: (t) => limitCell(t.max_seeding_time, (minutes) => formatSeedingTime(minutes * 60)),

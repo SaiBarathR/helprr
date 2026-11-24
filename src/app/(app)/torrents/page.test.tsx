@@ -729,7 +729,8 @@ describe('torrents page (characterization)', () => {
     await user.click(picker.getByRole('menuitemcheckbox', { name: 'Peers' }));
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['', 'Name', 'Status', 'Progress', 'Size', 'DL', 'UL', 'ETA', 'Seeds', 'Ratio', 'Tags', 'Tracker', '']);
     expect(useUIStore.getState().torrentsTableColumns).toEqual(['state', 'progress', 'size', 'dlspeed', 'upspeed', 'eta', 'num_seeds', 'ratio', 'tags', 'tracker_host']);
-    expect(screen.getByLabelText('Tags: hevc, private, keep').textContent).toBe('hevcprivate+1');
+    const chips = screen.getByText('Tags: hevc, private, keep').parentElement!;
+    expect([...chips.querySelectorAll('[aria-hidden]')].map((chip) => chip.textContent)).toEqual(['hevc', 'private', '+1']);
     expect(screen.getAllByRole('cell').some((cell) => cell.textContent === 'tracker.one.invalid')).toBe(true);
   });
 
@@ -743,7 +744,12 @@ describe('torrents page (characterization)', () => {
     mocks.summary = () => full([{ ...ALPHA, tags: 'hevc, private' }, BRAVO, CHARLIE]);
     renderPage();
     await waitFor(() => expect(names()).toHaveLength(3));
-    expect(screen.getByLabelText('Tags: hevc, private').textContent).toBe('hevcprivate');
+    // One chip and a count on phones, two from sm up (CSS picks; both render here).
+    const [phone, wider] = screen.getAllByText('Tags: hevc, private').map((spoken) => spoken.parentElement!);
+    expect(phone.className).toContain('sm:hidden');
+    expect([...phone.querySelectorAll('[aria-hidden]')].map((chip) => chip.textContent)).toEqual(['hevc', '+1']);
+    expect(wider.className).toContain('max-sm:hidden');
+    expect([...wider.querySelectorAll('[aria-hidden]')].map((chip) => chip.textContent)).toEqual(['hevc', 'private']);
   });
 
   it('takes in what a later poll changes: a new state, a new torrent, one gone (and its selection)', async () => {

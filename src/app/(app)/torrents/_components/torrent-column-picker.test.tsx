@@ -48,15 +48,23 @@ describe('torrent table column picker', () => {
 });
 
 describe('torrent tag chips', () => {
-  it('shows the first tags and counts the rest, naming every tag for screen readers', () => {
+  // The visible chips' text, without the screen-reader list.
+  const chipText = (el: HTMLElement) => [...el.querySelectorAll('[aria-hidden]')].map((chip) => chip.textContent).join(' ');
+
+  it('shows the first tags and counts the rest, and reads every tag to screen readers', () => {
     render(<TorrentTagChips tags={['4k', 'anime', 'keep', 'x']} max={2} />);
-    const group = screen.getByLabelText('Tags: 4k, anime, keep, x');
-    expect(group.textContent).toBe('4kanime+2');
+    const spoken = screen.getByText('Tags: 4k, anime, keep, x');
+    expect(spoken.className).toContain('sr-only');
+    const group = spoken.parentElement!;
+    expect(chipText(group)).toBe('4k anime +2');
     expect(group.getAttribute('title')).toBe('4k, anime, keep, x');
+    // Contains the absolutely positioned sr-only text, so a tags cell off to the
+    // right of the table's scroller can't widen the page (a phone then zoomed out).
+    expect(group.className).toContain('relative');
   });
 
   it('shows no count when every tag fits', () => {
     render(<TorrentTagChips tags={['4k']} max={2} />);
-    expect(screen.getByLabelText('Tags: 4k').textContent).toBe('4k');
+    expect(chipText(screen.getByText('Tags: 4k').parentElement!)).toBe('4k');
   });
 });
