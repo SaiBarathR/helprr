@@ -349,9 +349,11 @@ session but a 5-minute HS256 "MFA pending" JWT with its own audience and no `sid
 `decodeToken` never accepts it. It is bound to the user by an HMAC stamp of the password
 hash, Jellyfin link and `totpEnabledAt`, so any of those changing ends it.
 `POST /api/auth/login/totp` checks it, applies the sign-in throttles keyed on the account,
-verifies a code (±1 step) and uses it up in the same conditional write
-(`totpLastUsedStep < step`), then spends the token's `jti` in Redis (`SET NX`, fail closed)
-and makes the session. The first step no longer clears the username backoff or IP bucket
+spends the token's `jti` in Redis (`SET NX`, fail closed), then verifies a code (±1 step)
+and uses it up in the same conditional write (`totpLastUsedStep < step`) and makes the
+session. The token is claimed before the code is used, so a claim Redis refuses never costs
+a recovery code; a wrong code (or a failure while using it) deletes the claim again for the
+next try. The first step no longer clears the username backoff or IP bucket
 for these accounts, so a known password cannot reset them between code guesses, and every
 wrong code counts (no repeat-guess dedupe). Before a code is checked, one Redis script
 counts the attempt atomically: 10 authenticator codes per account per fixed hour (sign-in,
@@ -1041,7 +1043,16 @@ settings (host, port, user name).
 Compose caps Redis at 256 MB with `maxmemory-policy noeviction` (Helprr itself
 uses tens of MB). Past the cap Redis refuses writes rather than evicting keys,
 because the login, two-step and replay limits live in Redis beside the caches
-and must not be dropped; those checks fail closed when a write fails.
+and must not be dropped; those checks fail closed when a write fails. Because Redis can
+refuse writes while it still answers reads, every route that checks a password or the
+trusted-header secret first makes one write (`enforceLoginWritable`, after the read checks)
+and answers 503 without checking the credential when Redis refuses it: a 503 only for wrong
+guesses would otherwise let guessing go on uncounted. Every code at sign-in, and an
+authenticator code anywhere, is counted by `startMfaAttempt` before it is checked, which
+fails closed the same way; a recovery code at step-up comes after that request's password
+write check. As a backstop, a failure the username backoff or the global
+backstop cannot record still answers 503 rather than 401 or 403 (`recordUsernameFailure`
+and `recordGlobalLoginFailure` report whether they wrote).
 
 ## Interactive search grabs (Sonarr/Radarr)
 

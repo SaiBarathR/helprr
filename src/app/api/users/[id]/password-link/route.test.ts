@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
     recordUsernameFailure: vi.fn(),
     clearUsernameBackoff: vi.fn(),
     enforceGlobalLoginBackstop: vi.fn(),
+    enforceLoginWritable: vi.fn(),
     recordGlobalLoginFailure: vi.fn(),
   },
 }));
@@ -92,6 +93,9 @@ beforeEach(() => {
   vi.stubEnv('APP_ORIGIN', '');
   vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
   for (const fn of Object.values(mocks.limits)) fn.mockResolvedValue(null);
+  // The failure recorders report that Redis took the write.
+  mocks.limits.recordGlobalLoginFailure.mockResolvedValue(true);
+  mocks.limits.recordUsernameFailure.mockResolvedValue(true);
   mocks.verifyUserPassword.mockImplementation(async (_user: unknown, password: string) => password === PASSWORD);
   mocks.userUpdateMany.mockResolvedValue({ count: 1 });
   mocks.recoveryDeleteMany.mockResolvedValue({ count: 1 });

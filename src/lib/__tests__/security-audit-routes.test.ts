@@ -66,14 +66,15 @@ vi.mock('@/lib/password', () => ({
   passwordHashNeedsUpgrade: () => false,
 }));
 vi.mock('@/lib/login-rate-limit', () => ({
+  enforceLoginWritable: async () => null,
   getClientIp: () => '203.0.113.77',
   enforceLoginRateLimit: vi.fn(async () => null),
   clearLoginAttempts: vi.fn(),
   enforceUsernameBackoff: vi.fn(async () => null),
-  recordUsernameFailure: vi.fn(),
+  recordUsernameFailure: vi.fn(async () => true),
   clearUsernameBackoff: vi.fn(),
   enforceGlobalLoginBackstop: vi.fn(async () => null),
-  recordGlobalLoginFailure: vi.fn(),
+  recordGlobalLoginFailure: vi.fn(async () => true),
   enforceMalformedLoginBackstop: vi.fn(async () => null),
   recordMalformedLoginRequest: vi.fn(async () => null),
 }));

@@ -12,6 +12,7 @@ import {
   recordUsernameFailure,
   clearUsernameBackoff,
   enforceGlobalLoginBackstop,
+  enforceLoginWritable,
   recordGlobalLoginFailure,
   enforceMalformedLoginBackstop,
   recordMalformedLoginRequest,
@@ -58,6 +59,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (backoff) return backoff;
   const globalBackstop = await enforceGlobalLoginBackstop();
   if (globalBackstop) return globalBackstop;
+  // A failure must be countable before the credential is checked (Redis refuses writes at its memory cap).
+  const unwritable = await enforceLoginWritable();
+  if (unwritable) return unwritable;
 
   const connection = await prisma.serviceConnection.findFirst({
     where: { type: 'JELLYFIN' },
@@ -70,10 +74,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const result = await JellyfinClient.authenticateByName(connection.url, username, password);
   if (!result.ok) {
     if (result.reason === 'invalid_credentials') {
-      await recordUsernameFailure(username, password);
-      await recordGlobalLoginFailure();
+      const counted = [await recordUsernameFailure(username, password), await recordGlobalLoginFailure()];
       // A wrong Jellyfin password from a signed-in session counts as a failed sign-in.
       await recordFailedSignIn(request, { username, method: 'jellyfin', actor: auth.user });
+      // Redis can refuse writes while still answering the read checks (at its memory cap): a guess the throttles couldn't count must not pass as an ordinary wrong one.
+      if (!counted.every(Boolean)) return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
       return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
     }
     return NextResponse.json({ error: JELLYFIN_UNAVAILABLE }, { status: 502 });

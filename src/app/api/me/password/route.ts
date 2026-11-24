@@ -10,6 +10,7 @@ import {
   recordUsernameFailure,
   clearUsernameBackoff,
   enforceGlobalLoginBackstop,
+  enforceLoginWritable,
   recordGlobalLoginFailure,
 } from '@/lib/login-rate-limit';
 import { boundedBodyErrorResponse, readBoundedJson } from '@/lib/server/bounded-body';
@@ -74,12 +75,16 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (backoff) return backoff;
   const globalBackstop = await enforceGlobalLoginBackstop();
   if (globalBackstop) return globalBackstop;
+  // A failure must be countable before the credential is checked (Redis refuses writes at its memory cap).
+  const unwritable = await enforceLoginWritable();
+  if (unwritable) return unwritable;
 
   if (!(await verifyUserPassword(user, currentPassword))) {
-    await recordUsernameFailure(user.username, currentPassword);
-    await recordGlobalLoginFailure();
+    const counted = [await recordUsernameFailure(user.username, currentPassword), await recordGlobalLoginFailure()];
     // A guess at the password from a signed-in session counts as a failed sign-in.
     await recordFailedSignIn(request, { username: user.username, method: 'password', user, actor: user });
+    // Redis can refuse writes while still answering the read checks (at its memory cap): a guess the throttles couldn't count must not pass as an ordinary wrong one.
+    if (!counted.every(Boolean)) return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
     // 403, not 401: the client sends every 401 to /login, and the session is fine.
     return NextResponse.json({ error: 'Current password is incorrect' }, { status: 403 });
   }

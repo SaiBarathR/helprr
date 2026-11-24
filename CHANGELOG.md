@@ -20,6 +20,11 @@ There is no database change; to get the Redis limit, take this release's Compose
   comments pages) no longer carry a query parameter named like a key or passkey, or a
   user name and password; a link that isn't http(s) is dropped.
 - Lidarr's grab checks the release and download client as Sonarr's and Radarr's do.
+- When Redis refuses writes (for example at its new memory limit), signing in, confirming
+  a password and the trusted-header sign-in answer "Login service unavailable" before
+  checking the password or secret, so guesses can't go on without being counted.
+- Two-step sign-in reserves the sign-in before using a code, so a recovery code is never
+  used up by a sign-in that then fails.
 
 ### Fixed
 

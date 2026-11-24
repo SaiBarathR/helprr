@@ -27,6 +27,7 @@ import {
   mfaLockedResponse,
   mfaPendingTokenMatches,
   readMfaPendingToken,
+  releaseMfaPendingToken,
   secondFactorKind,
   startMfaAttempt,
 } from '@/lib/totp';
@@ -108,17 +109,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return gate.reason === 'locked' ? mfaLockedResponse(gate.retryMs) : expired();
   }
 
-  const factor = await consumeSecondFactor(user, code);
-  if (!factor) {
-    // A unique value: the password backoff ignores a repeated identical guess,
-    // but the same six digits are a new guess every 30 seconds.
-    await recordUsernameFailure(user.username, randomUUID());
-    await recordGlobalLoginFailure();
-    await recordFailedSignIn(request, { username: user.username, method: 'totp', user });
-    return NextResponse.json({ error: WRONG_CODE }, { status: 401 });
-  }
-
-  // One sign-in per pending token, even with a second good code.
+  // One sign-in per pending token, even with a second good code. Claimed before
+  // the code is used, so a claim that fails (Redis refusing the write) never
+  // costs a recovery code or the code's 30-second step; a wrong code gives the
+  // claim back for the next try.
   let claimed: boolean;
   try {
     claimed = await claimMfaPendingToken(claims);
@@ -126,6 +120,24 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
   }
   if (!claimed) return expired();
+
+  let factor: Awaited<ReturnType<typeof consumeSecondFactor>>;
+  try {
+    factor = await consumeSecondFactor(user, code);
+  } catch (error) {
+    await releaseMfaPendingToken(claims);
+    throw error;
+  }
+  if (!factor) {
+    await releaseMfaPendingToken(claims);
+    // A unique value: the password backoff ignores a repeated identical guess,
+    // but the same six digits are a new guess every 30 seconds.
+    const counted = [await recordUsernameFailure(user.username, randomUUID()), await recordGlobalLoginFailure()];
+    await recordFailedSignIn(request, { username: user.username, method: 'totp', user });
+    // Redis can refuse writes while still answering the read checks (at its memory cap): a guess the throttles couldn't count must not pass as an ordinary wrong one.
+    if (!counted.every(Boolean)) return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+    return NextResponse.json({ error: WRONG_CODE }, { status: 401 });
+  }
 
   await clearMfaAttempts(user.id);
   await clearUsernameBackoff(user.username);

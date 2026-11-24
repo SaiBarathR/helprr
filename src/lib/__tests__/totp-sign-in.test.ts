@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
     recordUsernameFailure: vi.fn(),
     clearUsernameBackoff: vi.fn(),
     enforceGlobalLoginBackstop: vi.fn(),
+    enforceLoginWritable: vi.fn(),
     recordGlobalLoginFailure: vi.fn(),
     enforceMalformedLoginBackstop: vi.fn(),
     recordMalformedLoginRequest: vi.fn(),
@@ -99,6 +100,9 @@ beforeEach(() => {
   vi.stubEnv('JWT_SECRET', JWT);
   vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
   for (const fn of Object.values(mocks.limits)) fn.mockResolvedValue(null);
+  // The failure recorders report that Redis took the write.
+  mocks.limits.recordGlobalLoginFailure.mockResolvedValue(true);
+  mocks.limits.recordUsernameFailure.mockResolvedValue(true);
   mocks.createSession.mockResolvedValue('session-token');
   mocks.verifyUserPassword.mockResolvedValue(true);
   mocks.userUpdateMany.mockResolvedValue({ count: 1 });
@@ -324,6 +328,47 @@ describe('the code step', () => {
     expect(response.status).toBe(503);
     expect(mocks.createSession).not.toHaveBeenCalled();
   });
+
+  it('a failed claim spends neither a recovery code nor the code\'s step', async () => {
+    const mfaToken = await firstStep();
+    mocks.redisSet.mockRejectedValue(new Error('OOM command not allowed'));
+    mocks.recoveryDeleteMany.mockResolvedValue({ count: 1 });
+    expect((await codeLogin(post('/api/auth/login/totp', { mfaToken, code: 'ABCD-EFGH-IJKL-MNOP' }))).status).toBe(503);
+    expect((await codeLogin(post('/api/auth/login/totp', { mfaToken, code: codeAt(NOW) }))).status).toBe(503);
+    expect(mocks.recoveryDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.userUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.createSession).not.toHaveBeenCalled();
+  });
+
+  it('a wrong code gives the claim back, so the next code still signs in', async () => {
+    const mfaToken = await firstStep();
+    const wrong = await codeLogin(post('/api/auth/login/totp', { mfaToken, code: codeAt(NOW + 5 * 60_000) }));
+    expect(wrong.status).toBe(401);
+    expect(mocks.redisDel).toHaveBeenCalledWith(expect.stringMatching(/^login:mfa-used:/));
+    const right = await codeLogin(post('/api/auth/login/totp', { mfaToken, code: codeAt(NOW) }));
+    expect(right.status).toBe(200);
+    expect(mocks.createSession).toHaveBeenCalledOnce();
+  });
+
+  it('gives the claim back when using the code fails', async () => {
+    const mfaToken = await firstStep();
+    mocks.recoveryDeleteMany.mockRejectedValue(new Error('db down'));
+    await expect(codeLogin(post('/api/auth/login/totp', { mfaToken, code: 'ABCD-EFGH-IJKL-MNOP' }))).rejects.toThrow('db down');
+    expect(mocks.redisDel).toHaveBeenCalledWith(expect.stringMatching(/^login:mfa-used:/));
+  });
+
+  it.each(['recordUsernameFailure', 'recordGlobalLoginFailure'] as const)(
+    'a wrong code that %s cannot record answers 503, not 401, and is still audited', async (fn) => {
+      const mfaToken = await firstStep();
+      mocks.limits[fn].mockResolvedValueOnce(false);
+      const response = await codeLogin(post('/api/auth/login/totp', { mfaToken, code: codeAt(NOW + 5 * 60_000) }));
+      expect(response.status).toBe(503);
+      expect(mocks.createSession).not.toHaveBeenCalled();
+      expect(mocks.recordFailedSignIn).toHaveBeenCalled();
+      // The claim is given back even then.
+      expect(mocks.redisDel).toHaveBeenCalledWith(expect.stringMatching(/^login:mfa-used:/));
+    },
+  );
 
   it('a pending token expires after five minutes', async () => {
     const mfaToken = await firstStep();

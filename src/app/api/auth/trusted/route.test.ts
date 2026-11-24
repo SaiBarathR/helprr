@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
     recordUsernameFailure: vi.fn(),
     clearUsernameBackoff: vi.fn(),
     enforceGlobalLoginBackstop: vi.fn(),
+    enforceLoginWritable: vi.fn(),
     recordGlobalLoginFailure: vi.fn(),
     enforceMalformedLoginBackstop: vi.fn(),
     recordMalformedLoginRequest: vi.fn(),
@@ -66,6 +67,9 @@ beforeEach(() => {
   vi.stubEnv('HELPRR_TRUSTED_AUTH_SECRET', '');
   vi.stubEnv('JWT_SECRET', 'a-valid-session-secret-that-is-longer-than-32-characters');
   for (const fn of Object.values(mocks.limits)) fn.mockResolvedValue(null);
+  // The failure recorders report that Redis took the write.
+  mocks.limits.recordGlobalLoginFailure.mockResolvedValue(true);
+  mocks.limits.recordUsernameFailure.mockResolvedValue(true);
   mocks.createSession.mockResolvedValue('session-token');
   mocks.findUnique.mockResolvedValue(null);
 });
@@ -168,6 +172,25 @@ describe('trusted-header sign-in', () => {
     expect(mocks.limits.recordGlobalLoginFailure).not.toHaveBeenCalled();
     // Loading the login page some other way spends no sign-in attempts.
     expect(mocks.limits.enforceLoginRateLimit).not.toHaveBeenCalled();
+  });
+
+  it('answers 503 without comparing the secret when Redis refuses writes', async () => {
+    enable();
+    mocks.limits.enforceLoginWritable.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Login service unavailable' }), { status: 503 }));
+    const response = await POST(post({ 'Remote-User': 'Alice', 'X-Helprr-Proxy-Secret': SECRET }));
+    expect(response.status).toBe(503);
+    expectNoSession(response);
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.limits.recordGlobalLoginFailure).not.toHaveBeenCalled();
+  });
+
+  it('answers 503, not 401, when a wrong secret cannot be counted (and still audits it)', async () => {
+    enable();
+    mocks.limits.recordGlobalLoginFailure.mockResolvedValueOnce(false);
+    const response = await POST(post({ 'Remote-User': 'Alice', 'X-Helprr-Proxy-Secret': `${SECRET.slice(0, -1)}X` }));
+    expect(response.status).toBe(503);
+    expectNoSession(response);
+    expect(mocks.recordFailedSignIn).toHaveBeenCalled();
   });
 
   it.each([

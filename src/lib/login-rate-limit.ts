@@ -199,6 +199,28 @@ return {tostring(count), tostring(ttl)}`,
   }
 }
 
+// ─── Write check ──────────────────────────────────────────────────────────────
+
+const LOGIN_WRITE_CHECK_KEY = 'login:write-check';
+
+/**
+ * 503 when Redis refuses writes while it still answers the read checks (at its
+ * memory cap with noeviction), or null. Call after the read checks and before
+ * the password or secret is checked: a failure that cannot be counted must not
+ * be checked at all, or a 503 for a wrong guess and a 200 for the right one
+ * would let guessing go on without a limit. The failure recorders still answer
+ * 503 when Redis fills up between the two.
+ */
+export async function enforceLoginWritable(): Promise<NextResponse | null> {
+  try {
+    const redis = await getRedisClient();
+    await redis.set(LOGIN_WRITE_CHECK_KEY, '1', { PX: LOGIN_WINDOW_MS });
+    return null;
+  } catch {
+    return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+  }
+}
+
 // ─── Per-username exponential backoff (layer 2) ──────────────────────────────
 
 function userKey(username: string): string {
@@ -246,9 +268,12 @@ export async function enforceUsernameBackoff(username: string): Promise<NextResp
  * Record a failed attempt for `username` and extend the backoff. A replayed
  * identical wrong password (same fingerprint as the previous failure) does NOT
  * advance the counter, so credential-stuffing the same leaked password can't lock
- * out a legitimate user. Best-effort: a Redis error is logged, not surfaced.
+ * out a legitimate user. Returns false when Redis refused the write (logged): it
+ * can refuse writes while still answering the read checks, at its memory cap,
+ * so the caller answers 503 rather than let an uncounted guess pass as an
+ * ordinary wrong attempt.
  */
-export async function recordUsernameFailure(username: string, password: string): Promise<void> {
+export async function recordUsernameFailure(username: string, password: string): Promise<boolean> {
   try {
     const redis = await getRedisClient();
     await redis.eval(
@@ -282,8 +307,10 @@ return tostring(lockedUntil)`,
         ],
       }
     );
+    return true;
   } catch (error) {
     console.error('[Auth] Failed to record username login failure:', error);
+    return false;
   }
 }
 
@@ -330,8 +357,8 @@ export async function enforceGlobalLoginBackstop(): Promise<NextResponse | null>
   return null;
 }
 
-/** Record a failed attempt in the global fixed window. Best-effort. */
-export async function recordGlobalLoginFailure(): Promise<void> {
+/** Record a failed attempt in the global fixed window. False when Redis refused the write (as above). */
+export async function recordGlobalLoginFailure(): Promise<boolean> {
   try {
     const redis = await getRedisClient();
     await redis.eval(
@@ -345,7 +372,9 @@ return count`,
         arguments: [String(GLOBAL_FAILURE_WINDOW_MS)],
       }
     );
+    return true;
   } catch (error) {
     console.error('[Auth] Failed to record global login failure:', error);
+    return false;
   }
 }
