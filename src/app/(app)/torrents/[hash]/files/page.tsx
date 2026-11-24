@@ -2,15 +2,24 @@
 
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { useParams, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { ChevronRight, ChevronDown, Download, Folder, File, Gauge, Loader2, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, Download, Folder, File, Gauge, Loader2, MoreVertical, Pencil, X } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { PageHeader } from '@/components/layout/page-header';
-import { QuickContextMenu } from '@/components/ui/quick-context-menu';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Select,
   SelectContent,
@@ -22,6 +31,7 @@ import { formatBytes } from '@/lib/format';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { useCan } from '@/components/permission-provider';
 import type { TorrentFile } from '@/lib/qbittorrent-client';
+import type { RenameArrUse } from '@/app/api/qbittorrent/[hash]/files/rename/route';
 import {
   buildFileTree,
   getAllFileIndices,
@@ -30,6 +40,24 @@ import {
   type DirNode,
   type FileNode,
 } from '@/lib/torrent-file-tree';
+
+/** A file or folder being renamed: its path in the torrent and its name now. */
+interface RenameTarget {
+  kind: 'file' | 'folder';
+  path: string;
+  name: string;
+}
+
+/** Why the server wants a rename confirmed: an arr downloads into the torrent's category. */
+interface RenameWarning {
+  category: string;
+  uses: RenameArrUse[];
+  unchecked: string[];
+}
+
+type RenameResult = { ok: true; path: string } | ({ ok: false } & RenameWarning);
+
+const renameKey = (target: Pick<RenameTarget, 'kind' | 'path'>) => `${target.kind}:${target.path}`;
 
 const PRIORITY_OPTIONS = [
   { value: '0', label: 'Skip' },
@@ -83,6 +111,81 @@ export default function TorrentFilesPage() {
     },
   });
   const { mutate: mutatePriority, isPending: priorityPending } = setPriorityMutation;
+
+  const [renaming, setRenaming] = useState<RenameTarget | null>(null);
+  const [renameWarning, setRenameWarning] = useState<RenameWarning | null>(null);
+  const { mutateAsync: mutateRename, isPending: renamePending } = useMutation({
+    mutationFn: async ({ target, name, confirm }: { target: RenameTarget; name: string; confirm: boolean }): Promise<RenameResult> => {
+      const res = await fetch(`/api/qbittorrent/${hash}/files/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: target.kind, path: target.path, name, confirm }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.status === 409 && data?.needsConfirm === true) {
+        return {
+          ok: false,
+          category: typeof data.category === 'string' ? data.category : '',
+          uses: Array.isArray(data.uses) ? data.uses : [],
+          unchecked: Array.isArray(data.unchecked) ? data.unchecked : [],
+        };
+      }
+      // ApiError so a 401 reaches the global MutationCache handler (redirect).
+      if (!res.ok) throw new ApiError(res.status, data?.error || 'Failed to rename');
+      return { ok: true, path: typeof data?.path === 'string' ? data.path : target.path };
+    },
+  });
+
+  const startRename = useCallback((target: RenameTarget) => {
+    setRenameWarning(null);
+    setRenaming(target);
+  }, []);
+  const cancelRename = useCallback(() => {
+    setRenameWarning(null);
+    setRenaming(null);
+  }, []);
+
+  const submitRename = async (target: RenameTarget, name: string) => {
+    try {
+      const result = await mutateRename({ target, name, confirm: renameWarning !== null });
+      if (!result.ok) {
+        // The editor stays open with the warning; its button then confirms.
+        setRenameWarning(result);
+        return;
+      }
+      if (target.kind === 'folder') {
+        // An open folder (and the ones open inside it) stays open under its new name.
+        setExpandedDirs((prev) => new Set([...prev].map((dir) => (
+          dir === target.path || dir.startsWith(`${target.path}/`) ? `${result.path}${dir.slice(target.path.length)}` : dir
+        ))));
+      }
+      cancelRename();
+      toast.success(`Renamed to ${name}`);
+      void queryClient.invalidateQueries({ queryKey: filesKey });
+    } catch (err) {
+      // 401 is handled globally (redirect to /login); only toast other failures.
+      if (!(err instanceof ApiError && err.status === 401)) {
+        toast.error(err instanceof Error ? err.message : 'Failed to rename');
+      }
+      // Gone from the torrent meanwhile: show the list as it is now.
+      if (err instanceof ApiError && err.status === 404) {
+        cancelRename();
+        void queryClient.invalidateQueries({ queryKey: filesKey });
+      }
+    }
+  };
+
+  const renameForm = renaming && (
+    <RenameForm
+      key={renameKey(renaming)}
+      target={renaming}
+      pending={renamePending}
+      warning={renameWarning}
+      onSubmit={(name) => void submitRename(renaming, name)}
+      onCancel={cancelRename}
+    />
+  );
+  const rename = { activeKey: renaming ? renameKey(renaming) : null, form: renameForm, onStart: startRename };
 
   const filesQuery = useQuery({
     queryKey: filesKey,
@@ -199,6 +302,7 @@ export default function TorrentFilesPage() {
                 depth={0}
                 expandedDirs={expandedDirs}
                 canManage={canManage}
+                rename={rename}
                 onToggleDir={toggleDir}
                 onToggleDownload={toggleFileDownload}
                 onSetPriority={setPriority}
@@ -212,11 +316,19 @@ export default function TorrentFilesPage() {
 }
 
 
+/** The row being renamed (`activeKey`, see renameKey) shows `form` in its place. */
+interface RowRename {
+  activeKey: string | null;
+  form: ReactNode;
+  onStart: (target: RenameTarget) => void;
+}
+
 interface TreeNodeRowProps {
   node: TreeNode;
   depth: number;
   expandedDirs: Set<string>;
   canManage: boolean;
+  rename: RowRename;
   onToggleDir: (path: string) => void;
   onToggleDownload: (fileIds: number[], currentlySelected: boolean) => void;
   onSetPriority: (fileIds: number[], priority: number) => void;
@@ -227,6 +339,7 @@ function TreeNodeRow({
   depth,
   expandedDirs,
   canManage,
+  rename,
   onToggleDir,
   onToggleDownload,
   onSetPriority,
@@ -237,6 +350,7 @@ function TreeNodeRow({
         node={node}
         depth={depth}
         canManage={canManage}
+        rename={rename}
         onToggleDownload={onToggleDownload}
         onSetPriority={onSetPriority}
       />
@@ -249,6 +363,7 @@ function TreeNodeRow({
       depth={depth}
       expandedDirs={expandedDirs}
       canManage={canManage}
+      rename={rename}
       onToggleDir={onToggleDir}
       onToggleDownload={onToggleDownload}
       onSetPriority={onSetPriority}
@@ -261,6 +376,7 @@ function DirRow({
   depth,
   expandedDirs,
   canManage,
+  rename,
   onToggleDir,
   onToggleDownload,
   onSetPriority,
@@ -275,96 +391,111 @@ function DirRow({
     onToggleDownload(allIndices, checkState === 'all');
   };
 
+  const groups: ContextActionGroup[] = [
+    {
+      id: 'folder',
+      actions: [
+        {
+          id: 'toggle-folder',
+          label: expanded ? 'Collapse folder' : 'Expand folder',
+          icon: expanded
+            ? <ChevronDown className="h-4 w-4" />
+            : <ChevronRight className="h-4 w-4" />,
+          onSelect: () => onToggleDir(node.path),
+        },
+        ...(canManage
+          ? [{
+              id: 'toggle-download',
+              label: checkState === 'all' ? 'Skip all files' : 'Download all files',
+              icon: checkState === 'all'
+                ? <X className="h-4 w-4" />
+                : <Download className="h-4 w-4" />,
+              onSelect: () => onToggleDownload(allIndices, checkState === 'all'),
+            }]
+          : []),
+      ],
+    },
+    {
+      id: 'priority',
+      actions: canManage
+        ? PRIORITY_OPTIONS.filter((option) => option.value !== '0').map((option) => ({
+            id: `priority-${option.value}`,
+            label: `${option.label} priority`,
+            icon: <Gauge className="h-4 w-4" />,
+            onSelect: () => onSetPriority(allIndices, Number(option.value)),
+          }))
+        : [],
+    },
+    {
+      id: 'rename',
+      actions: canManage
+        ? [{
+            id: 'rename',
+            label: 'Rename folder',
+            icon: <Pencil className="h-4 w-4" />,
+            onSelect: () => rename.onStart({ kind: 'folder', path: node.path, name: node.name }),
+          }]
+        : [],
+    },
+  ];
+
   return (
     <>
       <div className="border-b border-border/50">
-        <div
-          className="flex items-center gap-2 px-3 py-2.5"
-          style={{ paddingLeft: `${12 + indent}px` }}
-        >
-          {/* Checkbox */}
-          {canManage && (
-            <span className="relative flex items-center justify-center shrink-0">
-              <input
-                type="checkbox"
-                checked={checkState === 'all'}
-                aria-label={`Select ${node.name}`}
-                ref={(el) => {
-                  if (el) el.indeterminate = checkState === 'indeterminate';
-                }}
-                onChange={handleCheckboxChange}
-                className="rounded border-border h-4 w-4"
-              />
-            </span>
-          )}
-
-          {/* Expand toggle + folder icon + name */}
-          <QuickContextMenu
-            label={`Actions for ${node.name}`}
-            groups={[
-              {
-                id: 'folder',
-                actions: [
-                  {
-                    id: 'toggle-folder',
-                    label: expanded ? 'Collapse folder' : 'Expand folder',
-                    icon: expanded
-                      ? <ChevronDown className="h-4 w-4" />
-                      : <ChevronRight className="h-4 w-4" />,
-                    onSelect: () => onToggleDir(node.path),
-                  },
-                  ...(canManage
-                    ? [{
-                        id: 'toggle-download',
-                        label: checkState === 'all' ? 'Skip all files' : 'Download all files',
-                        icon: checkState === 'all'
-                          ? <X className="h-4 w-4" />
-                          : <Download className="h-4 w-4" />,
-                        onSelect: () => onToggleDownload(allIndices, checkState === 'all'),
-                      }]
-                    : []),
-                ],
-              },
-              {
-                id: 'priority',
-                actions: canManage
-                  ? PRIORITY_OPTIONS.filter((option) => option.value !== '0').map((option) => ({
-                      id: `priority-${option.value}`,
-                      label: `${option.label} priority`,
-                      icon: <Gauge className="h-4 w-4" />,
-                      onSelect: () => onSetPriority(allIndices, Number(option.value)),
-                    }))
-                  : [],
-              },
-            ]}
+        {rename.activeKey === renameKey({ kind: 'folder', path: node.path }) ? (
+          <div style={{ paddingLeft: `${indent}px` }}>{rename.form}</div>
+        ) : (
+          <div
+            className="flex items-center gap-2 px-3 py-2.5"
+            style={{ paddingLeft: `${12 + indent}px` }}
           >
-            <button
-              className="flex items-center gap-1.5 min-w-0 flex-1"
-              onClick={() => onToggleDir(node.path)}
-            >
-              {expanded ? (
-                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-              )}
-              <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="text-xs font-medium truncate">{node.name}</span>
-            </button>
-          </QuickContextMenu>
+            {/* Checkbox */}
+            {canManage && (
+              <span className="relative flex items-center justify-center shrink-0">
+                <input
+                  type="checkbox"
+                  checked={checkState === 'all'}
+                  aria-label={`Select ${node.name}`}
+                  ref={(el) => {
+                    if (el) el.indeterminate = checkState === 'indeterminate';
+                  }}
+                  onChange={handleCheckboxChange}
+                  className="rounded border-border h-4 w-4"
+                />
+              </span>
+            )}
 
-          {/* Stats */}
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-              {node.selectedCount}/{node.fileCount}
-            </span>
-            <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-              {formatBytes(node.totalSize)}
-            </span>
-            <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-              {(progress * 100).toFixed(0)}%
-            </span>
+            {/* Expand toggle + folder icon + name */}
+            <QuickContextMenu label={`Actions for ${node.name}`} groups={groups}>
+              <button
+                className="flex items-center gap-1.5 min-w-0 flex-1"
+                onClick={() => onToggleDir(node.path)}
+              >
+                {expanded ? (
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                )}
+                <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="text-xs font-medium truncate">{node.name}</span>
+              </button>
+            </QuickContextMenu>
+
+            {/* Stats */}
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                {node.selectedCount}/{node.fileCount}
+              </span>
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                {formatBytes(node.totalSize)}
+              </span>
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                {(progress * 100).toFixed(0)}%
+              </span>
+            </div>
+            {canManage && <RowMenu label={`More actions for ${node.name}`} groups={groups} />}
           </div>
-        </div>
+        )}
       </div>
 
       {expanded &&
@@ -375,6 +506,7 @@ function DirRow({
             depth={depth + 1}
             expandedDirs={expandedDirs}
             canManage={canManage}
+            rename={rename}
             onToggleDir={onToggleDir}
             onToggleDownload={onToggleDownload}
             onSetPriority={onSetPriority}
@@ -388,12 +520,14 @@ function FileRow({
   node,
   depth,
   canManage,
+  rename,
   onToggleDownload,
   onSetPriority,
 }: {
   node: FileNode;
   depth: number;
   canManage: boolean;
+  rename: RowRename;
   onToggleDownload: (fileIds: number[], currentlySelected: boolean) => void;
   onSetPriority: (fileIds: number[], priority: number) => void;
 }) {
@@ -402,6 +536,53 @@ function FileRow({
   const indent = Math.min(depth, 4) * 16;
   const remaining = file.size * (1 - file.progress);
 
+  if (rename.activeKey === renameKey({ kind: 'file', path: file.name })) {
+    return (
+      <div className="border-b border-border/50" style={{ paddingLeft: `${indent}px` }}>
+        {rename.form}
+      </div>
+    );
+  }
+
+  const groups: ContextActionGroup[] = [
+    {
+      id: 'download',
+      actions: canManage
+        ? [{
+            id: 'toggle-download',
+            label: isSelected ? 'Skip file' : 'Download file',
+            icon: isSelected
+              ? <X className="h-4 w-4" />
+              : <Download className="h-4 w-4" />,
+            onSelect: () => onToggleDownload([file.index], isSelected),
+          }]
+        : [],
+    },
+    {
+      id: 'priority',
+      actions: canManage
+        ? PRIORITY_OPTIONS.filter((option) => option.value !== '0').map((option) => ({
+            id: `priority-${option.value}`,
+            label: `${option.label} priority`,
+            icon: <Gauge className="h-4 w-4" />,
+            disabled: Number(option.value) === file.priority,
+            onSelect: () => onSetPriority([file.index], Number(option.value)),
+          }))
+        : [],
+    },
+    {
+      id: 'rename',
+      actions: canManage
+        ? [{
+            id: 'rename',
+            label: 'Rename file',
+            icon: <Pencil className="h-4 w-4" />,
+            onSelect: () => rename.onStart({ kind: 'file', path: file.name, name: node.name }),
+          }]
+        : [],
+    },
+  ];
+
   return (
     <div className="border-b border-border/50">
       <div
@@ -409,36 +590,7 @@ function FileRow({
         style={{ paddingLeft: `${12 + indent}px` }}
       >
         {/* Row 1: checkbox + icon + name */}
-        <QuickContextMenu
-          label={`Actions for ${node.name}`}
-          groups={[
-            {
-              id: 'download',
-              actions: canManage
-                ? [{
-                    id: 'toggle-download',
-                    label: isSelected ? 'Skip file' : 'Download file',
-                    icon: isSelected
-                      ? <X className="h-4 w-4" />
-                      : <Download className="h-4 w-4" />,
-                    onSelect: () => onToggleDownload([file.index], isSelected),
-                  }]
-                : [],
-            },
-            {
-              id: 'priority',
-              actions: canManage
-                ? PRIORITY_OPTIONS.filter((option) => option.value !== '0').map((option) => ({
-                    id: `priority-${option.value}`,
-                    label: `${option.label} priority`,
-                    icon: <Gauge className="h-4 w-4" />,
-                    disabled: Number(option.value) === file.priority,
-                    onSelect: () => onSetPriority([file.index], Number(option.value)),
-                  }))
-                : [],
-            },
-          ]}
-        >
+        <QuickContextMenu label={`Actions for ${node.name}`} groups={groups}>
           <div className="flex items-start gap-2">
             {canManage && (
               <input
@@ -454,6 +606,7 @@ function FileRow({
             <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
               {formatBytes(file.size)}
             </span>
+            {canManage && <RowMenu label={`More actions for ${node.name}`} groups={groups} />}
           </div>
         </QuickContextMenu>
 
@@ -518,5 +671,109 @@ function FileRow({
         </div>
       </div>
     </div>
+  );
+}
+
+/** The row's ⋮ menu: the same actions as its long-press menu, for a tap or a mouse. */
+function RowMenu({ label, groups }: { label: string; groups: ContextActionGroup[] }) {
+  const shown = groups.filter((group) => group.actions.length > 0);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        {/* 24px drawn, 44px to tap (touch-target): the row keeps its height. */}
+        <Button variant="ghost" size="icon-xs" className="relative touch-target -my-0.5 shrink-0" aria-label={label}>
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {shown.map((group, index) => (
+          <Fragment key={group.id ?? index}>
+            {index > 0 && <DropdownMenuSeparator />}
+            {group.actions.map((action) => (
+              <DropdownMenuItem key={action.id} disabled={action.disabled} onClick={action.onSelect}>
+                {action.icon} {action.label}
+              </DropdownMenuItem>
+            ))}
+          </Fragment>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** The inline editor for a new name, in the row's place, as Manage Trackers edits a tracker. */
+function RenameForm({
+  target,
+  pending,
+  warning,
+  onSubmit,
+  onCancel,
+}: {
+  target: RenameTarget;
+  pending: boolean;
+  warning: RenameWarning | null;
+  onSubmit: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(target.name);
+  const name = value.trim();
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!name || name === target.name || pending) return;
+    onSubmit(name);
+  };
+
+  return (
+    <form
+      className="space-y-2 px-3 py-2.5"
+      onSubmit={submit}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !pending) {
+          event.preventDefault();
+          onCancel();
+        }
+      }}
+    >
+      <p className="text-xs text-muted-foreground">{target.kind === 'file' ? 'Rename file' : 'Rename folder'}</p>
+      <Input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        // A file's name up to its extension, ready to type over.
+        onFocus={(e) => {
+          const dot = target.kind === 'file' ? e.target.value.lastIndexOf('.') : -1;
+          e.target.setSelectionRange(0, dot > 0 ? dot : e.target.value.length);
+        }}
+        aria-label={target.kind === 'file' ? 'New file name' : 'New folder name'}
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        maxLength={255}
+        disabled={pending}
+        autoFocus
+      />
+      {warning && (
+        <div role="alert" className="space-y-1 text-xs text-destructive">
+          {warning.uses.map((use) => (
+            <p key={`${use.app}|${use.instance}`}>
+              {use.instance === use.app ? use.app : `${use.app} (${use.instance})`} downloads into {warning.category}.
+            </p>
+          ))}
+          {warning.unchecked.length > 0 && (
+            <p>Did not answer, so not checked: {warning.unchecked.join(', ')}.</p>
+          )}
+          <p>Renaming inside this torrent can stop its import: the app looks for the files by the names it grabbed.</p>
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Button type="submit" className="flex-1" disabled={pending || !name || name === target.name}>
+          {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {warning ? 'Rename Anyway' : 'Rename'}
+        </Button>
+        <Button type="button" variant="outline" className="flex-1" disabled={pending} onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }

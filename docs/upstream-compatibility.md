@@ -634,6 +634,20 @@ calls its update check `ApplicationCheckUpdate`; Sonarr, Lidarr and Prowlarr
 messages and exceptions reach 28 KB. `POST /command {name}` with `CheckHealth` was run
 once on the dummy Sonarr and completed.
 
+### qBittorrent folders and file renames (2026-11-25)
+
+Live on a disposable qBittorrent `5.1.4` (Web API `2.11.4`).
+`GET app/getDirectoryContent?dirPath=&mode=dirs` answers each folder's full path
+(`<dirPath>/<name>`, unsorted), leaves out hidden ones (a name starting with a dot,
+`...` too), follows symbolic links (a link to `/` inside the download folder listed
+`/`), lists `/downloads/../etc` as `/etc`, answers 400 for a relative path and 404
+"Directory does not exist" for a missing one; an unknown endpoint is a bare 404
+"Not Found". `POST torrents/renameFile` and `renameFolder` (`hash`, `oldPath`,
+`newPath`, paths as `torrents/files` names them) rename on disk at once, answer 409
+for a taken name or an unknown old path, and answer 200 while doing nothing for a
+`newPath` of `../x`. Helprr sends only a checked folder and a new path it builds
+from the old one's folder and a checked name.
+
 ### Library filters (2026-11-24)
 
 Live on the dummy Sonarr `4.0.20.3014` and Radarr `7.0.3.10918`. `GET /api/v3/series`

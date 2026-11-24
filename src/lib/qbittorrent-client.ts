@@ -385,6 +385,15 @@ export class QBittorrentClient {
     await this.postMultipart('/api/v2/torrents/add', formData);
   }
 
+  /**
+   * The full path of each folder in `dirPath` (qBittorrent 5; hidden ones are
+   * left out, and symbolic links are followed). qBittorrent answers 404 when
+   * the folder is not there, and an older one 404s the endpoint itself.
+   */
+  async getDirectoryContent(dirPath: string): Promise<unknown> {
+    return this.get<unknown>('/api/v2/app/getDirectoryContent', { dirPath, mode: 'dirs' });
+  }
+
   async getCategories(): Promise<Record<string, QBittorrentCategory>> {
     return this.get('/api/v2/torrents/categories');
   }
@@ -519,6 +528,24 @@ export class QBittorrentClient {
     params.append('hash', hash);
     params.append('name', name);
     await this.post('/api/v2/torrents/rename', params.toString());
+  }
+
+  /** Paths inside the torrent, as torrents/files names them; qBittorrent answers 409 when `newPath` is taken. */
+  async renameFile(hash: string, oldPath: string, newPath: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hash', hash);
+    params.append('oldPath', oldPath);
+    params.append('newPath', newPath);
+    await this.post('/api/v2/torrents/renameFile', params.toString());
+  }
+
+  /** As renameFile, for a folder and everything in it. */
+  async renameFolder(hash: string, oldPath: string, newPath: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hash', hash);
+    params.append('oldPath', oldPath);
+    params.append('newPath', newPath);
+    await this.post('/api/v2/torrents/renameFolder', params.toString());
   }
 
   /** Moves the torrents' files; qBittorrent also turns their automatic management off. */

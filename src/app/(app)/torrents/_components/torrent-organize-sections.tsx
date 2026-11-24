@@ -7,6 +7,7 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { QueueMove } from '@/lib/qbittorrent-client';
+import { FolderPickerButton } from './folder-picker';
 import { newTagProblem } from './torrent-tags';
 import { useTorrentAction, useTorrentOptions } from './use-torrent';
 
@@ -51,16 +52,19 @@ export function TorrentLocationSection({
       {editing ? (
         <form className="grouped-row grouped-row-stacked gap-3" onSubmit={save}>
           <span className="text-sm">Save Path</span>
-          <Input
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="/downloads/movies"
-            aria-label="Save Path"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            autoFocus
-          />
+          <div className="flex gap-2">
+            <Input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="/downloads/movies"
+              aria-label="Save Path"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              autoFocus
+            />
+            <FolderPickerButton purpose="location" value={value} onPick={setValue} disabled={saving} />
+          </div>
           <p className="text-xs text-muted-foreground">
             qBittorrent moves the files there and turns off Auto Torrent Management. The folder must be inside one of
             its download folders.

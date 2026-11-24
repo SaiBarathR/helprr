@@ -43,22 +43,89 @@ function normalizeSavePath(value: string, windows: boolean): string | null {
  * silently imply "may write torrent payloads anywhere qBittorrent can".
  */
 export async function isInsideDownloadRoots(client: QBittorrentClient, savepath: string): Promise<boolean> {
+  return isUnderRoots(savepath, await getDownloadRoots(client));
+}
+
+/** qBittorrent's download roots: its default save path and every category's (empty ones included, as no root). */
+export async function getDownloadRoots(client: QBittorrentClient): Promise<string[]> {
   const [defaultSavePath, categories] = await Promise.all([
     client.getDefaultSavePath(),
     client.getCategories(),
   ]);
-  return isUnderRoots(savepath, [defaultSavePath, ...Object.values(categories).map((category) => category.savePath)]);
+  return [defaultSavePath, ...Object.values(categories).map((category) => category.savePath)];
 }
 
-// Each root is read as the system it names would read it; a root that can't be is no root.
-function isUnderRoots(savepath: string, roots: string[]): boolean {
-  return roots.some((root) => {
-    if (!root) return false;
+/** A folder `path` resolves to under one of `roots`, as isUnderRoots reads it. */
+export interface FolderUnderRoots {
+  /** The path as checked: trimmed, no trailing separator, "/" between folders. */
+  path: string;
+  /** Under a Windows root, where a backslash also separates folders. */
+  windows: boolean;
+}
+
+/**
+ * `savepath` as it was found under one of `roots`, or null when it is under
+ * none. Each root is read as the system it names would read it; a root that
+ * can't be is no root.
+ */
+export function folderUnderRoots(savepath: string, roots: string[]): FolderUnderRoots | null {
+  for (const root of roots) {
+    if (!root) continue;
     const windows = WINDOWS_ROOT.test(root.replace(QT_TRIM, ''));
     const base = normalizeSavePath(root, windows);
     const path = normalizeSavePath(savepath, windows);
-    return base !== null && path !== null && (path === base || path.startsWith(`${base}/`));
+    if (base !== null && path !== null && (path === base || path.startsWith(`${base}/`))) return { path, windows };
+  }
+  return null;
+}
+
+function isUnderRoots(savepath: string, roots: string[]): boolean {
+  return folderUnderRoots(savepath, roots) !== null;
+}
+
+/**
+ * The roots a folder picker may list under: absolute ones. qBittorrent lists
+ * no relative folder, and a relative one would be read against its working
+ * directory, not a download folder.
+ */
+export function absoluteRoots(roots: string[]): string[] {
+  return roots.filter((root) => {
+    const raw = root.replace(QT_TRIM, '');
+    return WINDOWS_ROOT.test(raw) || raw.startsWith('/');
   });
+}
+
+/** The roots a folder picker starts from: each absolute one as it is checked, without repeats and sorted. */
+export function listableRoots(roots: string[]): string[] {
+  const listable = new Set<string>();
+  for (const root of absoluteRoots(roots)) {
+    const found = folderUnderRoots(root, [root]);
+    if (found) listable.add(found.path);
+  }
+  return [...listable].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * The name of one folder qBittorrent's getDirectoryContent listed in `dir` (a
+ * FolderUnderRoots path), or null when it is not one a save path may name: not
+ * directly inside `dir`, a backslash outside Windows (isUnderRoots refuses
+ * it), only dots and spaces, a control character, or trailing whitespace
+ * (qBittorrent trims a path's end, so it would save to another folder).
+ */
+export function listedFolderName(entry: unknown, dir: string, windows: boolean): string | null {
+  if (typeof entry !== 'string') return null;
+  const path = windows ? entry.replace(/\\/g, '/') : entry;
+  if (!path.startsWith(`${dir}/`)) return null;
+  const name = path.slice(dir.length + 1);
+  if (!name || name.includes('/') || (!windows && name.includes('\\'))) return null;
+  if (CONTROL_CHARACTERS.test(name) || /^[\s\u0085.]*$/.test(name) || /[\s\u0085]$/.test(name)) return null;
+  return name;
+}
+
+/** The folder above a FolderUnderRoots path, or null at a drive or the top. */
+export function parentFolder(path: string): string | null {
+  const cut = path.lastIndexOf('/');
+  return cut > 0 ? path.slice(0, cut) : null;
 }
 
 /**
@@ -97,6 +164,29 @@ export function parseNewCategoryName(
   }
   if (name.includes('/') && !subcategories) {
     return { ok: false, error: 'A "/" makes a subcategory: turn on subcategories in qBittorrent first' };
+  }
+  return { ok: true, name };
+}
+
+// Linux's NAME_MAX, in bytes: a longer file or folder name can't be made.
+const MAX_ENTRY_NAME_BYTES = 255;
+
+/**
+ * A new name for a file or folder inside a torrent, trimmed, or why it can't
+ * be used. A name, never a path: the caller puts
+ * it beside the old one, so nothing can move out of its folder or out of the
+ * torrent. qBittorrent answers 200 to "../x" and does nothing, so a refusal
+ * here is the only one the user would see.
+ */
+export function parseTorrentEntryName(value: unknown): { ok: true; name: string } | { ok: false; error: string } {
+  const name = typeof value === 'string' ? value.replace(QT_TRIM, '') : '';
+  if (!name) return { ok: false, error: 'Enter a name' };
+  if (/[/\\]/.test(name) || CONTROL_CHARACTERS.test(name)) {
+    return { ok: false, error: "A name can't hold a slash, a backslash or a control character" };
+  }
+  if (/^[\s\u0085.]*$/.test(name)) return { ok: false, error: 'A name needs more than dots and spaces' };
+  if (new TextEncoder().encode(name).length > MAX_ENTRY_NAME_BYTES) {
+    return { ok: false, error: 'That name is too long' };
   }
   return { ok: true, name };
 }
