@@ -12,8 +12,10 @@ import type {
   QueueResponse,
   HistoryItem,
   HistoryResponse,
+  BlocklistItem,
   BlocklistResponse,
   ManualImportItem,
+  ExtraFileResource,
   MovieFileResource,
   QualityProfile,
   QualityProfileResource,
@@ -22,6 +24,7 @@ import type {
   RootFolder,
   MediaManagementConfig,
   DiskSpace,
+  ArrUpdate,
   HealthCheck,
   RadarrLookupResult,
   Release,
@@ -320,6 +323,11 @@ export class RadarrClient {
     });
   }
 
+  // One movie's blocklist: Radarr answers with every entry of the movie, unpaged.
+  async getMovieBlocklist(movieId: number): Promise<BlocklistItem[]> {
+    return this.get<BlocklistItem[]>('/api/v3/blocklist/movie', { movieId });
+  }
+
   async deleteBlocklistItem(id: number): Promise<void> {
     await this.delete(`/api/v3/blocklist/${id}`);
   }
@@ -353,6 +361,11 @@ export class RadarrClient {
     if (filters?.eventType !== undefined) params.eventType = filters.eventType;
     if (filters?.downloadId) params.downloadId = filters.downloadId;
     return historyPageWithoutLinks(await this.get<HistoryResponse>('/api/v3/history', params));
+  }
+
+  // The subtitles, .nfo and images Radarr keeps next to the movie's file.
+  async getExtraFiles(movieId: number): Promise<ExtraFileResource[]> {
+    return this.get<ExtraFileResource[]>('/api/v3/extrafile', { movieId });
   }
 
   /** One movie's history, unpaged. eventType 3 = downloadFolderImported. */
@@ -539,13 +552,13 @@ export class RadarrClient {
     return this.get<HealthCheck[]>('/api/v3/health');
   }
 
-  async getSystemStatus(): Promise<SystemStatus> {
-    return this.get<SystemStatus>('/api/v3/system/status');
+  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
+  async getUpdates(): Promise<ArrUpdate[]> {
+    return this.get<ArrUpdate[]>('/api/v3/update');
   }
 
-  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
-  async getUpdates(): Promise<unknown[]> {
-    return this.get<unknown[]>('/api/v3/update');
+  async getSystemStatus(): Promise<SystemStatus> {
+    return this.get<SystemStatus>('/api/v3/system/status');
   }
 
   /** System → Tasks: each scheduled task with its interval and last and next run. */

@@ -31,6 +31,7 @@ import {
 } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
 import { formatBytes } from '@/lib/format';
+import { MAX_EDITION_LENGTH } from '@/lib/manage-files-guard';
 import { cn } from '@/lib/utils';
 import { useCan } from '@/components/permission-provider';
 import type {
@@ -48,9 +49,15 @@ interface RowOverride {
   releaseGroup?: string;
   releaseType?: ReleaseType;
   indexerFlags?: number;
+  /** Radarr only; '' clears it. */
+  edition?: string;
 }
 
-type BulkProp = 'season' | 'episodes' | 'quality' | 'releaseGroup' | 'language' | 'releaseType' | 'indexerFlags';
+type BulkProp =
+  | 'season' | 'episodes' | 'quality' | 'releaseGroup' | 'language' | 'releaseType' | 'indexerFlags' | 'edition';
+
+// Radarr's {Edition Tags} naming token reads these; any other text is allowed too.
+const EDITION_SUGGESTIONS = ["Director's Cut", 'Extended', 'IMAX', 'Theatrical', 'Remastered', 'Unrated'];
 
 const RELEASE_TYPES: { value: ReleaseType; label: string }[] = [
   { value: 'unknown', label: 'Unknown' },
@@ -253,6 +260,7 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
         if (o.releaseGroup !== undefined) edit.releaseGroup = o.releaseGroup;
         if (o.indexerFlags !== undefined) edit.indexerFlags = o.indexerFlags;
         if (isSonarr && o.releaseType !== undefined) edit.releaseType = o.releaseType;
+        if (!isSonarr && o.edition !== undefined) edit.edition = o.edition;
         if (Object.keys(edit).length > 1) existingEdits.push(edit);
       } else {
         // Bucket 2 — loose file or re-mapped existing file → ManualImport.
@@ -396,6 +404,7 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
         { prop: 'releaseGroup', label: 'Select Release Group' },
         { prop: 'language', label: 'Select Language' },
         { prop: 'indexerFlags', label: 'Select Indexer Flags' },
+        { prop: 'edition', label: 'Select Edition' },
       ];
 
   const allSelected = files.length > 0 && files.every((f) => selected.has(f.path));
@@ -445,6 +454,7 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
               const q = qualityOf(f);
               const langs = languagesOf(f);
               const rg = releaseGroupOf(f);
+              const edition = isSonarr ? undefined : ov(f).edition;
               const hasRej = f.rejections.length > 0;
               return (
                 <div
@@ -461,6 +471,11 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
                         {q?.quality?.name && <Badge variant="secondary" className="text-[10px]">{q.quality.name}</Badge>}
                         {langs.length > 0 && <Badge variant="outline" className="max-w-full text-[10px]"><span className="truncate">{langs.map((l) => l.name).join(', ')}</span></Badge>}
                         {rg && <Badge variant="outline" className="max-w-full text-[10px]"><span className="truncate">{rg}</span></Badge>}
+                        {edition !== undefined && fileId ? (
+                          <Badge variant="outline" className="max-w-full text-[10px]">
+                            <span className="truncate">{edition || 'No edition'}</span>
+                          </Badge>
+                        ) : null}
                         <Badge variant="outline" className="text-[10px]">{formatBytes(f.size)}</Badge>
                         {f.customFormatScore !== undefined && f.customFormatScore !== 0 && (
                           <Badge variant="outline" className="text-[10px]">
@@ -581,6 +596,13 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
         onClose={() => setActivePicker(null)}
         onSelect={(flags) => { applyToSelected({ indexerFlags: flags }); setActivePicker(null); }}
       />
+      {!isSonarr && (
+        <EditionPicker
+          open={activePicker === 'edition'}
+          onClose={() => setActivePicker(null)}
+          onSelect={(edition) => { applyToSelected({ edition }); setActivePicker(null); }}
+        />
+      )}
       {isSonarr && (
         <ReleaseTypePicker
           open={activePicker === 'releaseType'}
@@ -618,6 +640,50 @@ function ReleaseGroupPicker({ open, onClose, onSelect }: { open: boolean; onClos
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button disabled={!val.trim()} onClick={() => onSelect(val.trim())}>Set Release Group</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Radarr imports have no edition, so it lands only on files already in the library.
+export function EditionPicker({ open, onClose, onSelect }: { open: boolean; onClose: () => void; onSelect: (edition: string) => void; }) {
+  const [val, setVal] = React.useState('');
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- clear the edition draft each time its picker opens
+  React.useEffect(() => { if (open) setVal(''); }, [open]);
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Select Edition</DialogTitle>
+          <DialogDescription>Applies to files already in the library. Renaming puts it in the file name when the naming format has {'{Edition Tags}'}.</DialogDescription>
+        </DialogHeader>
+        <Input
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          placeholder="Edition"
+          aria-label="Edition"
+          maxLength={MAX_EDITION_LENGTH}
+          autoFocus
+        />
+        <div className="flex flex-wrap gap-2">
+          {EDITION_SUGGESTIONS.map((suggestion) => (
+            <Button
+              key={suggestion}
+              type="button"
+              variant={val === suggestion ? 'secondary' : 'outline'}
+              size="sm"
+              className="h-11 rounded-full"
+              aria-pressed={val === suggestion}
+              onClick={() => setVal(suggestion)}
+            >
+              {suggestion}
+            </Button>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={() => onSelect('')}>Clear Edition</Button>
+          <Button disabled={!val.trim()} onClick={() => onSelect(val.trim())}>Set Edition</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

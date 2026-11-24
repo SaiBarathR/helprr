@@ -38,6 +38,7 @@ export type UiPrefCategoryId =
   | 'discover'
   | 'anime'
   | 'torrents'
+  | 'prowlarr'
   | 'activity'
   | 'requests'
   | 'notificationFilters'
@@ -57,6 +58,7 @@ export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
   discover: 'Discover',
   anime: 'Anime',
   torrents: 'Torrents',
+  prowlarr: 'Prowlarr indexers',
   activity: 'Activity',
   requests: 'Requests (Seerr)',
   notificationFilters: 'Notification filters',
@@ -98,6 +100,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
     'torrentsFilter', 'torrentsCategoryFilter', 'torrentsTagFilter', 'torrentsTrackerFilter',
     'torrentsSortKey', 'torrentsSortDir', 'torrentsView',
   ],
+  prowlarr: ['prowlarrIndexerView'],
   activity: ['activityTab', 'activitySortBy', 'activitySortDirection', 'activityFilterBy', 'activityInstanceFilter', 'activityShowUnmonitored'],
   requests: ['requestsTab', 'requestsFilter', 'requestsUserFilter', 'requestsTypeFilter', 'requestsSort', 'requestsSortDirection'],
   notificationFilters: ['notificationsFilters'],

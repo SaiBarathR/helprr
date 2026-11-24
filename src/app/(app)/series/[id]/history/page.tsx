@@ -7,6 +7,8 @@ import { PageHeader } from '@/components/layout/page-header';
 import { NotFoundState } from '@/components/ui/not-found-state';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ArrHistoryList } from '@/components/media/arr-history-list';
+import { TitleBlocklist } from '@/components/media/title-blocklist';
+import { useArrInstanceId } from '@/lib/hooks/use-arr-instance-id';
 import { queryKeys } from '@/lib/query-keys';
 import { ensureArray, jsonFetcher, nullOn404 } from '@/lib/query-fetch';
 import type { HistoryItem, SonarrEpisode, SonarrSeries } from '@/types';
@@ -19,6 +21,9 @@ export default function SeriesHistoryPage() {
   const seriesId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
   const enabled = Number.isInteger(seriesId) && seriesId > 0;
+  // Mark as failed and the blocklist name the instance; a page opened without
+  // ?instance= is on the default one.
+  const instanceId = useArrInstanceId('SONARR', instance, enabled);
 
   // The series and its episodes share the detail page's cache keys, so arriving
   // from the series is warm.
@@ -82,9 +87,13 @@ export default function SeriesHistoryPage() {
               items={historyQuery.data ?? []}
               loading={historyQuery.isLoading}
               episodeLabel={(item) => (item.episodeId ? episodeCodes.get(item.episodeId) ?? null : null)}
+              source="sonarr"
+              instanceId={instanceId}
             />
           )}
         </section>
+
+        <TitleBlocklist source="sonarr" mediaId={seriesId} instanceId={instanceId} />
       </div>
     </div>
   );

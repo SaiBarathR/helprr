@@ -32,6 +32,7 @@ import {
 import { DEFAULT_SKIP_SECONDS, isSkipLength } from '@/lib/jellyfin-playback/skip-length';
 import { DEFAULT_RANDOM_WATCH_PREFS, normalizeRandomWatchPrefs, type RandomWatchPrefs } from '@/lib/random-watch-filters';
 import { normalizeDateKey } from '@/lib/insights';
+import { DEFAULT_PROWLARR_INDEXER_VIEW, sanitizeProwlarrIndexerView, type ProwlarrIndexerView } from '@/lib/prowlarr-indexer-view';
 import {
   MOVIE_FILTERS,
   MOVIE_SORT_KEYS,
@@ -671,6 +672,9 @@ interface UIState {
   setTorrentsSortDir: (dir: TorrentsSortDirectionPreference) => void;
   torrentsView: TorrentsViewPreference;
   setTorrentsView: (view: TorrentsViewPreference) => void;
+  // Prowlarr's indexer list: search, sort and filters
+  prowlarrIndexerView: ProwlarrIndexerView;
+  setProwlarrIndexerView: (patch: Partial<ProwlarrIndexerView>) => void;
   // Activity preferences
   activityTab: ActivityTabPreference;
   setActivityTab: (tab: ActivityTabPreference) => void;
@@ -861,6 +865,7 @@ const PERSISTED_KEYS = [
   'torrentsSortKey',
   'torrentsSortDir',
   'torrentsView',
+  'prowlarrIndexerView',
   'activityTab',
   'activitySortBy',
   'activitySortDirection',
@@ -1034,6 +1039,7 @@ function usablePersistedValue(key: PersistedKey, value: unknown, fallback: unkno
   if (savedFilterStatuses) return sanitizeSavedLibraryFilters(value, savedFilterStatuses) ?? UNUSABLE;
   if (VISIBLE_FIELDS_KEYS.has(key)) return isVisibleFieldsByMode(value) ? value : UNUSABLE;
   if (key === 'searchHistory') return isSearchHistoryMap(value) ? value : UNUSABLE;
+  if (key === 'prowlarrIndexerView') return sanitizeProwlarrIndexerView(value) ?? UNUSABLE;
   if (PERCENT_KEYS.has(key)) {
     return typeof value === 'number' && value >= 0 && value <= 100 ? Math.round(value) : UNUSABLE;
   }
@@ -1200,6 +1206,8 @@ export const useUIStore = create<UIState>()(
       setTorrentsSortDir: (dir) => set({ torrentsSortDir: dir }),
       torrentsView: 'auto',
       setTorrentsView: (view) => set({ torrentsView: view }),
+      prowlarrIndexerView: DEFAULT_PROWLARR_INDEXER_VIEW,
+      setProwlarrIndexerView: (patch) => set((state) => ({ prowlarrIndexerView: { ...state.prowlarrIndexerView, ...patch } })),
       // Activity
       activityTab: 'queue',
       setActivityTab: (tab) => set({ activityTab: tab }),

@@ -22,6 +22,7 @@ import type {
   RootFolder,
   MediaManagementConfig,
   DiskSpace,
+  ArrUpdate,
   HealthCheck,
   SonarrLookupResult,
   Release,
@@ -457,6 +458,17 @@ export class SonarrClient {
     });
   }
 
+  // One series' blocklist (Sonarr v4's seriesIds filter on the paged list).
+  async getSeriesBlocklist(seriesId: number, pageSize: number): Promise<BlocklistResponse> {
+    return this.get<BlocklistResponse>('/api/v3/blocklist', {
+      page: 1,
+      pageSize,
+      sortKey: 'date',
+      sortDirection: 'descending',
+      seriesIds: seriesId,
+    });
+  }
+
   async deleteBlocklistItem(id: number): Promise<void> {
     await this.delete(`/api/v3/blocklist/${id}`);
   }
@@ -578,13 +590,13 @@ export class SonarrClient {
     return this.get<HealthCheck[]>('/api/v3/health');
   }
 
-  async getSystemStatus(): Promise<SystemStatus> {
-    return this.get<SystemStatus>('/api/v3/system/status');
+  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
+  async getUpdates(): Promise<ArrUpdate[]> {
+    return this.get<ArrUpdate[]>('/api/v3/update');
   }
 
-  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
-  async getUpdates(): Promise<unknown[]> {
-    return this.get<unknown[]>('/api/v3/update');
+  async getSystemStatus(): Promise<SystemStatus> {
+    return this.get<SystemStatus>('/api/v3/system/status');
   }
 
   /** System → Tasks: each scheduled task with its interval and last and next run. */

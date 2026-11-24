@@ -81,13 +81,26 @@ beforeEach(() => {
 });
 
 describe('POST /api/prowlarr/command', () => {
-  it('sends the one command the UI uses', async () => {
-    const res = await post(prowlarrCommand as Handler, '/api/prowlarr/command', { name: 'ApplicationIndexerSync' });
+  it.each(['ApplicationIndexerSync', 'CheckHealth'])('sends %s, a command the UI uses', async (name) => {
+    const res = await post(prowlarrCommand as Handler, '/api/prowlarr/command', { name });
     expect(res.status).toBe(200);
-    expect(mocks.prowlarr.sendCommand).toHaveBeenCalledWith('ApplicationIndexerSync');
+    expect(mocks.requireUserCapability).toHaveBeenCalledWith('prowlarr.manage');
+    expect(mocks.prowlarr.sendCommand).toHaveBeenCalledWith(name);
   });
 
-  it.each(['ApplicationUpdate', 'Backup', 'ClearHistory', 'DeleteLogFiles', 'applicationindexersync'])(
+  it('answers with the command id, name and status only', async () => {
+    const res = await post(prowlarrCommand as Handler, '/api/prowlarr/command', { name: 'CheckHealth' });
+    expect(await res.json()).toEqual({ id: 42, name: 'X', status: 'queued' });
+  });
+
+  it('refuses CheckHealth without prowlarr.manage', async () => {
+    mocks.requireUserCapability.mockResolvedValue(forbidden());
+    const res = await post(prowlarrCommand as Handler, '/api/prowlarr/command', { name: 'CheckHealth' });
+    expect(res.status).toBe(403);
+    expectNoUpstreamCall();
+  });
+
+  it.each(['ApplicationUpdate', 'Backup', 'ClearHistory', 'DeleteLogFiles', 'applicationindexersync', 'checkhealth', 'Housekeeping'])(
     'refuses %s without calling Prowlarr',
     async (name) => {
       const res = await post(prowlarrCommand as Handler, '/api/prowlarr/command', { name });

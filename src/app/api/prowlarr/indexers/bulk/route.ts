@@ -120,3 +120,77 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
 }
 
 export const PUT = withApiLogging(putHandler, 'api/prowlarr/indexers/bulk');
+
+function parseIds(body: unknown): number[] | string {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return 'Invalid JSON body';
+  const record = body as Record<string, unknown>;
+  const unknownKey = Object.keys(record).find((key) => key !== 'ids');
+  if (unknownKey) return `Unsupported field: ${unknownKey}`;
+  const { ids } = record;
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > MAX_IDS) return `ids must list 1 to ${MAX_IDS} indexers`;
+  if (!ids.every(isPositiveInteger)) return 'ids must be positive whole numbers';
+  return [...new Set(ids as number[])];
+}
+
+/**
+ * Delete several indexers in one go. Every id must be one Prowlarr has now,
+ * or nothing is sent: Prowlarr would skip an unknown id without a word, and a
+ * request naming one was made from a stale list. Its answer does not say
+ * which went, so the list is read again and each id reported as deleted or
+ * not, whether or not Prowlarr answered with an error. Not in the operation
+ * audit: like the single delete, it removes Prowlarr settings, not media,
+ * files or downloads.
+ */
+async function deleteHandler(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireUserCapability('prowlarr.manage');
+  if (!auth.ok) return auth.response;
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+  const ids = parseIds(body);
+  if (typeof ids === 'string') return NextResponse.json({ error: ids }, { status: 400 });
+
+  try {
+    const client = await getProwlarrClient();
+    const known = new Set((await client.getIndexers()).map((indexer) => indexer.id));
+    const unknownIds = ids.filter((id) => !known.has(id));
+    if (unknownIds.length > 0) {
+      return NextResponse.json(
+        { error: unknownIds.length === 1 ? 'That indexer no longer exists' : 'Some of these indexers no longer exist', unknownIds },
+        { status: 404 },
+      );
+    }
+
+    let deleteError: unknown = null;
+    try {
+      await client.deleteIndexers(ids);
+    } catch (error) {
+      deleteError = error;
+    }
+
+    let remaining: Set<number>;
+    try {
+      remaining = new Set((await client.getIndexers()).map((indexer) => indexer.id));
+    } catch (error) {
+      // Prowlarr's own answer is all there is to go on.
+      if (deleteError) throw deleteError;
+      console.error('[api] Indexers deleted, list not read again:', error instanceof Error ? error.message : error);
+      return NextResponse.json({ deleted: ids, failed: [] });
+    }
+    const deleted = ids.filter((id) => !remaining.has(id));
+    const failed = ids.filter((id) => remaining.has(id));
+    if (deleteError) {
+      if (deleted.length === 0) throw deleteError;
+      console.error('[api] Indexer delete partly failed:', deleteError instanceof Error ? deleteError.message : deleteError);
+    }
+    return NextResponse.json({ deleted, failed });
+  } catch (error) {
+    return upstreamErrorResponse(error, 'Failed to delete indexers');
+  }
+}
+
+export const DELETE = withApiLogging(deleteHandler, 'api/prowlarr/indexers/bulk');

@@ -7,7 +7,9 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 // The commands Helprr's UI sends. Prowlarr's command endpoint also runs
 // ApplicationUpdate, Backup, ClearHistory, DeleteLogFiles and more, which a
 // grant to manage indexers must not reach. Add a name here with its UI.
-const ALLOWED_COMMANDS = new Set(['ApplicationIndexerSync']);
+// CheckHealth (the health banner's Re-check) only reruns Prowlarr's health
+// checks: it changes no settings and deletes nothing.
+const ALLOWED_COMMANDS = new Set(['ApplicationIndexerSync', 'CheckHealth']);
 
 /**
  * Handle POST requests that send a named command to a Prowlarr instance.
@@ -16,7 +18,7 @@ const ALLOWED_COMMANDS = new Set(['ApplicationIndexerSync']);
  * `forceSync` (true re-sends every indexer's settings to the apps, even ones Prowlarr thinks unchanged).
  * On success returns the command result as JSON.
  *
- * @returns On success, the JSON response from Prowlarr. A missing or unknown `name` is a 400 and nothing is sent. On other failures, a 500 response with `{ error: string }` describing the failure.
+ * @returns On success, the command's id, name and status. A missing or unknown `name` is a 400 and nothing is sent. On other failures, a 500 response with `{ error: string }` describing the failure.
  */
 async function postHandler(request: NextRequest) {
   const auth = await requireUserCapability('prowlarr.manage');
@@ -39,7 +41,8 @@ async function postHandler(request: NextRequest) {
 
     const client = await getProwlarrClient();
     const result = forceSync ? await client.sendCommand(name, { forceSync }) : await client.sendCommand(name);
-    return NextResponse.json(result);
+    // As the status route: a command's body and message can name paths and hosts.
+    return NextResponse.json({ id: result.id, name: result.name, status: result.status });
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to send command');
   }

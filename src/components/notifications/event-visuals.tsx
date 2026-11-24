@@ -3,7 +3,10 @@ import {
   Bell,
   Check,
   CircleArrowUp,
+  CirclePlus,
   Download,
+  FilePen,
+  FileX,
   X,
   AlertTriangle,
   Clock,
@@ -15,7 +18,7 @@ import {
 import { EVENT_META, type NotificationEventType } from '@/lib/notification-events';
 
 const ICON_MAP: Record<NotificationEventMetaIconName, LucideIcon> = {
-  Download, Check, CircleArrowUp, X, AlertTriangle, Clock, Trash2, Play, Bell, Newspaper,
+  Download, Check, CircleArrowUp, CirclePlus, FileX, FilePen, X, AlertTriangle, Clock, Trash2, Play, Bell, Newspaper,
 };
 
 type NotificationEventMetaIconName = (typeof EVENT_META)[NotificationEventType]['iconName'];
@@ -25,6 +28,9 @@ const HPR_COLOR_BY_ICON: Record<NotificationEventMetaIconName, string> = {
   Download: 'var(--hpr-blue)',
   Check: 'var(--hpr-green)',
   CircleArrowUp: 'var(--hpr-green)',
+  CirclePlus: 'var(--hpr-blue)',
+  FileX: 'var(--hpr-rose)',
+  FilePen: 'var(--hpr-cyan)',
   X: 'var(--hpr-rose)',
   AlertTriangle: 'var(--hpr-amber)',
   Clock: 'var(--hpr-purple)',
