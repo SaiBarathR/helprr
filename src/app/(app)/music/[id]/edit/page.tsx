@@ -15,6 +15,8 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { TagSelector } from '@/components/media/tag-selector';
 import { Loader2 } from 'lucide-react';
@@ -27,6 +29,7 @@ import {
   useMetadataProfiles,
   useRootFolders,
 } from '@/lib/hooks/use-reference-data';
+import { useCan } from '@/components/permission-provider';
 import type { LidarrArtist } from '@/types';
 import { parentPath, pathInRootFolder } from '@/lib/paths';
 
@@ -47,13 +50,19 @@ export default function ArtistEditPage() {
 
   const { data: qualityProfiles = [] } = useQualityProfiles('lidarr', instance);
   const { data: metadataProfiles = [] } = useMetadataProfiles(instance);
-  const { data: rootFolders = [] } = useRootFolders('lidarr', instance);
+  // The rootfolders route 403s without add/changePath, so skip the fetch (and
+  // the path picker) for editors who can't change paths anyway.
+  const canChangePath = useCan('music.changePath');
+  const { data: rootFolders = [] } = useRootFolders('lidarr', instance, canChangePath);
 
   const [qualityProfileId, setQualityProfileId] = useState<number>(0);
   const [metadataProfileId, setMetadataProfileId] = useState<number>(0);
   const [monitorNewItems, setMonitorNewItems] = useState('all');
   const [rootFolder, setRootFolder] = useState('');
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
+  // Without a move Lidarr points the artist at a folder its files are not in.
+  const [moveFiles, setMoveFiles] = useState(true);
+  const [confirmMove, setConfirmMove] = useState(false);
 
   // Seed the form once the artist loads (and re-seed if the cached artist
   // changes). Guarded during render.
@@ -68,8 +77,9 @@ export default function ArtistEditPage() {
   }
 
   const saveMutation = useMutation({
-    mutationFn: async (updated: LidarrArtist) => {
-      const res = await fetch(withInstanceQuery(`/api/lidarr/${updated.id}`, instance), {
+    mutationFn: async ({ updated, move }: { updated: LidarrArtist; move: boolean }) => {
+      const url = `/api/lidarr/${updated.id}${move ? '?moveFiles=true' : ''}`;
+      const res = await fetch(withInstanceQuery(url, instance), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated),
@@ -78,7 +88,7 @@ export default function ArtistEditPage() {
       // MutationCache handler, which redirects to /login.
       if (!res.ok) throw new ApiError(res.status, 'Failed to update artist');
     },
-    onSuccess: (_data, updated) => {
+    onSuccess: (_data, { updated }) => {
       invalidateMusic(queryClient, { itemId: updated.id, instanceId: instance });
       toast.success('Artist updated');
       router.back();
@@ -90,8 +100,10 @@ export default function ArtistEditPage() {
     },
   });
   const saving = saveMutation.isPending;
+  const movedPath = artist?.path ? pathInRootFolder(artist.path, rootFolder) : null;
+  const moving = movedPath !== null && moveFiles;
 
-  function handleSave() {
+  function save() {
     if (!artist) return;
 
     const updated: LidarrArtist = {
@@ -102,10 +114,15 @@ export default function ArtistEditPage() {
       tags: selectedTags,
     };
 
-    const movedPath = artist.path ? pathInRootFolder(artist.path, rootFolder) : null;
     if (movedPath) updated.path = movedPath;
 
-    saveMutation.mutate(updated);
+    saveMutation.mutate({ updated, move: moving }, { onSettled: () => setConfirmMove(false) });
+  }
+
+  function handleSave() {
+    // Moving files is a disk operation: confirm it first, as the bulk editor does.
+    if (moving) setConfirmMove(true);
+    else save();
   }
 
   if (loading && !artist) {
@@ -177,7 +194,20 @@ export default function ArtistEditPage() {
                 </Select>
               </div>
             )}
+            {movedPath && (
+              <div className="grouped-row">
+                <Label htmlFor="move-files" className="text-sm shrink-0">Move Files</Label>
+                <Switch id="move-files" checked={moveFiles} onCheckedChange={setMoveFiles} />
+              </div>
+            )}
           </div>
+          {movedPath && (
+            <p className="px-4 pt-2 text-xs text-muted-foreground">
+              {moveFiles
+                ? 'Lidarr moves the artist’s files into this folder.'
+                : 'Only the saved path changes; files stay where they are until you move them.'}
+            </p>
+          )}
         </div>
 
         <div className="grouped-section">
@@ -204,6 +234,17 @@ export default function ArtistEditPage() {
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmMove}
+        onOpenChange={(open) => { if (!open && !saving) setConfirmMove(false); }}
+        title={`Move files for ${artist.artistName}?`}
+        description={`Lidarr will move the files of ${artist.artistName} into ${movedPath ?? ''}. Files move on disk, which can take a while.`}
+        confirmLabel="Move files"
+        destructive
+        busy={saving}
+        onConfirm={save}
+      />
     </div>
   );
 }

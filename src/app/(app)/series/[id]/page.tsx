@@ -590,7 +590,7 @@ export default function SeriesDetailPage() {
       )}
 
       {/* Monitor edit drawer */}
-      <SeriesMonitorDrawer title={series.title} actions={actions} />
+      <SeriesMonitorDrawer title={series.title} seriesMonitored={series.monitored} actions={actions} />
 
       {/* Delete confirmation drawer */}
       <SeriesDeleteDrawer title={series.title} open={showDelete} onOpenChange={setShowDelete} actions={actions} />

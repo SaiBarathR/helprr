@@ -27,8 +27,19 @@ const DAY_MS = 86_400_000;
  * days in `timeZone`: by instant, the window's first day lost its releases west
  * of UTC and gained the next day's east of it. Radarr and Lidarr are asked for
  * a day more on each side so those releases come back to be checked.
+ *
+ * The *arrs return monitored items only unless `includeUnmonitored` is set; the
+ * Calendar page sets it so its "monitored only" switch has something to hide.
+ * An item counts as monitored only when its series or artist is monitored too,
+ * as the *arrs (and their own calendars) treat it.
  */
-export async function fetchServiceCalendarEvents(start: string, end: string, timeZone: string): Promise<ServiceCalendarResult> {
+export async function fetchServiceCalendarEvents(
+  start: string,
+  end: string,
+  timeZone: string,
+  { includeUnmonitored = false }: { includeUnmonitored?: boolean } = {},
+): Promise<ServiceCalendarResult> {
+  const options = { unmonitored: includeUnmonitored };
   const events: CalendarEvent[] = [];
   const firstDay = getLocalDateKey(start, timeZone);
   const lastDay = getLocalDateKey(end, timeZone);
@@ -49,7 +60,7 @@ export async function fetchServiceCalendarEvents(start: string, end: string, tim
   await Promise.all([
     ...sonarrClients.map(async ({ connection, client }) => {
       try {
-        const entries = await client.getCalendar(start, end);
+        const entries = await client.getCalendar(start, end, options);
         anyOk = true;
         for (const ep of entries) {
           events.push({
@@ -59,7 +70,7 @@ export async function fetchServiceCalendarEvents(start: string, end: string, tim
             subtitle: `S${ep.seasonNumber.toString().padStart(2, '0')}E${ep.episodeNumber.toString().padStart(2, '0')} - ${ep.title}`,
             date: ep.airDateUtc,
             hasFile: ep.hasFile,
-            monitored: ep.monitored,
+            monitored: ep.monitored && ep.series.monitored,
             seriesId: ep.seriesId,
             images: ep.series.images,
             instanceId: connection.id,
@@ -74,7 +85,7 @@ export async function fetchServiceCalendarEvents(start: string, end: string, tim
     }),
     ...radarrClients.map(async ({ connection, client }) => {
       try {
-        const entries = await client.getCalendar(releaseStart, releaseEnd);
+        const entries = await client.getCalendar(releaseStart, releaseEnd, options);
         anyOk = true;
         for (const m of entries) {
           const releases: Array<[MovieReleaseType, string | undefined]> = [
@@ -107,7 +118,7 @@ export async function fetchServiceCalendarEvents(start: string, end: string, tim
     }),
     ...lidarrClients.map(async ({ connection, client }) => {
       try {
-        const entries = await client.getCalendar(releaseStart, releaseEnd);
+        const entries = await client.getCalendar(releaseStart, releaseEnd, options);
         anyOk = true;
         for (const album of entries) {
           if (!album.releaseDate || !inWindow(album.releaseDate)) continue;
@@ -120,7 +131,7 @@ export async function fetchServiceCalendarEvents(start: string, end: string, tim
             subtitle: album.title,
             date: album.releaseDate,
             hasFile: complete,
-            monitored: album.monitored,
+            monitored: album.monitored && album.artist?.monitored !== false,
             artistId: album.artistId,
             albumId: album.id,
             images: album.images,

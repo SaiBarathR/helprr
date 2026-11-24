@@ -44,6 +44,8 @@ export function useCalendar({ start, end, type, includeScheduled }: UseCalendarP
         end: endISO,
         // The days shown are this device's, so the server matches film and album release days on them.
         tz: getDeviceTimeZone(),
+        // Unmonitored items too: the page's "monitored only" switch hides them on the device.
+        unmonitored: 'true',
       });
 
       if (type && type !== 'all') {

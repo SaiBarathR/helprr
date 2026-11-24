@@ -29,6 +29,8 @@ it('refetch reloads the range in the background and settles once the new events 
   expect(settled).toBe(true);
   expect(result.current.events).toHaveLength(2);
   expect(fetchMock).toHaveBeenCalledTimes(2);
+  // The page's "monitored only" switch filters on the device, so it asks for every item.
+  expect(new URL(String((fetchMock.mock.calls[0] as unknown[])[0]), 'http://localhost').searchParams.get('unmonitored')).toBe('true');
   // The first load may use the browser's copy (max-age); a refetch follows a
   // change it would not have, such as a saved alert.
   expect((fetchMock.mock.calls[0] as unknown[])[1]).not.toHaveProperty('cache');

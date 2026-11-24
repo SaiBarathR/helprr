@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { useMetadataProfiles, useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
 import type { BulkEditService } from '@/lib/bulk-editor';
+import { SERIES_MONITOR_OPTIONS, type SeriesMonitorOption } from '@/lib/series-monitor';
 
 /** Settings a bulk edit can change; an absent field is left as it is on every item. */
 export interface BulkEditChanges {
@@ -23,6 +24,8 @@ export interface BulkEditChanges {
   monitorNewItems?: 'all' | 'none';
   minimumAvailability?: 'announced' | 'inCinemas' | 'released';
   metadataProfileId?: number;
+  /** Sonarr only: a Monitoring choice applied to every selected series' episodes. */
+  monitor?: SeriesMonitorOption;
 }
 
 export interface BulkEditSheetOptions {
@@ -32,6 +35,8 @@ export interface BulkEditSheetOptions {
   /** Quality profile, series type, folders, availability, metadata profile and monitor-new are admin-only. */
   isAdmin: boolean;
   canChangePath: boolean;
+  /** Sonarr only: may apply a Monitoring choice (series.editMonitoring). */
+  canEditMonitoring?: boolean;
   /** Organize (rename files) runs as an *arr command, gated like the other commands. */
   canOrganize: boolean;
   /**
@@ -54,8 +59,10 @@ interface BulkEditSheetProps extends Omit<BulkEditSheetOptions, 'onApply' | 'onO
 }
 
 /** Whether the sheet has anything to offer this user. */
-export function bulkEditSheetAvailable(o: Pick<BulkEditSheetOptions, 'isAdmin' | 'canChangePath' | 'canOrganize'>) {
-  return o.isAdmin || o.canChangePath || o.canOrganize;
+export function bulkEditSheetAvailable(
+  o: Pick<BulkEditSheetOptions, 'service' | 'isAdmin' | 'canChangePath' | 'canEditMonitoring' | 'canOrganize'>,
+) {
+  return o.isAdmin || o.canChangePath || o.canOrganize || (o.service === 'sonarr' && o.canEditMonitoring === true);
 }
 
 // Radix Select can't hold an empty value, so "leave as is" is a sentinel.
@@ -109,6 +116,7 @@ function BulkEditForm({
   instanceId,
   isAdmin,
   canChangePath,
+  canEditMonitoring,
   canOrganize,
   onApply,
   onOrganize,
@@ -132,6 +140,7 @@ function BulkEditForm({
   const [seasonFolder, setSeasonFolder] = useState(KEEP);
   const [monitorNewItems, setMonitorNewItems] = useState(KEEP);
   const [minimumAvailability, setMinimumAvailability] = useState(KEEP);
+  const [monitor, setMonitor] = useState(KEEP);
   const [confirm, setConfirm] = useState<'move' | 'organize' | null>(null);
 
   const changes: BulkEditChanges = {};
@@ -147,9 +156,11 @@ function BulkEditForm({
   if (minimumAvailability !== KEEP) {
     changes.minimumAvailability = minimumAvailability as BulkEditChanges['minimumAvailability'];
   }
+  if (monitor !== KEEP) changes.monitor = monitor as SeriesMonitorOption;
   const hasChanges = Object.keys(changes).length > 0;
   const moving = changes.rootFolderPath !== undefined && moveFiles;
   const newNoun = service === 'sonarr' ? 'seasons' : 'albums';
+  const showMonitoring = service === 'sonarr' && canEditMonitoring === true;
 
   function apply() {
     // Moving files is a disk operation on every selected item: confirm it first.
@@ -160,6 +171,29 @@ function BulkEditForm({
   return (
     <>
       <div className="space-y-5">
+        {showMonitoring && (
+          <div className="grouped-section">
+            <p className="grouped-section-title">Monitoring</p>
+            <div className="grouped-section-content">
+              <Row id="bulk-monitor" label="Monitor">
+                <ChoiceSelect
+                  id="bulk-monitor"
+                  value={monitor}
+                  onChange={setMonitor}
+                  options={SERIES_MONITOR_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                />
+              </Row>
+            </div>
+            {monitor !== KEEP && (
+              <p className="px-4 pt-2 text-xs text-muted-foreground">
+                {monitor === 'none'
+                  ? 'Sonarr unmonitors every episode and each selected series.'
+                  : 'Sonarr sets which episodes of each selected series are monitored. A series that is itself unmonitored stays so, and grabs nothing.'}
+              </p>
+            )}
+          </div>
+        )}
+
         {isAdmin && (
           <div className="grouped-section">
             <p className="grouped-section-title">Profiles</p>
@@ -277,7 +311,7 @@ function BulkEditForm({
           </p>
         )}
 
-        {(isAdmin || canChangePath) && (
+        {(isAdmin || canChangePath || showMonitoring) && (
           <Button className="w-full" disabled={!hasChanges || busy} onClick={apply}>
             {busy && confirm === null && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Apply to {count} {plural}

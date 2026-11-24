@@ -64,7 +64,7 @@ function isOneOf<T extends string>(values: readonly T[], value: unknown): value 
 }
 
 // Duplicates are dropped so a repeated id isn't edited (or counted in the audit) twice.
-function toPositiveIntArray(value: unknown): number[] | null {
+export function toPositiveIntArray(value: unknown): number[] | null {
   if (!Array.isArray(value) || value.length === 0) return null;
   const seen = new Set<number>();
   for (const entry of value) {

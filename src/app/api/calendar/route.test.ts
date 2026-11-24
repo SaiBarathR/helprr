@@ -71,7 +71,7 @@ describe('GET /api/calendar and music access', () => {
 describe('GET /api/calendar release days', () => {
   it("matches release days on the device's time zone when the page sends one", async () => {
     await get('?start=2026-11-01T07:00:00Z&end=2026-12-01T07:59:59Z&tz=America/Los_Angeles');
-    expect(mocks.fetchEvents).toHaveBeenCalledWith('2026-11-01T07:00:00Z', '2026-12-01T07:59:59Z', 'America/Los_Angeles');
+    expect(mocks.fetchEvents).toHaveBeenCalledWith('2026-11-01T07:00:00Z', '2026-12-01T07:59:59Z', 'America/Los_Angeles', { includeUnmonitored: false });
     // Each zone has its own cache entry: the same window holds other days elsewhere.
     expect(mocks.getCachedJson.mock.calls[0][1]).toContain('America/Los_Angeles');
   });
@@ -81,6 +81,19 @@ describe('GET /api/calendar release days', () => {
     expect(mocks.fetchEvents.mock.calls[0][2]).toBe('UTC');
     await get('?days=7');
     expect(mocks.fetchEvents.mock.calls[1][2]).toBe('UTC');
+  });
+});
+
+describe('GET /api/calendar unmonitored items', () => {
+  it('asks for them only when the Calendar page does, and caches the two answers apart', async () => {
+    await get();
+    await get('?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z&unmonitored=true');
+    expect(mocks.fetchEvents.mock.calls.map((call) => call[3])).toEqual([
+      { includeUnmonitored: false },
+      { includeUnmonitored: true },
+    ]);
+    const [monitoredKey, allKey] = mocks.getCachedJson.mock.calls.map((call) => call[1]);
+    expect(monitoredKey).not.toBe(allKey);
   });
 });
 
