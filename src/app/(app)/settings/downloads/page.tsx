@@ -183,7 +183,8 @@ export default function DownloadsSettingsPage() {
         <p className="text-sm text-muted-foreground mt-1">
           Time-of-day bandwidth rules applied to qBittorrent. Times are in your configured
           timezone <span className="font-mono">({timeZone})</span>. Rules are evaluated top-to-bottom — the
-          first matching rule wins.
+          first matching rule wins. Rules set the global limits; while qBittorrent&apos;s alternative speed
+          limits are on, those apply instead.
         </p>
       </div>
 

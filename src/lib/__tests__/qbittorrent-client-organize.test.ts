@@ -72,4 +72,25 @@ describe('qBittorrent location, tag and queue calls', () => {
     await client.moveInQueue('aaa|bbb', move);
     expect(requests).toEqual([{ method: 'POST', path: `/api/v2/torrents/${move}`, body: { hashes: 'aaa|bbb' } }]);
   });
+
+  it('reads the four speed limits from the preferences and nothing else', async () => {
+    preferences = {
+      dl_limit: 1_048_576, up_limit: 524_288, alt_dl_limit: 51_200, alt_up_limit: 20_480,
+      web_ui_password: 'secret', proxy_password: 'secret',
+    };
+    await expect(client.getSpeedLimits()).resolves.toEqual({
+      dl_limit: 1_048_576, up_limit: 524_288, alt_dl_limit: 51_200, alt_up_limit: 20_480,
+    });
+    preferences = { dl_limit: 0, up_limit: 0, alt_dl_limit: 0 };
+    await expect(client.getSpeedLimits()).rejects.toThrow();
+  });
+
+  it('writes speed limits through setPreferences with only the allowed keys', async () => {
+    await client.setSpeedLimits({ alt_dl_limit: 2_097_152, web_ui_password: 'pwned', autorun_program: 'x' } as never);
+    expect(requests).toEqual([
+      { method: 'POST', path: '/api/v2/app/setPreferences', body: { json: '{"alt_dl_limit":2097152}' } },
+    ]);
+    await expect(client.setSpeedLimits({ web_ui_password: 'pwned' } as never)).rejects.toThrow();
+    expect(requests).toHaveLength(1);
+  });
 });

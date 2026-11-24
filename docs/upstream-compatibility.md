@@ -587,6 +587,18 @@ Each line says how it was checked: "source" means read from the upstream source 
   again with the same `DeviceId` revokes the token issued before, so each install now
   keys its DeviceId with its own secret.
 
+### qBittorrent speed limits (2026-11-24)
+
+Live on a disposable qBittorrent `5.1.4`. `transfer/downloadLimit`, `uploadLimit`,
+`setDownloadLimit` and `setUploadLimit` follow the active mode: with alternative speed
+mode on they read and write `alt_dl_limit` / `alt_up_limit`. `app/setPreferences` with
+`dl_limit`, `up_limit`, `alt_dl_limit` or `alt_up_limit` writes exactly that key in
+either mode, and `app/preferences` returns all four. Every one of them is bytes per
+second; `0` is unlimited, and `-1` is stored as `0`. So the bandwidth schedule and the
+Torrents settings page read and write the four keys as preferences, through an
+allow-list, since `setPreferences` also takes the Web UI password and the program run
+on completion.
+
 ## Before reporting an upstream compatibility problem
 
 1. In **Settings → Instances**, re-test the affected connection and record the exact
