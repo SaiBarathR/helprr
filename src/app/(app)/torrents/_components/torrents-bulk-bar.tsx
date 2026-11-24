@@ -88,7 +88,7 @@ export function TorrentsBulkBar({
             setDeleteDrawer({
               open: true,
               hash: hashes,
-              name: `${selectedTorrents.size} torrents`,
+              name: `${selectedTorrents.size} ${selectedTorrents.size === 1 ? 'torrent' : 'torrents'}`,
               deleteFiles: false,
             });
           }}
