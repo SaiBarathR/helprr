@@ -1047,8 +1047,10 @@ and must not be dropped; those checks fail closed when a write fails. Because Re
 refuse writes while it still answers reads, every route that checks a password or the
 trusted-header secret first makes one write (`enforceLoginWritable`, after the read checks)
 and answers 503 without checking the credential when Redis refuses it: a 503 only for wrong
-guesses would otherwise let guessing go on uncounted. Two-step codes get the same from
-`startMfaAttempt`'s count. As a backstop, a failure the username backoff or the global
+guesses would otherwise let guessing go on uncounted. Every code at sign-in, and an
+authenticator code anywhere, is counted by `startMfaAttempt` before it is checked, which
+fails closed the same way; a recovery code at step-up comes after that request's password
+write check. As a backstop, a failure the username backoff or the global
 backstop cannot record still answers 503 rather than 401 or 403 (`recordUsernameFailure`
 and `recordGlobalLoginFailure` report whether they wrote).
 

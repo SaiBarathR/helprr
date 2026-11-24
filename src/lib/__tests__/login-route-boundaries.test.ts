@@ -221,6 +221,15 @@ describe('Redis refusing writes before the credential is checked', () => {
     expect(mocks.recordUsernameFailure).not.toHaveBeenCalled();
   });
 
+  it('runs after the read checks: a throttled caller still gets 429', async () => {
+    mocks.enforceUsernameBackoff.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Too many' }), { status: 429 }));
+    mocks.enforceLoginWritable.mockResolvedValue(new Response(JSON.stringify({ error: 'Login service unavailable' }), { status: 503 }));
+    const response = await localLogin(jsonRequest(JSON.stringify({ username: 'member', password: 'any guess' })));
+    expect(response.status).toBe(429);
+    expect(mocks.enforceLoginWritable).not.toHaveBeenCalled();
+    mocks.enforceLoginWritable.mockResolvedValue(null);
+  });
+
   it('Jellyfin sign-in answers 503 without asking Jellyfin', async () => {
     vi.mocked(prisma.serviceConnection.findFirst).mockResolvedValue({ url: 'http://jf.lan' } as never);
     mocks.enforceLoginWritable.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Login service unavailable' }), { status: 503 }));
