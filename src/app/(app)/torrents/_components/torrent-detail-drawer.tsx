@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { Copy, FolderOpen, Loader2, SlidersHorizontal } from 'lucide-react';
+import { Copy, FolderOpen, Loader2, Pencil, SlidersHorizontal } from 'lucide-react';
 import type { QBittorrentTorrent } from '@/types';
 import type { TorrentFile, TorrentTracker } from '@/lib/qbittorrent-client';
 import { formatSpeedLimit } from './speed-limit-input';
@@ -20,9 +20,11 @@ export interface TorrentDetailData {
   trackers: TorrentTracker[];
   /** The magnet to copy, built on the server: without `tr=` unless the user is an admin. */
   magnet: string | null;
+  /** Whether the torrent is private (null when qBittorrent doesn't say). */
+  private?: boolean | null;
 }
 
-/** One torrent's details: transfer, session, settings (read-only), timing, network, magnet, files and trackers. */
+/** One torrent's details: transfer, session, settings (read-only), timing, network, magnet, files and trackers (read-only). */
 export function TorrentDetailDrawer({
   detailHash,
   setDetailHash,
@@ -233,13 +235,30 @@ export function TorrentDetailDrawer({
                 </div>
               )}
 
-              {/* Trackers */}
-              {trackers.length > 0 && (
+              {/* Trackers: edited on their own page, as the settings are. */}
+              {(trackers.length > 0 || canManageTorrents) && (
                 <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                    Trackers ({trackers.length})
-                  </h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Trackers ({trackers.length})
+                    </h3>
+                    {canManageTorrents && (
+                      <button
+                        className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                        onClick={() => {
+                          const name = detailHash ? torrentNameByHash.get(detailHash) || '' : '';
+                          setDetailHash(null);
+                          setDetailData(null);
+                          router.push(`/torrents/${detailHash}/trackers?name=${encodeURIComponent(name)}`);
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Manage Trackers
+                      </button>
+                    )}
+                  </div>
                   <div className="rounded-lg border divide-y">
+                    {trackers.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">No trackers</p>}
                     {trackers.map((tracker, i) => (
                       <div key={i} className="px-3 py-2 space-y-0.5">
                         <p className="text-xs break-all">{tracker.url}</p>

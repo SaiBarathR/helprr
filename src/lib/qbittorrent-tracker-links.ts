@@ -11,7 +11,8 @@ import { urlsToOrigins } from '@/lib/url-origins';
  * Only an admin, who can read qBittorrent's own settings anyway, sees them in
  * full; anyone else with torrents.view sees each tracker's host and its state,
  * and a magnet without trackers. Nothing here needs the browser to hold a full
- * URL, so a later tracker edit can go by the tracker's place in the list.
+ * URL: a tracker edit goes by the tracker's place in the list and the server
+ * reads the URL there (`src/lib/qbittorrent-tracker-edits.ts`).
  */
 
 export function seesTrackerUrls(user: Pick<User, 'role'>): boolean {
@@ -20,7 +21,7 @@ export function seesTrackerUrls(user: Pick<User, 'role'>): boolean {
 
 // qBittorrent lists DHT, PeX and LSD as pseudo-trackers named `** [DHT] **`: no URL, nothing to hide.
 // Exactly those three; anything else is treated as a URL (and fails closed to its host or `Tracker`).
-const isPseudoTracker = (url: string) => /^\*\* \[(?:DHT|PeX|LSD)\] \*\*$/.test(url);
+export const isPseudoTracker = (url: string) => /^\*\* \[(?:DHT|PeX|LSD)\] \*\*$/.test(url);
 
 /** scheme://host[:port] of a tracker URL, without user info, path or query; null when it is not one. */
 export function trackerOrigin(url: string): string | null {
