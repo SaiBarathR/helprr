@@ -140,6 +140,17 @@ describe('POST /api/prowlarr/indexers/[id]/test', () => {
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
+    expect(mocks.prowlarr.testIndexer).toHaveBeenCalledWith(12);
+  });
+
+  it('answers a failed test with a fixed message, not Prowlarr\'s', async () => {
+    mocks.prowlarr.testIndexer.mockRejectedValue(new Error('Unable to connect to https://tracker.example/api?apikey=secret'));
+    const res = await prowlarrIndexerTest(
+      new NextRequest('http://helprr.test/api/prowlarr/indexers/12/test', { method: 'POST' }),
+      { params: Promise.resolve({ id: '12' }) },
+    );
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'Test failed' });
   });
 });
 

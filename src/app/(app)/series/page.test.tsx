@@ -16,6 +16,7 @@ vi.mock('@/components/layout/navigation-provider', () => ({
   useNavigation: () => null,
 }));
 const permissions = vi.hoisted(() => ({ me: null as null | { role: string } }));
+const viewport = vi.hoisted(() => ({ narrow: false }));
 vi.mock('@/components/permission-provider', () => ({
   useMe: () => permissions.me,
   useCan: () => false,
@@ -33,7 +34,9 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} });
-  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  viewport.narrow = false;
+  // useIsMobile caches one query object per width, so the answer is read live.
+  vi.stubGlobal('matchMedia', () => ({ get matches() { return viewport.narrow; }, addEventListener() {}, removeEventListener() {} }));
   vi.stubGlobal('fetch', vi.fn(async () => Response.json([])));
 });
 
@@ -107,5 +110,25 @@ it('gives an admin the ⋯ menu with each instance\'s library commands, and a me
   expect(within(menu).getAllByRole('menuitem', { name: 'RSS Sync' })).toHaveLength(2);
   expect(within(menu).getAllByRole('menuitem', { name: 'Refresh all series' })).toHaveLength(2);
   expect(within(menu).queryByText(/Radarr/)).toBeNull();
+  client.clear();
+});
+
+it('folds Select and the list refresh into an admin\'s ⋯ menu on the narrowest phones', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(String(url) === '/api/instances'
+    ? [{ id: 'son-1', label: 'main', type: 'SONARR' }]
+    : [])));
+  // Every width query matches: a phone below 359px.
+  viewport.narrow = true;
+  // jsdom has no pointer capture, which the drawer asks for on a press inside it.
+  HTMLElement.prototype.setPointerCapture ??= () => {};
+  HTMLElement.prototype.releasePointerCapture ??= () => {};
+  permissions.me = { role: 'admin' };
+  const client = renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: 'More actions' }));
+  const sheet = await screen.findByRole('dialog', { name: 'More actions' });
+  expect(within(sheet).getAllByRole('button').map((b) => b.textContent))
+    .toEqual(['Select series', 'Refresh list', 'RSS Sync', 'Refresh all series', 'Cancel']);
+  await userEvent.click(within(sheet).getByRole('button', { name: 'Select series' }));
+  expect(await screen.findByRole('button', { name: 'Cancel selection' })).toBeTruthy();
   client.clear();
 });

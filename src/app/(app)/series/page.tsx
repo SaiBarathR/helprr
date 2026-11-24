@@ -171,9 +171,10 @@ export default function SeriesPage() {
   const isAdmin = me?.role === 'admin';
   // An admin's toolbar row also holds the ⋯ menu, so it makes room: below md
   // Refresh folds into the menu, and below 360px so does Select (the selection
-  // bar has its own Cancel). The buttons hide at the same widths in CSS.
-  const belowMd = useIsMobile(767);
-  const below360 = useIsMobile(359);
+  // bar has its own Cancel). The buttons hide at the same widths in CSS, where
+  // max-md is width < 768px and max-[359px] is width < 359px.
+  const belowMd = useIsMobile(767.98);
+  const below360 = useIsMobile(358.98);
   const canFilterByWatchStatus = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
   const watchLookup = useWatchLookup(canFilterByWatchStatus);
   const watchMapReady = useWatchMapReady(canFilterByWatchStatus);
