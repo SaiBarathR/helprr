@@ -37,6 +37,8 @@ export interface ProwlarrIndexer {
   description?: string;
   capabilities?: { categories?: { id: number; name: string }[] };
   appProfileId?: number;
+  /** When it was added, ISO 8601. */
+  added?: string;
 }
 
 /**
@@ -48,7 +50,7 @@ export interface ProwlarrIndexer {
  */
 export type ProwlarrIndexerSummary = Pick<
   ProwlarrIndexer,
-  'id' | 'name' | 'enable' | 'protocol' | 'privacy' | 'priority' | 'implementationName' | 'tags' | 'appProfileId'
+  'id' | 'name' | 'enable' | 'protocol' | 'privacy' | 'priority' | 'implementationName' | 'tags' | 'appProfileId' | 'added'
 > & { categories: string[] };
 
 export function toProwlarrIndexerSummary(indexer: ProwlarrIndexer): ProwlarrIndexerSummary {
@@ -62,6 +64,7 @@ export function toProwlarrIndexerSummary(indexer: ProwlarrIndexer): ProwlarrInde
     implementationName: indexer.implementationName,
     tags: indexer.tags,
     appProfileId: indexer.appProfileId,
+    added: indexer.added,
     categories: (indexer.capabilities?.categories ?? [])
       .map((category) => category.name)
       .filter((name) => typeof name === 'string'),
@@ -105,6 +108,16 @@ export interface ProwlarrDownloadClient {
   protocol: string;
   enable: boolean;
   priority: number;
+  fields?: unknown;
+}
+
+/** Server-side only: `fields` holds the proxy's host, username and password. */
+export interface ProwlarrIndexerProxy {
+  id: number;
+  name: string;
+  implementation: string;
+  implementationName: string;
+  tags: number[];
   fields?: unknown;
 }
 
@@ -326,8 +339,8 @@ export class ProwlarrClient {
     }
   }
 
-  private async delete<T>(endpoint: string): Promise<T> {
-    const response = await this.client.delete<T>(endpoint);
+  private async delete<T>(endpoint: string, body?: unknown): Promise<T> {
+    const response = await this.client.delete<T>(endpoint, body === undefined ? undefined : { data: body });
     return response.data;
   }
 
@@ -343,12 +356,24 @@ export class ProwlarrClient {
     await this.delete(`/api/v1/indexer/${id}`);
   }
 
+  /**
+   * Prowlarr deletes the ids it has, skips any it hasn't, and answers with an
+   * empty object either way, so the response says nothing about which went.
+   */
+  async deleteIndexers(ids: number[]): Promise<void> {
+    await this.delete('/api/v1/indexer/bulk', { ids });
+  }
+
   async testAllIndexers(): Promise<ProwlarrTestAllResponse> {
     return this.testAll('/api/v1/indexer/testall');
   }
 
   async testAllApplications(): Promise<ProwlarrTestAllResponse> {
     return this.testAll('/api/v1/applications/testall');
+  }
+
+  async testAllIndexerProxies(): Promise<ProwlarrTestAllResponse> {
+    return this.testAll('/api/v1/indexerproxy/testall');
   }
 
   private async testAll(endpoint: string): Promise<ProwlarrTestAllResponse> {
@@ -442,6 +467,16 @@ export class ProwlarrClient {
     await this.post('/api/v1/applications/test', application, { timeout: 60_000 });
   }
 
+  async getIndexerProxies(): Promise<ProwlarrIndexerProxy[]> {
+    return this.get<ProwlarrIndexerProxy[]>('/api/v1/indexerproxy');
+  }
+
+  /** As testApplication: the proxy is read and sent back, so its settings stay on the server. */
+  async testIndexerProxy(id: number): Promise<void> {
+    const proxy = await this.get<ProwlarrIndexerProxy>(`/api/v1/indexerproxy/${id}`);
+    await this.post('/api/v1/indexerproxy/test', proxy, { timeout: 60_000 });
+  }
+
   async getTags(): Promise<Tag[]> {
     return this.get<Tag[]>('/api/v1/tag');
   }
@@ -475,6 +510,10 @@ export class ProwlarrClient {
 
   async sendCommand(name: string): Promise<CommandResponse> {
     return this.post<CommandResponse>('/api/v1/command', { name });
+  }
+
+  async getCommand(id: number): Promise<CommandResponse> {
+    return this.get<CommandResponse>(`/api/v1/command/${id}`);
   }
 
   async getAppProfiles(): Promise<ProwlarrAppProfile[]> {

@@ -1092,6 +1092,24 @@ to whatever client the id names, so the route first checks it is enabled and
 for the release's protocol. The client list leaves the server as id, name and
 protocol only: each client's `fields` hold its password.
 
+The Prowlarr page's commands go through `POST /api/prowlarr/command`, which
+sends only the names on its allow-list (`ApplicationIndexerSync` for Sync All,
+`CheckHealth` for the health banner's Re-check) and needs `prowlarr.manage`;
+`GET /api/prowlarr/command/[id]` follows one until it ends and passes on its id,
+name and status only. Select mode on the Indexers tab edits through
+`PUT /api/prowlarr/indexers/bulk` and deletes through
+`DELETE /api/prowlarr/indexers/bulk` (`prowlarr.manage`, at most 200 ids):
+every id must be one Prowlarr has, or nothing is sent, and since Prowlarr's
+answer does not say which went, the route reads the list again and reports each
+id as deleted or not. Indexer deletes, single or bulk, remove Prowlarr settings
+rather than media, files or downloads and are not in the operation audit. The
+indexer list's search, sort and filters run over the loaded list and are kept in
+the UI store (`prowlarrIndexerView`). Indexer proxies
+(`GET /api/prowlarr/indexerproxies`, `prowlarr.view`) leave the server as id,
+name, type, tags and the indexers sharing a tag with each; their `fields` (host,
+user name, password) never do. Test and Test All (`prowlarr.manage`) answer pass
+or fail only, since Prowlarr's failure text can name the proxy's host.
+
 qBittorrent's `transfer/info` also carries `last_external_address_v4` and `_v6`,
 the owner's public IP. `/api/qbittorrent/transfer` and the summary (full, `view=delta`,
 `view=counters`, and the cache and delta history behind them) rebuild it with

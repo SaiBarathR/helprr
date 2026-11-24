@@ -7,7 +7,9 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 // The commands Helprr's UI sends. Prowlarr's command endpoint also runs
 // ApplicationUpdate, Backup, ClearHistory, DeleteLogFiles and more, which a
 // grant to manage indexers must not reach. Add a name here with its UI.
-const ALLOWED_COMMANDS = new Set(['ApplicationIndexerSync']);
+// CheckHealth (the health banner's Re-check) only reruns Prowlarr's health
+// checks: it changes no settings and deletes nothing.
+const ALLOWED_COMMANDS = new Set(['ApplicationIndexerSync', 'CheckHealth']);
 
 /**
  * Handle POST requests that send a named command to a Prowlarr instance.
