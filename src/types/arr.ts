@@ -457,6 +457,15 @@ export interface HealthCheck {
   wikiUrl: string;
 }
 
+/** One release from an arr's GET /update (Sonarr/Radarr v3, Lidarr/Prowlarr v1), newest first. */
+export interface ArrUpdate {
+  version: string;
+  releaseDate?: string;
+  installed: boolean;
+  installable: boolean;
+  latest: boolean;
+}
+
 // Tag type
 export interface Tag {
   id: number;

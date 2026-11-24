@@ -20,6 +20,7 @@ import type {
   QualityProfile,
   RootFolder,
   DiskSpace,
+  ArrUpdate,
   HealthCheck,
   Release,
   DownloadClient,
@@ -504,6 +505,10 @@ export class LidarrClient {
 
   async getHealth(): Promise<HealthCheck[]> {
     return this.get<HealthCheck[]>('/api/v1/health');
+  }
+
+  async getUpdates(): Promise<ArrUpdate[]> {
+    return this.get<ArrUpdate[]>('/api/v1/update');
   }
 
   async getSystemStatus(): Promise<SystemStatus> {

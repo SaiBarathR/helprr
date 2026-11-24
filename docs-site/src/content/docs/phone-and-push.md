@@ -62,6 +62,19 @@ example "WEBDL-1080p → Bluray-2160p"). To hear only about new arrivals, turn o
 new device, and a device or channel from before starts with the choice it had for
 **Media Imported**.
 
+Four more Sonarr / Radarr events tell about changes made anywhere, in Helprr, in the app
+itself or by its import lists: **Title Added** and **Title Deleted** (a series or movie
+added to or removed from the library, a minute or two after it happens), **File
+Deleted** (an episode or movie file deleted, or found missing from disk; a file an
+upgrade replaces is not counted) and **Files Renamed** (once per series or movie,
+however many files it renamed). **Settings → Notifications → Services → App Update
+Available** tells admins once a day when Sonarr, Radarr, Lidarr or Prowlarr has a new
+version, once per version; it opens **Settings → Service status**. All five are off
+until you turn them on, on each device and channel (they can be noisy: an import list
+can add a hundred titles at once), and while nobody has them on they are not listed in
+Notifications either. A download that needs a manual import (the apps' "Manual
+Interaction Required") is **Import Failed**, as before.
+
 **Settings → Notifications → Service outages → Alert after** sets how long a service
 must stay unreachable before the "is unreachable" notification (2 minutes by default;
 Immediately, or up to 30 minutes). A shorter blip, such as the internet dropping for a

@@ -21,6 +21,7 @@ import type {
   RootFolder,
   MediaManagementConfig,
   DiskSpace,
+  ArrUpdate,
   HealthCheck,
   RadarrLookupResult,
   Release,
@@ -512,6 +513,10 @@ export class RadarrClient {
 
   async getHealth(): Promise<HealthCheck[]> {
     return this.get<HealthCheck[]>('/api/v3/health');
+  }
+
+  async getUpdates(): Promise<ArrUpdate[]> {
+    return this.get<ArrUpdate[]>('/api/v3/update');
   }
 
   async getSystemStatus(): Promise<SystemStatus> {

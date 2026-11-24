@@ -2291,5 +2291,295 @@
     "skipped": false
    }
   }
+ ],
+ "pollSonarr:files": [
+  {
+   "invalidateLibrary": [
+    "sonarr",
+    "u1"
+   ]
+  },
+  {
+   "notify": {
+    "eventType": "upgraded",
+    "title": "Episode Upgraded",
+    "body": "WEBDL-1080p → HDTV-1080p: Merry Berry Love (2026) s01e03 [Mkv - 1080p H264 - MultiLang Aac 2.0 - MultiSubs]",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "u1",
+     "instanceLabel": "Main",
+     "id": 9556,
+     "seriesId": 308,
+     "seasonNumber": 1,
+     "episodeId": 13946,
+     "qualityName": "HDTV-1080p",
+     "redirect": "/series/308/season/1/episode/13946?instance=u1"
+    },
+    "url": "/series/308/season/1/episode/13946?instance=u1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "fileDeleted",
+    "title": "Episode File Deleted",
+    "body": "Monster S01E03 (Bluray-720p): deleted",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "u1",
+     "instanceLabel": "Main",
+     "id": 9606,
+     "seriesId": 301,
+     "seasonNumber": 1,
+     "episodeId": 13554,
+     "redirect": "/series/301/season/1/episode/13554?instance=u1"
+    },
+    "url": "/series/301/season/1/episode/13554?instance=u1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "fileDeleted",
+    "title": "Episode File Deleted",
+    "body": "Monster S01E02 (Bluray-576p): deleted",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "u1",
+     "instanceLabel": "Main",
+     "id": 9605,
+     "seriesId": 301,
+     "seasonNumber": 1,
+     "episodeId": 13553,
+     "redirect": "/series/301/season/1/episode/13553?instance=u1"
+    },
+    "url": "/series/301/season/1/episode/13553?instance=u1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "fileDeleted",
+    "title": "Episode File Deleted",
+    "body": "Monster S01E01 (HDTV-1080p): deleted",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "u1",
+     "instanceLabel": "Main",
+     "id": 9604,
+     "seriesId": 301,
+     "seasonNumber": 1,
+     "episodeId": 13552,
+     "redirect": "/series/301/season/1/episode/13552?instance=u1"
+    },
+    "url": "/series/301/season/1/episode/13552?instance=u1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "fileDeleted",
+    "title": "Episode File Deleted",
+    "body": "Something in the Rain S01E16 (WEBRip-1080p): missing from disk",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "u1",
+     "instanceLabel": "Main",
+     "id": 8910,
+     "seriesId": 203,
+     "seasonNumber": 1,
+     "episodeId": 9406,
+     "redirect": "/series/203/season/1/episode/9406?instance=u1"
+    },
+    "url": "/series/203/season/1/episode/9406?instance=u1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "fileDeleted",
+    "title": "Episode File Deleted",
+    "body": "Something in the Rain S01E15 (WEBRip-1080p): missing from disk",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "u1",
+     "instanceLabel": "Main",
+     "id": 8909,
+     "seriesId": 203,
+     "seasonNumber": 1,
+     "episodeId": 9405,
+     "redirect": "/series/203/season/1/episode/9405?instance=u1"
+    },
+    "url": "/series/203/season/1/episode/9405?instance=u1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "fileRenamed",
+    "title": "Files Renamed",
+    "body": "Monster: 4 files renamed",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "u1",
+     "instanceLabel": "Main",
+     "id": 9611,
+     "seriesId": 301,
+     "redirect": "/series/301?instance=u1"
+    },
+    "url": "/series/301?instance=u1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "fileRenamed",
+    "title": "File Renamed",
+    "body": "Haikyu!! S01E02: now Haikyu!! (2014) - S01E02 - 002 - Karasuno High School Volleyball Club [HDTV-1080p][Opus 2.0][EN+JA][x265 10bit].mkv",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "u1",
+     "instanceLabel": "Main",
+     "id": 7841,
+     "seriesId": 47,
+     "redirect": "/series/47?instance=u1"
+    },
+    "url": "/series/47?instance=u1"
+   }
+  },
+  {
+   "pollingState.update": {
+    "where": {
+     "serviceConnectionId": "u1"
+    },
+    "data": {
+     "lastQueueIds": [],
+     "lastHistoryDate": "2026-11-03T05:53:51.000Z",
+     "lastHistoryId": 9611,
+     "lastHistorySeenIds": [
+      9608,
+      9609,
+      9610,
+      9611
+     ],
+     "lastHealthHash": "d751713988987e9331980363e24189ce"
+    }
+   }
+  },
+  {
+   "badge": [
+    "activity",
+    "sonarr",
+    {
+     "total": 0,
+     "attention": 0
+    }
+   ]
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
+  }
+ ],
+ "pollRadarr:files": [
+  {
+   "invalidateLibrary": [
+    "radarr",
+    "u1"
+   ]
+  },
+  {
+   "notify": {
+    "eventType": "upgraded",
+    "title": "Movie Upgraded",
+    "body": "WEBDL-2160p → Remux-2160p: Fackham.Hall.2025.UHD.BluRay.2160p.DTS-HD.MA.5.1.HDR10P.HEVC.HYBRID.REMUX-FraMeS",
+    "metadata": {
+     "source": "radarr",
+     "instanceId": "u1",
+     "instanceLabel": "Main",
+     "id": 1208,
+     "movieId": 608,
+     "qualityName": "Remux-2160p",
+     "redirect": "/movies/608?instance=u1"
+    },
+    "url": "/movies/608?instance=u1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "fileDeleted",
+    "title": "Movie File Deleted",
+    "body": "Maa Inti Bangaram (2026) (WEBRip-1080p): missing from disk",
+    "metadata": {
+     "source": "radarr",
+     "instanceId": "u1",
+     "instanceLabel": "Main",
+     "id": 1025,
+     "movieId": 549,
+     "redirect": "/movies/549?instance=u1"
+    },
+    "url": "/movies/549?instance=u1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "fileDeleted",
+    "title": "Movie File Deleted",
+    "body": "Maa Inti Bangaram (2026) (WEBDL-1080p): deleted",
+    "metadata": {
+     "source": "radarr",
+     "instanceId": "u1",
+     "instanceLabel": "Main",
+     "id": 1022,
+     "movieId": 549,
+     "redirect": "/movies/549?instance=u1"
+    },
+    "url": "/movies/549?instance=u1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "fileRenamed",
+    "title": "File Renamed",
+    "body": "Maa Inti Bangaram (2026): now Maa Inti Bangaram (2026) HDTV-1080p.mp4",
+    "metadata": {
+     "source": "radarr",
+     "instanceId": "u1",
+     "instanceLabel": "Main",
+     "id": 1026,
+     "movieId": 549,
+     "redirect": "/movies/549?instance=u1"
+    },
+    "url": "/movies/549?instance=u1"
+   }
+  },
+  {
+   "pollingState.update": {
+    "where": {
+     "serviceConnectionId": "u1"
+    },
+    "data": {
+     "lastQueueIds": [],
+     "lastHistoryDate": "2026-11-15T19:31:01.000Z",
+     "lastHistoryId": 1208,
+     "lastHistorySeenIds": [
+      1207,
+      1208
+     ],
+     "lastHealthHash": "d751713988987e9331980363e24189ce"
+    }
+   }
+  },
+  {
+   "badge": [
+    "activity",
+    "radarr",
+    {
+     "total": 0,
+     "attention": 0
+    }
+   ]
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
+  }
  ]
 }

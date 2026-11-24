@@ -13,4 +13,19 @@ describe('activity digest', () => {
     expect(digest.body).toContain('Dune');
     expect(digest.body).not.toContain('Arrival');
   });
+
+  it('counts titles added and deleted and files deleted, and names Prowlarr', () => {
+    const digest = buildActivityDigest({
+      period: 'daily',
+      rows: [
+        row('titleAdded', 'Pluribus (2025)'),
+        { ...row('titleAdded', '5 Movies Added'), metadata: { source: 'radarr', grouped: true, groupCount: 5 } },
+        row('titleDeleted', 'Monster (2004)'),
+        row('fileDeleted', 'Monster S01E03 (Bluray-720p): deleted'),
+        { ...row('arrUpdateAvailable', 'Prowlarr 3.1.0.5799 is out'), metadata: { source: 'prowlarr' } },
+      ],
+    });
+    expect(digest.body).toContain('6 titles added · 1 title deleted · 1 file deleted');
+    expect(digest.body).toContain('1 Prowlarr');
+  });
 });

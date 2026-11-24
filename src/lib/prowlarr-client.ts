@@ -3,7 +3,7 @@ import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { urlsToOrigins } from '@/lib/url-origins';
 import { MAX_TORRENT_BYTES } from '@/lib/manual-downloads/release-source';
-import type { HealthCheck, Tag } from '@/types/arr';
+import type { ArrUpdate, HealthCheck, Tag } from '@/types/arr';
 
 interface SystemStatus {
   version: string;
@@ -448,6 +448,10 @@ export class ProwlarrClient {
 
   async getHealth(): Promise<HealthCheck[]> {
     return this.get<HealthCheck[]>('/api/v1/health');
+  }
+
+  async getUpdates(): Promise<ArrUpdate[]> {
+    return this.get<ArrUpdate[]>('/api/v1/update');
   }
 
   async getIndexer(id: number): Promise<ProwlarrIndexer> {

@@ -2,8 +2,9 @@ import { prisma } from '@/lib/db';
 
 export const EVENT_TYPES = [
   'grabbed', 'imported', 'upgraded', 'downloadFailed', 'importFailed',
+  'titleAdded', 'titleDeleted', 'fileDeleted', 'fileRenamed',
   'upcomingPremiere', 'healthWarning', 'healthRestored',
-  'serviceDown', 'serviceRestored', 'diskLowSpace', 'databaseBackup',
+  'serviceDown', 'serviceRestored', 'diskLowSpace', 'databaseBackup', 'arrUpdateAvailable',
   'torrentAdded', 'torrentCompleted', 'torrentDeleted',
   'jellyfinPlaybackStart',
   'cleanupStrike', 'cleanupRemoved', 'cleanupFailed',
@@ -28,7 +29,7 @@ export interface NotificationEventMeta {
   group: NotificationEventGroupId;
   label: string;
   description: string;
-  iconName: 'Download' | 'Check' | 'CircleArrowUp' | 'X' | 'AlertTriangle' | 'Clock' | 'Trash2' | 'Play' | 'Bell' | 'Newspaper';
+  iconName: 'Download' | 'Check' | 'CircleArrowUp' | 'CirclePlus' | 'FileX' | 'FilePen' | 'X' | 'AlertTriangle' | 'Clock' | 'Trash2' | 'Play' | 'Bell' | 'Newspaper';
   colorClass: string;
 }
 
@@ -60,8 +61,32 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
   importFailed: {
     type: 'importFailed', group: 'sonarrRadarr',
     label: 'Import Failed',
-    description: 'When an import fails',
+    description: 'When a download cannot be imported and needs a manual import (the apps\' "Manual Interaction Required")',
     iconName: 'X', colorClass: 'bg-red-500/10 text-red-500',
+  },
+  titleAdded: {
+    type: 'titleAdded', group: 'sonarrRadarr',
+    label: 'Title Added',
+    description: 'When a series or movie is added to Sonarr/Radarr: from Helprr, in the app itself or by an import list',
+    iconName: 'CirclePlus', colorClass: 'bg-blue-500/10 text-blue-500',
+  },
+  titleDeleted: {
+    type: 'titleDeleted', group: 'sonarrRadarr',
+    label: 'Title Deleted',
+    description: 'When a series or movie is removed from Sonarr/Radarr',
+    iconName: 'Trash2', colorClass: 'bg-zinc-500/10 text-zinc-400',
+  },
+  fileDeleted: {
+    type: 'fileDeleted', group: 'sonarrRadarr',
+    label: 'File Deleted',
+    description: 'When an episode or movie file is deleted, or found missing from disk (not when an upgrade replaces it)',
+    iconName: 'FileX', colorClass: 'bg-rose-500/10 text-rose-400',
+  },
+  fileRenamed: {
+    type: 'fileRenamed', group: 'sonarrRadarr',
+    label: 'Files Renamed',
+    description: 'When Sonarr/Radarr renames the files of a series or movie',
+    iconName: 'FilePen', colorClass: 'bg-cyan-500/10 text-cyan-500',
   },
   upcomingPremiere: {
     type: 'upcomingPremiere', group: 'sonarrRadarr',
@@ -104,6 +129,12 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     label: 'Database Backup',
     description: 'When a scheduled database backup fails, or the last one is too old (admins)',
     iconName: 'AlertTriangle', colorClass: 'bg-amber-500/10 text-amber-400',
+  },
+  arrUpdateAvailable: {
+    type: 'arrUpdateAvailable', group: 'services',
+    label: 'App Update Available',
+    description: 'When Sonarr, Radarr, Lidarr or Prowlarr has a new version, once per version (admins)',
+    iconName: 'Download', colorClass: 'bg-sky-500/10 text-sky-400',
   },
   torrentAdded: {
     type: 'torrentAdded', group: 'qbittorrent',
@@ -297,12 +328,12 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
   {
     id: 'sonarrRadarr',
     title: 'Sonarr / Radarr',
-    types: ['grabbed', 'imported', 'upgraded', 'downloadFailed', 'importFailed', 'upcomingPremiere', 'healthWarning', 'healthRestored'],
+    types: ['grabbed', 'imported', 'upgraded', 'downloadFailed', 'importFailed', 'titleAdded', 'titleDeleted', 'fileDeleted', 'fileRenamed', 'upcomingPremiere', 'healthWarning', 'healthRestored'],
   },
   {
     id: 'services',
     title: 'Services',
-    types: ['serviceDown', 'serviceRestored', 'diskLowSpace', 'databaseBackup'],
+    types: ['serviceDown', 'serviceRestored', 'diskLowSpace', 'databaseBackup', 'arrUpdateAvailable'],
   },
   {
     id: 'qbittorrent',
@@ -376,7 +407,15 @@ export const WATCHING_EPISODE_DAY_OPTIONS = [0, 7, 14, 30, 60, 90] as const;
 // Events a device or channel gets only once its owner turns them on: an invite
 // to pick together is too easy to send for everyone to hear it unasked (owner,
 // 2026-11-07). A missing preference row reads as this default.
-const DEFAULT_OFF_EVENT_TYPES: ReadonlySet<string> = new Set<NotificationEventType>(['tonightPickInvite']);
+// The library and file changes and app updates (AR-17) are mostly noise (an
+// import list adding a hundred titles, a series renamed file by file), so
+// they are opt-in too. That is also their starting state on devices and
+// channels from before they existed: such a device has no row for them and a
+// channel does not list them, so neither starts getting them.
+const DEFAULT_OFF_EVENT_TYPES: ReadonlySet<string> = new Set<NotificationEventType>([
+  'tonightPickInvite',
+  'titleAdded', 'titleDeleted', 'fileDeleted', 'fileRenamed', 'arrUpdateAvailable',
+]);
 
 export function eventEnabledByDefault(eventType: string): boolean {
   return !DEFAULT_OFF_EVENT_TYPES.has(eventType);

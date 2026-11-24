@@ -21,6 +21,7 @@ import type {
   RootFolder,
   MediaManagementConfig,
   DiskSpace,
+  ArrUpdate,
   HealthCheck,
   SonarrLookupResult,
   Release,
@@ -560,6 +561,10 @@ export class SonarrClient {
 
   async getHealth(): Promise<HealthCheck[]> {
     return this.get<HealthCheck[]>('/api/v3/health');
+  }
+
+  async getUpdates(): Promise<ArrUpdate[]> {
+    return this.get<ArrUpdate[]>('/api/v3/update');
   }
 
   async getSystemStatus(): Promise<SystemStatus> {
