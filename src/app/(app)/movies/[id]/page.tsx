@@ -15,6 +15,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { NotFoundState } from '@/components/ui/not-found-state';
 import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
+import { QualityProfileSheet, QualityProfileValue } from '@/components/media/quality-profile-sheet';
 import {
   Drawer,
   DrawerContent,
@@ -122,6 +123,7 @@ export default function MovieDetailPage() {
   const loading = movieQuery.isLoading;
   const [deleting, setDeleting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showQualityProfile, setShowQualityProfile] = useState(false);
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [addExclusion, setAddExclusion] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
@@ -411,8 +413,12 @@ export default function MovieDetailPage() {
     || formatLanguageCode(tmdbData?.originalLanguage);
   const productionCountries = formatRegionCodes(tmdbData?.originCountry);
 
-  const infoRows: { label: string; value: string }[] = [
-    { label: 'Quality Profile', value: qualityProfile?.name || 'Unknown' },
+  const infoRows: { label: string; value: string; onSelect?: () => void }[] = [
+    {
+      label: 'Quality Profile',
+      value: qualityProfile?.name || 'Unknown',
+      onSelect: () => setShowQualityProfile(true),
+    },
     {
       label: 'Min. Availability',
       value: movie.minimumAvailability.charAt(0).toUpperCase() + movie.minimumAvailability.slice(1),
@@ -923,7 +929,11 @@ export default function MovieDetailPage() {
                     className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0"
                   >
                     <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
-                    <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
+                    {row.onSelect ? (
+                      <QualityProfileValue name={row.value} onOpen={row.onSelect} />
+                    ) : (
+                      <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1124,6 +1134,15 @@ export default function MovieDetailPage() {
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
+
+      <QualityProfileSheet
+        service="radarr"
+        instanceId={instance}
+        profileId={movie.qualityProfileId}
+        profileName={qualityProfile?.name}
+        open={showQualityProfile}
+        onOpenChange={setShowQualityProfile}
+      />
     </>
   );
 }
