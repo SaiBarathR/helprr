@@ -24,6 +24,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ResponsiveMenu, ResponsiveMenuCheckboxItem } from '@/components/ui/responsive-menu';
 import {
   Drawer,
   DrawerContent,
@@ -45,6 +46,7 @@ import {
   MoreVertical,
   Power,
   AlertTriangle,
+  ChevronDown,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -896,7 +898,11 @@ function HistoryDrawer({
  *
  * @returns The History tab as a React element
  */
-function HistoryTab() {
+function HistoryTab({ indexerId, onIndexerChange }: {
+  /** Only this indexer's rows; null for all. Held by the page so the indexer sheet's See all can set it. */
+  indexerId: number | null;
+  onIndexerChange: (id: number | null) => void;
+}) {
   const [selectedRecord, setSelectedRecord] = useState<ProwlarrHistoryRecord | null>(null);
   const [activeFilter, setActiveFilter] = useRouteViewState<HistoryFilterValue>('activeFilter', '');
 
@@ -916,11 +922,19 @@ function HistoryTab() {
   }, [indexersQuery.data]);
 
   // Changing the filter is a new key → fresh page 1 with its own loading state.
+  // Every indexer, disabled ones too: their old rows are still in history.
+  const indexerOptions = useMemo(
+    () => [...(indexersQuery.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+    [indexersQuery.data],
+  );
+  const indexerLabel = indexerId === null ? 'All indexers' : indexerMap[indexerId] ?? `Indexer ${indexerId}`;
+
   const historyQuery = useInfiniteQuery({
-    queryKey: ['prowlarr', 'history', activeFilter],
+    queryKey: ['prowlarr', 'history', activeFilter, indexerId],
     queryFn: async ({ pageParam, signal }) => {
       const f = HISTORY_FILTERS.find((x) => x.value === activeFilter)!;
       const params = new URLSearchParams({ page: String(pageParam), pageSize: String(PAGE_SIZE) });
+      if (indexerId !== null) params.set('indexerId', String(indexerId));
       if (f.eventType) params.set('eventType', f.eventType);
       if (f.successful !== undefined) params.set('successful', f.successful);
       const res = await fetch(`/api/prowlarr/history?${params}`, { signal });
@@ -965,6 +979,38 @@ function HistoryTab() {
             {f.label}
           </button>
         ))}
+        <ResponsiveMenu
+          title="Indexer"
+          titleInDropdown
+          closeOnPick
+          contentClassName="max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto"
+          trigger={(
+            <button
+              type="button"
+              aria-label={`Indexer: ${indexerLabel}`}
+              className={`flex min-w-0 items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${indexerId !== null
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+                }`}
+            >
+              <span className="max-w-[9rem] truncate">{indexerLabel}</span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+            </button>
+          )}
+        >
+          <ResponsiveMenuCheckboxItem checked={indexerId === null} onCheckedChange={() => onIndexerChange(null)}>
+            All indexers
+          </ResponsiveMenuCheckboxItem>
+          {indexerOptions.map((indexer) => (
+            <ResponsiveMenuCheckboxItem
+              key={indexer.id}
+              checked={indexerId === indexer.id}
+              onCheckedChange={() => onIndexerChange(indexer.id)}
+            >
+              <span className="truncate">{indexer.name}</span>
+            </ResponsiveMenuCheckboxItem>
+          ))}
+        </ResponsiveMenu>
       </div>
 
       {loading ? (
@@ -1116,6 +1162,8 @@ export default function ProwlarrPage() {
   const [testAllResults, setTestAllResults] = useState<ProwlarrTestAllResponse | null>(null);
   const [testAllIndexerNames, setTestAllIndexerNames] = useState<Record<number, string>>({});
   const actions = useIndexerActions();
+  const [tab, setTab] = useState('indexers');
+  const [historyIndexerId, setHistoryIndexerId] = useState<number | null>(null);
   const { confirmDelete, setConfirmDelete, deletingId, handleDelete } = actions;
 
   // ?indexer=<id> opens the sheet, so a link from global search works. Local
@@ -1147,11 +1195,16 @@ export default function ProwlarrPage() {
     router.replace(`/prowlarr?indexer=${id}`, { scroll: false });
   }
 
-  function closeIndexerSheet() {
+  // `toTop` starts a new view at the top (See all opens another tab), where a
+  // scroll:false replace would bring back the list's saved offset.
+  function closeIndexerSheet(toTop = false) {
     setSheetIndexerId(null);
-    if (urlIndexerId === null && openingIndexerId.current === null) return;
+    if (urlIndexerId === null && openingIndexerId.current === null) {
+      if (toTop) window.scrollTo({ top: 0, behavior: 'instant' });
+      return;
+    }
     openingIndexerId.current = null;
-    router.replace('/prowlarr', { scroll: false });
+    router.replace('/prowlarr', { scroll: toTop });
   }
 
   const sheetIndexersQuery = useQuery({
@@ -1359,7 +1412,13 @@ export default function ProwlarrPage() {
         statuses={sheetStatusQuery.data ?? []}
         canManage={!!canManage}
         actions={actions}
-        onClose={closeIndexerSheet}
+        onClose={() => closeIndexerSheet()}
+        onSeeAllHistory={(id) => {
+          // From the top, where the filter shows which indexer this is.
+          closeIndexerSheet(true);
+          setHistoryIndexerId(id);
+          setTab('history');
+        }}
       />
 
       {/* The shared confirm: it opens on Cancel. This one opened on the red
@@ -1381,7 +1440,7 @@ export default function ProwlarrPage() {
 
       <PageTitle>Prowlarr</PageTitle>
       {/* Tabs */}
-      <Tabs defaultValue="indexers">
+      <Tabs value={tab} onValueChange={setTab}>
         <div className="page-toolbar page-toolbar-flush [--flush-pb:0.5rem] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <TabsList variant="segmented">
             <TabsTrigger value="indexers">Indexers</TabsTrigger>
@@ -1404,7 +1463,7 @@ export default function ProwlarrPage() {
         </TabsContent>
 
         <TabsContent value="history" className="mt-4">
-          <HistoryTab />
+          <HistoryTab indexerId={historyIndexerId} onIndexerChange={setHistoryIndexerId} />
         </TabsContent>
 
         {canManage && (

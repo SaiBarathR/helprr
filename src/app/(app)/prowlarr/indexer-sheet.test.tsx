@@ -33,7 +33,7 @@ function renderSheet(props: Partial<Parameters<typeof IndexerSheet>[0]> = {}) {
   const shared = actions();
   render(
     <QueryClientProvider client={client}>
-      <IndexerSheet indexer={indexer} statuses={[]} canManage actions={shared} onClose={vi.fn()} {...props} />
+      <IndexerSheet indexer={indexer} statuses={[]} canManage actions={shared} onClose={vi.fn()} onSeeAllHistory={vi.fn()} {...props} />
     </QueryClientProvider>,
   );
   return shared;
@@ -59,6 +59,15 @@ describe('IndexerSheet', () => {
     expect(screen.getByText('Failed', { selector: 'span[data-slot="badge"], span' })).toBeTruthy();
     expect(screen.getByText('Categories (2)')).toBeTruthy();
     expect(vi.mocked(fetch).mock.calls.map((call) => String(call[0]))).toContain('/api/prowlarr/history?indexerId=7&pageSize=10');
+  });
+
+  it('opens the full history for this indexer from See all', async () => {
+    const onSeeAllHistory = vi.fn();
+    renderSheet({ onSeeAllHistory });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'See all' }));
+
+    expect(onSeeAllHistory).toHaveBeenCalledWith(7);
   });
 
   it('never lists another indexer\'s history, and says so when this one has none', async () => {
@@ -88,7 +97,7 @@ describe('IndexerSheet', () => {
     const shared = actions();
     const view = (target: ProwlarrIndexerSummary) => (
       <QueryClientProvider client={client}>
-        <IndexerSheet indexer={target} statuses={[]} canManage actions={shared} onClose={vi.fn()} />
+        <IndexerSheet indexer={target} statuses={[]} canManage actions={shared} onClose={vi.fn()} onSeeAllHistory={vi.fn()} />
       </QueryClientProvider>
     );
     const { rerender } = render(view(indexer));
@@ -160,6 +169,7 @@ describe('IndexerSheet', () => {
           canManage
           actions={{ ...shared, pendingEdits: new Map([[7, { priority: 26 }]]) }}
           onClose={vi.fn()}
+          onSeeAllHistory={vi.fn()}
         />
       </QueryClientProvider>,
     );

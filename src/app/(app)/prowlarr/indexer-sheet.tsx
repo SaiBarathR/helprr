@@ -223,6 +223,7 @@ function IndexerStat({ label, value }: { label: string; value: string }) {
  * @param canManage - Whether the actions are shown; the routes enforce it too.
  * @param actions - Shared row actions.
  * @param onClose - Called when the drawer is dismissed.
+ * @param onSeeAllHistory - Opens the History tab filtered to this indexer.
  */
 export function IndexerSheet({
   indexer,
@@ -230,12 +231,14 @@ export function IndexerSheet({
   canManage,
   actions,
   onClose,
+  onSeeAllHistory,
 }: {
   indexer: ProwlarrIndexerSummary | null;
   statuses: ProwlarrIndexerStatus[];
   canManage: boolean;
   actions: IndexerActions;
   onClose: () => void;
+  onSeeAllHistory: (indexerId: number) => void;
 }) {
   const open = !!indexer;
   const indexerId = indexer?.id;
@@ -329,7 +332,19 @@ export function IndexerSheet({
             </section>
 
             <section aria-label="Recent activity">
-              <p className="mb-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Recent activity</p>
+              <div className="mb-1.5 flex items-center gap-2">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Recent activity</p>
+                {records.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-my-2 ml-auto h-9 px-2 text-xs"
+                    onClick={() => onSeeAllHistory(indexer.id)}
+                  >
+                    See all
+                  </Button>
+                )}
+              </div>
               {records.length > 0 ? (
                 <div className="rounded-lg bg-muted/30 overflow-hidden divide-y divide-border/40">
                   {records.map((record) => (
