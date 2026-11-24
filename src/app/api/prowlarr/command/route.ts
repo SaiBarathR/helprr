@@ -4,12 +4,17 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
+// The commands Helprr's UI sends. Prowlarr's command endpoint also runs
+// ApplicationUpdate, Backup, ClearHistory, DeleteLogFiles and more, which a
+// grant to manage indexers must not reach. Add a name here with its UI.
+const ALLOWED_COMMANDS = new Set(['ApplicationIndexerSync']);
+
 /**
  * Handle POST requests that send a named command to a Prowlarr instance.
  *
- * Expects a JSON body with a required `name` field. On success returns the command result as JSON.
+ * Expects a JSON body with a `name` from ALLOWED_COMMANDS. On success returns the command result as JSON.
  *
- * @returns On success, the JSON response from Prowlarr. If `name` is missing, a 400 response with `{ error: 'Command name is required' }`. On other failures, a 500 response with `{ error: string }` describing the failure.
+ * @returns On success, the JSON response from Prowlarr. A missing or unknown `name` is a 400 and nothing is sent. On other failures, a 500 response with `{ error: string }` describing the failure.
  */
 async function postHandler(request: NextRequest) {
   const auth = await requireUserCapability('prowlarr.manage');
@@ -17,10 +22,13 @@ async function postHandler(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name } = body;
+    const name: unknown = body?.name;
 
-    if (!name) {
+    if (typeof name !== 'string' || !name) {
       return NextResponse.json({ error: 'Command name is required' }, { status: 400 });
+    }
+    if (!ALLOWED_COMMANDS.has(name)) {
+      return NextResponse.json({ error: 'Unknown command' }, { status: 400 });
     }
 
     const client = await getProwlarrClient();
