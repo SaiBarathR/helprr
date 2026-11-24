@@ -1292,12 +1292,16 @@ import replaced a file the episode or movie already had
 before the import (same second or the one before), so an import is an upgrade
 when the poll's fetched history (not only its new rows; a page always reaches
 back past the cursor, so a deletion the previous poll read still counts) has
-such a deletion for the same episode or movie within a minute. The deletion
+such a deletion for the same episode or movie, written before the import (a
+lower id, at most a minute earlier). The deletion
 carries the old quality and the import the new one, for the "A → B" body.
 `upgraded` is gated by `notify.media` and filtered by quality and tag like
 `imported`. Migration `20261124120000_upgraded_notification_event` gave every
 existing device preference and channel the choice it had for `imported`;
-devices without a row get it on. Lidarr imports are always `imported`.
+devices without a row get it on. A settings import of an older file does the
+same: a device rule for `imported` without one for `upgraded`, and the
+channels of a `users` section without `upgradedEvent: true`. Lidarr imports
+are always `imported`.
 
 "Now in your library" (`watchlistAvailable`, `src/lib/polling/watchlist-available.ts`)
 is sent from the Radarr/Sonarr history poll: a non-upgrade import of a title on

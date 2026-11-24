@@ -45,6 +45,16 @@ describe('telling an upgrade from a new arrival (real history)', () => {
     expect(radarrUpgradeOf(row(radarr, 1168), [row(radarr, 1168), { ...row(radarr, 1167), movieId: 1 }])).toBeUndefined();
   });
 
+  it('never pairs an import with a deletion written after it (two releases imported in one sweep)', () => {
+    // #10 is the movie's first file; 20 s later #12 replaces it, deleting it first (#11).
+    const first = { ...row(radarr, 1165), id: 10, date: '2026-11-03T05:53:00Z' };
+    const deleted = { ...row(radarr, 1167), id: 11, date: '2026-11-03T05:53:20Z' };
+    const second = { ...row(radarr, 1168), id: 12, date: '2026-11-03T05:53:20Z' };
+    const fetched = [second, deleted, first];
+    expect(radarrUpgradeOf(first, fetched)).toBeUndefined();
+    expect(radarrUpgradeOf(second, fetched)?.id).toBe(11);
+  });
+
   it('falls back to the release name when a quality is missing', () => {
     const imported = row(radarr, 1168);
     const deleted = { ...row(radarr, 1167), quality: undefined } as unknown as HistoryItem;

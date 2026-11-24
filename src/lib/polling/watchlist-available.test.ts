@@ -99,8 +99,9 @@ describe('which imports count as an arrival', () => {
     const records = [
       history({ id: 1, seriesId: 7, episodeId: 70, series, episode: episode(70, 1) }),
       history({ id: 2, seriesId: 7, episodeId: 71, series, episode: episode(71, 2), eventType: 'episodeFileImported' }),
-      history({ id: 3, seriesId: 7, episodeId: 72, series, episode: episode(72, 3) }),
-      history({ id: 4, seriesId: 7, episodeId: 72, series, eventType: 'episodeFileDeleted', data: { reason: 'Upgrade' } }),
+      // The arr writes an upgrade's deletion just before its import.
+      history({ id: 3, seriesId: 7, episodeId: 72, series, eventType: 'episodeFileDeleted', data: { reason: 'Upgrade' } }),
+      history({ id: 4, seriesId: 7, episodeId: 72, series, episode: episode(72, 3) }),
     ];
     expect(seriesArrivals(records, records, 'sonarr-main', false)).toEqual([{
       kind: 'series', instanceId: 'sonarr-main', arrId: 7, soleInstance: false, title: 'Severance', tvdbId: 371980, tmdbId: 95396,

@@ -413,6 +413,12 @@ export interface ExportedUsers {
    * music.delete gated Lidarr renames then.
    */
   musicManageFiles?: true;
+  /**
+   * Set by exports made since the "upgraded" notification event existed.
+   * Without it (an older export) a channel set to "imported" also gets
+   * "upgraded" on import, since upgrades were sent as imports then.
+   */
+  upgradedEvent?: true;
 }
 
 export interface SettingsExportPayload {

@@ -12,7 +12,7 @@ import { noteJobFailure } from '@/lib/polling-job-report';
 import type { Prisma } from '@prisma/client';
 import type { HistoryItem } from '@/types';
 import { notifyAndLog } from './shared';
-import { radarrUpgradeOf, sonarrUpgradeOf } from './upgrade-imports';
+import { positiveId, radarrUpgradeOf, sonarrUpgradeOf } from './upgrade-imports';
 
 export interface LibraryArrival {
   kind: 'movie' | 'series';
@@ -40,10 +40,6 @@ export interface EpisodeRef {
 
 const MOVIE_IMPORTS = new Set(['downloadFolderImported', 'movieFileImported']);
 const EPISODE_IMPORTS = new Set(['downloadFolderImported', 'episodeFileImported']);
-
-function positiveId(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
-}
 
 export function movieArrivals(newHistory: HistoryItem[], fetched: HistoryItem[], instanceId: string, soleInstance: boolean): LibraryArrival[] {
   const byMovie = new Map<number, LibraryArrival>();

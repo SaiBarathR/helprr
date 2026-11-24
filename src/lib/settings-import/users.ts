@@ -329,7 +329,7 @@ export async function applyUsersInTxn(
       await applyUserDashboardLayoutsInTxn(tx, acc.dashboardLayouts, skipped, userId, ownerLabel);
     }
     if (Array.isArray(acc.notificationChannels)) {
-      await applyUserNotificationChannelsInTxn(tx, acc.notificationChannels, userId, ownerLabel, skipped);
+      await applyUserNotificationChannelsInTxn(tx, acc.notificationChannels, userId, ownerLabel, skipped, data.upgradedEvent !== true);
     }
 
     // Default-layout choices travel by name (ids are install-local). Resolve

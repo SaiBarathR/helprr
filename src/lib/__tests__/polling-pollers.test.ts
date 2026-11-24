@@ -221,15 +221,22 @@ function arrInstance(id: string, label: string, kind: 'sonarr' | 'radarr' | 'lid
   return { connection: { id, label, isDefault: true, updatedAt: new Date(0) }, client };
 }
 
-/** An instance whose history is real upgrade rows (upgrade-imports fixture), read from the given cursor. */
-function upgradeInstance(kind: 'sonarr' | 'radarr', cursor: { date: string; id: number }) {
+/**
+ * An instance whose history is real upgrade rows (upgrade-imports fixture), read from the given cursor.
+ * `page1` puts only that many rows on the first page and the rest on the second.
+ */
+function upgradeInstance(kind: 'sonarr' | 'radarr', cursor: { date: string; id: number }, page1?: number) {
   mocks.states.set('u1', {
     serviceConnectionId: 'u1', lastQueueIds: [], lastHistoryDate: new Date(cursor.date), lastHistoryId: cursor.id, lastHistorySeenIds: [cursor.id], lastHealthHash: EMPTY_HEALTH_HASH,
   });
   const client = {
     queue: { totalRecords: 0, records: [] },
     getTags: vi.fn(async () => []),
-    getHistory: vi.fn(async (page: number) => ({ records: page === 1 ? upgradeHistory[kind] : [] })),
+    getHistory: vi.fn(async (page: number) => {
+      const rows = upgradeHistory[kind];
+      const cut = page1 ?? rows.length;
+      return { records: page === 1 ? rows.slice(0, cut) : page === 2 ? rows.slice(cut) : [] };
+    }),
     getHealth: vi.fn(async () => []),
   };
   return [{ connection: { id: 'u1', label: 'Main', isDefault: true, updatedAt: new Date(0) }, client }];
@@ -508,9 +515,12 @@ describe('pollers on fixed fixtures (golden)', () => {
   });
 
   it('pollSonarr: an import whose Upgrade deletion the previous poll already read is still an upgrade', async () => {
-    // The cursor stands on the deletion (9555): only the import (9556) is new.
-    mocks.sonarr = upgradeInstance('sonarr', { date: '2026-10-24T11:43:29Z', id: 9555 });
+    // The cursor stands on the deletion (9555): only the import (9556) is new. The import is the
+    // last row of page 1 and its deletion the first of page 2, which the poll still reads.
+    mocks.sonarr = upgradeInstance('sonarr', { date: '2026-10-24T11:43:29Z', id: 9555 }, 1);
     expect(notified(await run('pollSonarr')).map((e) => [e.eventType, e.title])).toEqual([['upgraded', 'Episode Upgraded']]);
+    const { client } = (mocks.sonarr as ReturnType<typeof upgradeInstance>)[0];
+    expect(client.getHistory).toHaveBeenCalledTimes(2);
   });
 
   it('pollRadarr on real history: upgrades are sent as Movie Upgraded, first imports as Movie Imported', async () => {

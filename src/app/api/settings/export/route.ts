@@ -591,7 +591,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         })),
         notificationChannels: channelsByUser.get(u.id) ?? [],
       }));
-      payload.users = { accounts, musicManageFiles: true };
+      payload.users = { accounts, musicManageFiles: true, upgradedEvent: true };
     }
 
     return NextResponse.json(payload);

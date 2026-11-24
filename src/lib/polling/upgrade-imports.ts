@@ -8,38 +8,41 @@ import type { HistoryItem } from '@/types';
 
 const UPGRADE_WINDOW_MS = 60_000;
 
-function positiveId(value: unknown): number | undefined {
+export function positiveId(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
 // `fetched` is everything this poll read, not only the new rows: the deletion
 // is older than its import, so the previous poll may have read it already (it
 // is still on the page this poll fetched, which always reaches back past the
-// cursor). The nearest deletion wins when a title was upgraded twice in a minute.
-function findUpgradeDeletion(fetched: HistoryItem[], deletedType: string, sameTarget: (h: HistoryItem) => boolean, importDate: string): HistoryItem | undefined {
-  const at = Date.parse(importDate);
-  let nearest: HistoryItem | undefined;
+// cursor). Only a deletion written before the import counts (a lower id, and
+// at most a minute earlier): one written after it belongs to a later import,
+// as when two releases of a title are imported in one sweep and only the
+// second replaces the first. The latest such deletion wins.
+function findUpgradeDeletion(fetched: HistoryItem[], deletedType: string, sameTarget: (h: HistoryItem) => boolean, imported: HistoryItem): HistoryItem | undefined {
+  const at = Date.parse(imported.date);
+  let latest: HistoryItem | undefined;
   for (const h of fetched) {
-    if (h.eventType !== deletedType || h.data?.reason !== 'Upgrade' || !sameTarget(h)) continue;
-    const gap = Math.abs(Date.parse(h.date) - at);
-    if (gap > UPGRADE_WINDOW_MS) continue;
-    if (!nearest || gap < Math.abs(Date.parse(nearest.date) - at)) nearest = h;
+    if (h.eventType !== deletedType || h.data?.reason !== 'Upgrade' || !sameTarget(h) || h.id >= imported.id) continue;
+    const before = at - Date.parse(h.date);
+    if (before < 0 || before > UPGRADE_WINDOW_MS) continue;
+    if (!latest || h.id > latest.id) latest = h;
   }
-  return nearest;
+  return latest;
 }
 
 /** The deletion that makes this Sonarr import an upgrade of the same episode, if any. */
 export function sonarrUpgradeOf(item: HistoryItem, fetched: HistoryItem[]): HistoryItem | undefined {
   const episodeId = positiveId(item.episodeId ?? item.episode?.id);
   if (!episodeId) return undefined;
-  return findUpgradeDeletion(fetched, 'episodeFileDeleted', (h) => h.episodeId === episodeId, item.date);
+  return findUpgradeDeletion(fetched, 'episodeFileDeleted', (h) => h.episodeId === episodeId, item);
 }
 
 /** The deletion that makes this Radarr import an upgrade of the same movie, if any. */
 export function radarrUpgradeOf(item: HistoryItem, fetched: HistoryItem[]): HistoryItem | undefined {
   const movieId = positiveId(item.movieId);
   if (!movieId) return undefined;
-  return findUpgradeDeletion(fetched, 'movieFileDeleted', (h) => h.movieId === movieId, item.date);
+  return findUpgradeDeletion(fetched, 'movieFileDeleted', (h) => h.movieId === movieId, item);
 }
 
 /**

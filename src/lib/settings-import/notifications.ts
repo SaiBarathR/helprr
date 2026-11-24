@@ -31,6 +31,10 @@ export async function applyNotificationDeviceInTxn(
     }
     rules.set(rule.eventType, rule);
   }
+  // A device exported before the "upgraded" event got upgrades as imports: it
+  // keeps that choice (on or off, with its filters), as the migration did.
+  const imported = rules.get('imported');
+  if (imported && !rules.has('upgraded')) rules.set('upgraded', { ...imported, eventType: 'upgraded' });
   let applied = 0;
   for (const [eventType, rule] of rules) {
     await tx.notificationPreference.upsert({
