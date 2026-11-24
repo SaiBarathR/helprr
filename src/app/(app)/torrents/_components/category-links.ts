@@ -23,3 +23,24 @@ export function defaultCategoryFolder(name: string, details: CategoryDetails): s
   }
   return `${details.defaultSavePath.replace(/[\\/]+$/, '')}/${name}`;
 }
+
+/**
+ * Where qBittorrent saves a torrent added with no save path, as 5.1.4 does it:
+ * under automatic management in its category's folder (no category: the
+ * default save path); under manual management in the default save path, or in
+ * the category's folder when "Use Category paths in Manual Mode" is on.
+ * `autoTmm` undefined is qBittorrent's default mode. null when qBittorrent
+ * didn't send the setting that decides it.
+ */
+export function addSaveFolder(details: CategoryDetails, category: string | undefined, autoTmm: boolean | undefined): string | null {
+  const auto = autoTmm ?? details.autoTmmByDefault;
+  if (auto === null) return null;
+  const root = details.defaultSavePath;
+  if (!category) return root;
+  if (!auto) {
+    if (details.categoryPathsInManualMode === null) return null;
+    if (!details.categoryPathsInManualMode) return root;
+  }
+  const own = Object.hasOwn(details.categories, category) ? details.categories[category].savePath : '';
+  return own || defaultCategoryFolder(category, details);
+}

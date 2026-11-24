@@ -3,6 +3,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { CheckCircle2, FolderCog, Gauge, Megaphone, MoreHorizontal, Pause, Play, Tag, Trash2, Zap } from 'lucide-react';
 import { ResponsiveMenu, ResponsiveMenuActionItem } from '@/components/ui/responsive-menu';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import type { DeleteDrawerState } from './torrent-delete-drawer';
 
 /** Actions on the selected torrents, shown while any are selected. */
@@ -29,11 +30,13 @@ export function TorrentsBulkBar({
   setDeleteDrawer: Dispatch<SetStateAction<DeleteDrawerState>>;
   setSelectedTorrents: Dispatch<SetStateAction<Set<string>>>;
 }) {
+  // A phone narrower than 390px has no room for every button (and a
+  // three-digit count): Location, Tags & Queue moves into More actions, and
+  // below 360px the gaps close, so Clear stays in view. The button hides at
+  // the same width in CSS, where max-[390px] is width < 390px.
+  const below390 = useIsMobile(389.98);
   return (
-    // A phone narrower than 390px has no room for every button (and a
-    // three-digit count): Location, Tags & Queue moves into More actions, and
-    // below 360px the gaps close, so Clear stays in view.
-    <div className="flex items-center gap-1 max-[359px]:gap-0 px-2 py-1.5 bg-muted/60 rounded-xl">
+    <div data-toast-clearance className="flex items-center gap-1 max-[359px]:gap-0 px-2 py-1.5 bg-muted/60 rounded-xl">
       <span className="text-xs text-muted-foreground mx-1 shrink-0">{selectedTorrents.size}</span>
       {canManageTorrents && (
         <button
@@ -64,7 +67,7 @@ export function TorrentsBulkBar({
       )}
       {canManageTorrents && (
         <button
-          className="relative touch-target min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent max-[389px]:hidden"
+          className="relative touch-target min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent max-[390px]:hidden"
           onClick={openOrganize}
           aria-label="Location, Tags & Queue"
         >
@@ -124,12 +127,12 @@ export function TorrentsBulkBar({
             <Tag className="h-4 w-4" />
             Set Category
           </ResponsiveMenuActionItem>
-          <div className="min-[390px]:hidden">
+          {below390 && (
             <ResponsiveMenuActionItem onSelect={openOrganize}>
               <FolderCog className="h-4 w-4" />
               Location, Tags & Queue
             </ResponsiveMenuActionItem>
-          </div>
+          )}
         </ResponsiveMenu>
       )}
       <div className="flex-1" />

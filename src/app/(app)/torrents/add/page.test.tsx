@@ -285,3 +285,83 @@ describe('Add Torrent: options for qBittorrent', () => {
     expect(screen.queryByLabelText('Upload limit')).toBeNull();
   });
 });
+
+describe('Add Torrent: the empty Save at field names where the torrent goes', () => {
+  // A qBittorrent with "Default Torrent Management Mode" and "Use Category paths
+  // in Manual Mode" as given (checked against 5.1.4 in category-links.test.ts).
+  function serve(autoTmmByDefault: boolean | null, categoryPathsInManualMode: boolean | null) {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/qbittorrent/categories') return json({ tv: { name: 'tv', savePath: '/downloads/tv' } });
+      if (url === '/api/qbittorrent/categories?details=1') {
+        return json({
+          categories: { tv: { name: 'tv', savePath: '/downloads/tv' } },
+          defaultSavePath: '/downloads',
+          subcategories: false,
+          autoTmmByDefault,
+          categoryPathsInManualMode,
+          relocateOnCategoryPathChange: false,
+        });
+      }
+      return json({});
+    }));
+  }
+
+  beforeEach(() => {
+    mocks.caps = new Set(['torrents.add']);
+    // Radix Select in jsdom.
+    Element.prototype.hasPointerCapture ??= () => false;
+    Element.prototype.scrollIntoView ??= () => {};
+  });
+
+  async function pick(label: string, option: RegExp) {
+    await userEvent.click(screen.getByRole('combobox', { name: label }));
+    await userEvent.click(await screen.findByRole('option', { name: option }));
+  }
+  const hint = () => (screen.getByLabelText('Save at') as HTMLInputElement).placeholder;
+
+  it("is the default save path with a category under manual management, not the category's folder", async () => {
+    serve(false, false);
+    renderPage();
+    await waitFor(() => expect(hint()).toBe('/downloads'));
+    await pick('Category', /^tv$/);
+    expect(hint()).toBe('/downloads');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Advanced' }));
+    await pick('Automatic management', /^Off$/);
+    expect(hint()).toBe('/downloads');
+    await pick('Automatic management', /^On/);
+    expect(hint()).toBe('/downloads/tv');
+    expect((screen.getByLabelText('Save at') as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("is the category's folder when qBittorrent uses category paths in manual mode, or manages automatically by default", async () => {
+    serve(false, true);
+    const { unmount } = renderPage();
+    await pick('Category', /^tv$/);
+    expect(hint()).toBe('/downloads/tv');
+    unmount();
+
+    serve(true, false);
+    renderPage();
+    await pick('Category', /^tv$/);
+    expect(hint()).toBe('/downloads/tv');
+  });
+
+  it('still lists the categories when the save-path settings fail to load', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/qbittorrent/categories') return json({ tv: { name: 'tv', savePath: '/downloads/tv' } });
+      if (url === '/api/qbittorrent/categories?details=1') return json({ error: 'Failed' }, 502);
+      return json({});
+    }));
+    renderPage();
+    await pick('Category', /^tv$/);
+    expect(hint()).toBe('qBittorrent default');
+  });
+
+  it("falls back to naming qBittorrent's default when qBittorrent doesn't say", async () => {
+    serve(null, null);
+    renderPage();
+    await pick('Category', /^tv$/);
+    expect(hint()).toBe('qBittorrent default');
+  });
+});

@@ -190,7 +190,17 @@ export default function TorrentTrackersPage() {
           {rows.map(({ tracker, ref }) =>
             // A refetch can reorder the list: the form stays with the tracker it was opened on, or closes.
             editing && sameRef(editing, ref) ? (
-              <form key={ref.index} className="grouped-row grouped-row-stacked gap-2" onSubmit={saveEdit}>
+              <form
+                key={ref.index}
+                className="grouped-row grouped-row-stacked gap-2"
+                onSubmit={saveEdit}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape' && !isPending) {
+                    event.preventDefault();
+                    setEditing(null);
+                  }
+                }}
+              >
                 <p className="text-xs text-muted-foreground break-all">
                   {fullUrls ? 'Edit tracker' : `Replace ${tracker.url}`}
                 </p>
@@ -298,8 +308,13 @@ export default function TorrentTrackersPage() {
         description={
           <>
             <span className="break-all">{removing?.shown}</span>
-            <br />
-            Adding a private tracker back needs its full announce URL, passkey included.
+            {/* Only a private tracker's URL carries a passkey (unknown counts as private, as above). */}
+            {isPrivate !== false && (
+              <>
+                <br />
+                Adding a private tracker back needs its full announce URL, passkey included.
+              </>
+            )}
           </>
         }
         confirmLabel="Remove"

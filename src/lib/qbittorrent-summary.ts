@@ -74,6 +74,11 @@ export function projectTorrentsForSummary(torrents: Array<QBittorrentTorrentInfo
   return torrents.map(projectTorrentForSummary);
 }
 
+/**
+ * The transfer figures the toolbar, widget and Settings show, copied out one by
+ * one. qBittorrent's transfer/info also sends last_external_address_v4/_v6,
+ * its public IP addresses, which must not reach a browser (any user's).
+ */
 export function normalizeTransferInfo(info: QBittorrentTransferInfo): QBittorrentTransferInfo {
   return {
     dl_info_speed: info.dl_info_speed,

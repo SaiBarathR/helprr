@@ -23,6 +23,7 @@ export function useTorrentTable({
   openRename,
   canManageTorrents,
   canDeleteTorrents,
+  canSelect,
 }: {
   allSelected: boolean;
   selectAll: () => void;
@@ -35,8 +36,10 @@ export function useTorrentTable({
   openRename: (hash: string) => void;
   canManageTorrents: boolean;
   canDeleteTorrents: boolean;
+  /** No checkbox column without a bulk action (selectionAllowed). */
+  canSelect: boolean;
 }) {
-  const tableColumns = useMemo((): DataTableColumn<QBittorrentTorrent>[] => [
+  const tableColumns = useMemo((): DataTableColumn<QBittorrentTorrent>[] => ([
     {
       id: 'select',
       label: (
@@ -194,7 +197,7 @@ export function useTorrentTable({
         />
       ),
     },
-  ], [allSelected, selectAll, selectedTorrents, toggleSelect, fetchDetail, torrentAction, openDeleteDrawer, openCategoryDrawer, openRename]);
+  ] satisfies DataTableColumn<QBittorrentTorrent>[]).filter((column) => canSelect || column.id !== 'select'), [allSelected, selectAll, selectedTorrents, toggleSelect, fetchDetail, torrentAction, openDeleteDrawer, openCategoryDrawer, openRename, canSelect]);
 
   const wrapTableRow = useCallback((torrent: QBittorrentTorrent, tr: ReactElement) => (
     <QuickContextMenu
@@ -210,11 +213,12 @@ export function useTorrentTable({
         onRename: openRename,
         canManageTorrents,
         canDeleteTorrents,
+        canSelect,
       })}
     >
       {tr}
     </QuickContextMenu>
-  ), [selectedTorrents, toggleSelect, fetchDetail, torrentAction, openDeleteDrawer, openCategoryDrawer, openRename, canManageTorrents, canDeleteTorrents]);
+  ), [selectedTorrents, toggleSelect, fetchDetail, torrentAction, openDeleteDrawer, openCategoryDrawer, openRename, canManageTorrents, canDeleteTorrents, canSelect]);
 
   return { tableColumns, wrapTableRow };
 }

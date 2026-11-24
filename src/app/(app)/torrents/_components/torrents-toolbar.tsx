@@ -184,6 +184,7 @@ export function TorrentsToolbar({
                 }`}
                 onClick={toggleAltSpeedMode}
                 aria-label="Alternative Speed Limits"
+                aria-pressed={speedLimitsMode === 1}
               >
                 <Gauge className="h-5 w-5" />
               </button>

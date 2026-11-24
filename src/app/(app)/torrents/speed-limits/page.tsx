@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useCan } from '@/components/permission-provider';
 import { SpeedLimitInput } from '../_components/speed-limit-input';
 import { ShareLimitsSection, type ShareLimitField, type ShareLimitValues } from '../_components/share-limits-section';
-import { getSpeedLimitTargets } from '../_components/speed-limit-targets';
+import { getSpeedLimitTargets, type SpeedLimitTarget } from '../_components/speed-limit-targets';
 import { useTorrentAction } from '../_components/use-torrent';
 
 const SHOWN_NAMES = 5;
@@ -27,6 +27,25 @@ function sharedShareLimit(values: (number | undefined)[]): number | null {
 }
 
 const SHARE_FIELDS: ShareLimitField[] = ['ratio_limit', 'seeding_time_limit', 'inactive_seeding_time_limit'];
+const EFFECTIVE_FIELDS = {
+  ratio_limit: 'max_ratio',
+  seeding_time_limit: 'max_seeding_time',
+  inactive_seeding_time_limit: 'max_inactive_seeding_time',
+} as const satisfies Record<ShareLimitField, keyof SpeedLimitTarget>;
+
+/**
+ * The global share limits, as "Global (…)" names them on a torrent's own page:
+ * a target that uses the global limit has it as its limit in force. Unknown
+ * (plain "Global") when none of them uses it.
+ */
+function globalShareLimits(targets: SpeedLimitTarget[]): Partial<Record<ShareLimitField, number>> {
+  const known: Partial<Record<ShareLimitField, number>> = {};
+  for (const field of SHARE_FIELDS) {
+    const inForce = targets.find((t) => t[field] === -2 && typeof t[EFFECTIVE_FIELDS[field]] === 'number');
+    if (inForce) known[field] = inForce[EFFECTIVE_FIELDS[field]];
+  }
+  return known;
+}
 
 export default function BulkSpeedLimitsPage() {
   const router = useRouter();
@@ -39,6 +58,7 @@ export default function BulkSpeedLimitsPage() {
   }));
   const [shareLimits, setShareLimits] = useState(() =>
     Object.fromEntries(SHARE_FIELDS.map((field) => [field, sharedShareLimit(targets.map((t) => t[field]))])) as Record<ShareLimitField, number | null>);
+  const [globalLimits] = useState(() => globalShareLimits(targets));
   const count = targets.length;
   const countLabel = `${count} ${count === 1 ? 'torrent' : 'torrents'}`;
 
@@ -109,7 +129,7 @@ export default function BulkSpeedLimitsPage() {
           />
         </GroupedSection>
 
-        <ShareLimitsSection values={shareLimits} target={countLabel} onSave={saveShareLimits} />
+        <ShareLimitsSection values={shareLimits} effective={globalLimits} target={countLabel} onSave={saveShareLimits} />
 
         <GroupedSection title={count === 1 ? 'Torrent' : 'Torrents'}>
           {targets.slice(0, SHOWN_NAMES).map((target) => (

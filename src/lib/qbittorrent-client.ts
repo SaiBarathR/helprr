@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { NotServiceApiError } from '@/lib/service-response';
+import { normalizeTransferInfo } from '@/lib/qbittorrent-summary';
 import type { QBittorrentServerStats, QBittorrentTorrentInfo, QBittorrentTransferInfo } from '@/types';
 
 /** qBittorrent turned the Web UI username or password down (it answered "Fails."). */
@@ -34,6 +35,18 @@ export interface QBittorrentCategory {
   savePath: string;
   /** qBittorrent 5: its own incomplete-downloads folder, false for none, absent or null for the global setting. */
   download_path?: string | false | null;
+}
+
+/** qBittorrent's settings for where torrents save (getSavePathPreferences). */
+export interface SavePathPreferences {
+  /** "Use subcategories": "a/b" is then a child of "a". */
+  subcategories: boolean;
+  /** "Default Torrent Management Mode" is Automatic. */
+  autoTmmByDefault: boolean | null;
+  /** "Use Category paths in Manual Mode". */
+  categoryPathsInManualMode: boolean | null;
+  /** "When Category Save Path changed" is Relocate (else: switch to manual). */
+  relocateOnCategoryPathChange: boolean | null;
 }
 
 export type QueueMove = 'topPrio' | 'increasePrio' | 'decreasePrio' | 'bottomPrio';
@@ -416,6 +429,24 @@ export class QBittorrentClient {
     return preferences.use_subcategories === true;
   }
 
+  /**
+   * The preferences that decide where a torrent saves, copied out one by one:
+   * app/preferences also carries the Web UI and proxy passwords. null where
+   * qBittorrent doesn't send one (an older version).
+   */
+  async getSavePathPreferences(): Promise<SavePathPreferences> {
+    const preferences = await this.get<Record<string, unknown>>('/api/v2/app/preferences');
+    const flag = (value: unknown) => (typeof value === 'boolean' ? value : null);
+    return {
+      subcategories: preferences.use_subcategories === true,
+      autoTmmByDefault: flag(preferences.auto_tmm_enabled),
+      categoryPathsInManualMode: flag(preferences.use_category_paths_in_manual_mode),
+      // qBittorrent's "When Category Save Path changed": true relocates the
+      // category's automatically managed torrents, false switches them to manual.
+      relocateOnCategoryPathChange: flag(preferences.category_changed_tmm_enabled),
+    };
+  }
+
   async getDefaultSavePath(): Promise<string> {
     return this.get<string>('/api/v2/app/defaultSavePath');
   }
@@ -557,8 +588,12 @@ export class QBittorrentClient {
   }
 
   // Transfer
+  /**
+   * Copied out field by field (normalizeTransferInfo): qBittorrent also sends
+   * its last external IPv4 and IPv6 address, the owner's public IP.
+   */
   async getTransferInfo(): Promise<QBittorrentTransferInfo> {
-    return this.get<QBittorrentTransferInfo>('/api/v2/transfer/info');
+    return normalizeTransferInfo(await this.get<QBittorrentTransferInfo>('/api/v2/transfer/info'));
   }
 
   /**

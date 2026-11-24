@@ -23,15 +23,16 @@ async function getHandler(request: NextRequest) {
 
   try {
     const client = await getQBittorrentClient();
-    // details=1 is the Categories screen: what an empty save path means, and whether "/" makes a subcategory.
+    // details=1 is the Categories screen and the add page: what an empty save
+    // path means, whether "/" makes a subcategory, and where a torrent saves.
     if (request.nextUrl.searchParams.get('details') === '1') {
-      const [categories, defaultSavePath, subcategories] = await Promise.all([
+      const [categories, defaultSavePath, preferences] = await Promise.all([
         client.getCategories(),
         client.getDefaultSavePath(),
-        client.isSubcategoriesEnabled(),
+        client.getSavePathPreferences(),
       ]);
       logApiDuration(ROUTE, startedAt, { method: 'GET', details: true });
-      return NextResponse.json({ categories, defaultSavePath, subcategories });
+      return NextResponse.json({ categories, defaultSavePath, ...preferences });
     }
     const categories = await client.getCategories();
     logApiDuration(ROUTE, startedAt, { method: 'GET' });
@@ -46,7 +47,9 @@ async function getHandler(request: NextRequest) {
   }
 }
 
-const badRequest = (error: string) => NextResponse.json({ error }, { status: 400 });
+// `field`: which field of the category form the error is about, so it shows under it.
+type CategoryField = 'name' | 'savePath';
+const badRequest = (error: string, field?: CategoryField) => NextResponse.json(field ? { error, field } : { error }, { status: 400 });
 
 /**
  * The save path to send: empty for qBittorrent's default (<default>/<name>),
@@ -64,22 +67,22 @@ async function checkSavePath(
     return { ok: true, savePath: '' };
   }
   const savePath = parseLocation(value);
-  if (!savePath) return { ok: false, response: badRequest('Enter a folder path') };
+  if (!savePath) return { ok: false, response: badRequest('Enter a folder path', 'savePath') };
   if (current !== undefined && savePath === current) return { ok: true, savePath };
   const root = await client.getDefaultSavePath();
   if (!isInsideFolder(savePath, root)) {
     return {
       ok: false,
-      response: badRequest(`The save path must be inside qBittorrent's default save path (${root})`),
+      response: badRequest(`The save path must be inside qBittorrent's default save path (${root})`, 'savePath'),
     };
   }
   return { ok: true, savePath };
 }
 
 /** qBittorrent answers 409 when it won't make or change one (taken, or a name it refuses). */
-function refusedResponse(error: unknown, fallback: string): NextResponse {
+function refusedResponse(error: unknown, fallback: string, field: CategoryField): NextResponse {
   if (isAxiosError(error) && error.response?.status === 409) {
-    return NextResponse.json({ error: 'qBittorrent refused the category' }, { status: 409 });
+    return NextResponse.json({ error: 'qBittorrent refused the category', field }, { status: 409 });
   }
   return upstreamErrorResponse(error, fallback);
 }
@@ -103,9 +106,9 @@ async function postHandler(request: NextRequest) {
     const client = await getQBittorrentClient();
     const [categories, subcategories] = await Promise.all([client.getCategories(), client.isSubcategoriesEnabled()]);
     const parsed = parseNewCategoryName(body.name, subcategories);
-    if (!parsed.ok) return badRequest(parsed.error);
+    if (!parsed.ok) return badRequest(parsed.error, 'name');
     if (Object.hasOwn(categories, parsed.name)) {
-      return NextResponse.json({ error: `There is already a category named ${parsed.name}` }, { status: 409 });
+      return NextResponse.json({ error: `There is already a category named ${parsed.name}`, field: 'name' }, { status: 409 });
     }
     const savePath = await checkSavePath(client, body.savePath);
     if (!savePath.ok) return savePath.response;
@@ -117,7 +120,7 @@ async function postHandler(request: NextRequest) {
     return NextResponse.json({ success: true, name: parsed.name });
   } catch (error) {
     logApiDuration(ROUTE, startedAt, { method: 'POST', failed: true });
-    return refusedResponse(error, 'Failed to create the category');
+    return refusedResponse(error, 'Failed to create the category', 'name');
   }
 }
 
@@ -143,7 +146,7 @@ async function patchHandler(request: NextRequest) {
     if (!savePath.ok) return savePath.response;
     // An empty path saves in <default>/<name>: for a name made elsewhere (such as "../x") that is outside every download folder.
     if (!savePath.savePath && existing.savePath && !parseNewCategoryName(name, subcategories).ok) {
-      return badRequest('This name would put its default folder outside the download folders: give it a save path');
+      return badRequest('This name would put its default folder outside the download folders: give it a save path', 'savePath');
     }
 
     await client.editCategory(name, savePath.savePath, existing.download_path);
@@ -157,7 +160,7 @@ async function patchHandler(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     logApiDuration(ROUTE, startedAt, { method: 'PATCH', failed: true });
-    return refusedResponse(error, 'Failed to save the category');
+    return refusedResponse(error, 'Failed to save the category', 'savePath');
   }
 }
 
