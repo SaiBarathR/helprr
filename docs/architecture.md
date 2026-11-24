@@ -1180,6 +1180,60 @@ change: a third-party tracker on it leaks the torrent, and a replaced passkey tr
 can only be restored by someone who can see it. Tracker changes delete nothing
 and are not operation-audited, like tags, location and rename.
 
+The save-path folder picker (`GET /api/qbittorrent/folders?for=add|location|category&path=`)
+lists folders with qBittorrent 5's `app/getDirectoryContent` only inside the download
+roots the save-path checks use (`src/lib/qbittorrent-inputs.ts`): the default save path
+and every category's for Add (`torrents.add`) and Set location (`torrents.manage`), the
+default save path alone for a category (admin, as the categories route requires). Only
+absolute roots count. The requested path is read as those checks read it (dots-only
+parts, a backslash outside Windows and control characters refused) and that checked
+form, without empty or `.` parts and with a bare drive kept as `D:/`, is what
+qBittorrent is asked to list. The answer is folder names, sorted and capped
+at 500, without the ones a save path could not name, and the folder above only while it
+is still inside a root. qBittorrent follows symbolic links and its API can't tell one
+from a folder, so a link placed inside a download folder is listed like a folder, as the
+save-path checks also read paths by their text. Renaming a file or folder inside a
+torrent (`POST /api/qbittorrent/[hash]/files/rename`, `torrents.manage`) takes the old
+path, which must be one in the torrent's own file list, and a new name with no slash,
+backslash, control character or dots-only value (255 bytes at most); the server puts it
+beside the old one, so a rename never moves anything out of its folder. A torrent whose
+category a Sonarr, Radarr or Lidarr download client names (exactly, or an instance that
+did not answer) needs `confirm`, as removing such a category does; only an admin is
+told the instances' names (anyone else gets the app's). Renames are logged with the user,
+not operation-audited.
+
+The details route copies `torrents/properties` out by an allow-list. The torrent's
+comment and "created by" are free text whoever made the torrent wrote, where a
+private tracker can put a passkey link: an admin gets them as written, anyone else
+with the tracker-message cleaning above plus links written without a scheme cut to
+their host (`torrentTextForViewer`), and the drawer shows both as plain text.
+
+A peer's IP address is personal data, and qBittorrent's `sync/torrentPeers` keys
+every peer by `ip:port`. The peers route (`GET /api/qbittorrent/[hash]/peers?cursor=`,
+`torrents.view`) rebuilds each peer from an allow-list (`src/lib/qbittorrent-peers.ts`):
+client, country, connection, flags, progress, relevance, speeds and totals for
+everyone; the address only for an admin. Peers are keyed by an HMAC of the torrent
+and the address under `JWT_SECRET`, so the page can follow a peer without being sent
+the address. The route always asks qBittorrent for the full list: qBittorrent keeps
+one sync state per Web UI session for every torrent, Helprr is one session, and a
+`rid=0` request restarts its ids at 1, so its `rid` could name another torrent's
+list. Helprr works out the deltas itself, like the torrent list's: a server-owned
+cursor read back only in the scope that made it (user, torrent, address view),
+64 entries and two minutes at most, a full list otherwise
+(`src/lib/cache/qbittorrent-peer-delta.ts`); the page merges them
+(`src/lib/qbittorrent-peer-view.ts`). Adding peers (`POST`, `torrents.manage`)
+takes at most 50 `ip:port` lines, IPv6 as `[address]:port`, checked with `net.isIP`,
+and never an unspecified, loopback, multicast or broadcast address. A private
+torrent's peers come from its tracker only (one added by hand gets the content, and
+qBittorrent offers no Add Peers for one), so adding to it is an admin's, and a
+torrent qBittorrent doesn't call public counts as private, as for its trackers. A
+ban (`POST .../peers/ban`) is global and kept in qBittorrent's banned IP list until
+removed there, so it is an admin's only: the browser names the peer by its key and
+the server bans the address qBittorrent lists under that key now. Each ban is a
+`SETTINGS_UPDATED` row in the security audit (target: the torrent's hash; the
+address is not recorded). An add's request body, which holds addresses, stays out of
+the failed-request log.
+
 Adding torrents (`POST /api/qbittorrent`, `torrents.add`) takes up to 20 magnets and
 http(s) `.torrent` links, one per line, or up to 20 files, in one request. A link
 is fetched by Helprr, not handed to qBittorrent's `urls=`: qBittorrent answers

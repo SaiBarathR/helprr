@@ -26,6 +26,8 @@ export interface QBittorrentTorrent {
   up_limit: number;
   time_active: number;
   seeding_time: number;
+  /** Unix seconds of the last upload or download (0 or less: none yet). */
+  last_activity?: number;
   availability: number;
   ratio: number;
   seq_dl: boolean;

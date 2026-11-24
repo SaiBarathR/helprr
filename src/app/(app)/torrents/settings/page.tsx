@@ -57,6 +57,7 @@ export default function QBittorrentSettingsPage() {
   const queryClient = useQueryClient();
   const canBandwidth = useCan('torrents.bandwidth');
   const isAdmin = useMe()?.role === 'admin';
+  const canManageTorrents = useCan('torrents.manage');
   const hasHydrated = useUIStore((s) => s.hasHydrated);
   const viewMode = useUIStore((s) => s.torrentsView);
   const setViewMode = useUIStore((s) => s.setTorrentsView);
@@ -196,6 +197,16 @@ export default function QBittorrentSettingsPage() {
             <span className="text-sm">Categories</span>
             <span className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
               {isAdmin ? 'Add, edit and remove' : 'Folders and names'}
+              <ChevronRight className="h-4 w-4" />
+            </span>
+          </Link>
+          <Link
+            href="/torrents/tags"
+            className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
+          >
+            <span className="text-sm">Tags</span>
+            <span className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
+              {canManageTorrents ? 'Add and delete' : 'Names and use'}
               <ChevronRight className="h-4 w-4" />
             </span>
           </Link>

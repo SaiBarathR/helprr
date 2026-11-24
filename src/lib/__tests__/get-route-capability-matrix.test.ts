@@ -35,6 +35,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/anilist/library',
     'GET /api/anilist/list-entry',
     'GET /api/anilist/viewer',
+    // The add form's guesses for one arr connection's addresses.
+    'GET /api/prowlarr/applications/from-connection',
     'GET /api/anime/automap/status',
     'GET /api/cleanup/library/config',
     'GET /api/file-audit',
@@ -291,8 +293,10 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'cap:torrents.view': [
     'GET /api/qbittorrent/[hash]/details',
     'GET /api/qbittorrent/[hash]/files',
+    'GET /api/qbittorrent/[hash]/peers',
     'GET /api/qbittorrent/categories',
     'GET /api/qbittorrent/options',
+    'GET /api/qbittorrent/tags',
     'GET /api/qbittorrent',
     'GET /api/qbittorrent/summary',
     'GET /api/qbittorrent/transfer/stats',
@@ -477,6 +481,11 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/manual-downloads',
     'GET /api/manual-downloads/[id]',
   ],
+  // The folder picker asks for the grant of the field it fills: torrents.add,
+  // torrents.manage, or an admin for a category (FOLDER_PURPOSES).
+  'purpose-capability': [
+    'GET /api/qbittorrent/folders',
+  ],
 };
 
 interface CallEvidence {
@@ -612,7 +621,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(309);
+    expect(handlers.size).toBe(313);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
@@ -697,6 +706,15 @@ describe('GET API route capability matrix', () => {
       const evidence = handlers.get(route)!;
       expect(evidence.calls, `${route} must not accept a session`).toEqual([]);
       expect(evidence.handlerText, route).toContain('authorizeApiTokenRequest(');
+    }
+  });
+
+  it("gates the folder picker by the grant of the field it fills", () => {
+    for (const route of POLICY_GROUPS['purpose-capability']) {
+      const evidence = handlers.get(route)!;
+      expect(evidence.handlerText, route).toContain('FOLDER_PURPOSES');
+      expect(hasCall(evidence, 'requireAdmin'), route).toBe(true);
+      expect(hasCall(evidence, 'requireUserCapability'), route).toBe(true);
     }
   });
 

@@ -36,6 +36,7 @@ import {
 import { formatBytes } from '@/lib/format';
 import { useCan } from '@/components/permission-provider';
 import type { AddTorrentOptions, ContentLayout, TorrentFile } from '@/lib/qbittorrent-client';
+import { FolderPickerButton } from '../_components/folder-picker';
 import { TagAdder } from '../_components/torrent-organize-sections';
 import { useTorrentOptions } from '../_components/use-torrent';
 import { useCategoryDetails } from '../_components/use-categories';
@@ -606,13 +607,16 @@ function AddTorrentPageContent() {
             <label className="text-xs font-medium text-muted-foreground" htmlFor="save-path">
               Save at
             </label>
-            <Input
-              id="save-path"
-              placeholder={emptySavePathFolder ?? (autoPicksFolder ? 'Set by the category' : 'qBittorrent default')}
-              value={autoPicksFolder ? '' : savePath}
-              onChange={(e) => setSavePath(e.target.value)}
-              disabled={autoPicksFolder}
-            />
+            <div className="flex gap-2">
+              <Input
+                id="save-path"
+                placeholder={emptySavePathFolder ?? (autoPicksFolder ? 'Set by the category' : 'qBittorrent default')}
+                value={autoPicksFolder ? '' : savePath}
+                onChange={(e) => setSavePath(e.target.value)}
+                disabled={autoPicksFolder}
+              />
+              <FolderPickerButton purpose="add" value={savePath} onPick={setSavePath} disabled={autoPicksFolder} />
+            </div>
           </div>
 
           <div className="space-y-1.5">

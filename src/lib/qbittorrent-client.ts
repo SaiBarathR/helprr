@@ -30,6 +30,37 @@ export interface TorrentTracker {
   msg: string;
 }
 
+/** A peer as sync/torrentPeers sends it; a delta sends only the fields that changed. */
+export interface TorrentPeer {
+  ip: string;
+  port: number;
+  client: string;
+  peer_id_client: string;
+  /** BT, μTP or Web. */
+  connection: string;
+  /** Only while qBittorrent resolves peer countries (`show_flags`). */
+  country?: string;
+  country_code?: string;
+  flags: string;
+  flags_desc: string;
+  progress: number;
+  relevance: number;
+  dl_speed: number;
+  up_speed: number;
+  downloaded: number;
+  uploaded: number;
+  files: string;
+}
+
+/** sync/torrentPeers: peers keyed by `ip:port` (`[ipv6]:port`). */
+export interface TorrentPeersSync {
+  rid: number;
+  full_update?: boolean;
+  show_flags?: boolean;
+  peers?: Record<string, Partial<TorrentPeer>>;
+  peers_removed?: string[];
+}
+
 export interface QBittorrentCategory {
   name: string;
   /** Empty: qBittorrent's default save path plus the name (in subcategory mode, the parent's folder plus the last part). */
@@ -290,6 +321,42 @@ export class QBittorrentClient {
     return this.get<TorrentTracker[]>('/api/v2/torrents/trackers', { hash }, signal);
   }
 
+  /**
+   * One torrent's peers, always in full (rid 0): qBittorrent keeps one sync
+   * state per Web UI session for every torrent, and this client is one
+   * session for all of Helprr, so a rid could name another torrent's list.
+   * Helprr works out the deltas itself (src/lib/cache/qbittorrent-peer-delta.ts).
+   */
+  async getTorrentPeers(hash: string, signal?: AbortSignal): Promise<TorrentPeersSync> {
+    return this.get<TorrentPeersSync>('/api/v2/sync/torrentPeers', { hash, rid: 0 }, signal);
+  }
+
+  /**
+   * `ip:port` each (`[ipv6]:port`); qBittorrent answers how many it added and
+   * how many failed, 'missing' when it doesn't have the torrent (it skips an
+   * unknown hash and answers `{}`), null when the answer has no counts.
+   */
+  async addPeers(hash: string, peers: string[]): Promise<{ added: number; failed: number } | 'missing' | null> {
+    const params = new URLSearchParams();
+    params.append('hashes', hash);
+    params.append('peers', peers.join('|'));
+    const result = await this.post<Record<string, { added?: unknown; failed?: unknown }> | string>('/api/v2/torrents/addPeers', params.toString());
+    if (!result || typeof result !== 'object') return null;
+    const counts = Object.values(result)[0];
+    if (!counts) return 'missing';
+    return typeof counts.added === 'number' && typeof counts.failed === 'number'
+      ? { added: counts.added, failed: counts.failed }
+      : null;
+  }
+
+  /** Bans `ip:port` peers for every torrent, kept in qBittorrent's banned IP list (by IP) until removed there. */
+  async banPeers(peers: string[]): Promise<void> {
+    if (peers.length === 0) throw new Error('banPeers needs at least one peer');
+    const params = new URLSearchParams();
+    params.append('peers', peers.join('|'));
+    await this.post('/api/v2/transfer/banPeers', params.toString());
+  }
+
   private isNotFound(error: unknown): boolean {
     return axios.isAxiosError(error) && error.response?.status === 404;
   }
@@ -384,6 +451,15 @@ export class QBittorrentClient {
     }
     if (options) appendAddOptions((key, value) => formData.append(key, value), options);
     await this.postMultipart('/api/v2/torrents/add', formData);
+  }
+
+  /**
+   * The full path of each folder in `dirPath` (qBittorrent 5; hidden ones are
+   * left out, and symbolic links are followed). qBittorrent answers 404 when
+   * the folder is not there, and an older one 404s the endpoint itself.
+   */
+  async getDirectoryContent(dirPath: string): Promise<unknown> {
+    return this.get<unknown>('/api/v2/app/getDirectoryContent', { dirPath, mode: 'dirs' });
   }
 
   async getCategories(): Promise<Record<string, QBittorrentCategory>> {
@@ -522,6 +598,24 @@ export class QBittorrentClient {
     await this.post('/api/v2/torrents/rename', params.toString());
   }
 
+  /** Paths inside the torrent, as torrents/files names them; qBittorrent answers 409 when `newPath` is taken. */
+  async renameFile(hash: string, oldPath: string, newPath: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hash', hash);
+    params.append('oldPath', oldPath);
+    params.append('newPath', newPath);
+    await this.post('/api/v2/torrents/renameFile', params.toString());
+  }
+
+  /** As renameFile, for a folder and everything in it. */
+  async renameFolder(hash: string, oldPath: string, newPath: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hash', hash);
+    params.append('oldPath', oldPath);
+    params.append('newPath', newPath);
+    await this.post('/api/v2/torrents/renameFolder', params.toString());
+  }
+
   /** Moves the torrents' files; qBittorrent also turns their automatic management off. */
   async setLocation(hashes: string, location: string): Promise<void> {
     const params = new URLSearchParams();
@@ -557,6 +651,22 @@ export class QBittorrentClient {
 
   async getTags(): Promise<string[]> {
     return this.get<string[]>('/api/v2/torrents/tags');
+  }
+
+  /** New tags on no torrent yet; one that exists already is left as it is. */
+  async createTags(tags: string[]): Promise<void> {
+    if (tags.length === 0) throw new Error('createTags needs at least one tag');
+    const params = new URLSearchParams();
+    params.append('tags', tags.join(','));
+    await this.post('/api/v2/torrents/createTags', params.toString());
+  }
+
+  /** Deletes the tags outright: qBittorrent takes them off every torrent that has them. */
+  async deleteTags(tags: string[]): Promise<void> {
+    if (tags.length === 0) throw new Error('deleteTags needs at least one tag');
+    const params = new URLSearchParams();
+    params.append('tags', tags.join(','));
+    await this.post('/api/v2/torrents/deleteTags', params.toString());
   }
 
   /** qBittorrent creates a tag it does not know yet. */
