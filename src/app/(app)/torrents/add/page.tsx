@@ -15,6 +15,7 @@ import {
   Link as LinkIcon,
   Loader2,
   Search,
+  X,
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -31,7 +32,9 @@ import {
 } from '@/components/ui/select';
 import { formatBytes } from '@/lib/format';
 import { useCan } from '@/components/permission-provider';
-import type { TorrentFile } from '@/lib/qbittorrent-client';
+import type { AddTorrentOptions, ContentLayout, TorrentFile } from '@/lib/qbittorrent-client';
+import { TagAdder } from '../_components/torrent-organize-sections';
+import { useTorrentOptions } from '../_components/use-torrent';
 import {
   buildFileTree,
   getAllFileIndices,
@@ -49,6 +52,33 @@ type ApiResult = {
 };
 
 const NO_CATEGORY = '__none__';
+// "Leave it to qBittorrent": the option is not sent, so its own preference applies.
+const QBIT_DEFAULT = 'default';
+
+const CONTENT_LAYOUTS: { value: ContentLayout; label: string }[] = [
+  { value: 'Original', label: 'Original' },
+  { value: 'Subfolder', label: 'Create subfolder' },
+  { value: 'NoSubfolder', label: "Don't create subfolder" },
+];
+
+type SpeedUnit = 'KB/s' | 'MB/s';
+type SpeedDraft = { value: string; unit: SpeedUnit };
+const NO_SPEED_LIMIT: SpeedDraft = { value: '', unit: 'MB/s' };
+
+// qBittorrent reads add-time limits as a 32-bit int of bytes per second (just under 2048 MB/s).
+const MAX_SPEED_LIMIT = 2_147_483_647;
+// What the server takes in one add (qBittorrent itself has no cap).
+const MAX_TAGS = 50;
+
+/** Bytes per second; 0 when empty, null when it is not a speed qBittorrent takes. */
+function speedLimitBytes({ value, unit }: SpeedDraft): number | null {
+  if (!value.trim()) return 0;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return null;
+  // A tiny limit stays a limit instead of rounding to 0, which means none.
+  const bytes = number > 0 ? Math.max(1, Math.round(number * (unit === 'MB/s' ? 1024 * 1024 : 1024))) : 0;
+  return bytes > MAX_SPEED_LIMIT ? null : bytes;
+}
 
 async function parseApiResult(res: Response): Promise<ApiResult> {
   try {
@@ -97,6 +127,17 @@ function AddTorrentPageContent() {
   const [savePath, setSavePath] = useState('');
   const [category, setCategory] = useState(NO_CATEGORY);
   const [startTorrent, setStartTorrent] = useState(true);
+  const [tags, setTags] = useState<string[]>([]);
+  // Sequential with first and last pieces first: what a player needs to start early.
+  const [inOrder, setInOrder] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [rename, setRename] = useState('');
+  const [autoTmm, setAutoTmm] = useState<'on' | 'off' | typeof QBIT_DEFAULT>(QBIT_DEFAULT);
+  const [contentLayout, setContentLayout] = useState<ContentLayout | typeof QBIT_DEFAULT>(QBIT_DEFAULT);
+  const [dlLimit, setDlLimit] = useState<SpeedDraft>(NO_SPEED_LIMIT);
+  const [upLimit, setUpLimit] = useState<SpeedDraft>(NO_SPEED_LIMIT);
+  const [skipChecking, setSkipChecking] = useState(false);
+  const [topOfQueue, setTopOfQueue] = useState(false);
 
   // Review step: set once the torrent is added stopped and files can be picked.
   const [reviewHash, setReviewHash] = useState<string | null>(null);
@@ -107,6 +148,8 @@ function AddTorrentPageContent() {
   const canManage = useCan('torrents.manage');
   const canDelete = useCan('torrents.delete');
   const canReview = canManage && canDelete;
+  // Speed limits are their own grant, also when adding.
+  const canBandwidth = useCan('torrents.bandwidth');
 
   // Sending to Sonarr/Radarr adds a title and pushes a release on the user's behalf.
   const canAddMovies = useCan('movies.add');
@@ -136,25 +179,44 @@ function AddTorrentPageContent() {
   );
   const selectedCategory = category === NO_CATEGORY ? undefined : category;
   const categorySavePath = categories.find((c) => c.name === selectedCategory)?.savePath;
+  // Under automatic management qBittorrent picks the folder from the category.
+  const autoPicksFolder = autoTmm === 'on';
+
+  const tagOptions = useTorrentOptions();
+  const tagSuggestions = (tagOptions.data?.tags ?? [])
+    .filter((tag) => !tags.includes(tag))
+    .sort((a, b) => a.localeCompare(b));
+  const advancedSet = [
+    rename.trim(),
+    autoTmm !== QBIT_DEFAULT,
+    contentLayout !== QBIT_DEFAULT,
+    canBandwidth && dlLimit.value.trim(),
+    canBandwidth && upLimit.value.trim(),
+    skipChecking,
+    topOfQueue,
+  ].filter(Boolean).length;
 
   const addMutation = useMutation({
     // `draft`: the Sonarr/Radarr choices when the files are picked for them (the advanced fallback).
-    mutationFn: async ({ review }: { review: boolean; draft?: FallbackDraft }) => {
+    mutationFn: async ({ review, options }: { review: boolean; options: AddTorrentOptions; draft?: FallbackDraft }) => {
       // With review, add .torrent files stopped so files can be deselected
       // before any data downloads. Magnets can't fetch metadata while stopped,
       // so they start with stopCondition=MetadataReceived: qBittorrent stops
       // them automatically once metadata arrives, before downloading data.
       // Direct add skips review and just honors the "Start torrent" checkbox.
       const paused = review ? addMode === 'file' : !startTorrent;
+      // From what is sent: the Sonarr/Radarr file picker sends no options, so its save path stays.
+      const savepath = options.autoTMM === true ? undefined : savePath.trim() || undefined;
 
       const res = addMode === 'magnet'
         ? await fetch('/api/qbittorrent', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              ...options,
               urls: magnetLink.trim(),
               category: selectedCategory,
-              savepath: savePath.trim() || undefined,
+              savepath,
               paused,
               stopCondition: review ? 'MetadataReceived' : undefined,
             }),
@@ -163,8 +225,14 @@ function AddTorrentPageContent() {
             const formData = new FormData();
             formData.append('file', torrentFile as File);
             if (selectedCategory) formData.append('category', selectedCategory);
-            if (savePath.trim()) formData.append('savepath', savePath.trim());
+            if (savepath) formData.append('savepath', savepath);
             formData.append('paused', String(paused));
+            for (const [key, value] of Object.entries(options)) {
+              if (value === undefined) continue;
+              // One field per tag, so a tag never has to be split back out.
+              if (Array.isArray(value)) for (const tag of value) formData.append(key, tag);
+              else formData.append(key, String(value));
+            }
             return fetch('/api/qbittorrent', { method: 'POST', body: formData });
           })();
 
@@ -201,6 +269,28 @@ function AddTorrentPageContent() {
   });
   const adding = addMutation.isPending;
 
+  /** The options as the server takes them; null after saying what is wrong. */
+  function addOptions(): AddTorrentOptions | null {
+    const dl = canBandwidth ? speedLimitBytes(dlLimit) : 0;
+    const up = canBandwidth ? speedLimitBytes(upLimit) : 0;
+    if (dl === null || up === null) {
+      toast.error('Enter a speed limit from 0 to 2047 MB/s');
+      return null;
+    }
+    return {
+      tags: tags.length > 0 ? tags : undefined,
+      rename: rename.trim() || undefined,
+      sequentialDownload: inOrder || undefined,
+      firstLastPiecePrio: inOrder || undefined,
+      autoTMM: autoTmm === QBIT_DEFAULT ? undefined : autoTmm === 'on',
+      contentLayout: contentLayout === QBIT_DEFAULT ? undefined : contentLayout,
+      skipChecking: skipChecking || undefined,
+      addToTopOfQueue: topOfQueue || undefined,
+      dlLimit: dl || undefined,
+      upLimit: up || undefined,
+    };
+  }
+
   function handleAddTorrent(review: boolean) {
     if (addMode === 'magnet' && !magnetLink.trim()) {
       toast.error('Please enter a magnet link');
@@ -210,11 +300,13 @@ function AddTorrentPageContent() {
       toast.error('Please select a .torrent file');
       return;
     }
-    addMutation.mutate({ review });
+    const options = addOptions();
+    if (options) addMutation.mutate({ review, options });
   }
 
   if (reviewHash) {
-    const displayName =
+    // The name is only sent with a qBittorrent-only add, not the Sonarr/Radarr fallback.
+    const displayName = (!fallback && rename.trim()) ||
       (addMode === 'magnet'
         ? magnetDisplayName(magnetLink)
         : torrentFile?.name.replace(/\.torrent$/i, '')) || 'New Torrent';
@@ -322,7 +414,7 @@ function AddTorrentPageContent() {
               suggestedName={addMode === 'magnet' ? magnetDisplayName(magnetLink.trim()) ?? '' : ''}
               prefill={prefill}
               // Picking files adds the torrent stopped first (the same step as "Choose Files").
-              onChooseFiles={canReview ? (draft) => addMutation.mutate({ review: true, draft }) : undefined}
+              onChooseFiles={canReview ? (draft) => addMutation.mutate({ review: true, options: {}, draft }) : undefined}
               choosingFiles={adding}
             />
           </div>
@@ -336,9 +428,10 @@ function AddTorrentPageContent() {
             </label>
             <Input
               id="save-path"
-              placeholder={categorySavePath || 'qBittorrent default'}
-              value={savePath}
+              placeholder={autoPicksFolder ? 'Set by the category' : categorySavePath || 'qBittorrent default'}
+              value={autoPicksFolder ? '' : savePath}
               onChange={(e) => setSavePath(e.target.value)}
+              disabled={autoPicksFolder}
             />
           </div>
 
@@ -361,15 +454,135 @@ function AddTorrentPageContent() {
             </Select>
           </div>
 
-          <label className="flex items-center gap-2 py-1">
-            <input
-              type="checkbox"
-              checked={startTorrent}
-              onChange={(e) => setStartTorrent(e.target.checked)}
-              className="rounded border-border h-4 w-4"
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Tags</span>
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-x-2 gap-y-3">
+                {tags.map((tag) => (
+                  <Button
+                    key={tag}
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="relative max-w-full touch-target-y"
+                    aria-label={`Remove tag ${tag}`}
+                    onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
+                  >
+                    <span className="truncate">{tag}</span>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                ))}
+              </div>
+            )}
+            <TagAdder
+              className="space-y-3"
+              suggestions={tagSuggestions}
+              pending={false}
+              onAdd={(tag) => {
+                if (!tags.includes(tag) && tags.length >= MAX_TAGS) {
+                  toast.error(`Up to ${MAX_TAGS} tags`);
+                  return false;
+                }
+                setTags((prev) => (prev.includes(tag) ? prev : [...prev, tag]));
+                return true;
+              }}
             />
-            <span className="text-sm">Start torrent</span>
-          </label>
+          </div>
+
+          <CheckRow checked={startTorrent} onChange={setStartTorrent} label="Start torrent" />
+          <CheckRow
+            checked={inOrder}
+            onChange={setInOrder}
+            label="Download in order"
+            hint="First and last pieces first, then the rest in order, so a video can play while it downloads."
+          />
+
+          <button
+            type="button"
+            className="flex min-h-11 w-full items-center gap-1.5 text-left text-sm font-medium"
+            aria-expanded={showAdvanced}
+            aria-controls="add-advanced"
+            onClick={() => setShowAdvanced((open) => !open)}
+          >
+            {showAdvanced ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+            Advanced
+            {!showAdvanced && advancedSet > 0 && (
+              <span className="text-xs font-normal text-muted-foreground">· {advancedSet} set</span>
+            )}
+          </button>
+
+          {showAdvanced && (
+            <div id="add-advanced" className="space-y-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground" htmlFor="rename">
+                  Name in qBittorrent
+                </label>
+                <Input
+                  id="rename"
+                  placeholder="The torrent's own name"
+                  value={rename}
+                  maxLength={255}
+                  onChange={(e) => setRename(e.target.value)}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground" htmlFor="auto-tmm">
+                  Automatic management
+                </label>
+                <Select value={autoTmm} onValueChange={(value) => setAutoTmm(value as typeof autoTmm)}>
+                  <SelectTrigger id="auto-tmm" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={QBIT_DEFAULT}>qBittorrent default</SelectItem>
+                    <SelectItem value="on">On: the category picks the folder</SelectItem>
+                    <SelectItem value="off">Off</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground" htmlFor="content-layout">
+                  Content layout
+                </label>
+                <Select value={contentLayout} onValueChange={(value) => setContentLayout(value as typeof contentLayout)}>
+                  <SelectTrigger id="content-layout" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={QBIT_DEFAULT}>qBittorrent default</SelectItem>
+                    {CONTENT_LAYOUTS.map((layout) => (
+                      <SelectItem key={layout.value} value={layout.value}>
+                        {layout.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {canBandwidth && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <SpeedLimitField id="dl-limit" label="Download limit" draft={dlLimit} onChange={setDlLimit} />
+                  <SpeedLimitField id="up-limit" label="Upload limit" draft={upLimit} onChange={setUpLimit} />
+                </div>
+              )}
+
+              <CheckRow
+                checked={skipChecking}
+                onChange={setSkipChecking}
+                label="Skip hash check"
+                hint="Only when the complete files are already in the save folder."
+              />
+              <CheckRow checked={topOfQueue} onChange={setTopOfQueue} label="Add to top of queue" />
+            </div>
+          )}
         </div>
 
         <div className="space-y-2 pt-2">
@@ -417,6 +630,66 @@ function AddTorrentPageContent() {
         </div>
         </>
         )}
+      </div>
+    </div>
+  );
+}
+
+function CheckRow({ checked, onChange, label, hint }: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+  hint?: string;
+}) {
+  return (
+    <label className="flex min-h-11 items-center gap-2 py-1">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="rounded border-border h-4 w-4 shrink-0"
+      />
+      <span>
+        <span className="block text-sm">{label}</span>
+        {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}
+      </span>
+    </label>
+  );
+}
+
+/** A speed limit typed in KB/s or MB/s; empty is no limit. */
+function SpeedLimitField({ id, label, draft, onChange }: {
+  id: string;
+  label: string;
+  draft: SpeedDraft;
+  onChange: (draft: SpeedDraft) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-medium text-muted-foreground" htmlFor={id}>
+        {label}
+      </label>
+      <div className="flex items-center gap-2">
+        <Input
+          id={id}
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="0.1"
+          placeholder="Unlimited"
+          value={draft.value}
+          onChange={(e) => onChange({ ...draft, value: e.target.value })}
+          className="flex-1"
+        />
+        <Select value={draft.unit} onValueChange={(unit) => onChange({ ...draft, unit: unit as SpeedUnit })}>
+          <SelectTrigger aria-label={`${label} unit`} className="w-24">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="KB/s">KB/s</SelectItem>
+            <SelectItem value="MB/s">MB/s</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );

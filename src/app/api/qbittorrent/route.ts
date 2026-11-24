@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { User } from '@prisma/client';
-import type { QBittorrentClient } from '@/lib/qbittorrent-client';
+import type { AddTorrentOptions, QBittorrentClient } from '@/lib/qbittorrent-client';
 import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireUser, requireUserCapability } from '@/lib/auth';
 import type { Capability } from '@/lib/capabilities';
@@ -12,7 +12,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { deleteTorrentsAudited, TORRENT_DELETE_REFUSALS } from '@/lib/file-audit';
-import { isInsideDownloadRoots, parseLocation, parseShareLimits, parseTags } from '@/lib/qbittorrent-inputs';
+import { isInsideDownloadRoots, parseAddTorrentOptions, parseLocation, parseShareLimits, parseTags } from '@/lib/qbittorrent-inputs';
 import { projectTorrentsForSummary } from '@/lib/qbittorrent-summary';
 
 const MAGNET_VERIFY_TIMEOUT_MS = 5000;
@@ -177,6 +177,31 @@ async function validateSavepath(client: QBittorrentClient, savepath: string): Pr
   );
 }
 
+// qBittorrent creates a category it doesn't know, saving to <default save path>/<name>
+// with ".." resolved, so under automatic management (asked for, or qBittorrent's
+// default) "../x" would put the payload outside every download folder. A known
+// category's folder is one of the download roots already.
+async function validateCategory(client: QBittorrentClient, category: string): Promise<NextResponse | null> {
+  if (Object.hasOwn(await client.getCategories(), category)) return null;
+  return NextResponse.json({ error: "category must be one of qBittorrent's categories" }, { status: 400 });
+}
+
+/** The add options a user may set, and that go together; null when they pass. */
+function checkAddOptions(user: User, options: AddTorrentOptions, savepath: string | undefined): NextResponse | null {
+  // Speed limits are their own grant on an existing torrent; adding one doesn't skip it.
+  if ((options.dlLimit || options.upLimit) && !can(user, 'torrents.bandwidth')) {
+    return NextResponse.json({ error: 'You may not set speed limits' }, { status: 403 });
+  }
+  // qBittorrent would drop the save path quietly: automatic management takes the category's folder.
+  if (options.autoTMM === true && savepath) {
+    return NextResponse.json(
+      { error: 'Automatic management picks the folder: leave the save path empty' },
+      { status: 400 }
+    );
+  }
+  return null;
+}
+
 function normalizeAddResponse(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -265,11 +290,32 @@ async function postHandler(request: NextRequest) {
       const savepath = formData.get('savepath') as string | null;
       const paused = formData.get('paused') === 'true';
 
+      const tagFields = formData.getAll('tags');
+      const parsedOptions = parseAddTorrentOptions((field) =>
+        field === 'tags' ? (tagFields.length > 0 ? tagFields : undefined) : formData.get(field)
+      );
+      if (!parsedOptions.ok) {
+        logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file', validationFailed: true });
+        return NextResponse.json({ error: parsedOptions.error }, { status: 400 });
+      }
+      const optionsError = checkAddOptions(auth.user, parsedOptions.options, savepath || undefined);
+      if (optionsError) {
+        logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file', validationFailed: true });
+        return optionsError;
+      }
+
       if (savepath) {
         const savepathError = await validateSavepath(client, savepath);
         if (savepathError) {
           logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file', validationFailed: true });
           return savepathError;
+        }
+      }
+      if (category) {
+        const categoryError = await validateCategory(client, category);
+        if (categoryError) {
+          logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file', validationFailed: true });
+          return categoryError;
         }
       }
 
@@ -291,6 +337,7 @@ async function postHandler(request: NextRequest) {
       }
 
       await client.addTorrentFile(buffer, file.name, {
+        ...parsedOptions.options,
         category: category || undefined,
         savepath: savepath || undefined,
         paused,
@@ -364,6 +411,12 @@ async function postHandler(request: NextRequest) {
       throw error;
     }
 
+    const parsedOptions = parseAddTorrentOptions((field) => body[field]);
+    if (!parsedOptions.ok) {
+      logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet', validationFailed: true });
+      return NextResponse.json({ error: parsedOptions.error }, { status: 400 });
+    }
+
     const existing = await client.getTorrents(undefined, undefined, undefined, undefined, normalizedHash);
     if (existing.length > 0) {
       logApiDuration('/api/qbittorrent', startedAt, {
@@ -378,6 +431,12 @@ async function postHandler(request: NextRequest) {
     const savepath = isNonEmptyString(body.savepath) ? body.savepath.trim() : undefined;
     const paused = typeof body.paused === 'boolean' ? body.paused : undefined;
 
+    const optionsError = checkAddOptions(auth.user, parsedOptions.options, savepath);
+    if (optionsError) {
+      logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet', validationFailed: true });
+      return optionsError;
+    }
+
     if (savepath) {
       const savepathError = await validateSavepath(client, savepath);
       if (savepathError) {
@@ -385,11 +444,19 @@ async function postHandler(request: NextRequest) {
         return savepathError;
       }
     }
+    if (category) {
+      const categoryError = await validateCategory(client, category);
+      if (categoryError) {
+        logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet', validationFailed: true });
+        return categoryError;
+      }
+    }
     const stopCondition = body.stopCondition === 'MetadataReceived' || body.stopCondition === 'FilesChecked'
       ? body.stopCondition
       : undefined;
 
     const addResponseRaw = await client.addMagnet(urls.trim(), {
+      ...parsedOptions.options,
       category,
       savepath,
       paused,

@@ -107,7 +107,6 @@ export function TorrentTagsSection({
 }) {
   const runAction = useTorrentAction();
   const options = useTorrentOptions();
-  const [value, setValue] = useState('');
   const [pending, setPending] = useState(false);
 
   const total = tagsByTorrent.length;
@@ -129,20 +128,6 @@ export function TorrentTagsSection({
       toast.success(action === 'addTags' ? `Tagged “${tag}”` : `Removed tag “${tag}”`);
     }
     return ok;
-  };
-
-  const addNew = async (event: FormEvent) => {
-    event.preventDefault();
-    const problem = newTagProblem(value);
-    if (problem) {
-      toast.error(problem);
-      return;
-    }
-    if (await change('addTags', value.trim())) {
-      setValue('');
-      // qBittorrent made the tag if it was new; offer it next time.
-      void options.refetch();
-    }
   };
 
   return (
@@ -173,42 +158,82 @@ export function TorrentTagsSection({
           </div>
         );
       })}
-      <form className="grouped-row grouped-row-stacked gap-3" onSubmit={addNew}>
-        <div className="flex gap-2">
-          <Input
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="New tag"
-            aria-label="New tag"
-            autoCapitalize="off"
-            autoCorrect="off"
-            className="flex-1"
-          />
-          <Button type="submit" disabled={pending || !value.trim()}>
-            Add
-          </Button>
-        </div>
-        {suggestions.length > 0 && (
-          <div className="flex flex-wrap gap-x-2 gap-y-3">
-            {suggestions.map((tag) => (
-              <Button
-                key={tag}
-                type="button"
-                variant="outline"
-                size="sm"
-                className="max-w-full"
-                aria-label={`Add tag ${tag}`}
-                disabled={pending}
-                onClick={() => void change('addTags', tag)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span className="truncate">{tag}</span>
-              </Button>
-            ))}
-          </div>
-        )}
-      </form>
+      <TagAdder
+        className="grouped-row grouped-row-stacked gap-3"
+        suggestions={suggestions}
+        pending={pending}
+        onAdd={async (tag, typed) => {
+          const ok = await change('addTags', tag);
+          // qBittorrent made the tag if it was new; offer it next time.
+          if (ok && typed) void options.refetch();
+          return ok;
+        }}
+      />
     </GroupedSection>
+  );
+}
+
+/** Name a new tag or tap one qBittorrent already has; the typed name clears once `onAdd` takes it. */
+export function TagAdder({
+  className,
+  suggestions,
+  pending,
+  onAdd,
+}: {
+  className?: string;
+  suggestions: string[];
+  pending: boolean;
+  /** `typed`: a name from the field, which may be a tag qBittorrent doesn't have yet. */
+  onAdd: (tag: string, typed: boolean) => Promise<boolean> | boolean;
+}) {
+  const [value, setValue] = useState('');
+
+  const addNew = async (event: FormEvent) => {
+    event.preventDefault();
+    const problem = newTagProblem(value);
+    if (problem) {
+      toast.error(problem);
+      return;
+    }
+    if (await onAdd(value.trim(), true)) setValue('');
+  };
+
+  return (
+    <form className={className} onSubmit={addNew}>
+      <div className="flex gap-2">
+        <Input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="New tag"
+          aria-label="New tag"
+          autoCapitalize="off"
+          autoCorrect="off"
+          className="flex-1"
+        />
+        <Button type="submit" disabled={pending || !value.trim()}>
+          Add
+        </Button>
+      </div>
+      {suggestions.length > 0 && (
+        <div className="flex flex-wrap gap-x-2 gap-y-3">
+          {suggestions.map((tag) => (
+            <Button
+              key={tag}
+              type="button"
+              variant="outline"
+              size="sm"
+              className="max-w-full"
+              aria-label={`Add tag ${tag}`}
+              disabled={pending}
+              onClick={() => void onAdd(tag, false)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span className="truncate">{tag}</span>
+            </Button>
+          ))}
+        </div>
+      )}
+    </form>
   );
 }
 
