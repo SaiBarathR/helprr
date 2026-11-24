@@ -355,11 +355,13 @@ export class ProwlarrClient {
 
   /** A search can take as long as the slowest indexer. */
   async searchReleases(
-    { query, categories }: { query: string; categories: number[] },
+    { query, type = 'search', categories, indexerIds = [] }: { query: string; type?: string; categories: number[]; indexerIds?: number[] },
     signal?: AbortSignal,
   ): Promise<ProwlarrRelease[]> {
-    const params = new URLSearchParams({ query, type: 'search' });
+    const params = new URLSearchParams({ query, type });
     categories.forEach((category) => params.append('categories', String(category)));
+    // None means every enabled indexer.
+    indexerIds.forEach((id) => params.append('indexerIds', String(id)));
     const response = await this.client.get<ProwlarrRelease[]>(`/api/v1/search?${params}`, {
       timeout: 120_000,
       signal,
