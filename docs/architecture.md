@@ -1079,6 +1079,19 @@ user and token, and a Check and the Send after it read the same release; a
 larger .torrent is fetched again. Usenet results are not offered: manual
 downloads follow torrents only.
 
+Searching needs `prowlarr.search` or `prowlarr.manage` (the routes take either,
+so no stored override is needed for someone who could already search); a grab,
+the download-client list and a send to Sonarr or Radarr need `prowlarr.manage`.
+Search categories are checked against Prowlarr's own tree
+(`GET /api/v1/indexer/categories`, cached 10 minutes in the API read cache,
+`src/lib/prowlarr-categories.ts`). A result's extra fields are rebuilt from an
+allow-list: standard category names, grabs, and known indexer flags only (the
+ratio flags are dropped on public trackers, which Prowlarr marks freeleech
+throughout). A grab may name a download client; Prowlarr would hand the release
+to whatever client the id names, so the route first checks it is enabled and
+for the release's protocol. The client list leaves the server as id, name and
+protocol only: each client's `fields` hold its password.
+
 qBittorrent's `transfer/info` also carries `last_external_address_v4` and `_v6`,
 the owner's public IP. `/api/qbittorrent/transfer` and the summary (full, `view=delta`,
 `view=counters`, and the cache and delta history behind them) rebuild it with

@@ -1,24 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAxiosError } from 'axios';
 import { getProwlarrClient } from '@/lib/service-helpers';
-import { requireUserCapability } from '@/lib/auth';
+import { requireUserAnyCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { issueReleaseTokens, PROWLARR_SCOPE } from '@/lib/release-tokens';
 import { redactProwlarrText } from '@/lib/prowlarr-redact';
 import type { ProwlarrRelease } from '@/lib/prowlarr-client';
+import { getProwlarrCategoryTree } from '@/lib/prowlarr-categories';
 import {
   keepTopForEverySort,
   PROWLARR_SEARCH_ID_FIELDS,
   PROWLARR_SEARCH_ID_LABELS,
   PROWLARR_SEARCH_ID_TOKENS,
   PROWLARR_SEARCH_TYPES,
+  prowlarrCategoryIds,
+  releaseCategoryNames,
+  releaseFlags,
+  type ProwlarrReleaseFlag,
   type ProwlarrSearchIdField,
   type ProwlarrSearchType,
 } from '@/lib/prowlarr-search';
 
 const MAX_QUERY_LENGTH = 200;
-const ALLOWED_CATEGORIES = new Set([2000, 3000, 5000, 7000]);
+// Prowlarr's tree has about 75; more than this is not a real pick.
+const MAX_CATEGORIES = 100;
+const FLAGS_READ_TIMEOUT_MS = 5_000;
 const SEARCH_TYPES = new Set<string>(PROWLARR_SEARCH_TYPES.map(({ id }) => id));
 const MAX_INDEXER_IDS = 100;
 const WHOLE_ID = /^\d{1,10}$/;
@@ -40,6 +47,11 @@ export interface ProwlarrSearchResult {
   publishDate: string | null;
   indexer: string;
   protocol: string;
+  /** Standard category names, most specific first. */
+  categories: string[];
+  /** Null where the indexer doesn't count them. */
+  grabs: number | null;
+  flags: ProwlarrReleaseFlag[];
 }
 
 export interface ProwlarrSearchResponse {
@@ -57,7 +69,8 @@ function isIntId(value: string): boolean {
 
 /**
  * Search every indexer, or the ones picked. A search hits private trackers too,
- * so it needs prowlarr.manage, not view. Only display fields leave the server:
+ * so it needs prowlarr.search (or prowlarr.manage, which includes it), not
+ * view; grabbing stays under manage. Only display fields leave the server:
  * a release's guid, download, magnet and info links can all carry a passkey or
  * Prowlarr's own key, so the browser gets a token in place of the guid, and
  * the links wait with it for a send to Sonarr or Radarr.
@@ -67,7 +80,7 @@ function isIntId(value: string): boolean {
  * may hold no braces, so the only tokens sent are the checked ones.
  */
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireUserCapability('prowlarr.manage');
+  const auth = await requireUserAnyCapability(['prowlarr.search', 'prowlarr.manage']);
   if (!auth.ok) return auth.response;
 
   const params = request.nextUrl.searchParams;
@@ -98,10 +111,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     .map((field) => `{${PROWLARR_SEARCH_ID_TOKENS[field]}:${ids[field]}}`)
     .join('');
 
-  const categories = (params.get('categories') ?? '').split(',').filter(Boolean).map(Number);
-  if (!categories.every((category) => ALLOWED_CATEGORIES.has(category))) {
-    return bad('Unknown category');
-  }
+  const categories = [...new Set((params.get('categories') ?? '').split(',').filter(Boolean).map(Number))];
+  if (categories.length > MAX_CATEGORIES || !categories.every(Number.isInteger)) return bad('Unknown category');
 
   const rawIndexerIds = (params.get('indexerIds') ?? '').split(',').filter(Boolean);
   if (rawIndexerIds.length > MAX_INDEXER_IDS || !rawIndexerIds.every(isIntId)) return bad('Unknown indexer');
@@ -109,15 +120,32 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   try {
     const client = await getProwlarrClient();
+    // Only ids from Prowlarr's own tree are sent.
+    if (categories.length > 0) {
+      const known = prowlarrCategoryIds(await getProwlarrCategoryTree(client));
+      if (!categories.every((category) => known.has(category))) return bad('Unknown category');
+    }
+    const indexersRead = client.getIndexers();
     if (indexerIds.length > 0) {
       // Prowlarr skips an id it doesn't know, so a stale pick would search
       // nothing, or with every id gone, every indexer. Refuse it instead.
-      const enabled = new Set((await client.getIndexers()).filter((indexer) => indexer.enable).map(({ id }) => id));
+      const enabled = new Set((await indexersRead).filter((indexer) => indexer.enable).map(({ id }) => id));
       if (!indexerIds.every((id) => enabled.has(id))) {
         return bad('An indexer you picked is gone or disabled. Pick again.');
       }
     }
-    const found = await client.searchReleases({ query, type, categories, indexerIds }, request.signal);
+    // The indexer list only trims the ratio flags off public trackers' rows,
+    // so a search without picks still runs when it can't be read, and a slow
+    // read doesn't hold the results back.
+    let flagsTimer: ReturnType<typeof setTimeout> | undefined;
+    const [found, indexers] = await Promise.all([
+      client.searchReleases({ query, type, categories, indexerIds }, request.signal),
+      Promise.race([
+        indexersRead.catch(() => []),
+        new Promise<[]>((resolve) => { flagsTimer = setTimeout(() => resolve([]), FLAGS_READ_TIMEOUT_MS); }),
+      ]),
+    ]).finally(() => clearTimeout(flagsTimer));
+    const publicIndexers = new Set(indexers.filter((indexer) => indexer.privacy === 'public').map(({ id }) => id));
     const valid = (Array.isArray(found) ? found : [])
       .filter((release): release is ProwlarrRelease => Boolean(release?.guid && release.title && release.indexerId));
     const releases = keepTopForEverySort(valid);
@@ -135,6 +163,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       publishDate: release.publishDate ?? null,
       indexer: redactProwlarrText(release.indexer ?? ''),
       protocol: release.protocol ?? '',
+      categories: releaseCategoryNames(release.categories).map(redactProwlarrText),
+      grabs: Number.isInteger(release.grabs) ? Number(release.grabs) : null,
+      flags: releaseFlags(release.indexerFlags, publicIndexers.has(release.indexerId)),
     }));
     return NextResponse.json({ results, total: valid.length } satisfies ProwlarrSearchResponse);
   } catch (error) {

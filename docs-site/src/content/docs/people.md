@@ -20,6 +20,9 @@ title's **Manage files** permission, and for music the **Manage music files**
 permission. Polling, refresh intervals, Region and the server time zone in
 **Settings → Preferences** are shown only to admins. The Jellyfin connection's default user
 and custom headers are admin-only too, like its address and key.
+**Search Prowlarr indexers** lets a member search from Prowlarr's **Search** tab (it needs
+**View Prowlarr** too, to open the page); grabbing a result or sending it to Sonarr or
+Radarr still needs **Manage Prowlarr**, which includes searching.
 **Logging settings** also lets a member delete all log files, and **Storage / cache**
 lets them clear the cleanup history. Only an admin can turn failed request and response
 bodies on or off in **Settings → Logging**, because those bodies can hold other people's data.
