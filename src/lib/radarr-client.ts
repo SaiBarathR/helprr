@@ -341,12 +341,12 @@ export class RadarrClient {
     return historyPageWithoutLinks(await this.get<HistoryResponse>('/api/v3/history', params));
   }
 
-  /** One movie's history, unpaged. eventType 3 = downloadFolderImported. */
   // The subtitles, .nfo and images Radarr keeps next to the movie's file.
   async getExtraFiles(movieId: number): Promise<ExtraFileResource[]> {
     return this.get<ExtraFileResource[]>('/api/v3/extrafile', { movieId });
   }
 
+  /** One movie's history, unpaged. eventType 3 = downloadFolderImported. */
   async getMovieHistory(movieId: number, eventType?: number): Promise<HistoryItem[]> {
     const params: Record<string, unknown> = { movieId };
     if (eventType !== undefined) params.eventType = eventType;

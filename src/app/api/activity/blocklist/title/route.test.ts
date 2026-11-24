@@ -123,4 +123,14 @@ describe('GET /api/activity/blocklist/title', () => {
     const body = await (await get('source=sonarr&seriesId=214&instanceId=son-1')).json();
     expect(body.truncated).toBe(true);
   });
+
+  it("doesn't claim a cut list when Sonarr ignored the filter and counted every series", async () => {
+    mocks.sonarr.getSeriesBlocklist.mockResolvedValue({
+      totalRecords: 1500,
+      records: [sonarrEntry(3, 214, '2026-11-04T10:00:00Z'), sonarrEntry(4, 9, '2026-11-05T10:00:00Z')],
+    });
+    const body = await (await get('source=sonarr&seriesId=214&instanceId=son-1')).json();
+    expect(body.records).toHaveLength(1);
+    expect(body.truncated).toBe(false);
+  });
 });

@@ -70,9 +70,11 @@ async function getHandler(request: NextRequest) {
       rows = (Array.isArray(list) ? list : []).filter((row) => row.movieId === mediaId);
     } else {
       const page = await (await getSonarrClient(instanceId)).getSeriesBlocklist(mediaId, SERIES_BLOCKLIST_WINDOW);
-      // A Sonarr without the seriesIds filter answers with every series' entries.
-      rows = (Array.isArray(page?.records) ? page.records : []).filter((row) => row.seriesId === mediaId);
-      truncated = (Number(page?.totalRecords) || 0) > SERIES_BLOCKLIST_WINDOW;
+      // A Sonarr without the seriesIds filter answers with every series' entries;
+      // its total then counts them all, so only a filtered answer can say it was cut.
+      const all = Array.isArray(page?.records) ? page.records : [];
+      rows = all.filter((row) => row.seriesId === mediaId);
+      truncated = rows.length === all.length && (Number(page?.totalRecords) || 0) > SERIES_BLOCKLIST_WINDOW;
     }
 
     const records = rows
