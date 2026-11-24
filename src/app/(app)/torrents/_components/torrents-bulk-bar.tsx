@@ -1,7 +1,8 @@
 'use client';
 
 import type { Dispatch, SetStateAction } from 'react';
-import { FolderCog, Gauge, Pause, Play, Trash2, Zap } from 'lucide-react';
+import { CheckCircle2, FolderCog, Gauge, Megaphone, MoreHorizontal, Pause, Play, Tag, Trash2, Zap } from 'lucide-react';
+import { ResponsiveMenu, ResponsiveMenuActionItem } from '@/components/ui/responsive-menu';
 import type { DeleteDrawerState } from './torrent-delete-drawer';
 
 /** Actions on the selected torrents, shown while any are selected. */
@@ -12,6 +13,7 @@ export function TorrentsBulkBar({
   canBandwidthTorrents,
   openBulkSpeedLimits,
   openOrganize,
+  openBulkCategory,
   canDeleteTorrents,
   setDeleteDrawer,
   setSelectedTorrents,
@@ -22,12 +24,16 @@ export function TorrentsBulkBar({
   canBandwidthTorrents: boolean;
   openBulkSpeedLimits: () => void;
   openOrganize: () => void;
+  openBulkCategory: () => void;
   canDeleteTorrents: boolean;
   setDeleteDrawer: Dispatch<SetStateAction<DeleteDrawerState>>;
   setSelectedTorrents: Dispatch<SetStateAction<Set<string>>>;
 }) {
   return (
-    <div className="flex items-center gap-1 px-2 py-1.5 bg-muted/60 rounded-xl">
+    // A phone narrower than 390px has no room for every button (and a
+    // three-digit count): Location, Tags & Queue moves into More actions, and
+    // below 360px the gaps close, so Clear stays in view.
+    <div className="flex items-center gap-1 max-[359px]:gap-0 px-2 py-1.5 bg-muted/60 rounded-xl">
       <span className="text-xs text-muted-foreground mx-1 shrink-0">{selectedTorrents.size}</span>
       {canManageTorrents && (
         <button
@@ -58,7 +64,7 @@ export function TorrentsBulkBar({
       )}
       {canManageTorrents && (
         <button
-          className="relative touch-target min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
+          className="relative touch-target min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent max-[389px]:hidden"
           onClick={openOrganize}
           aria-label="Location, Tags & Queue"
         >
@@ -90,6 +96,41 @@ export function TorrentsBulkBar({
         >
           <Trash2 className="h-4 w-4" />
         </button>
+      )}
+      {/* The less used actions, in a menu so the bar stays one row on a phone. */}
+      {canManageTorrents && (
+        <ResponsiveMenu
+          title="More actions"
+          actions
+          align="end"
+          trigger={(
+            <button
+              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
+              aria-label="More actions"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+          )}
+        >
+          <ResponsiveMenuActionItem onSelect={() => void bulkAction('recheck')}>
+            <CheckCircle2 className="h-4 w-4" />
+            Recheck
+          </ResponsiveMenuActionItem>
+          <ResponsiveMenuActionItem onSelect={() => void bulkAction('reannounce')}>
+            <Megaphone className="h-4 w-4" />
+            Reannounce
+          </ResponsiveMenuActionItem>
+          <ResponsiveMenuActionItem onSelect={openBulkCategory}>
+            <Tag className="h-4 w-4" />
+            Set Category
+          </ResponsiveMenuActionItem>
+          <div className="min-[390px]:hidden">
+            <ResponsiveMenuActionItem onSelect={openOrganize}>
+              <FolderCog className="h-4 w-4" />
+              Location, Tags & Queue
+            </ResponsiveMenuActionItem>
+          </div>
+        </ResponsiveMenu>
       )}
       <div className="flex-1" />
       <button

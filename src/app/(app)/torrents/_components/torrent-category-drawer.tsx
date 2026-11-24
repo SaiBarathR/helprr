@@ -3,25 +3,33 @@
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Loader2 } from 'lucide-react';
 
-/** Picks a torrent's category (or none) from qBittorrent's categories. */
+/** One torrent's, or the selection's, drawer state; `hash` joins several hashes with '|'. */
+export type CategoryDrawerState = { open: boolean; hash: string; bulk?: boolean };
+
+/** Picks the category (or none) for a torrent or the selected torrents from qBittorrent's categories. */
 export function TorrentCategoryDrawer({
   categoryDrawer,
   setCategoryDrawer,
   categoriesLoading,
   categories,
-  torrentAction,
+  pickCategory,
 }: {
-  categoryDrawer: { open: boolean; hash: string };
-  setCategoryDrawer: (drawer: { open: boolean; hash: string }) => void;
+  categoryDrawer: CategoryDrawerState;
+  setCategoryDrawer: (drawer: CategoryDrawerState) => void;
   categoriesLoading: boolean;
   categories: Record<string, { name: string; savePath: string }>;
-  torrentAction: (hash: string, action: string, extra?: Record<string, unknown>, opts?: { silent?: boolean }) => Promise<boolean | 'gone'>;
+  pickCategory: (category: string) => Promise<unknown>;
 }) {
+  const count = categoryDrawer.hash ? categoryDrawer.hash.split('|').length : 0;
+  const pick = async (category: string) => {
+    await pickCategory(category);
+    setCategoryDrawer({ open: false, hash: '' });
+  };
   return (
     <Drawer open={categoryDrawer.open} onOpenChange={(open) => !open && setCategoryDrawer({ open: false, hash: '' })}>
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Set Category</DrawerTitle>
+          <DrawerTitle>{categoryDrawer.bulk ? `Set Category for ${count} torrent${count === 1 ? '' : 's'}` : 'Set Category'}</DrawerTitle>
         </DrawerHeader>
         <div className="px-4 pb-6 flex-1 min-h-0 overflow-y-auto">
           {categoriesLoading ? (
@@ -32,10 +40,7 @@ export function TorrentCategoryDrawer({
             <div className="rounded-lg border divide-y">
               <button
                 className="flex items-center w-full px-3 py-3 text-sm hover:bg-accent transition-colors"
-                onClick={async () => {
-                  await torrentAction(categoryDrawer.hash, 'setCategory', { category: '' });
-                  setCategoryDrawer({ open: false, hash: '' });
-                }}
+                onClick={() => pick('')}
               >
                 <span className="text-muted-foreground italic">None</span>
               </button>
@@ -43,10 +48,7 @@ export function TorrentCategoryDrawer({
                 <button
                   key={key}
                   className="flex items-center justify-between gap-3 w-full px-3 py-3 text-sm hover:bg-accent transition-colors"
-                  onClick={async () => {
-                    await torrentAction(categoryDrawer.hash, 'setCategory', { category: cat.name });
-                    setCategoryDrawer({ open: false, hash: '' });
-                  }}
+                  onClick={() => pick(cat.name)}
                 >
                   <span className="min-w-0 truncate text-left">{cat.name}</span>
                   {cat.savePath && (

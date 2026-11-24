@@ -1,6 +1,16 @@
 import type { QBittorrentTorrent } from '@/types';
-import { DOWNLOADING_STATES, PAUSED_STATES, SEEDING_STATES } from '@/lib/qbittorrent-summary';
+import {
+  CHECKING_STATES,
+  DOWNLOADING_STATES,
+  ERRORED_STATES,
+  MOVING_STATES,
+  PAUSED_STATES,
+  SEEDING_STATES,
+  STALLED_STATES,
+  torrentIsActive,
+} from '@/lib/qbittorrent-summary';
 import type { TorrentsFilterPreference as FilterType, TorrentsSortKeyPreference as SortKey } from '@/lib/store';
+import { parseTorrentTags } from './torrent-tags';
 
 export const TORRENT_ROW_HEIGHT = 160;
 
@@ -65,12 +75,19 @@ export function formatSeedingTime(seconds: number): string {
   return parts.join(' ');
 }
 
+// In qBittorrent's sidebar order.
 export const filterOptions: { value: FilterType; label: string }[] = [
   { value: 'downloading', label: 'Downloading' },
   { value: 'seeding', label: 'Seeding' },
   { value: 'completed', label: 'Completed' },
+  { value: 'running', label: 'Running' },
   { value: 'paused', label: 'Paused' },
   { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+  { value: 'stalled', label: 'Stalled' },
+  { value: 'checking', label: 'Checking' },
+  { value: 'moving', label: 'Moving' },
+  { value: 'errored', label: 'Errored' },
 ];
 
 export { PAUSED_STATES };
@@ -115,9 +132,69 @@ export function matchesTorrentFilter(t: QBittorrentTorrent, f: FilterType): bool
     case 'seeding': return SEEDING_STATES.has(t.state);
     case 'completed': return t.progress >= 1;
     case 'paused': return PAUSED_STATES.has(t.state);
-    case 'active': return t.dlspeed > 0 || t.upspeed > 0;
+    // qBittorrent's Running is "not stopped"; a stopped torrent whose files are
+    // missing reports missingFiles, which the state alone can't tell apart.
+    case 'running': return !PAUSED_STATES.has(t.state);
+    case 'active': return torrentIsActive(t);
+    case 'inactive': return !torrentIsActive(t);
+    case 'stalled': return STALLED_STATES.has(t.state);
+    case 'checking': return CHECKING_STATES.has(t.state);
+    case 'moving': return MOVING_STATES.has(t.state);
+    case 'errored': return ERRORED_STATES.has(t.state);
     default: return true;
   }
+}
+
+/**
+ * The category, tag and tracker filters. Each list is "any of these" ('' is
+ * "none": no category, no tag, no tracker); an empty list doesn't
+ * filter, and the lists narrow each other.
+ */
+export interface TorrentFacetFilters {
+  categories: readonly string[];
+  tags: readonly string[];
+  trackers: readonly string[];
+}
+
+export function matchesTorrentFacets(t: QBittorrentTorrent, f: TorrentFacetFilters): boolean {
+  if (f.categories.length > 0 && !f.categories.includes(t.category || '')) return false;
+  if (f.tags.length > 0) {
+    const tags = parseTorrentTags(t.tags);
+    if (!f.tags.some((tag) => (tag === '' ? tags.length === 0 : tags.includes(tag)))) return false;
+  }
+  if (f.trackers.length > 0 && !f.trackers.includes(t.tracker_host ?? '')) return false;
+  return true;
+}
+
+/** The facet groups of the filter menu, in order, with the name of their '' choice. */
+export const TORRENT_FACETS = [
+  { key: 'categories', title: 'Category', none: 'No category' },
+  { key: 'tags', title: 'Tag', none: 'No tag' },
+  // qBittorrent's current tracker; a torrent with none (DHT only, or none answered yet) is ''.
+  { key: 'trackers', title: 'Tracker', none: 'No tracker' },
+] as const satisfies readonly { key: keyof TorrentFacetFilters; title: string; none: string }[];
+
+/**
+ * The choices of each facet menu group: the values the loaded torrents have,
+ * sorted, with '' first when some torrent has none, plus any still-picked value
+ * no torrent has now, so it can be unpicked. A group where no torrent has a
+ * value (no tags anywhere) and nothing is picked has no choice and is empty.
+ */
+export function torrentFacetOptions(torrents: readonly QBittorrentTorrent[], picked: TorrentFacetFilters) {
+  const collect = (valuesOf: (t: QBittorrentTorrent) => string[], chosen: readonly string[]) => {
+    const values = new Set<string>(chosen);
+    for (const t of torrents) for (const value of valuesOf(t)) values.add(value);
+    if (chosen.length === 0 && ![...values].some(Boolean)) return [];
+    return [...values].sort((a, b) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)));
+  };
+  return {
+    categories: collect((t) => [t.category || ''], picked.categories),
+    tags: collect((t) => {
+      const tags = parseTorrentTags(t.tags);
+      return tags.length > 0 ? tags : [''];
+    }, picked.tags),
+    trackers: collect((t) => [t.tracker_host ?? ''], picked.trackers),
+  };
 }
 
 export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
@@ -197,6 +274,7 @@ function sameTorrent(a: QBittorrentTorrent, b: QBittorrentTorrent): boolean {
     && a.seeding_time === b.seeding_time
     && a.dl_limit === b.dl_limit
     && a.up_limit === b.up_limit
+    && a.tracker_host === b.tracker_host
   );
 }
 

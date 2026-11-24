@@ -42,6 +42,8 @@ export interface QBittorrentTorrent {
   seeding_time_limit?: number;
   inactive_seeding_time_limit?: number;
   private?: boolean;
+  /** The current tracker's host name only ('' without one); never its URL, which can hold a passkey. */
+  tracker_host?: string;
 }
 
 /**

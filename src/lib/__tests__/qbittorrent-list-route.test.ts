@@ -35,7 +35,7 @@ describe('GET /api/qbittorrent', () => {
     const res = await get('?hashes=abc');
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual([{ hash: 'abc' }]);
+    expect(await res.json()).toEqual([{ hash: 'abc', tracker_host: '' }]);
     expect(mocks.getTorrents).toHaveBeenCalledWith(undefined, undefined, undefined, undefined, 'abc');
   });
 

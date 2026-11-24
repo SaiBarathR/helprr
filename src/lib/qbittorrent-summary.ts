@@ -3,9 +3,25 @@ import type { QBittorrentTorrent, QBittorrentTorrentInfo, QBittorrentTransferInf
 export type ProjectedTorrentSummary = QBittorrentTorrent;
 
 /**
+ * A tracker URL's host name alone, without scheme, port, user info, path or
+ * query, where a passkey can sit (src/lib/qbittorrent-tracker-links.ts); ''
+ * when there is no tracker or it is not a URL. Kept here, not with
+ * trackerOrigin, because the torrents page bundles this file.
+ */
+export function trackerHost(url: string | undefined): string {
+  if (!url) return '';
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+}
+
+/**
  * What a browser gets of a torrent, built field by field. The magnet and the
  * tracker URL are left out: their announce URLs can carry a private tracker's
  * passkey (src/lib/qbittorrent-tracker-links.ts), and the list never shows them.
+ * The tracker's host name alone goes, for the Tracker filter.
  */
 export function projectTorrentForSummary(torrent: QBittorrentTorrentInfo | QBittorrentTorrent): ProjectedTorrentSummary {
   return {
@@ -49,6 +65,7 @@ export function projectTorrentForSummary(torrent: QBittorrentTorrentInfo | QBitt
     seeding_time_limit: torrent.seeding_time_limit,
     inactive_seeding_time_limit: torrent.inactive_seeding_time_limit,
     private: torrent.private,
+    tracker_host: trackerHost('tracker' in torrent ? torrent.tracker : undefined),
   };
 }
 
@@ -85,6 +102,20 @@ export const DOWNLOADING_STATES = new Set([
 export const SEEDING_STATES = new Set(['uploading', 'stalledUP', 'queuedUP', 'checkingUP', 'forcedUP']);
 // qBittorrent 5.x renamed pausedDL/pausedUP to stoppedDL/stoppedUP.
 export const PAUSED_STATES = new Set(['pausedDL', 'pausedUP', 'stoppedDL', 'stoppedUP']);
+// The rest follow qBittorrent's own filters (TorrentFilter::matchState and the
+// TorrentImpl is* checks it calls), so a filter here lists what the same filter
+// lists in qBittorrent.
+export const STALLED_STATES = new Set(['stalledDL', 'stalledUP']);
+export const CHECKING_STATES = new Set(['checkingDL', 'checkingUP', 'checkingResumeData']);
+export const MOVING_STATES = new Set(['moving']);
+export const ERRORED_STATES = new Set(['error', 'missingFiles']);
+// Always active; stalledDL only while it uploads (TorrentImpl::isActive).
+export const ACTIVE_STATES = new Set(['downloading', 'metaDL', 'forcedMetaDL', 'forcedDL', 'uploading', 'forcedUP', 'moving']);
+
+/** qBittorrent's Active: transferring, fetching metadata, forced or moving. Inactive is everything else. */
+export function torrentIsActive(torrent: Pick<QBittorrentTorrent, 'state' | 'upspeed'>): boolean {
+  return ACTIVE_STATES.has(torrent.state) || (torrent.state === 'stalledDL' && torrent.upspeed > 0);
+}
 
 export function torrentCounters(torrents: QBittorrentTorrent[]) {
   let downloading = 0, seeding = 0, paused = 0;

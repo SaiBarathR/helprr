@@ -57,8 +57,9 @@ describe('torrent list filters and sorting', () => {
     expect(matchesTorrentFilter(torrent({ state: 'uploading' }), 'downloading')).toBe(false);
     expect(matchesTorrentFilter(torrent({ progress: 1 }), 'completed')).toBe(true);
     expect(matchesTorrentFilter(torrent(), 'completed')).toBe(false);
-    expect(matchesTorrentFilter(torrent({ upspeed: 1 }), 'active')).toBe(true);
-    expect(matchesTorrentFilter(torrent(), 'active')).toBe(false);
+    // Active is qBittorrent's: by state, and a stalled download only while it uploads.
+    expect(matchesTorrentFilter(torrent({ state: 'stalledDL', upspeed: 1 }), 'active')).toBe(true);
+    expect(matchesTorrentFilter(torrent({ state: 'stalledDL' }), 'active')).toBe(false);
     expect(matchesTorrentFilter(torrent({ state: 'error' }), 'all')).toBe(true);
   });
 

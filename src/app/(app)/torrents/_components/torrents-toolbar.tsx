@@ -1,11 +1,13 @@
 'use client';
 
-import type { Ref } from 'react';
+import { Fragment, type Ref } from 'react';
 import { SearchInput } from '@/components/media/search-input';
 import { FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import {
   ResponsiveMenu,
   ResponsiveMenuCheckboxItem,
+  ResponsiveMenuLabel,
+  ResponsiveMenuSeparator,
   ResponsiveMenuSortDirection,
 } from '@/components/ui/responsive-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -14,12 +16,22 @@ import type { QBittorrentTransferInfo } from '@/types';
 import type { TorrentsFilterPreference as FilterType, TorrentsSortKeyPreference as SortKey } from '@/lib/store';
 import { SORT_OPTIONS, filterOptions, formatSpeed } from './torrent-list';
 
+/** A Category, Tag or Tracker block of the filter menu: pick any number. */
+export interface TorrentFacetGroup {
+  key: string;
+  title: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}
+
 /** The torrents toolbar: filter and sort menus, refresh, alt speed, the page links, the transfer totals and search. */
 export function TorrentsToolbar({
   ref,
   menuFilters,
   filter,
   setFilter,
+  facetGroups,
   sortKey,
   sortDir,
   setSortDir,
@@ -40,6 +52,7 @@ export function TorrentsToolbar({
   menuFilters: ActiveFilter[];
   filter: FilterType[];
   setFilter: (filter: FilterType[]) => void;
+  facetGroups: TorrentFacetGroup[];
   sortKey: SortKey;
   sortDir: 'asc' | 'desc';
   setSortDir: (dir: 'asc' | 'desc') => void;
@@ -64,7 +77,7 @@ export function TorrentsToolbar({
         <ResponsiveMenu
           title="Filter"
           titleInDropdown
-          contentClassName="w-48"
+          contentClassName="w-56"
           trigger={(
             <button
               className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
@@ -96,6 +109,25 @@ export function TorrentsToolbar({
             >
               {opt.label}
             </ResponsiveMenuCheckboxItem>
+          ))}
+          {facetGroups.map((group) => group.options.length > 0 && (
+            <Fragment key={group.key}>
+              <ResponsiveMenuSeparator />
+              <ResponsiveMenuLabel>{group.title}</ResponsiveMenuLabel>
+              {group.options.map((opt) => (
+                <ResponsiveMenuCheckboxItem
+                  key={opt.value || '(none)'}
+                  checked={group.selected.includes(opt.value)}
+                  onCheckedChange={() => group.onChange(
+                    group.selected.includes(opt.value)
+                      ? group.selected.filter((value) => value !== opt.value)
+                      : [...group.selected, opt.value]
+                  )}
+                >
+                  <span className="min-w-0 truncate">{opt.label}</span>
+                </ResponsiveMenuCheckboxItem>
+              ))}
+            </Fragment>
           ))}
         </ResponsiveMenu>
 
