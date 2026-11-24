@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   canManage: true,
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
   adjustBadge: vi.fn(),
 }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn() }) }));
@@ -38,18 +38,20 @@ const QUEUE = [
   { ...base, id: 5, title: 'Movie.Delayed', source: 'radarr', instanceId: 'rad-2', downloadId: '', status: 'delay', trackedDownloadState: undefined },
 ];
 
-const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+const defaultFetch = async (url: string, init?: RequestInit) => {
   void init;
   if (url.startsWith('/api/activity/queue?')) return Response.json({ records: QUEUE, totalRecords: QUEUE.length });
   return Response.json({ success: true });
-});
+};
+const fetchMock = vi.fn(defaultFetch);
 
 beforeEach(() => {
   mocks.canManage = true;
   mocks.toast.success.mockClear();
   mocks.toast.error.mockClear();
+  mocks.toast.warning.mockClear();
   mocks.adjustBadge.mockClear();
-  fetchMock.mockClear();
+  fetchMock.mockClear().mockImplementation(defaultFetch);
   window.sessionStorage.clear();
   resetRouteViewStateForTests();
   vi.stubGlobal('fetch', fetchMock);
@@ -139,6 +141,72 @@ describe('Queue tab: bulk remove', () => {
     ));
     expect(mocks.adjustBadge).toHaveBeenCalledTimes(1);
     expect(mocks.adjustBadge).toHaveBeenCalledWith('activity', -1, -0);
+  });
+});
+
+describe('Queue tab: bulk grab', () => {
+  // Two more held-back releases, on two instances.
+  const WITH_PENDING = [
+    ...QUEUE,
+    { ...base, id: 6, title: 'Show.Delayed', source: 'sonarr', instanceId: 'son-1', downloadId: '', status: 'delay', trackedDownloadState: undefined },
+    { ...base, id: 7, title: 'Movie.NoClient', source: 'radarr', instanceId: 'rad-2', downloadId: '', status: 'downloadClientUnavailable', trackedDownloadState: undefined },
+  ];
+  function answer(grab: (body: { instanceId: string; ids: number[] }) => Response) {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/activity/queue?')) return Response.json({ records: WITH_PENDING, totalRecords: WITH_PENDING.length });
+      if (url === '/api/activity/queue/grab') return grab(JSON.parse(String(init?.body)));
+      return Response.json({ success: true });
+    });
+  }
+  const grabBodies = () => mutations()
+    .filter(([url]) => url === '/api/activity/queue/grab')
+    .map(([, init]) => JSON.parse(String(init?.body)));
+
+  it('offers Grab only while the selection holds a pending release', async () => {
+    answer(() => Response.json({}));
+    renderTab();
+    await userEvent.click(await screen.findByRole('button', { name: /Select/ }));
+    await userEvent.click(screen.getByText('Movie.2026'));
+    expect(screen.queryByRole('button', { name: /^Grab/ })).toBeNull();
+    await userEvent.click(screen.getByText('Movie.Delayed'));
+    expect(screen.getByRole('button', { name: 'Grab 1 pending release now' })).toBeTruthy();
+  });
+
+  it('sends the pending ones, one request per instance, and counts the skipped ones', async () => {
+    answer(({ ids }) => Response.json({ grabbed: ids, notGrabbed: [], unknown: [], skipped: [] }));
+    renderTab();
+    await userEvent.click(await screen.findByRole('button', { name: /Select/ }));
+    for (const title of ['Movie.Delayed', 'Movie.NoClient', 'Show.Delayed', 'Movie.2026']) {
+      await userEvent.click(screen.getByText(title));
+    }
+    await userEvent.click(screen.getByRole('button', { name: 'Grab 3 pending releases now' }));
+
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith(
+      'Sent 3 releases to the download client. 1 not pending, skipped.',
+    ));
+    const bodies = grabBodies();
+    expect(bodies).toHaveLength(2);
+    expect(bodies).toContainEqual({ source: 'radarr', instanceId: 'rad-2', ids: [5, 7] });
+    expect(bodies).toContainEqual({ source: 'sonarr', instanceId: 'son-1', ids: [6] });
+    // Nothing was removed on the way.
+    expect(mutations().every(([, init]) => init?.method === 'POST')).toBe(true);
+    // Done: selection mode ends.
+    expect(screen.queryByText(/selected$/)).toBeNull();
+  });
+
+  it('says truthfully what each instance did', async () => {
+    answer(({ instanceId, ids }) => (instanceId === 'son-1'
+      ? Response.json({ error: 'down' }, { status: 502 })
+      : Response.json({ grabbed: [ids[0]], notGrabbed: [], unknown: [], skipped: ids.slice(1) })));
+    renderTab();
+    await userEvent.click(await screen.findByRole('button', { name: /Select/ }));
+    for (const title of ['Movie.Delayed', 'Movie.NoClient', 'Show.Delayed']) {
+      await userEvent.click(screen.getByText(title));
+    }
+    await userEvent.click(screen.getByRole('button', { name: 'Grab 3 pending releases now' }));
+    await waitFor(() => expect(mocks.toast.warning).toHaveBeenCalledWith(
+      'Sent 1 of 2 releases. 1 could not be sent. 1 not pending, skipped.',
+    ));
   });
 });
 

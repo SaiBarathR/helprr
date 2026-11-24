@@ -685,6 +685,9 @@ interface UIState {
   // type has >1 instance.
   activityInstanceFilter: string;
   setActivityInstanceFilter: (id: string) => void;
+  // Missing and Cutoff also list unmonitored items (dimmed, left out of Search all).
+  activityShowUnmonitored: boolean;
+  setActivityShowUnmonitored: (show: boolean) => void;
   // Requests page (Seerr)
   requestsTab: RequestsTabPreference;
   setRequestsTab: (tab: RequestsTabPreference) => void;
@@ -863,6 +866,7 @@ const PERSISTED_KEYS = [
   'activitySortDirection',
   'activityFilterBy',
   'activityInstanceFilter',
+  'activityShowUnmonitored',
   'requestsTab',
   'requestsFilter',
   'requestsUserFilter',
@@ -1207,6 +1211,8 @@ export const useUIStore = create<UIState>()(
       setActivityFilterBy: (filterBy) => set({ activityFilterBy: filterBy }),
       activityInstanceFilter: 'all',
       setActivityInstanceFilter: (id) => set({ activityInstanceFilter: id }),
+      activityShowUnmonitored: false,
+      setActivityShowUnmonitored: (show) => set({ activityShowUnmonitored: show }),
       // Requests
       requestsTab: 'requests',
       setRequestsTab: (tab) => set({ requestsTab: tab }),

@@ -59,6 +59,27 @@ describe('arr wanted client sort keys', () => {
       params: { page: 2, pageSize: 40, sortKey: 'releaseDate', sortDirection: 'descending', includeArtist: true },
     });
   });
+
+  it.each([
+    ['Sonarr', () => new SonarrClient('http://sonarr.local', 'key'), 'v3'],
+    ['Radarr', () => new RadarrClient('http://radarr.local', 'key'), 'v3'],
+    ['Lidarr', () => new LidarrClient('http://lidarr.local', 'key'), 'v1'],
+  ] as const)('%s reads the unmonitored list only when asked, with monitored=false', async (_name, make, version) => {
+    const client = make();
+    await client.getWantedMissing(1, 20);
+    expect(mocks.get.mock.lastCall?.[1].params).not.toHaveProperty('monitored');
+    await client.getCutoffUnmet(1, 20, { unmonitored: true });
+    expect(mocks.get).toHaveBeenLastCalledWith(`/api/${version}/wanted/cutoff`, {
+      params: expect.objectContaining({ monitored: false }),
+    });
+  });
+
+  it('Radarr reads the unmonitored missing list in the order asked', async () => {
+    await new RadarrClient('http://radarr.local', 'key').getWantedMissing(1, 20, 'movieMetadata.inCinemas', 'ascending', { unmonitored: true });
+    expect(mocks.get).toHaveBeenLastCalledWith('/api/v3/wanted/missing', {
+      params: { page: 1, pageSize: 20, sortKey: 'movieMetadata.inCinemas', sortDirection: 'ascending', monitored: false },
+    });
+  });
 });
 
 describe('Sonarr cutoff unmet series ids', () => {

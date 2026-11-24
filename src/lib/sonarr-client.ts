@@ -247,8 +247,11 @@ export class SonarrClient {
 
   /** Search every monitored episode on Wanted → Missing (`missing`) or Cutoff Unmet (`cutoff`). */
   async searchWanted(type: 'missing' | 'cutoff'): Promise<CommandResponse> {
+    // Sent explicitly although it is Sonarr's default: monitored=false would
+    // search the unmonitored episodes, which Activity can now list.
     return this.post<CommandResponse>('/api/v3/command', {
       name: type === 'missing' ? 'MissingEpisodeSearch' : 'CutoffUnmetEpisodeSearch',
+      monitored: true,
     });
   }
 
@@ -354,12 +357,14 @@ export class SonarrClient {
   }
 
   // Wanted
-  async getWantedMissing(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: SonarrEpisode[] }> {
-    return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey: 'episodes.airDateUtc', sortDirection: 'descending', includeSeries: true });
+  // Sonarr lists only monitored episodes of monitored series unless sent
+  // monitored=false, which lists the others instead (never both at once).
+  async getWantedMissing(page = 1, pageSize = 20, { unmonitored = false } = {}): Promise<{ page: number; pageSize: number; totalRecords: number; records: SonarrEpisode[] }> {
+    return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey: 'episodes.airDateUtc', sortDirection: 'descending', includeSeries: true, ...(unmonitored ? { monitored: false } : {}) });
   }
 
-  async getCutoffUnmet(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: SonarrEpisode[] }> {
-    return this.get('/api/v3/wanted/cutoff', { page, pageSize, sortKey: 'episodes.airDateUtc', sortDirection: 'descending', includeSeries: true });
+  async getCutoffUnmet(page = 1, pageSize = 20, { unmonitored = false } = {}): Promise<{ page: number; pageSize: number; totalRecords: number; records: SonarrEpisode[] }> {
+    return this.get('/api/v3/wanted/cutoff', { page, pageSize, sortKey: 'episodes.airDateUtc', sortDirection: 'descending', includeSeries: true, ...(unmonitored ? { monitored: false } : {}) });
   }
 
   /**
@@ -433,6 +438,12 @@ export class SonarrClient {
   // Sends a delayed (pending) release to the download client now.
   async grabQueueItem(id: number): Promise<void> {
     await this.post(`/api/v3/queue/grab/${id}`);
+  }
+
+  // Sends several pending releases at once. The app grabs them in order and stops
+  // at the first id that is no longer pending (404), keeping the ones before it.
+  async grabQueueBulk(ids: number[]): Promise<void> {
+    await this.post('/api/v3/queue/grab/bulk', { ids });
   }
 
   // Blocklist — releases the *arr will not grab again. Removing an entry lets

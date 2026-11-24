@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
-import { Check, Plus, Search, Loader2, Film, Clock, Eye, EyeOff } from 'lucide-react';
+import { Check, Plus, Search, Loader2, Film, Clock, Eye, EyeOff, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -15,7 +15,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { useCan } from '@/components/permission-provider';
+import { useCan, useMe } from '@/components/permission-provider';
+import { CollectionEditForm, type CollectionEditChanges } from '@/components/media/collection-edit-form';
 import { invalidateCollections, invalidateLibraryMembership } from '@/lib/query-invalidation';
 import { ApiError } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
@@ -98,6 +99,10 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
   const canMonitor = useCan('movies.editMonitoring');
   const canAdd = useCan('movies.add');
   const canSearch = useCan('activity.manage');
+  const isAdmin = useMe()?.role === 'admin';
+  const canEditTags = useCan('movies.editTags');
+  const canChangePath = useCan('movies.changePath');
+  const canEdit = isAdmin || canMonitor || canEditTags || canChangePath;
 
   // Local copies so the drawer reflects actions instantly while the list refetches.
   const [monitored, setMonitored] = useState(false);
@@ -106,6 +111,9 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
   const [searchPending, setSearchPending] = useState(false);
   const [addAllPending, setAddAllPending] = useState(false);
   const [addingTmdb, setAddingTmdb] = useState<Set<number>>(new Set());
+  const [editing, setEditing] = useState(false);
+  // Options saved here, over the opened (list) copy until the list refetches.
+  const [savedOptions, setSavedOptions] = useState<Omit<CollectionEditChanges, 'monitorMovies'>>({});
 
   // Reset local state whenever a different collection opens.
   useEffect(() => {
@@ -114,6 +122,8 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
     setMonitored(collection.monitored);
     setMovies(collection.movies);
     setAddingTmdb(new Set());
+    setEditing(false);
+    setSavedOptions({});
   }, [collection]);
 
   const instanceId = collection?.instanceId;
@@ -255,51 +265,77 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
               </div>
             </DrawerHeader>
 
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6">
-              {/* Action bar */}
-              <div className="flex flex-wrap items-center gap-2 pb-3">
-                {canMonitor && (
-                  <label className="inline-flex items-center gap-2 rounded-lg border border-border bg-card/60 px-3 py-1.5 text-sm">
-                    {monitored ? <Eye className="h-4 w-4 text-[var(--hpr-amber)]" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
-                    <span className="select-none">Monitored</span>
-                    <Switch checked={monitored} disabled={monitorPending} onCheckedChange={toggleMonitor} aria-label="Monitor collection" />
-                  </label>
-                )}
-                {canAdd && missingMovies.length > 0 && (
-                  <Button size="sm" variant="default" disabled={addAllPending} onClick={addAllMissing}>
-                    {addAllPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                    Add {missingMovies.length} missing
-                  </Button>
-                )}
-                {canSearch && hasSearchable && (
-                  <Button size="sm" variant="outline" disabled={searchPending} onClick={searchMissing}>
-                    {searchPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                    Search
-                  </Button>
-                )}
+            {editing ? (
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6">
+                <CollectionEditForm
+                  collection={{ ...collection, ...savedOptions }}
+                  isAdmin={isAdmin}
+                  canMonitor={canMonitor}
+                  canEditTags={canEditTags}
+                  canChangePath={canChangePath}
+                  onSaved={({ monitorMovies, ...options }) => {
+                    if (monitorMovies !== undefined) {
+                      setMovies((prev) => prev.map((m) => (m.inLibrary ? { ...m, monitored: monitorMovies } : m)));
+                    }
+                    setSavedOptions((prev) => ({ ...prev, ...options }));
+                    setEditing(false);
+                  }}
+                  onCancel={() => setEditing(false)}
+                />
               </div>
+            ) : (
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6">
+                {/* Action bar */}
+                <div className="flex flex-wrap items-center gap-2 pb-3">
+                  {canMonitor && (
+                    <label className="inline-flex items-center gap-2 rounded-lg border border-border bg-card/60 px-3 py-1.5 text-sm">
+                      {monitored ? <Eye className="h-4 w-4 text-[var(--hpr-amber)]" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
+                      <span className="select-none">Monitored</span>
+                      <Switch checked={monitored} disabled={monitorPending} onCheckedChange={toggleMonitor} aria-label="Monitor collection" />
+                    </label>
+                  )}
+                  {canAdd && missingMovies.length > 0 && (
+                    <Button size="sm" variant="default" disabled={addAllPending} onClick={addAllMissing}>
+                      {addAllPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      Add {missingMovies.length} missing
+                    </Button>
+                  )}
+                  {canSearch && hasSearchable && (
+                    <Button size="sm" variant="outline" disabled={searchPending} onClick={searchMissing}>
+                      {searchPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                      Search
+                    </Button>
+                  )}
+                  {canEdit && (
+                    <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                      <SlidersHorizontal className="h-4 w-4" />
+                      Edit
+                    </Button>
+                  )}
+                </div>
 
-              {collection.overview && (
-                <p className="text-[13px] leading-relaxed text-muted-foreground pb-4">{collection.overview}</p>
-              )}
+                {collection.overview && (
+                  <p className="text-[13px] leading-relaxed text-muted-foreground pb-4">{collection.overview}</p>
+                )}
 
-              {/* Movie rail */}
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground pb-2">Movies</div>
-              <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scroll-px-4 scrollbar-hide snap-x">
-                {movies.map((m) => (
-                  <CollectionMoviePoster
-                    key={m.tmdbId}
-                    movie={m}
-                    instanceId={instanceId}
-                    canAdd={canAdd}
-                    adding={addingTmdb.has(m.tmdbId)}
-                    bulkAdding={addAllPending}
-                    onAdd={() => addMovie(m.tmdbId)}
-                    onNavigate={onClose}
-                  />
-                ))}
+                {/* Movie rail */}
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground pb-2">Movies</div>
+                <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scroll-px-4 scrollbar-hide snap-x">
+                  {movies.map((m) => (
+                    <CollectionMoviePoster
+                      key={m.tmdbId}
+                      movie={m}
+                      instanceId={instanceId}
+                      canAdd={canAdd}
+                      adding={addingTmdb.has(m.tmdbId)}
+                      bulkAdding={addAllPending}
+                      onAdd={() => addMovie(m.tmdbId)}
+                      onNavigate={onClose}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
       </DrawerContent>

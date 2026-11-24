@@ -88,6 +88,21 @@ describe('edit page root folder', () => {
     expect(puts[0].body).toEqual(expect.objectContaining({ path: '/music2/Band' }));
   });
 
+  it('renames the folder in its root folder, and refuses a name that climbs out', async () => {
+    renderPage();
+    const folder = () => screen.getByLabelText('Folder') as HTMLInputElement;
+    await waitFor(() => expect(folder().value).toBe('Band'));
+    fireEvent.change(folder(), { target: { value: '..' } });
+    expect(folder().getAttribute('aria-invalid')).toBe('true');
+    expect((screen.getByRole('button', { name: 'Save Changes' }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(folder(), { target: { value: 'The Band' } });
+    fireEvent.click(screen.getByLabelText('Move Files'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0].body).toEqual(expect.objectContaining({ path: '/music/The Band' }));
+  });
+
   it('sends no move when the root folder is left alone', async () => {
     renderPage();
     await waitFor(() => expect(rootFolderSelect().value).toBe(FOLDERS[0]));

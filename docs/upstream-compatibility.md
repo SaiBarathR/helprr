@@ -522,6 +522,20 @@ released film missing, no command is sent and the answer says so. Read from the
 Sonarr v5-develop, Radarr and Lidarr develop sources on 2026-11-06; the oldest-first
 order was checked read-only against the Radarr on the test host on 2026-11-07.
 
+**Unmonitored items.** Sonarr, Radarr and Lidarr `GET wanted/missing` and
+`wanted/cutoff` take `monitored` (default `true`: monitored items of monitored
+series, films or artists); `monitored=false` lists only the others, never both. With
+Activity's **Show → Unmonitored** on, `/api/activity/wanted?unmonitored=1` reads
+each instance a second time with `monitored=false` and lists those rows after every
+monitored one, marked `unmonitored` and counted in `unmonitoredTotal`. Search all
+still searches monitored items only: Sonarr's `MissingEpisodeSearch` /
+`CutoffUnmetEpisodeSearch` take a `Monitored` flag (default `true`, `false` searches
+the unmonitored episodes), so Helprr sends `monitored: true` explicitly; Lidarr's
+whole-list commands have no such flag and search monitored albums only. Checked live
+on Sonarr `4.0.20.3014` and Radarr `7.0.3.10918` (the test dummies) on 2026-11-25:
+no parameter and `monitored=true` gave the same monitored count, `monitored=false`
+the unmonitored one. Lidarr is from its `develop` source.
+
 ### Music alerts (source contract)
 
 A scheduled alert for one album reads Lidarr `GET /api/v1/album/{id}`; an alert for an
@@ -554,6 +568,11 @@ Each line says how it was checked: "source" means read from the upstream source 
 - **History and queue actions** (source): `POST history/failed/{id}`,
   `POST queue/grab/{id}` and `DELETE queue/bulk`, with every option explicit in the
   query, since upstream removes from the download client unless told not to.
+  `POST queue/grab/bulk {ids}` grabs in order and answers 404 at the first id that is
+  not a pending release, keeping the grabs before it; a pending season pack lists one
+  id per episode, and grabbing one sends the pack and drops the others. Helprr's bulk
+  grab therefore sends only ids its own read of the queue marks pending, and after a
+  stop reads again and resends what is still pending.
 - **Bulk editor and rename** (source): the `PUT …/editor` fields Helprr sends per app,
   and Sonarr `RenameSeries` binding `seriesIds` (the singular `seriesId` is ignored).
 - **Sonarr `monitorNewItems`** (source, Sonarr v4): `all`/`none` on add and edit.
