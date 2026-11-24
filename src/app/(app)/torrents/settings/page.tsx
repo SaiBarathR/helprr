@@ -18,6 +18,7 @@ import { useUIStore, type TorrentsViewPreference } from '@/lib/store';
 import { useCan, useMe } from '@/components/permission-provider';
 import type { QBittorrentServerStats, QBittorrentTransferInfo } from '@/types';
 import { SpeedLimitInput, formatSpeedLimit } from '../_components/speed-limit-input';
+import { QueueSeedingSections } from '../_components/queue-seeding-sections';
 
 interface TransferLimits {
   downloadLimit: number;
@@ -269,6 +270,8 @@ export default function QBittorrentSettingsPage() {
           )}
         </GroupedSection>
 
+        <QueueSeedingSections isAdmin={isAdmin} />
+
         <GroupedSection title="Transfer Stats">
           {transfer ? (
             <>
@@ -294,6 +297,21 @@ export default function QBittorrentSettingsPage() {
             </div>
           )}
         </GroupedSection>
+
+        {isAdmin && (
+          <GroupedSection title="Diagnostics">
+            <Link
+              href="/torrents/log"
+              className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
+            >
+              <span className="text-sm">Log</span>
+              <span className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
+                qBittorrent&apos;s messages
+                <ChevronRight className="h-4 w-4" />
+              </span>
+            </Link>
+          </GroupedSection>
+        )}
       </div>
     </div>
   );

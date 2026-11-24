@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { NotServiceApiError } from '@/lib/service-response';
+import { QUEUE_SEEDING_KEYS, pickQueueSeeding, type QueueSeedingPatch, type QueueSeedingPreferences } from '@/lib/qbittorrent-queue-seeding';
 import { normalizeTransferInfo } from '@/lib/qbittorrent-summary';
 import type { QBittorrentServerStats, QBittorrentTorrentInfo, QBittorrentTransferInfo } from '@/types';
 
@@ -765,12 +766,40 @@ export class QBittorrentClient {
     await this.post('/api/v2/app/setPreferences', params.toString());
   }
 
+  /** Queueing and the global seeding limits, copied out key by key (pickQueueSeeding). */
+  async getQueueSeedingPreferences(): Promise<QueueSeedingPreferences> {
+    const picked = pickQueueSeeding(await this.get<Record<string, unknown>>('/api/v2/app/preferences'));
+    if (!picked) throw new NotServiceApiError();
+    return picked;
+  }
+
+  /** Writes only the allow-listed keys present in `patch`; the caller validated them (parseQueueSeedingPatch). */
+  async setQueueSeedingPreferences(patch: QueueSeedingPatch): Promise<void> {
+    const json: Record<string, unknown> = {};
+    for (const key of QUEUE_SEEDING_KEYS) {
+      if (patch[key] !== undefined) json[key] = patch[key];
+    }
+    if (Object.keys(json).length === 0) throw new Error('setQueueSeedingPreferences needs at least one preference');
+    const params = new URLSearchParams();
+    params.append('json', JSON.stringify(json));
+    await this.post('/api/v2/app/setPreferences', params.toString());
+  }
+
   async getSpeedLimitsMode(): Promise<number> {
     return this.get<number>('/api/v2/transfer/speedLimitsMode');
   }
 
   async toggleSpeedLimitsMode(): Promise<void> {
     await this.post('/api/v2/transfer/toggleSpeedLimitsMode');
+  }
+
+  /**
+   * qBittorrent's main log (log/main) at the given levels, oldest first: the
+   * entries after `lastKnownId`, or all it keeps (-1). Raw: the caller
+   * rebuilds and redacts each entry (src/lib/server/qbittorrent-log.ts).
+   */
+  async getMainLog(levels: { normal: boolean; info: boolean; warning: boolean; critical: boolean }, lastKnownId = -1): Promise<unknown> {
+    return this.get<unknown>('/api/v2/log/main', { ...levels, last_known_id: lastKnownId });
   }
 
   // App

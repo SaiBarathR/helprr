@@ -195,6 +195,18 @@ describe('events that start off', () => {
     expect(sentTo()).toEqual([`${subscription.endpoint}-on`]);
   });
 
+  it.each(['torrentErrored', 'torrentStalled'])('%s reaches only a device turned on for it, of someone with notify.torrents', async (eventType) => {
+    const noTorrents = device('no-torrents', [{ eventType, enabled: true }]);
+    mocks.findMany.mockResolvedValueOnce([
+      device('from-before', [{ eventType: 'torrentCompleted', enabled: true }]),
+      device('on', [{ eventType, enabled: true }]),
+      device('off', [{ eventType, enabled: false }]),
+      { ...noTorrents, user: { ...noTorrents.user, role: 'member', template: 'member', permissions: { 'notify.torrents': false } } },
+    ]);
+    await notifyEvent({ eventType, title: 'Torrent Stalled', body: 'A', metadata: { source: 'qbittorrent', hash: 'abc' } });
+    expect(sentTo()).toEqual([`${subscription.endpoint}-on`]);
+  });
+
   it('sends a test push during quiet hours, and holds other events then', async () => {
     const hour = new Date().getUTCHours();
     const sleepy = () => ({

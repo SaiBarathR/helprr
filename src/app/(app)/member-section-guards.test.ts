@@ -34,4 +34,11 @@ describe('section page guards', () => {
     await Layout({ children: null });
     expect(assertPageAdmin).toHaveBeenCalledTimes(1);
   });
+
+  it('/torrents/log is for admins, as its API is', async () => {
+    assertPageAdmin.mockClear();
+    const { default: Layout } = await import('./torrents/log/layout');
+    await Layout({ children: null });
+    expect(assertPageAdmin).toHaveBeenCalledTimes(1);
+  });
 });

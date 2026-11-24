@@ -184,6 +184,8 @@ export interface ExportedAppSettings {
   notificationGroupingEnabled: boolean;
   // Optional: absent in exports made before the service-down alert delay existed.
   serviceDownAlertDelaySecs?: number;
+  // Optional: absent in exports made before the torrent stalled alert existed.
+  torrentStalledAlertMins?: number;
   animeAutoMapEnabled: boolean;
   animeAutoMapHour: number;
   // Optional: absent in exports made before the update-check switch existed.

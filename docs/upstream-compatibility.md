@@ -618,6 +618,24 @@ Torrents settings page read and write the four keys as preferences, through an
 allow-list, since `setPreferences` also takes the Web UI password and the program run
 on completion.
 
+### qBittorrent queueing, seeding limits and log (2026-11-25)
+
+Live on a disposable qBittorrent `5.1.4`. `app/preferences` has `queueing_enabled`,
+`max_active_downloads`, `max_active_uploads`, `max_active_torrents` (`-1` no limit),
+`dont_count_slow_torrents`, `max_ratio_enabled` / `max_ratio`,
+`max_seeding_time_enabled` / `max_seeding_time`, `max_inactive_seeding_time_enabled` /
+`max_inactive_seeding_time` (minutes; a limit that is off reads `-1`) and `max_ratio_act`
+(0 stop, 1 remove, 2 super seeding, 3 remove with files). `app/setPreferences` reads a
+limit's value only under its switch: `{"max_seeding_time_enabled":true}` alone set the
+time to `0`, and `{"max_ratio":3}` alone changed nothing. `log/main?normal=&info=&
+warning=&critical=&last_known_id=` returns `{id, message, timestamp, type}` oldest
+first, ids counting up across every type, `timestamp` in seconds and `type` 1 normal,
+2 info, 4 warning, 8 critical. Its messages name the host's external IP ("Detected
+external IP"), the addresses it listens on and the IP of each Web UI login. A complete
+torrent whose file is moved away keeps seeding (`stalledUP`) until qBittorrent restarts
+and rejects its resume data, then shows `missingFiles` (a recheck instead starts it
+downloading again); a magnet nobody seeds stays in `metaDL`, not `stalledDL`.
+
 ### System version, tasks and logs (2026-11-24)
 
 Live, read only, on the dummy Sonarr `4.0.20.3014` and Radarr `7.0.3.10918` (Docker)

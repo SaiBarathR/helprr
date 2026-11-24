@@ -128,7 +128,7 @@ describe('POST /api/notifications/channels', () => {
     const { events } = mocks.create.mock.calls[0][0].data;
     expect(events).toContain('imported');
     expect(events).not.toContain('tonightPickInvite');
-    for (const optIn of ['titleAdded', 'titleDeleted', 'fileDeleted', 'fileRenamed', 'arrUpdateAvailable']) expect(events).not.toContain(optIn);
+    for (const optIn of ['titleAdded', 'titleDeleted', 'fileDeleted', 'fileRenamed', 'arrUpdateAvailable', 'torrentErrored', 'torrentStalled']) expect(events).not.toContain(optIn);
   });
 
   it('refuses an address that points at cloud metadata', async () => {

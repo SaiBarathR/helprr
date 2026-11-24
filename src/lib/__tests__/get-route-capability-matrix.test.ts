@@ -25,6 +25,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/admin/arr-system/tasks',
     'GET /api/admin/arr-system/tasks/[id]',
     'GET /api/admin/arr-system/logs',
+    // qBittorrent's main log, redacted of IP addresses and credentials.
+    'GET /api/qbittorrent/log',
     'GET /api/admin/database-backup',
     'GET /api/admin/polling-status',
     'GET /api/admin/support-bundle',
@@ -299,6 +301,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/qbittorrent/summary',
     'GET /api/qbittorrent/transfer/stats',
     'GET /api/qbittorrent/transfer/limits',
+    'GET /api/qbittorrent/queue-seeding',
     'GET /api/qbittorrent/transfer',
   ],
   'cap:watchlist.view': [
@@ -618,7 +621,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(311);
+    expect(handlers.size).toBe(313);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

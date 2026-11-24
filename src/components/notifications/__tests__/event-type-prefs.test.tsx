@@ -68,4 +68,13 @@ describe('EventTypePrefs defaults', () => {
     expect(screen.getByRole('switch', { name: 'Tonight Pick Invite' }).getAttribute('aria-checked')).toBe('false');
     expect(screen.getByRole('switch', { name: 'Media Imported' }).getAttribute('aria-checked')).toBe('true');
   });
+
+  it('shows errored and stalled torrents off, with the stall time beside the switch', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><EventTypePrefs subscriptionEndpoint="https://push.example/d" /></QueryClientProvider>);
+    await waitFor(() => expect(seeded()).toBe(true));
+    expect(screen.getByRole('switch', { name: 'Torrent Errored' }).getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByRole('switch', { name: 'Torrent Stalled' }).getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByRole('combobox', { name: 'Stalled for' }).textContent).toContain('30 min');
+  });
 });

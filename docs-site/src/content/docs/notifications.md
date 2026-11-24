@@ -21,9 +21,9 @@ as well, as it always did; turn **Media Upgraded** off for the channel to get on
 arrivals. Likewise a channel set to **Health Warning** before Helprr had **Health
 Restored** gets the all-clear too.
 
-**Title Added**, **Title Deleted**, **File Deleted**, **Files Renamed** and **App Update
-Available** are off for every channel until you tick them, including channels from
-before Helprr had them.
+**Title Added**, **Title Deleted**, **File Deleted**, **Files Renamed**, **App Update
+Available**, **Torrent Errored** and **Torrent Stalled** are off for every channel until
+you tick them, including channels from before Helprr had them.
 
 **Send test** sends a test message to one channel and says how it went. When a channel
 keeps failing, Helprr waits longer between tries (5 minutes, doubling up to 6 hours)

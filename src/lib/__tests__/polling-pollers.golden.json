@@ -708,22 +708,38 @@
       {
        "hash": "a",
        "progress": 1,
-       "name": "A"
+       "name": "A",
+       "errored": false,
+       "stuckSince": null,
+       "stuckSent": false,
+       "unstuckSince": null
       },
       {
        "hash": "b",
        "progress": 1,
-       "name": "B"
+       "name": "B",
+       "errored": false,
+       "stuckSince": null,
+       "stuckSent": false,
+       "unstuckSince": null
       },
       {
        "hash": "c",
        "progress": 0.1,
-       "name": "C"
+       "name": "C",
+       "errored": false,
+       "stuckSince": 1792382400000,
+       "stuckSent": false,
+       "unstuckSince": null
       },
       {
        "hash": "d",
        "progress": 0.4,
-       "name": "D"
+       "name": "D",
+       "errored": false,
+       "stuckSince": null,
+       "stuckSent": false,
+       "unstuckSince": null
       }
      ]
     }
@@ -1658,22 +1674,38 @@
       {
        "hash": "a",
        "progress": 1,
-       "name": "A"
+       "name": "A",
+       "errored": false,
+       "stuckSince": null,
+       "stuckSent": false,
+       "unstuckSince": null
       },
       {
        "hash": "b",
        "progress": 1,
-       "name": "B"
+       "name": "B",
+       "errored": false,
+       "stuckSince": null,
+       "stuckSent": false,
+       "unstuckSince": null
       },
       {
        "hash": "c",
        "progress": 0.1,
-       "name": "C"
+       "name": "C",
+       "errored": false,
+       "stuckSince": 1792382400000,
+       "stuckSent": false,
+       "unstuckSince": null
       },
       {
        "hash": "d",
        "progress": 0.4,
-       "name": "D"
+       "name": "D",
+       "errored": false,
+       "stuckSince": null,
+       "stuckSent": false,
+       "unstuckSince": null
       }
      ]
     }
