@@ -66,6 +66,8 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'DELETE /api/anilist/list-entry',
     'POST /api/anime/automap/run',
     'POST /api/anime/automap/stop',
+    // Hands one of Helprr's arr API keys to Prowlarr as a new app.
+    'POST /api/prowlarr/applications/from-connection',
     // qBittorrent categories: each one's folder becomes a download root that add and move accept.
     'POST /api/qbittorrent/categories',
     'PATCH /api/qbittorrent/categories',
@@ -208,6 +210,8 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/prowlarr/command',
     'DELETE /api/prowlarr/indexers/[id]',
     'PUT /api/prowlarr/indexers/bulk',
+    'PUT /api/prowlarr/applications/bulk',
+    'POST /api/prowlarr/applications/[id]/sync',
     'DELETE /api/prowlarr/indexers/bulk',
     'POST /api/prowlarr/indexerproxies/[id]/test',
     'POST /api/prowlarr/indexerproxies/testall',
@@ -632,7 +636,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(284);
+    expect(handlers.size).toBe(287);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

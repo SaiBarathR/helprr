@@ -33,6 +33,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/anilist/library',
     'GET /api/anilist/list-entry',
     'GET /api/anilist/viewer',
+    // The add form's guesses for one arr connection's addresses.
+    'GET /api/prowlarr/applications/from-connection',
     'GET /api/anime/automap/status',
     'GET /api/cleanup/library/config',
     'GET /api/file-audit',
@@ -609,7 +611,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(307);
+    expect(handlers.size).toBe(308);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
