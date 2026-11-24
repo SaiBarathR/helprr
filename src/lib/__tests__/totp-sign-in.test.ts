@@ -80,6 +80,16 @@ function codeAt(ms: number): string {
   return new TOTP({ secret: Secret.fromBase32(setup.secret), digits: 6, period: 30, algorithm: 'SHA1' }).generate({ timestamp: ms });
 }
 
+/** The claim this request set was given back, by its own value (compare-and-delete). */
+function expectReleased() {
+  const release = mocks.redisEval.mock.calls.find(([script]) => String(script).includes('== ARGV[1]'));
+  expect(release).toBeDefined();
+  const [, { keys, arguments: args }] = release as [string, { keys: string[]; arguments: string[] }];
+  expect(keys[0]).toMatch(/^login:mfa-used:/);
+  const set = mocks.redisSet.mock.calls.find(([key]) => String(key) === keys[0]);
+  expect(args[0]).toBe(set?.[1]);
+}
+
 function post(path: string, body: unknown): NextRequest {
   return new NextRequest(`http://localhost${path}`, {
     method: 'POST',
@@ -344,7 +354,7 @@ describe('the code step', () => {
     const mfaToken = await firstStep();
     const wrong = await codeLogin(post('/api/auth/login/totp', { mfaToken, code: codeAt(NOW + 5 * 60_000) }));
     expect(wrong.status).toBe(401);
-    expect(mocks.redisDel).toHaveBeenCalledWith(expect.stringMatching(/^login:mfa-used:/));
+    expectReleased();
     const right = await codeLogin(post('/api/auth/login/totp', { mfaToken, code: codeAt(NOW) }));
     expect(right.status).toBe(200);
     expect(mocks.createSession).toHaveBeenCalledOnce();
@@ -364,7 +374,11 @@ describe('the code step', () => {
   it('a release that fails leaves the token spent: the next try is expired, never a second sign-in', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const mfaToken = await firstStep();
-    mocks.redisDel.mockRejectedValueOnce(new Error('redis down'));
+    const startAttempt = mocks.redisEval.getMockImplementation();
+    mocks.redisEval.mockImplementation(async (script: string, ...rest: unknown[]) => {
+      if (String(script).includes('== ARGV[1]')) throw new Error('redis down');
+      return startAttempt ? startAttempt(script, ...rest) : ['ok', '0'];
+    });
     // The claim from the wrong code is still in place for the next try.
     mocks.redisSet.mockResolvedValueOnce('OK').mockResolvedValueOnce(null);
     const wrong = await codeLogin(post('/api/auth/login/totp', { mfaToken, code: codeAt(NOW + 5 * 60_000) }));
@@ -380,7 +394,7 @@ describe('the code step', () => {
     const mfaToken = await firstStep();
     mocks.recoveryDeleteMany.mockRejectedValue(new Error('db down'));
     await expect(codeLogin(post('/api/auth/login/totp', { mfaToken, code: 'ABCD-EFGH-IJKL-MNOP' }))).rejects.toThrow('db down');
-    expect(mocks.redisDel).toHaveBeenCalledWith(expect.stringMatching(/^login:mfa-used:/));
+    expectReleased();
   });
 
   it.each(['recordUsernameFailure', 'recordGlobalLoginFailure'] as const)(
@@ -392,7 +406,7 @@ describe('the code step', () => {
       expect(mocks.createSession).not.toHaveBeenCalled();
       expect(mocks.recordFailedSignIn).toHaveBeenCalled();
       // The claim is given back even then.
-      expect(mocks.redisDel).toHaveBeenCalledWith(expect.stringMatching(/^login:mfa-used:/));
+      expectReleased();
     },
   );
 

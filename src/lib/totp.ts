@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomUUID } from 'crypto';
+import { createHash, createHmac, randomBytes, randomUUID } from 'crypto';
 import { Secret, TOTP } from 'otpauth';
 import { SignJWT, jwtVerify } from 'jose';
 import { NextResponse } from 'next/server';
@@ -229,25 +229,35 @@ export function mfaPendingTokenMatches(claims: MfaPendingClaims, user: StampUser
 }
 
 /**
- * Spend a pending token for one sign-in. False when it was already used.
- * Throws when Redis is unreachable, so the caller fails closed.
+ * Spend a pending token for one sign-in: this claim's own random value, or
+ * null when the token was already used or has expired (a request that stalled
+ * past the token's end claims nothing). Throws when Redis is unreachable, so
+ * the caller fails closed.
  */
-export async function claimMfaPendingToken(claims: MfaPendingClaims, nowMs = Date.now()): Promise<boolean> {
+export async function claimMfaPendingToken(claims: MfaPendingClaims, nowMs = Date.now()): Promise<string | null> {
+  if (claims.expiresAtMs <= nowMs) return null;
   const redis = await getRedisClient();
   const ttlMs = Math.max(1_000, claims.expiresAtMs - nowMs + 1_000);
-  const result = await redis.set(`${MFA_PENDING_USED_KEY_PREFIX}${claims.jti}`, '1', { NX: true, PX: ttlMs });
-  return result === 'OK';
+  const claim = randomBytes(16).toString('base64url');
+  const result = await redis.set(`${MFA_PENDING_USED_KEY_PREFIX}${claims.jti}`, claim, { NX: true, PX: ttlMs });
+  return result === 'OK' ? claim : null;
 }
 
 /**
- * Gives back a claim taken before the code was checked, when the code was wrong,
- * so the next try can still sign in. Best-effort: if it fails, the token stays
- * spent and only this sign-in ends (the user starts again from the password).
+ * Gives back this request's claim, taken before the code was checked, when the
+ * code was wrong, so the next try can still sign in. Only the claim this
+ * request set is deleted (compare-and-delete), so a stalled request can never
+ * free another request's claim. Best-effort: if it fails, the token stays spent
+ * and only this sign-in ends (the user starts again from the password).
  */
-export async function releaseMfaPendingToken(claims: MfaPendingClaims): Promise<void> {
+export async function releaseMfaPendingToken(claims: MfaPendingClaims, claim: string): Promise<void> {
   try {
     const redis = await getRedisClient();
-    await redis.del(`${MFA_PENDING_USED_KEY_PREFIX}${claims.jti}`);
+    await redis.eval(
+      `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end
+return 0`,
+      { keys: [`${MFA_PENDING_USED_KEY_PREFIX}${claims.jti}`], arguments: [claim] },
+    );
   } catch (error) {
     console.error('[Auth] Failed to release the two-step sign-in claim:', error);
   }
