@@ -286,6 +286,10 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     await runImport.applySettingsImport({ users: bare.payload.users } as never, IMPORTER_ID);
     const phone = await prisma.notificationChannel.findFirstOrThrow({ where: { name: 'Phone' } });
     expect(phone.events).toEqual(['imported']); // a member gets no health alerts
+    expect(bare.payload.users?.upgradedEvent).toBe(true);
+    // A file from before "Upgraded" (no marker): upgrades came as imports then, so the channel keeps them.
+    await runImport.applySettingsImport({ users: { ...bare.payload.users, upgradedEvent: undefined } } as never, IMPORTER_ID);
+    expect((await prisma.notificationChannel.findFirstOrThrow({ where: { name: 'Phone' } })).events).toEqual(['imported', 'upgraded']);
     expect(decryptSecrets(phone.secrets)).toEqual({ topic: 'member-topic-value', token: 'tk_member_value' });
     expect(decryptSecrets((await prisma.notificationChannel.findFirstOrThrow({ where: { name: 'Home Assistant' } })).secrets))
       .toEqual({ url: 'http://192.168.1.10:8123/api/webhook/admin-hook-id', headerValue: 'admin-header-value' });

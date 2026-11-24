@@ -1287,14 +1287,31 @@ the controls loading indefinitely. The Devices page flags consecutive delivery
 failures with recovery guidance alongside the recorded failure and delivery times;
 the subscription stores those counts/times, not the push service's error text.
 
+Sonarr and Radarr history imports send `imported`, or `upgraded` when the
+import replaced a file the episode or movie already had
+(`src/lib/polling/upgrade-imports.ts`): the arr writes the old file's
+`episodeFileDeleted`/`movieFileDeleted` row with `data.reason` "Upgrade" just
+before the import (same second or the one before), so an import is an upgrade
+when the poll's fetched history (not only its new rows; a page always reaches
+back past the cursor, so a deletion the previous poll read still counts) has
+such a deletion for the same episode or movie, written before the import (a
+lower id, at most a minute earlier). The deletion
+carries the old quality and the import the new one, for the "A → B" body.
+`upgraded` is gated by `notify.media` and filtered by quality and tag like
+`imported`. Migration `20261124120000_upgraded_notification_event` gave every
+existing device preference and channel the choice it had for `imported`;
+devices without a row get it on. A settings import of an older file does the
+same: a device rule for `imported` without one for `upgraded`, and the
+channels of a `users` section without `upgradedEvent: true`. Lidarr imports
+are always `imported`.
+
 "Now in your library" (`watchlistAvailable`, `src/lib/polling/watchlist-available.ts`)
 is sent from the Radarr/Sonarr history poll: a non-upgrade import of a title on
 someone's watchlist sends that person their own copy (a follower event, gated by
 `notify.watchlist` plus `movies.view`/`series.view` and `watchlist.view`). Items
 match by TMDB/TVDB id, or by the arr id for items saved from a library page (with
-several instances of the app, the title must match too). An import is an upgrade,
-and skipped, when the same poll's history has an Upgrade file deletion for it
-within a minute. Each watchlist item is claimed once through
+several instances of the app, the title must match too). An upgrade (as above)
+is skipped. Each watchlist item is claimed once through
 `WatchlistItem.availableNotifiedAt` before sending (at most once: a failed send
 is not retried), so imports on several instances, later episodes and cleared
 notification lists never push again; the history dedupe key is per person per

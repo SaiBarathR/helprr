@@ -12,6 +12,7 @@ import { noteJobFailure } from '@/lib/polling-job-report';
 import type { Prisma } from '@prisma/client';
 import type { HistoryItem } from '@/types';
 import { notifyAndLog } from './shared';
+import { positiveId, radarrUpgradeOf, sonarrUpgradeOf } from './upgrade-imports';
 
 export interface LibraryArrival {
   kind: 'movie' | 'series';
@@ -39,27 +40,14 @@ export interface EpisodeRef {
 
 const MOVIE_IMPORTS = new Set(['downloadFolderImported', 'movieFileImported']);
 const EPISODE_IMPORTS = new Set(['downloadFolderImported', 'episodeFileImported']);
-const UPGRADE_WINDOW_MS = 60_000;
-
-// An upgrade deletes the old file ("…FileDeleted", data.reason "Upgrade") in the
-// same second as the import, so nothing new arrived. `fetched` is everything
-// this poll read, so a deletion seen by the previous poll still counts.
-function isUpgrade(fetched: HistoryItem[], deletedType: string, sameTarget: (h: HistoryItem) => boolean, importDate: string): boolean {
-  const at = Date.parse(importDate);
-  return fetched.some((h) => h.eventType === deletedType && h.data?.reason === 'Upgrade' && sameTarget(h)
-    && Math.abs(Date.parse(h.date) - at) <= UPGRADE_WINDOW_MS);
-}
-
-function positiveId(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
-}
 
 export function movieArrivals(newHistory: HistoryItem[], fetched: HistoryItem[], instanceId: string, soleInstance: boolean): LibraryArrival[] {
   const byMovie = new Map<number, LibraryArrival>();
   for (const item of newHistory) {
     const movieId = positiveId(item.movieId);
     if (!MOVIE_IMPORTS.has(item.eventType) || !movieId || !item.movie?.title || byMovie.has(movieId)) continue;
-    if (isUpgrade(fetched, 'movieFileDeleted', (h) => h.movieId === movieId, item.date)) continue;
+    // An upgrade replaces a file the title already had: nothing new arrived.
+    if (radarrUpgradeOf(item, fetched)) continue;
     byMovie.set(movieId, {
       kind: 'movie',
       instanceId,
@@ -82,7 +70,7 @@ export function seriesArrivals(newHistory: HistoryItem[], fetched: HistoryItem[]
     const seriesId = positiveId(item.seriesId);
     const episodeId = positiveId(item.episodeId ?? item.episode?.id);
     if (!EPISODE_IMPORTS.has(item.eventType) || !seriesId || !episodeId || !item.series?.title) continue;
-    if (isUpgrade(fetched, 'episodeFileDeleted', (h) => h.episodeId === episodeId, item.date)) continue;
+    if (sonarrUpgradeOf(item, fetched)) continue;
     let arrival = bySeries.get(seriesId);
     if (!arrival) {
       arrival = {

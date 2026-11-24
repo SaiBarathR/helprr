@@ -228,6 +228,7 @@ export function isCapability(value: string): value is Capability {
 export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability> = {
   grabbed: 'notify.media',
   imported: 'notify.media',
+  upgraded: 'notify.media',
   downloadFailed: 'notify.media',
   importFailed: 'notify.media',
   upcomingPremiere: 'notify.media',

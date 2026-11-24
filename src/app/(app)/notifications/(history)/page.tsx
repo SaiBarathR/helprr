@@ -439,7 +439,7 @@ export default function NotificationsPage() {
       const source = metadata?.source;
       const metadataId = toNumber(metadata?.id);
       if ((source === 'sonarr' || source === 'radarr') && metadataId) {
-        if (notification.eventType === 'imported') {
+        if (notification.eventType === 'imported' || notification.eventType === 'upgraded') {
           const historyHref = await resolveHistoryNotificationHref(source, metadataId);
           if (historyHref) return historyHref;
         }
@@ -462,7 +462,7 @@ export default function NotificationsPage() {
       ) {
         return '/activity?tab=queue';
       }
-      if (notification.eventType === 'imported') return '/activity/history';
+      if (notification.eventType === 'imported' || notification.eventType === 'upgraded') return '/activity/history';
       if (
         notification.eventType === 'torrentAdded'
         || notification.eventType === 'torrentCompleted'

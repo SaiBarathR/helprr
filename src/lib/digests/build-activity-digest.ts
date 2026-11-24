@@ -40,6 +40,7 @@ const HIGHLIGHT_TYPES: ReadonlyArray<string> = [
 
 const COUNTED_TYPES_ORDER: ReadonlyArray<{ types: string[]; singular: string; plural: string }> = [
   { types: ['imported'], singular: 'import', plural: 'imports' },
+  { types: ['upgraded'], singular: 'upgrade', plural: 'upgrades' },
   { types: ['grabbed'], singular: 'download started', plural: 'downloads started' },
   { types: ['downloadFailed'], singular: 'failed download', plural: 'failed downloads' },
   { types: ['importFailed'], singular: 'failed import', plural: 'failed imports' },

@@ -76,6 +76,8 @@ const GROUP_NOUNS: Record<string, string> = {
   'sonarr:imported': 'Episodes Imported',
   'radarr:imported': 'Movies Imported',
   'lidarr:imported': 'Albums Imported',
+  'sonarr:upgraded': 'Episodes Upgraded',
+  'radarr:upgraded': 'Movies Upgraded',
   '*:downloadFailed': 'Downloads Failed',
   '*:importFailed': 'Manual Imports Required',
   'qbittorrent:torrentAdded': 'Torrents Added',
@@ -107,7 +109,7 @@ function tabRedirect(source: string | undefined, eventType: string): string {
   if (source === 'qbittorrent') return '/torrents';
   if (eventType === 'grabbed') return `/activity?tab=queue&source=${source}`;
   if (eventType === 'downloadFailed' || eventType === 'importFailed') return `/activity?tab=failed&source=${source}`;
-  if (eventType === 'imported') return '/activity/history';
+  if (eventType === 'imported' || eventType === 'upgraded') return '/activity/history';
   return '/notifications';
 }
 

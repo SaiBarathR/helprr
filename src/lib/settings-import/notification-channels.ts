@@ -10,7 +10,9 @@ import { parseChannelEvents, parseChannelName } from '@/lib/notification-channel
  * Create or update the account's channels by name. A file without secrets
  * keeps the ones already saved on this install for the same address; a channel
  * that would then lack a required secret is skipped, to be set up again.
- * Events are cut down to what the account may receive here.
+ * Events are cut down to what the account may receive here. In a file from
+ * before the "upgraded" event (`fromBeforeUpgraded`), a channel set to
+ * "imported" got upgrades too, so it gets "upgraded" as well.
  */
 export async function applyUserNotificationChannelsInTxn(
   tx: Prisma.TransactionClient,
@@ -18,6 +20,7 @@ export async function applyUserNotificationChannelsInTxn(
   userId: string,
   ownerLabel: string,
   skipped: string[],
+  fromBeforeUpgraded = false,
 ): Promise<number> {
   const owner = await tx.user.findUnique({
     where: { id: userId },
@@ -49,10 +52,14 @@ export async function applyUserNotificationChannelsInTxn(
       skipped.push(`${ownerLabel}: notification channel "${name}" skipped (${input.error}) — set it up again in Settings → Notifications`);
       continue;
     }
+    const fileEvents: unknown = channel.events;
+    const listed = fromBeforeUpgraded && Array.isArray(fileEvents) && fileEvents.includes('imported') && !fileEvents.includes('upgraded')
+      ? [...fileEvents, 'upgraded']
+      : fileEvents;
     const data = {
       type: channel.type,
       enabled: channel.enabled !== false,
-      events: parseChannelEvents(owner, channel.events) ?? [],
+      events: parseChannelEvents(owner, listed) ?? [],
       config: input.config,
       secrets: encryptSecrets(input.secrets),
       consecutiveFailures: 0,

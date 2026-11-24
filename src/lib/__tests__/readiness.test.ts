@@ -130,6 +130,7 @@ describe('migration readiness', () => {
     expect(names).not.toContain('migration_lock.toml');
     expect(names).toContain('20261114120000_settings_updated_audit');
     expect(names).toContain('20261118120000_service_down_alert_delay');
-    expect(names).toHaveLength(47);
+    expect(names).toContain('20261124120000_upgraded_notification_event');
+    expect(names).toHaveLength(48);
   });
 });
