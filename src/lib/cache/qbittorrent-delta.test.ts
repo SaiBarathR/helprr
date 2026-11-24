@@ -46,7 +46,7 @@ describe('authorized bounded torrent delta history', () => {
   });
   it.each([100, 1000, 5000])('avoids repeated stable metadata for %i actively downloading torrents', (count) => {
     const history = new TorrentDeltaHistory();
-    const rows = Array.from({ length: count }, (_, i) => row(String(i), { magnet_uri: 'x'.repeat(200), tracker: 'y'.repeat(100) }));
+    const rows = Array.from({ length: count }, (_, i) => row(String(i), { save_path: 'x'.repeat(200), tags: 'y'.repeat(100) }));
     const first = snapshot(...rows);
     const initial = history.response('scope', undefined, first);
     const next = snapshot(...rows.map(r => ({ ...r, progress: .5, dlspeed: 12345 })));

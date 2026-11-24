@@ -24,7 +24,6 @@ export interface QBittorrentTorrent {
   uploaded_session: number;
   dl_limit: number;
   up_limit: number;
-  magnet_uri: string;
   time_active: number;
   seeding_time: number;
   availability: number;
@@ -36,6 +35,17 @@ export interface QBittorrentTorrent {
   max_ratio: number;
   max_seeding_time: number;
   private?: boolean;
+}
+
+/**
+ * A torrent as qBittorrent's torrents/info answers. The magnet's `tr=` and the
+ * tracker URL can carry a private tracker's passkey, so they stay on the
+ * server: what reaches a browser is a QBittorrentTorrent
+ * (projectTorrentForSummary), and the details route hands out the magnet a
+ * user may copy (src/lib/qbittorrent-tracker-links.ts).
+ */
+export interface QBittorrentTorrentInfo extends QBittorrentTorrent {
+  magnet_uri: string;
   /** Current working tracker URL (empty when qBittorrent has none active). */
   tracker?: string;
 }

@@ -4,6 +4,15 @@ import { requireUserCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { magnetForViewer, seesTrackerUrls, trackersForViewer } from '@/lib/qbittorrent-tracker-links';
+
+// The properties the detail drawer shows. The rest stay on the server: the
+// torrent's comment, for one, is free text a tracker can put a link in.
+const PROPERTY_FIELDS = [
+  'save_path', 'total_size', 'total_downloaded', 'total_uploaded', 'total_wasted', 'share_ratio',
+  'dl_speed', 'up_speed', 'dl_limit', 'up_limit', 'time_elapsed', 'seeding_time', 'addition_date',
+  'completion_date', 'seeds', 'seeds_total', 'peers', 'peers_total', 'nb_connections',
+] as const;
 
 async function getHandler(
   request: NextRequest,
@@ -17,18 +26,31 @@ async function getHandler(
     const { hash } = await params;
     const client = await getQBittorrentClient();
 
-    const [properties, files, trackers] = await Promise.all([
+    const [properties, files, trackers, listed] = await Promise.all([
       client.getTorrentProperties(hash, request.signal),
       client.getTorrentFiles(hash, request.signal),
       client.getTorrentTrackers(hash, request.signal),
+      // For the magnet, which torrents/properties does not include.
+      client.getTorrents(undefined, undefined, undefined, undefined, hash),
     ]);
+
+    // Announce URLs carry a private tracker's passkey: in full for an admin only.
+    const fullUrls = seesTrackerUrls(auth.user);
+    const torrent = listed.find((entry) => entry.hash.toLowerCase() === hash.toLowerCase());
+    const shownProperties: Record<string, unknown> = {};
+    for (const field of PROPERTY_FIELDS) shownProperties[field] = properties[field];
 
     logApiDuration('/api/qbittorrent/[hash]/details', startedAt, {
       method: 'GET',
       fileCount: files.length,
       trackerCount: trackers.length,
     });
-    return NextResponse.json({ properties, files, trackers });
+    return NextResponse.json({
+      properties: shownProperties,
+      files,
+      trackers: trackersForViewer(trackers, fullUrls),
+      magnet: magnetForViewer(torrent?.magnet_uri, fullUrls),
+    });
   } catch (error) {
     logApiDuration('/api/qbittorrent/[hash]/details', startedAt, { method: 'GET', failed: true });
     return upstreamErrorResponse(error, 'Failed to fetch torrent details');
