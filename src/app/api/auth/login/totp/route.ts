@@ -143,12 +143,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   await clearUsernameBackoff(user.username);
   // A Jellyfin sign-in's failures count under the name typed there.
   if (claims.typedName && claims.typedName !== user.username) await clearUsernameBackoff(claims.typedName);
+  // Best-effort, as the other clears here: the code is already used, so a
+  // refusal now would cost a recovery code, and the bucket ends within a minute.
   if (ip !== undefined) {
     try {
       await clearLoginAttempts(ip);
     } catch (error) {
       console.error('[Auth] Failed to clear login attempts:', error);
-      return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
     }
   }
 

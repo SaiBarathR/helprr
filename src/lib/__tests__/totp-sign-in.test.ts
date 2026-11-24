@@ -350,6 +350,32 @@ describe('the code step', () => {
     expect(mocks.createSession).toHaveBeenCalledOnce();
   });
 
+  it('signs in with a used recovery code even when clearing the IP bucket fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mfaToken = await firstStep();
+    mocks.recoveryDeleteMany.mockResolvedValue({ count: 1 });
+    mocks.limits.clearLoginAttempts.mockRejectedValue(new Error('redis down'));
+    const response = await codeLogin(post('/api/auth/login/totp', { mfaToken, code: 'ABCD-EFGH-IJKL-MNOP' }));
+    expect(response.status).toBe(200);
+    expect(mocks.recoveryDeleteMany).toHaveBeenCalledOnce();
+    expect(mocks.createSession).toHaveBeenCalledOnce();
+  });
+
+  it('a release that fails leaves the token spent: the next try is expired, never a second sign-in', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mfaToken = await firstStep();
+    mocks.redisDel.mockRejectedValueOnce(new Error('redis down'));
+    // The claim from the wrong code is still in place for the next try.
+    mocks.redisSet.mockResolvedValueOnce('OK').mockResolvedValueOnce(null);
+    const wrong = await codeLogin(post('/api/auth/login/totp', { mfaToken, code: codeAt(NOW + 5 * 60_000) }));
+    expect(wrong.status).toBe(401);
+    const next = await codeLogin(post('/api/auth/login/totp', { mfaToken, code: codeAt(NOW) }));
+    expect(next.status).toBe(401);
+    expect((await next.json()).mfaExpired).toBe(true);
+    expect(mocks.userUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.createSession).not.toHaveBeenCalled();
+  });
+
   it('gives the claim back when using the code fails', async () => {
     const mfaToken = await firstStep();
     mocks.recoveryDeleteMany.mockRejectedValue(new Error('db down'));

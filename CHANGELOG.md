@@ -23,8 +23,8 @@ There is no database change; to get the Redis limit, take this release's Compose
 - When Redis refuses writes (for example at its new memory limit), signing in, confirming
   a password and the trusted-header sign-in answer "Login service unavailable" before
   checking the password or secret, so guesses can't go on without being counted.
-- Two-step sign-in reserves the sign-in before using a code, so a recovery code is never
-  used up by a sign-in that then fails.
+- Two-step sign-in reserves the sign-in before using a code, and no longer fails after the
+  code is used, so a recovery code is never used up by a sign-in that then fails.
 
 ### Fixed
 
