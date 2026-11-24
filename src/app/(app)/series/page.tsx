@@ -38,6 +38,7 @@ import { matchesWatchFilter } from '@/lib/watch-status-filter';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { BulkActionBar } from '@/components/media/bulk-action-bar';
 import type { BulkEditChanges } from '@/components/media/bulk-edit-sheet';
+import { sendSeriesBulkEdit } from '@/lib/series-monitor';
 import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { invalidateAfterLibraryRemove } from '@/lib/query-invalidation';
@@ -457,22 +458,8 @@ export default function SeriesPage() {
   }, [selectedSeries]);
 
   const handleBulkEdit = useCallback(async (changes: BulkEditChanges) => {
-    // A Monitoring choice goes to Sonarr's season pass, after the editor's settings.
-    const { monitor, ...settings } = changes;
-    const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedSeries, async (instanceId, ids) => {
-      const query = instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : '';
-      if (Object.keys(settings).length > 0) {
-        const res = await fetch(`/api/sonarr/editor${query}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids, ...settings }),
-        });
-        if (!res.ok || monitor === undefined) return res;
-      }
-      return fetch(`/api/sonarr/seasonpass${query}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, monitor }),
-      });
-    });
+    const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedSeries, (instanceId, ids) =>
+      sendSeriesBulkEdit(instanceId, ids, changes));
     reportBulk('Updated', ok, fail, { noun: 'series', pluralNoun: 'series', reason: firstError });
     await refetchSeries();
     if (fail === 0) exit();

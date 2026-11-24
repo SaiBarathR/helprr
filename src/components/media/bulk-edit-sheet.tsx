@@ -188,7 +188,7 @@ function BulkEditForm({
               <p className="px-4 pt-2 text-xs text-muted-foreground">
                 {monitor === 'none'
                   ? 'Sonarr unmonitors every episode and each selected series.'
-                  : 'Sonarr sets which episodes of each selected series are monitored.'}
+                  : 'Sonarr sets which episodes of each selected series are monitored. A series that is itself unmonitored stays so, and grabs nothing.'}
               </p>
             )}
           </div>

@@ -10,9 +10,9 @@ import type { Capability } from '@/lib/capabilities';
 const mocks = vi.hoisted(() => ({
   user: null as null | Record<string, unknown>,
   runWithOperationAudit: vi.fn(),
-  radarr: { getMovieById: vi.fn(), updateMovie: vi.fn() },
-  sonarr: { getSeriesById: vi.fn(), updateSeries: vi.fn() },
-  lidarr: { getArtistById: vi.fn(), updateArtist: vi.fn() },
+  radarr: { getMovieById: vi.fn(), updateMovie: vi.fn(), getRootFolders: vi.fn() },
+  sonarr: { getSeriesById: vi.fn(), updateSeries: vi.fn(), getRootFolders: vi.fn() },
+  lidarr: { getArtistById: vi.fn(), updateArtist: vi.fn(), getRootFolders: vi.fn() },
 }));
 
 vi.mock('@/lib/auth', () => ({
@@ -28,6 +28,10 @@ vi.mock('@/lib/service-helpers', () => ({
   getRadarrClient: async () => mocks.radarr,
   getSonarrClient: async () => mocks.sonarr,
   getLidarrClient: async () => mocks.lidarr,
+}));
+// The default instance when a request names none, as resolveConnection gives it.
+vi.mock('@/lib/arr-instances', () => ({
+  resolveConnection: async (type: string, instanceId?: string | null) => ({ id: instanceId || `default-${type}` }),
 }));
 vi.mock('@/lib/file-audit', () => ({ runWithOperationAudit: mocks.runWithOperationAudit }));
 vi.mock('@/lib/cache/tagged-library', () => ({ invalidateTaggedLibrary: vi.fn() }));
@@ -46,19 +50,19 @@ const ARTIST = { id: 7, artistName: 'Artist', path: '/music/Artist', monitored: 
 const cases = [
   {
     name: 'Radarr', put: putMovie, base: '/api/radarr/5', id: '5', item: MOVIE, newPath: '/movies2/Movie (2020)',
-    get: () => mocks.radarr.getMovieById, update: () => mocks.radarr.updateMovie,
+    get: () => mocks.radarr.getMovieById, update: () => mocks.radarr.updateMovie, roots: () => mocks.radarr.getRootFolders, rootPaths: ['/movies', '/movies2/'],
     caps: { view: 'movies.view', path: 'movies.changePath', tags: 'movies.editTags' },
     audit: { service: 'RADARR', targetType: 'movie', targetTitle: 'Movie', fallbackTitle: 'Movie #5' },
   },
   {
     name: 'Sonarr', put: putSeries, base: '/api/sonarr/6', id: '6', item: SERIES, newPath: '/tv2/Series',
-    get: () => mocks.sonarr.getSeriesById, update: () => mocks.sonarr.updateSeries,
+    get: () => mocks.sonarr.getSeriesById, update: () => mocks.sonarr.updateSeries, roots: () => mocks.sonarr.getRootFolders, rootPaths: ['/tv', '/tv2/'],
     caps: { view: 'series.view', path: 'series.changePath', tags: 'series.editTags' },
     audit: { service: 'SONARR', targetType: 'series', targetTitle: 'Series', fallbackTitle: 'Series #6' },
   },
   {
     name: 'Lidarr', put: putArtist, base: '/api/lidarr/7', id: '7', item: ARTIST, newPath: '/music2/Artist',
-    get: () => mocks.lidarr.getArtistById, update: () => mocks.lidarr.updateArtist,
+    get: () => mocks.lidarr.getArtistById, update: () => mocks.lidarr.updateArtist, roots: () => mocks.lidarr.getRootFolders, rootPaths: ['/music', '/music2/'],
     caps: { view: 'music.view', path: 'music.changePath', tags: 'music.editTags' },
     audit: { service: 'LIDARR', targetType: 'artist', targetTitle: 'Artist', fallbackTitle: 'Artist #7' },
   },
@@ -78,6 +82,7 @@ beforeEach(() => {
   for (const c of cases) {
     c.get().mockResolvedValue(c.item);
     c.update().mockImplementation(async (body: unknown) => body);
+    c.roots().mockResolvedValue(c.rootPaths.map((path) => ({ path })));
   }
 });
 
@@ -113,6 +118,37 @@ describe.each(cases)('$name Edit PUT file moves', (c) => {
     expect(c.get()).not.toHaveBeenCalled();
   });
 
+  it('records the default instance when the request names none', async () => {
+    await put(c, '?moveFiles=true', { ...c.item, path: c.newPath });
+    expect(mocks.runWithOperationAudit.mock.calls[0][0].instanceId).toBe(`default-${c.audit.service}`);
+  });
+
+  it.each([
+    ['outside every root folder', (p: string) => p.replace(/^\/[^/]+/, '/etc')],
+    ['nested below a root folder', (p: string) => p.replace(/\/([^/]+)$/, '/deeper/$1')],
+  ])('refuses a move %s, before anything reaches the *arr', async (_label, to) => {
+    const res = await put(c, '?moveFiles=true', { ...c.item, path: to(c.newPath) });
+    expect(res.status).toBe(400);
+    expect(c.update()).not.toHaveBeenCalled();
+    expect(mocks.runWithOperationAudit).not.toHaveBeenCalled();
+  });
+
+  it('refuses a move with no path', async () => {
+    const withoutPath: Record<string, unknown> = { ...c.item };
+    delete withoutPath.path;
+    expect((await put(c, '?moveFiles=true', withoutPath)).status).toBe(400);
+    expect(c.update()).not.toHaveBeenCalled();
+  });
+
+  it("refuses a member's path-only change outside the root folders, and checks no folders for an unchanged path", async () => {
+    mocks.user = member({ [c.caps.view]: true, [c.caps.path]: true, [c.caps.tags]: true });
+    expect((await put(c, '', { ...c.item, path: '/etc/x' })).status).toBe(400);
+    expect(c.update()).not.toHaveBeenCalled();
+    c.roots().mockClear();
+    expect((await put(c, '', { ...c.item, tags: [3] })).status).toBe(200);
+    expect(c.roots()).not.toHaveBeenCalled();
+  });
+
   it("still moves when an admin's read for the audit row fails", async () => {
     c.get().mockRejectedValue(new Error('timeout'));
     const res = await put(c, '?moveFiles=true', { ...c.item, path: c.newPath });
@@ -123,7 +159,7 @@ describe.each(cases)('$name Edit PUT file moves', (c) => {
     });
   });
 
-  it('records a refused move as a failed attempt and returns the error', async () => {
+  it('audits a move the *arr refuses, and returns the error', async () => {
     c.update().mockRejectedValue(new Error('upstream refused'));
     mocks.runWithOperationAudit.mockImplementation(async (_input: unknown, op: () => Promise<unknown>) => op());
     const res = await put(c, '?moveFiles=true', { ...c.item, path: c.newPath });

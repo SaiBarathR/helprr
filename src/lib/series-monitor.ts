@@ -1,4 +1,5 @@
 import { MAX_BULK_EDIT_IDS, toPositiveIntArray } from '@/lib/bulk-editor';
+import type { BulkEditChanges } from '@/components/media/bulk-edit-sheet';
 
 // Sonarr's Monitoring choices, as its own Monitoring menu offers them (its
 // MonitorTypes less the internal unknown/skip/latestSeason). Sonarr applies one
@@ -34,4 +35,26 @@ export function parseSeasonPassBody(body: unknown): { ids: number[]; monitor: Se
   const monitor = SERIES_MONITOR_OPTIONS.find((o) => o.value === b.monitor)?.value;
   if (!monitor) return { error: 'monitor must be one of Sonarr’s monitoring options' };
   return { ids, monitor };
+}
+
+/**
+ * One instance's share of a bulk "More" edit of series. A Monitoring choice goes to
+ * Sonarr's season pass, before the editor's settings: it is safe to repeat, so
+ * retrying a failed instance never runs a file move twice. Resolves to the response
+ * that decides the instance's outcome (the first failure, else the last call).
+ */
+export async function sendSeriesBulkEdit(instanceId: string | undefined, ids: number[], changes: BulkEditChanges): Promise<Response> {
+  const { monitor, ...settings } = changes;
+  const query = instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : '';
+  if (monitor !== undefined) {
+    const res = await fetch(`/api/sonarr/seasonpass${query}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, monitor }),
+    });
+    if (!res.ok || Object.keys(settings).length === 0) return res;
+  }
+  return fetch(`/api/sonarr/editor${query}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, ...settings }),
+  });
 }

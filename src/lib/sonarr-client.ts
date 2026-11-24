@@ -134,8 +134,6 @@ export class SonarrClient {
     await this.delete(`/api/v3/series/${id}`, { deleteFiles, addImportListExclusion });
   }
 
-  // Bulk editor — one request for monitored/tags/settings across many series. Sonarr
-  // applies only the fields present; moveFiles moves each series' files into rootFolderPath.
   // Applies a Monitoring choice to each series' episodes, as Sonarr's own Monitoring
   // menu does: the series-level monitored flag is left alone, except that 'none'
   // unmonitors the series too.
@@ -146,6 +144,8 @@ export class SonarrClient {
     });
   }
 
+  // Bulk editor — one request for monitored/tags/settings across many series. Sonarr
+  // applies only the fields present; moveFiles moves each series' files into rootFolderPath.
   async seriesEditor(body: {
     seriesIds: number[];
     monitored?: boolean;

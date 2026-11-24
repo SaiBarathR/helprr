@@ -10,7 +10,7 @@ import { SERIES_MONITOR_OPTIONS } from '@/lib/series-monitor';
 import type { SeriesActions } from './use-series-actions';
 
 /** Choose which episodes Sonarr monitors, then Apply. */
-export function SeriesMonitorDrawer({ title, actions }: { title: string; actions: SeriesActions }) {
+export function SeriesMonitorDrawer({ title, seriesMonitored, actions }: { title: string; seriesMonitored: boolean; actions: SeriesActions }) {
   const { showMonitorEdit, setShowMonitorEdit, monitorOption, setMonitorOption, actionLoading } = actions;
   return (
     <Drawer open={showMonitorEdit} onOpenChange={setShowMonitorEdit}>
@@ -19,6 +19,8 @@ export function SeriesMonitorDrawer({ title, actions }: { title: string; actions
           <DrawerTitle>Monitor</DrawerTitle>
           <DrawerDescription>
             Choose which episodes to monitor for {title}.
+            {/* Sonarr's choices leave the series' own flag alone, as its own menu does. */}
+            {!seriesMonitored && ' The series itself is unmonitored, so Sonarr grabs nothing until you monitor it.'}
           </DrawerDescription>
         </DrawerHeader>
         {/* The options scroll so Apply and Cancel stay on a short phone's screen. */}

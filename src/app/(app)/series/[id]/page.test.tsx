@@ -420,6 +420,8 @@ describe('series detail page (characterization)', () => {
 
     await user.click(menu().getByRole('menuitem', { name: 'Monitor' }));
     const drawer = screen.getByRole('dialog');
+    // Unmonitored above: the choice changes episodes only, and the drawer says so.
+    expect(drawer.textContent).toContain('grabs nothing until you monitor it');
     await user.click(within(drawer).getByRole('button', { name: 'Last Season' }));
     await user.click(within(drawer).getByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Monitor set to: Last Season'));

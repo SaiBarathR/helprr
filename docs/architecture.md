@@ -784,7 +784,9 @@ that the move finished; it needs the service's `changePath` capability, and the 
 be one of that instance's root folders), moving one title's files from its Edit page
 (`MOVE_MEDIA` too, when the PUT carries `moveFiles=true`: the title, its old and new path in
 the details; a member needs the service's `changePath` capability to ask for a move at all,
-even with the path unchanged. A path change without a move is not audited there),
+even with the path unchanged, and the new path must be a folder directly in one of that
+instance's root folders, as it must for a member's path change. A path change without a move
+is not audited there),
 removing several queue items from Activity's Select mode (`REMOVE_QUEUE`: one
 row per request and instance, the queue ids and removal options in its details;
 the client sends at most 1000 ids per request, one request at a time per

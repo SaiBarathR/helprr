@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
-import { diffMovieEdit, type LibraryEditCaps, type LibraryEditDiff } from '@/lib/library-edit-guard';
+import { diffMovieEdit, inRootFolder, type LibraryEditCaps, type LibraryEditDiff } from '@/lib/library-edit-guard';
+import { resolveConnection } from '@/lib/arr-instances';
 import { can, type PermissionUser } from '@/lib/permissions';
 import type { Capability } from '@/lib/capabilities';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
@@ -100,10 +101,12 @@ async function putHandler(
     // Skipping the fetch for admins avoids an extra upstream round-trip and keeps a
     // transient detail-fetch error from failing an otherwise-valid admin edit.
     // A file move counts as a root-folder change whatever the body's path says.
+    let pathChanges = moveFiles;
     let current: Awaited<ReturnType<typeof client.getMovieById>> | null = null;
     if (auth.user.role !== 'admin') {
       current = await client.getMovieById(pathId);
       const diff = diffMovieEdit(current, update);
+      pathChanges ||= diff.path;
       const guardError = guardResolvedLibraryEdit(auth.user, { ...diff, path: diff.path || moveFiles }, {
         tags: 'movies.editTags',
         path: 'movies.changePath',
@@ -115,15 +118,23 @@ async function putHandler(
       current = await client.getMovieById(pathId).catch(() => null);
     }
 
+    // A new path goes only into one of this instance's root folders, as the Edit page
+    // offers and the bulk editor checks, never anywhere else the *arr can write.
+    const newPath = typeof update.path === 'string' ? update.path : null;
+    if (pathChanges && (!newPath || !inRootFolder(newPath, await client.getRootFolders()))) {
+      return NextResponse.json({ error: 'path must be in one of this instance’s root folders' }, { status: 400 });
+    }
+
     const save = () => client.updateMovie(update, moveFiles);
     // Moving files rewrites the movie's folder on disk, so it goes through the
     // operation audit like the bulk editor's root-folder change.
-    const newPath = typeof update.path === 'string' ? update.path : null;
     const result = moveFiles
       ? await runWithOperationAudit({
           user: auth.user,
           service: 'RADARR',
-          instanceId,
+          // The resolved connection, so a request that names no instance still records
+          // which instance's files were moved.
+          instanceId: (await resolveConnection('RADARR', instanceId)).id,
           operation: 'MOVE_MEDIA',
           targetType: 'movie',
           targetId: pathId,
