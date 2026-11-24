@@ -427,6 +427,17 @@ export class SonarrClient {
     });
   }
 
+  // One series' blocklist (Sonarr v4's seriesIds filter on the paged list).
+  async getSeriesBlocklist(seriesId: number, pageSize: number): Promise<BlocklistResponse> {
+    return this.get<BlocklistResponse>('/api/v3/blocklist', {
+      page: 1,
+      pageSize,
+      sortKey: 'date',
+      sortDirection: 'descending',
+      seriesIds: seriesId,
+    });
+  }
+
   async deleteBlocklistItem(id: number): Promise<void> {
     await this.delete(`/api/v3/blocklist/${id}`);
   }

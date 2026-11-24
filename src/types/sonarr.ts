@@ -6,6 +6,8 @@ import type { DiscoverLibraryStatus } from './discover';
 export interface SonarrSeries {
   id: number;
   title: string;
+  /** Other and scene names; a season number limits a scene name to that season (-1: all). */
+  alternateTitles?: Array<{ title: string; seasonNumber?: number; sceneSeasonNumber?: number }>;
   sortTitle: string;
   status: string;
   overview: string;

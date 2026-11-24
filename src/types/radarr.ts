@@ -7,6 +7,8 @@ export interface RadarrMovie {
   title: string;
   sortTitle: string;
   originalTitle?: string;
+  /** Other names TMDB knows the movie by; Radarr matches releases against them. */
+  alternateTitles?: Array<{ title: string; sourceType?: string }>;
   originalLanguage?: { id: number; name: string };
   sizeOnDisk: number;
   status: string;
@@ -225,4 +227,15 @@ export interface RadarrLookupResult {
   runtime: number;
   studio: string;
   library?: DiscoverLibraryStatus;
+}
+
+/** A Radarr extra file (subtitle, .nfo, image), as the extrafile route returns it. */
+export interface ExtraFileResource {
+  id: number;
+  movieFileId?: number;
+  relativePath: string;
+  extension?: string;
+  type: 'subtitle' | 'metadata' | 'other';
+  languageTags?: string[];
+  title?: string;
 }

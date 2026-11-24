@@ -12,8 +12,10 @@ import type {
   QueueResponse,
   HistoryItem,
   HistoryResponse,
+  BlocklistItem,
   BlocklistResponse,
   ManualImportItem,
+  ExtraFileResource,
   MovieFileResource,
   QualityProfile,
   QualityDefinition,
@@ -299,6 +301,11 @@ export class RadarrClient {
     });
   }
 
+  // One movie's blocklist: Radarr answers with every entry of the movie, unpaged.
+  async getMovieBlocklist(movieId: number): Promise<BlocklistItem[]> {
+    return this.get<BlocklistItem[]>('/api/v3/blocklist/movie', { movieId });
+  }
+
   async deleteBlocklistItem(id: number): Promise<void> {
     await this.delete(`/api/v3/blocklist/${id}`);
   }
@@ -335,6 +342,11 @@ export class RadarrClient {
   }
 
   /** One movie's history, unpaged. eventType 3 = downloadFolderImported. */
+  // The subtitles, .nfo and images Radarr keeps next to the movie's file.
+  async getExtraFiles(movieId: number): Promise<ExtraFileResource[]> {
+    return this.get<ExtraFileResource[]>('/api/v3/extrafile', { movieId });
+  }
+
   async getMovieHistory(movieId: number, eventType?: number): Promise<HistoryItem[]> {
     const params: Record<string, unknown> = { movieId };
     if (eventType !== undefined) params.eventType = eventType;

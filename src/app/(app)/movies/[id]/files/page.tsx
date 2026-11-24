@@ -20,7 +20,11 @@ import {
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ArrHistoryList } from '@/components/media/arr-history-list';
 import { CustomFormatChips } from '@/components/media/custom-format-chips';
-import type { HistoryItem, MovieFileResource, RadarrMovie } from '@/types';
+import { AlternateTitlesRow } from '@/components/media/alternate-titles';
+import { CollapsibleRow } from '@/components/media/collapsible-row';
+import { TitleBlocklist } from '@/components/media/title-blocklist';
+import { useArrInstanceId } from '@/lib/hooks/use-arr-instance-id';
+import type { ExtraFileResource, HistoryItem, MovieFileResource, RadarrMovie } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { ApiError, arrMutationFetch } from '@/lib/query-fetch';
@@ -67,6 +71,39 @@ type DrawerRow = {
   breakValue?: boolean;
 };
 
+const EXTRA_TYPE_LABEL: Record<ExtraFileResource['type'], string> = {
+  subtitle: 'Subtitle',
+  metadata: 'Metadata',
+  other: 'Other',
+};
+const EXTRA_TYPE_ORDER: ExtraFileResource['type'][] = ['subtitle', 'metadata', 'other'];
+
+/** The subtitles, .nfo and images beside the movie's file; the summary counts each kind. */
+function ExtraFilesRow({ files }: { files: ExtraFileResource[] }) {
+  const sorted = [...files].sort((a, b) =>
+    EXTRA_TYPE_ORDER.indexOf(a.type) - EXTRA_TYPE_ORDER.indexOf(b.type)
+    || a.relativePath.localeCompare(b.relativePath));
+  const summary = EXTRA_TYPE_ORDER
+    .map((type) => [type, files.filter((file) => file.type === type).length] as const)
+    .filter(([, count]) => count > 0)
+    .map(([type, count]) => `${count} ${EXTRA_TYPE_LABEL[type].toLowerCase()}`)
+    .join(', ');
+  return (
+    <CollapsibleRow label="Extra files" summary={summary} className="rounded-2xl border bg-card px-4">
+      <ul className="divide-y divide-border/40">
+        {sorted.map((file) => (
+          <li key={file.id} className="py-2 first:pt-0 last:pb-0">
+            <p className="text-sm leading-tight break-all">{file.relativePath}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {[EXTRA_TYPE_LABEL[file.type], file.title, file.languageTags?.join(', ')].filter(Boolean).join(' \u00b7 ')}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </CollapsibleRow>
+  );
+}
+
 function DetailRows({ rows }: { rows: DrawerRow[] }) {
   return (
     <div className="rounded-lg border overflow-hidden divide-y">
@@ -87,6 +124,9 @@ export default function MovieFilesPage() {
   const instance = useSearchParams().get('instance') ?? undefined;
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
   const canManageFiles = useCan('movies.manageFiles');
+  // Mark as failed and the blocklist name the instance; a page opened without
+  // ?instance= is on the default one.
+  const instanceId = useArrInstanceId('RADARR', instance);
 
   async function copyText(value: string, label: string) {
     try {
@@ -138,6 +178,17 @@ export default function MovieFilesPage() {
     enabled: Number.isFinite(movieId) && movieQuery.data?.hasFile === true,
     select: (d) => (Array.isArray(d) ? d : []),
   });
+
+  const extraFilesQuery = useQuery({
+    queryKey: ['radarr', 'extrafile', instance ?? 'default', movieId],
+    queryFn: async ({ signal }): Promise<ExtraFileResource[]> => {
+      const r = await arrMutationFetch(instance, `/api/radarr/extrafile?movieId=${movieId}`, { signal });
+      return r.ok ? ((await r.json()) as ExtraFileResource[]) : [];
+    },
+    enabled: Number.isFinite(movieId) && movieQuery.data?.hasFile === true,
+    select: (d) => (Array.isArray(d) ? d : []),
+  });
+  const extraFiles = extraFilesQuery.data ?? [];
 
   if (loading && !movie) {
     return <><PageHeader title="Files & information" /><PageSpinner /></>;
@@ -296,12 +347,22 @@ export default function MovieFilesPage() {
               No file on disk
             </div>
           )}
+          {movie.hasFile && extraFiles.length > 0 && <ExtraFilesRow files={extraFiles} />}
         </section>
+
+        {(movie.alternateTitles?.length ?? 0) > 0 && (
+          <section className="space-y-2">
+            <h2 className="text-lg font-bold leading-tight">Information</h2>
+            <AlternateTitlesRow titles={movie.alternateTitles} className="rounded-2xl border bg-card px-4" />
+          </section>
+        )}
 
         <section className="space-y-2">
           <h2 className="text-lg font-bold leading-tight">History</h2>
-          <ArrHistoryList items={history} loading={historyLoading} />
+          <ArrHistoryList items={history} loading={historyLoading} source="radarr" instanceId={instanceId} />
         </section>
+
+        <TitleBlocklist source="radarr" mediaId={movieId} instanceId={instanceId} />
       </div>
 
       <Drawer open={fileDrawerOpen} onOpenChange={setFileDrawerOpen}>
