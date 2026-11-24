@@ -114,6 +114,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'DELETE /api/activity/queue',
     'DELETE /api/activity/queue/[id]',
     'POST /api/activity/queue/[id]/grab',
+    'POST /api/activity/queue/grab',
     'POST /api/lidarr/command',
     'POST /api/lidarr/release',
     'POST /api/radarr/command',
@@ -179,7 +180,6 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'DELETE /api/radarr/editor',
     'DELETE /api/radarr/moviefile',
   ],
-  'cap:movies.editMonitoring': ['PUT /api/radarr/collections'],
   'cap:movies.editTags': ['POST /api/radarr/tags'],
   'cap:movies.manageFiles': [
     'POST /api/radarr/manualimport/import',
@@ -430,6 +430,13 @@ const SPECIAL_POLICIES: Record<string, SpecialPolicy> = {
     kind: 'field-capability',
     marker: 'guardResolvedLibraryEdit',
     capabilities: ['series.editTags', 'series.changePath', 'series.editMonitoring'],
+  },
+  // Monitoring, tags and the root folder each need their movie-edit capability; the
+  // other options are admin-only.
+  'PUT /api/radarr/collections': {
+    kind: 'field-capability',
+    marker: 'COLLECTION_FIELD_CAPABILITY',
+    capabilities: ['movies.editMonitoring', 'movies.editTags', 'movies.changePath'],
   },
   'PUT /api/radarr/[id]': {
     kind: 'field-capability',

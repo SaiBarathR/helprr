@@ -15,6 +15,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { NotFoundState } from '@/components/ui/not-found-state';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
+import { QualityProfileSheet, QualityProfileValue } from '@/components/media/quality-profile-sheet';
 import {
   Drawer,
   DrawerContent,
@@ -142,6 +143,7 @@ export default function ArtistDetailPage() {
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [addExclusion, setAddExclusion] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showQualityProfile, setShowQualityProfile] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useRouteViewState('overview-expanded', false);
   const [showRenamePreview, setShowRenamePreview] = useState(false);
@@ -344,11 +346,11 @@ export default function ArtistDetailPage() {
   const stats = artist.statistics;
   const rating = artist.ratings?.value ?? 0;
 
-  const infoRows: { label: string; value: string }[] = [
+  const infoRows: { label: string; value: string; onSelect?: () => void }[] = [
     { label: 'Status', value: artist.status ? artist.status.charAt(0).toUpperCase() + artist.status.slice(1) : 'Unknown' },
     ...(artist.artistType ? [{ label: 'Type', value: artist.artistType }] : []),
     ...(artist.disambiguation ? [{ label: 'Also known as', value: artist.disambiguation }] : []),
-    { label: 'Quality Profile', value: qualityProfile?.name || 'Unknown' },
+    { label: 'Quality Profile', value: qualityProfile?.name || 'Unknown', onSelect: () => setShowQualityProfile(true) },
     { label: 'Metadata Profile', value: metadataProfile?.name || 'Unknown' },
     ...(stats ? [{ label: 'Albums', value: String(stats.albumCount) }] : []),
     ...(stats ? [{ label: 'Tracks', value: `${stats.trackFileCount} / ${stats.totalTrackCount} (${Math.round(stats.percentOfTracks)}%)` }] : []),
@@ -642,7 +644,11 @@ export default function ArtistDetailPage() {
             {infoRows.map((row) => (
               <div key={row.label} className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0">
                 <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
-                <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
+                {row.onSelect ? (
+                  <QualityProfileValue name={row.value} onOpen={row.onSelect} />
+                ) : (
+                  <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
+                )}
               </div>
             ))}
           </div>
@@ -798,6 +804,15 @@ export default function ArtistDetailPage() {
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
+
+      <QualityProfileSheet
+        service="lidarr"
+        instanceId={instance}
+        profileId={artist.qualityProfileId}
+        profileName={qualityProfile?.name}
+        open={showQualityProfile}
+        onOpenChange={setShowQualityProfile}
+      />
     </>
   );
 }

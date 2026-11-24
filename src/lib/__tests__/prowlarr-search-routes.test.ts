@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => {
   const store = new Map<string, string>();
   return {
     store,
-    prowlarr: { searchReleases: vi.fn(), grabRelease: vi.fn(), getIndexers: vi.fn() },
-    requireUserCapability: vi.fn(),
+    prowlarr: {
+      searchReleases: vi.fn(), grabRelease: vi.fn(), getIndexers: vi.fn(), getCategories: vi.fn(), getDownloadClients: vi.fn(),
+    },
+    // The acting user; each gate below checks its capabilities with the real can().
+    user: { id: 'admin-1', role: 'admin', template: 'admin', permissions: {} as Record<string, boolean> },
+    cache: new Map<string, unknown>(),
     redis: {
       get: vi.fn(async (key: string) => store.get(key) ?? null),
       multi: vi.fn(() => {
@@ -20,7 +24,21 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.requireUserCapability }));
+vi.mock('@/lib/auth', async () => {
+  const { can } = await import('@/lib/permissions');
+  const { NextResponse: Res } = await import('next/server');
+  const gate = (allowed: boolean) => (allowed
+    ? { ok: true, user: mocks.user, session: {} }
+    : { ok: false, response: Res.json({ error: 'Forbidden' }, { status: 403 }) });
+  return {
+    requireUserCapability: vi.fn(async (cap: never) => gate(can(mocks.user as never, cap))),
+    requireUserAnyCapability: vi.fn(async (caps: never[]) => gate(caps.some((cap) => can(mocks.user as never, cap)))),
+  };
+});
+vi.mock('@/lib/cache/json-cache', () => ({
+  getCachedJson: vi.fn(async (scope: string, seed: string) => mocks.cache.get(`${scope}:${seed}`) ?? null),
+  setCachedJson: vi.fn(async (scope: string, seed: string, value: unknown) => { mocks.cache.set(`${scope}:${seed}`, value); }),
+}));
 const logging = vi.hoisted(() => ({ options: [] as unknown[] }));
 vi.mock('@/lib/api-logger', () => ({
   withApiLogging: (handler: unknown, _name: string, options?: unknown) => { logging.options.push(options); return handler; },
@@ -30,6 +48,8 @@ vi.mock('@/lib/redis', () => ({ getRedisClient: vi.fn(async () => mocks.redis) }
 
 import { GET as searchGet } from '@/app/api/prowlarr/search/route';
 import { POST as grabPost } from '@/app/api/prowlarr/search/grab/route';
+import { GET as categoriesGet } from '@/app/api/prowlarr/categories/route';
+import { GET as clientsGet } from '@/app/api/prowlarr/downloadclients/route';
 
 const SECRET = 'S3cretPasskey0123456789abcdef';
 const release = {
@@ -54,31 +74,56 @@ const grab = (body: unknown) => grabPost(new NextRequest('http://localhost/api/p
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify(body),
 }));
-const as = (id: string) => mocks.requireUserCapability.mockResolvedValue({ ok: true, user: { id, role: 'admin' }, session: {} });
+const as = (id: string) => { mocks.user = { id, role: 'admin', template: 'admin', permissions: {} }; };
+// A member with only these Prowlarr capabilities on top of the member template.
+const member = (permissions: Record<string, boolean>) => { mocks.user = { id: 'member-1', role: 'member', template: 'member', permissions }; };
+
+const tree = [
+  { id: 2000, name: 'Movies', subCategories: [{ id: 2040, name: 'Movies/HD', subCategories: [] }] },
+  { id: 5000, name: 'TV', subCategories: [{ id: 5070, name: 'TV/Anime', subCategories: [] }] },
+  { id: 0, name: 'Other', subCategories: [{ id: 10, name: 'Other/Misc', subCategories: [] }] },
+];
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.store.clear();
+  mocks.cache.clear();
   as('admin-1');
+  mocks.prowlarr.getCategories.mockResolvedValue(tree);
+  mocks.prowlarr.getDownloadClients.mockResolvedValue([
+    { id: 4, name: 'Spare', protocol: 'torrent', enable: true, priority: 2, fields: [{ name: 'password', value: SECRET }] },
+    { id: 1, name: 'qBittorrent', protocol: 'torrent', enable: true, priority: 1, fields: [{ name: 'password', value: SECRET }] },
+    { id: 2, name: 'SABnzbd', protocol: 'usenet', enable: true, priority: 1, fields: [] },
+    { id: 3, name: 'Old', protocol: 'torrent', enable: false, priority: 1, fields: [] },
+  ]);
   mocks.prowlarr.searchReleases.mockResolvedValue([release]);
   mocks.prowlarr.grabRelease.mockResolvedValue(release);
   mocks.prowlarr.getIndexers.mockResolvedValue([
-    { id: 1, name: 'Public', enable: true },
-    { id: 2, name: 'Usenet', enable: true },
-    { id: 3, name: 'Off', enable: false },
+    { id: 1, name: 'Public', enable: true, privacy: 'public' },
+    { id: 2, name: 'Usenet', enable: true, privacy: 'private' },
+    { id: 3, name: 'Off', enable: false, privacy: 'private' },
+    { id: 7, name: 'Tracker', enable: true, privacy: 'private' },
   ]);
 });
 
 describe('GET /api/prowlarr/search', () => {
-  it('needs prowlarr.manage and stops before Prowlarr when refused', async () => {
-    mocks.requireUserCapability.mockResolvedValue({ ok: false, response: NextResponse.json({}, { status: 403 }) });
+  it('refuses a member with view only, before Prowlarr', async () => {
+    member({ 'prowlarr.view': true });
 
     const res = await search('q=bunny');
 
-    expect(mocks.requireUserCapability).toHaveBeenCalledWith('prowlarr.manage');
     expect(res.status).toBe(403);
     expect(mocks.prowlarr.searchReleases).not.toHaveBeenCalled();
   });
+
+  it.each([['prowlarr.search', { 'prowlarr.view': true, 'prowlarr.search': true }], ['prowlarr.manage alone', { 'prowlarr.manage': true }]])(
+    'lets a member with %s search', async (_label, permissions) => {
+      member(permissions);
+
+      expect((await search('q=bunny')).status).toBe(200);
+      expect(mocks.prowlarr.searchReleases).toHaveBeenCalled();
+    },
+  );
 
   it('returns display fields and a token, and nothing that can carry a key', async () => {
     const res = await search('q=bunny&categories=2000,5000');
@@ -89,13 +134,73 @@ describe('GET /api/prowlarr/search', () => {
     expect(text).not.toContain(SECRET);
     expect(text).not.toMatch(/guid|downloadUrl|magnetUrl|infoUrl|commentUrl|apikey/i);
     expect(Object.keys(results[0]).sort()).toEqual(
-      ['id', 'indexer', 'leechers', 'protocol', 'publishDate', 'seeders', 'size', 'title'],
+      ['categories', 'flags', 'grabs', 'id', 'indexer', 'leechers', 'protocol', 'publishDate', 'seeders', 'size', 'title'],
     );
     expect(mocks.prowlarr.searchReleases).toHaveBeenCalledWith(
       { query: 'bunny', type: 'search', categories: [2000, 5000], indexerIds: [] }, expect.anything(),
     );
-    expect(mocks.prowlarr.getIndexers).not.toHaveBeenCalled();
   });
+
+  it('adds category names, grabs and known flags, and keeps ratio flags off public trackers', async () => {
+    const categories = [
+      { id: 2000, name: 'Movies', subCategories: [] },
+      { id: 2040, name: 'Movies/HD', subCategories: [] },
+      { id: 101234, subCategories: [] },
+    ];
+    mocks.prowlarr.searchReleases.mockResolvedValue([
+      { ...release, guid: 'private', grabs: 12, indexerFlags: ['freeleech', 'Internal', 'passkey=abc', 'nuked'], categories },
+      { ...release, guid: 'public', indexerId: 1, grabs: null, indexerFlags: ['freeleech', 'scene'], categories: [{ id: 5000, name: 'TV', subCategories: [] }] },
+    ]);
+
+    const { results } = await (await search('q=bunny')).json();
+
+    expect(results[0]).toMatchObject({ grabs: 12, flags: ['freeleech', 'internal', 'nuked'], categories: ['Movies/HD'] });
+    expect(results[1]).toMatchObject({ grabs: null, flags: ['scene'], categories: ['TV'] });
+  });
+
+  it('still searches when the indexer list cannot be read, keeping the flags', async () => {
+    mocks.prowlarr.getIndexers.mockRejectedValue(new Error('down'));
+    mocks.prowlarr.searchReleases.mockResolvedValue([{ ...release, indexerFlags: ['freeleech'] }]);
+
+    const res = await search('q=bunny');
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).results[0].flags).toEqual(['freeleech']);
+  });
+
+  it('does not wait on a slow indexer list that only trims flags', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      mocks.prowlarr.getIndexers.mockReturnValue(new Promise(() => {}));
+      mocks.prowlarr.searchReleases.mockResolvedValue([{ ...release, indexerFlags: ['freeleech'] }]);
+
+      const pending = search('q=bunny');
+      await vi.advanceTimersByTimeAsync(5_000);
+      const res = await pending;
+
+      expect(res.status).toBe(200);
+      expect((await res.json()).results[0].flags).toEqual(['freeleech']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('takes any category in Prowlarr\'s tree, subcategories included, and reads the tree once', async () => {
+    await search('q=bunny&categories=5070,2040');
+    await search('q=bunny&categories=2000');
+
+    expect(mocks.prowlarr.searchReleases).toHaveBeenCalledWith(
+      expect.objectContaining({ categories: [5070, 2040] }), expect.anything(),
+    );
+    expect(mocks.prowlarr.getCategories).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([['one not in the tree', '9999'], ['the placeholder Other branch', '10'], ['not a number', '2000,abc']])(
+    'refuses a category that is %s without searching', async (_label, categories) => {
+      expect((await search(`q=bunny&categories=${categories}`)).status).toBe(400);
+      expect(mocks.prowlarr.searchReleases).not.toHaveBeenCalled();
+    },
+  );
 
   it('keeps the search text out of the request log', () => {
     expect(logging.options).toContainEqual({ redactQueryParams: ['q'] });
@@ -180,7 +285,7 @@ describe('GET /api/prowlarr/search', () => {
   it.each([
     ['too short', 'q=a'],
     ['too long', `q=${'a'.repeat(201)}`],
-    ['a bad category', 'q=bunny&categories=6000'],
+    ['too many categories', `q=bunny&categories=${Array.from({ length: 101 }, (_, i) => i + 1).join(',')}`],
     ['an unknown type', 'q=bunny&type=tv-search'],
     ['an id with no text and no type', 'q=&tvdbId=121361'],
     ['an IMDb id without tt', 'q=&type=movie&imdbId=0111161'],
@@ -221,8 +326,54 @@ describe('POST /api/prowlarr/search/grab', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
-    expect(mocks.prowlarr.grabRelease).toHaveBeenCalledWith({ guid: release.guid, indexerId: 7 });
+    expect(mocks.prowlarr.grabRelease).toHaveBeenCalledWith({ guid: release.guid, indexerId: 7, downloadClientId: undefined });
+    expect(mocks.prowlarr.getDownloadClients).not.toHaveBeenCalled();
   });
+
+  it('refuses a member who can search but not manage', async () => {
+    member({ 'prowlarr.view': true, 'prowlarr.search': true });
+    const id = await token();
+
+    expect((await grab({ id })).status).toBe(403);
+    expect(mocks.prowlarr.grabRelease).not.toHaveBeenCalled();
+  });
+
+  it('lets a member with manage grab', async () => {
+    member({ 'prowlarr.manage': true });
+
+    expect((await grab({ id: await token() })).status).toBe(200);
+  });
+
+  it('leaves the client to Prowlarr when the pick is null', async () => {
+    const res = await grab({ id: await token(), downloadClientId: null });
+
+    expect(res.status).toBe(200);
+    expect(mocks.prowlarr.grabRelease).toHaveBeenCalledWith({ guid: release.guid, indexerId: 7, downloadClientId: undefined });
+    expect(mocks.prowlarr.getDownloadClients).not.toHaveBeenCalled();
+  });
+
+  it('sends to the download client picked', async () => {
+    const res = await grab({ id: await token(), downloadClientId: 4 });
+
+    expect(res.status).toBe(200);
+    expect(mocks.prowlarr.grabRelease).toHaveBeenCalledWith({ guid: release.guid, indexerId: 7, downloadClientId: 4 });
+  });
+
+  it.each([['a disabled client', 3], ['a client for the other protocol', 2], ['a client that is gone', 9]])(
+    'refuses %s without grabbing', async (_label, downloadClientId) => {
+      const res = await grab({ id: await token(), downloadClientId });
+
+      expect(res.status).toBe(400);
+      expect(mocks.prowlarr.grabRelease).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([['a string', '4'], ['a fraction', 1.5], ['zero', 0], ['past an int', 2_147_483_648]])(
+    'refuses a client id that is %s', async (_label, downloadClientId) => {
+      expect((await grab({ id: 'x', downloadClientId })).status).toBe(400);
+      expect(mocks.prowlarr.getDownloadClients).not.toHaveBeenCalled();
+    },
+  );
 
   it('refuses a token issued to another user', async () => {
     const id = await token();
@@ -261,5 +412,54 @@ describe('POST /api/prowlarr/search/grab', () => {
 
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: 'Grab failed' });
+  });
+});
+
+describe('GET /api/prowlarr/categories', () => {
+  it('returns the tree as ids and names, without the placeholder branch', async () => {
+    member({ 'prowlarr.search': true });
+
+    const res = await categoriesGet();
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([
+      { id: 2000, name: 'Movies', subCategories: [{ id: 2040, name: 'Movies/HD' }] },
+      { id: 5000, name: 'TV', subCategories: [{ id: 5070, name: 'TV/Anime' }] },
+    ]);
+  });
+
+  it('refuses a member with view only', async () => {
+    member({ 'prowlarr.view': true });
+
+    expect((await categoriesGet()).status).toBe(403);
+    expect(mocks.prowlarr.getCategories).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/prowlarr/downloadclients', () => {
+  it('lists enabled clients by priority, with no fields', async () => {
+    const res = await clientsGet();
+    const text = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(text).not.toContain(SECRET);
+    expect(JSON.parse(text)).toEqual([
+      { id: 1, name: 'qBittorrent', protocol: 'torrent' },
+      { id: 2, name: 'SABnzbd', protocol: 'usenet' },
+      { id: 4, name: 'Spare', protocol: 'torrent' },
+    ]);
+  });
+
+  it('returns an empty list when Prowlarr answers with something else', async () => {
+    mocks.prowlarr.getDownloadClients.mockResolvedValue({ message: 'odd' });
+
+    expect(await (await clientsGet()).json()).toEqual([]);
+  });
+
+  it('needs manage, not search', async () => {
+    member({ 'prowlarr.view': true, 'prowlarr.search': true });
+
+    expect((await clientsGet()).status).toBe(403);
+    expect(mocks.prowlarr.getDownloadClients).not.toHaveBeenCalled();
   });
 });

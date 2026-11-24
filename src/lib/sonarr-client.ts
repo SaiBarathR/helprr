@@ -16,6 +16,7 @@ import type {
   ManualImportItem,
   EpisodeFileResource,
   QualityProfile,
+  QualityProfileResource,
   QualityDefinition,
   ArrLanguage,
   RootFolder,
@@ -246,8 +247,11 @@ export class SonarrClient {
 
   /** Search every monitored episode on Wanted → Missing (`missing`) or Cutoff Unmet (`cutoff`). */
   async searchWanted(type: 'missing' | 'cutoff'): Promise<CommandResponse> {
+    // Sent explicitly although it is Sonarr's default: monitored=false would
+    // search the unmonitored episodes, which Activity can now list.
     return this.post<CommandResponse>('/api/v3/command', {
       name: type === 'missing' ? 'MissingEpisodeSearch' : 'CutoffUnmetEpisodeSearch',
+      monitored: true,
     });
   }
 
@@ -353,12 +357,32 @@ export class SonarrClient {
   }
 
   // Wanted
-  async getWantedMissing(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: SonarrEpisode[] }> {
-    return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey: 'episodes.airDateUtc', sortDirection: 'descending', includeSeries: true });
+  // Sonarr lists only monitored episodes of monitored series unless sent
+  // monitored=false, which lists the others instead (never both at once).
+  async getWantedMissing(page = 1, pageSize = 20, { unmonitored = false } = {}): Promise<{ page: number; pageSize: number; totalRecords: number; records: SonarrEpisode[] }> {
+    return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey: 'episodes.airDateUtc', sortDirection: 'descending', includeSeries: true, ...(unmonitored ? { monitored: false } : {}) });
   }
 
-  async getCutoffUnmet(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: SonarrEpisode[] }> {
-    return this.get('/api/v3/wanted/cutoff', { page, pageSize, sortKey: 'episodes.airDateUtc', sortDirection: 'descending', includeSeries: true });
+  async getCutoffUnmet(page = 1, pageSize = 20, { unmonitored = false } = {}): Promise<{ page: number; pageSize: number; totalRecords: number; records: SonarrEpisode[] }> {
+    return this.get('/api/v3/wanted/cutoff', { page, pageSize, sortKey: 'episodes.airDateUtc', sortDirection: 'descending', includeSeries: true, ...(unmonitored ? { monitored: false } : {}) });
+  }
+
+  /**
+   * The ids of the series with a monitored episode on Wanted → Cutoff Unmet, for the
+   * library's Cutoff Unmet filter. Sonarr orders the list by air date only, so paging
+   * through it can skip or repeat rows at a page edge: one page of up to `limit`
+   * episodes reads them all (`complete` is false past it).
+   */
+  async getCutoffUnmetSeriesIds(limit = 20_000): Promise<{ seriesIds: number[]; complete: boolean }> {
+    const page = await this.get<{ totalRecords: number; records: { seriesId: number }[] }>(
+      '/api/v3/wanted/cutoff',
+      { page: 1, pageSize: limit, includeSeries: false, includeEpisodeFile: false, includeImages: false, monitored: true },
+      { timeout: 60_000 },
+    );
+    return {
+      seriesIds: [...new Set(page.records.map((record) => record.seriesId))],
+      complete: page.records.length >= page.totalRecords,
+    };
   }
 
   // Calendar
@@ -414,6 +438,12 @@ export class SonarrClient {
   // Sends a delayed (pending) release to the download client now.
   async grabQueueItem(id: number): Promise<void> {
     await this.post(`/api/v3/queue/grab/${id}`);
+  }
+
+  // Sends several pending releases at once. The app grabs them in order and stops
+  // at the first id that is no longer pending (404), keeping the ones before it.
+  async grabQueueBulk(ids: number[]): Promise<void> {
+    await this.post('/api/v3/queue/grab/bulk', { ids });
   }
 
   // Blocklist — releases the *arr will not grab again. Removing an entry lets
@@ -509,6 +539,10 @@ export class SonarrClient {
   // Configuration
   async getQualityProfiles(): Promise<QualityProfile[]> {
     return this.get<QualityProfile[]>('/api/v3/qualityprofile');
+  }
+
+  async getQualityProfile(id: number): Promise<QualityProfileResource> {
+    return this.get<QualityProfileResource>(`/api/v3/qualityprofile/${id}`);
   }
 
   async getRootFolders(): Promise<RootFolder[]> {

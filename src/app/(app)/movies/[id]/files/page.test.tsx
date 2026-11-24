@@ -21,6 +21,7 @@ vi.mock('@/components/ui/drawer', () => ({
   DrawerTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
   DrawerDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
   DrawerClose: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DrawerFooter: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock('@/components/ui/quick-context-menu', () => ({
   QuickContextMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,

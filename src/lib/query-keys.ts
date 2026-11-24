@@ -13,6 +13,8 @@ const inst = (id?: string) => id ?? 'default';
 export const queryKeys = {
   // ── Reference data (long staleTime) ──────────────────────────────
   qualityProfiles: (svc: ArrService, id?: string) => [svc, 'qualityprofiles', inst(id)] as const,
+  qualityProfile: (svc: ArrService, id: string | undefined, profileId: number | undefined) =>
+    [svc, 'qualityprofile', inst(id), profileId ?? null] as const,
   qualityDefinitions: (svc: ArrService, id?: string) => [svc, 'qualitydefinitions', inst(id)] as const,
   languages: (svc: ArrService, id?: string) => [svc, 'languages', inst(id)] as const,
   mediaManagementConfig: (svc: ArrService, id?: string) => [svc, 'mediamanagement', inst(id)] as const,
@@ -24,6 +26,8 @@ export const queryKeys = {
   // ── Library lists ────────────────────────────────────────────────
   library: (svc: ArrService, o: { full?: boolean; instanceId?: string } = {}) =>
     [svc, 'library', o.full ? 'full' : 'slim', inst(o.instanceId)] as const,
+  /** Series on Sonarr's Wanted → Cutoff Unmet, for the Series filter; under library so list invalidation reaches it. */
+  cutoffUnmetSeries: () => ['sonarr', 'library', 'cutoff-unmet'] as const,
 
   // Radarr collections (movie groupings). Keyed like library lists for prefix invalidation.
   collections: (svc: ArrService, id?: string) => [svc, 'collections', inst(id)] as const,

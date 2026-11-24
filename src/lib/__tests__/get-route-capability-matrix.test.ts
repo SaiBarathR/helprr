@@ -181,6 +181,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'cap:movies.view': [
     'GET /api/radarr/credit',
     'GET /api/radarr/[id]',
+    'GET /api/radarr/qualityprofiles/[id]',
     'GET /api/radarr/collections',
     'GET /api/radarr/history/movie',
     'GET /api/radarr/moviefile',
@@ -189,6 +190,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'cap:music.view': [
     'GET /api/lidarr/[id]/albums',
     'GET /api/lidarr/[id]',
+    'GET /api/lidarr/qualityprofiles/[id]',
     'GET /api/lidarr/album/[albumId]',
     'GET /api/lidarr/album/[albumId]/tracks',
     'GET /api/lidarr/history/artist',
@@ -201,7 +203,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/notifications',
   ],
   'cap:prowlarr.manage': [
-    'GET /api/prowlarr/search',
+    // Download client names for a grab; their fields stay on the server.
+    'GET /api/prowlarr/downloadclients',
   ],
   'cap:prowlarr.view': [
     'GET /api/prowlarr/applications',
@@ -254,8 +257,10 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/sonarr/[id]/anime/candidates',
     'GET /api/sonarr/[id]/anime',
     'GET /api/sonarr/[id]',
+    'GET /api/sonarr/qualityprofiles/[id]',
     'GET /api/sonarr/episodefile',
     'GET /api/sonarr/history/series',
+    'GET /api/sonarr/cutoff-unmet',
     'GET /api/sonarr',
   ],
   'cap:settings.instances': [
@@ -271,6 +276,10 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'cap:settings.storage': [
     'GET /api/settings/cache',
     'GET /api/settings/disk-thresholds',
+  ],
+  'cap:torrents.add': [
+    // The .torrent files this user shared into the app, for the Add page.
+    'GET /api/share/torrents',
   ],
   'cap:torrents.view': [
     'GET /api/qbittorrent/[hash]/details',
@@ -407,6 +416,11 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   // Settings → Downloads is the schedule's own page; the schedule names no torrent.
   'any:torrents.view|settings.downloads': [
     'GET /api/qbittorrent/bandwidth-schedule',
+  ],
+  // Manage includes search; grabbing stays under manage.
+  'any:prowlarr.search|prowlarr.manage': [
+    'GET /api/prowlarr/categories',
+    'GET /api/prowlarr/search',
   ],
   'filtered-capability': [
     'GET /api/services/external-urls',
@@ -590,7 +604,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(296);
+    expect(handlers.size).toBe(303);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   appNameFor,
+  bulkGrabOutcome,
   canManualImport,
   downloadSiblings,
   episodeLabel,
@@ -180,5 +181,19 @@ describe('groupQueueByDownload: records without a download id', () => {
     const groups = groupQueueByDownload([pending('rad-1080'), pending('rad-4k')]);
     expect(groups).toHaveLength(2);
     expect(groups.map((group) => group.items.length)).toEqual([1, 1]);
+  });
+});
+
+describe('bulkGrabOutcome', () => {
+  it.each([
+    [{ grabbed: 1, notGrabbed: 0, unknown: 0, skipped: 0 }, 'success', 'Sent 1 release to the download client.'],
+    [{ grabbed: 2, notGrabbed: 0, unknown: 0, skipped: 3 }, 'success', 'Sent 2 releases to the download client. 3 not pending, skipped.'],
+    [{ grabbed: 0, notGrabbed: 0, unknown: 0, skipped: 1 }, 'warning', 'Nothing sent: the release is no longer pending.'],
+    [{ grabbed: 0, notGrabbed: 0, unknown: 0, skipped: 2 }, 'warning', 'Nothing sent: the 2 releases are no longer pending.'],
+    [{ grabbed: 0, notGrabbed: 2, unknown: 0, skipped: 0 }, 'error', 'Failed to grab 2 releases.'],
+    [{ grabbed: 1, notGrabbed: 1, unknown: 1, skipped: 0 }, 'warning', 'Sent 1 of 3 releases. 1 could not be sent. 1 may not have been sent: check the queue.'],
+    [{ grabbed: 0, notGrabbed: 0, unknown: 2, skipped: 0 }, 'warning', '2 may not have been sent: check the queue.'],
+  ] as const)('%o → %s', (tally, tone, message) => {
+    expect(bulkGrabOutcome(tally)).toEqual({ tone, message });
   });
 });

@@ -17,6 +17,7 @@ import { MediaTable } from '@/components/media/media-table';
 import { ViewSelector } from '@/components/media/view-selector';
 import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
+import { useLibraryFilterMenu } from '@/components/media/library-filter-menu';
 import {
   ActiveFilterBar,
   FilterDot,
@@ -214,6 +215,10 @@ export default function MusicPage() {
   const setFilter = useUIStore((s) => s.setMusicFilter);
   const instanceFilter = useUIStore((s) => s.musicInstanceFilter);
   const setInstanceFilter = useUIStore((s) => s.setMusicInstanceFilter);
+  const facetFilter = useUIStore((s) => s.musicFacetFilter);
+  const setFacetFilter = useUIStore((s) => s.setMusicFacetFilter);
+  const savedFilters = useUIStore((s) => s.musicSavedFilters);
+  const setSavedFilters = useUIStore((s) => s.setMusicSavedFilters);
   const visibleFieldsByMode = useUIStore((s) => s.musicVisibleFields);
   const setVisibleFieldsForMode = useUIStore((s) => s.setMusicVisibleFields);
   const search = useUIStore((s) => s.musicSearch);
@@ -265,7 +270,7 @@ export default function MusicPage() {
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [viewMode, posterSize, loading, artists.length, search, filter, instanceFilter]);
+  }, [viewMode, posterSize, loading, artists.length, search, filter, facetFilter, instanceFilter]);
 
   useEffect(() => {
     persistViewState(search);
@@ -306,10 +311,11 @@ export default function MusicPage() {
 
   const baseRows = useMemo(() => deriveMusicBaseRows(preparedRows, {
     filter: filter as MusicFilter[],
+    facets: facetFilter,
     instanceFilter,
     sort: sort as MusicSortKey,
     sortDir,
-  }), [preparedRows, filter, instanceFilter, sort, sortDir]);
+  }), [preparedRows, filter, facetFilter, instanceFilter, sort, sortDir]);
 
   const filtered = useMemo(
     () => preparedItems(searchPreparedRows(baseRows, deferredSearch)),
@@ -648,10 +654,23 @@ export default function MusicPage() {
     }
   }, [sort, sortDir, setSort, setSortDir]);
 
+  const filterMenu = useLibraryFilterMenu({
+    items: artists,
+    status: filter,
+    setStatus: setFilter,
+    facets: facetFilter,
+    setFacets: setFacetFilter,
+    instance: instanceFilter,
+    setInstance: setInstanceFilter,
+    watch: 'all',
+    saved: savedFilters,
+    updateSaved: (update) => setSavedFilters(update(useUIStore.getState().musicSavedFilters)),
+  });
   // The filter menu's choices, named so a filtered library is never mistaken
   // for the whole one. The search box is a filter too, but shows itself.
   const menuFilters: ActiveFilter[] = [
     ...multiSelectFilters(filter, filterOptions, setFilter),
+    ...filterMenu.facetChips,
     ...(instanceFilter !== 'all'
       ? [{
         id: 'instance',
@@ -662,8 +681,7 @@ export default function MusicPage() {
   ];
   const activeFilters = [...menuFilters, ...searchFilter(search, () => setSearch(''))];
   const clearFilters = () => {
-    setFilter([]);
-    setInstanceFilter('all');
+    filterMenu.clearMenuFilters();
     setSearch('');
   };
   const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Name';
@@ -713,7 +731,9 @@ export default function MusicPage() {
           <ResponsiveMenu
             title="Filter"
             titleInDropdown
-            contentClassName="w-48"
+            open={filterMenu.menuOpen}
+            onOpenChange={filterMenu.setMenuOpen}
+            contentClassName="w-60"
             trigger={(
               <button
                 className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
@@ -727,6 +747,7 @@ export default function MusicPage() {
               </button>
             )}
           >
+            {filterMenu.savedSection}
             <ResponsiveMenuCheckboxItem
               checked={filter.length === 0}
               onCheckedChange={() => setFilter([])}
@@ -767,6 +788,7 @@ export default function MusicPage() {
                 ))}
               </>
             )}
+            {filterMenu.facetGroups}
           </ResponsiveMenu>
 
           <ResponsiveMenu
@@ -983,11 +1005,13 @@ export default function MusicPage() {
                 albumCount: 'albumCount',
                 trackProgress: 'trackCount',
               }}
-              resetPageKey={`${search}|${filter.join(',')}|${instanceFilter}|${sort}|${sortDir}`}
+              resetPageKey={`${search}|${filter.join(',')}|${JSON.stringify(facetFilter)}|${instanceFilter}|${sort}|${sortDir}`}
             />
           </div>
         );
       })()}
+
+      {filterMenu.dialogs}
 
       <RenamePreviewDialog
         open={renameTarget !== null}

@@ -117,7 +117,10 @@ export const CAPABILITY_GROUPS = [
       { cap: 'cleanup.view', label: 'View cleanup rules & history' },
       { cap: 'cleanup.manage', label: 'Manage cleanup rules, run cleanups & clear history (deletes downloads and files)' },
       { cap: 'prowlarr.view', label: 'View Prowlarr' },
-      { cap: 'prowlarr.manage', label: 'Manage Prowlarr indexers' },
+      // Manage includes it: the search routes take either, so no stored
+      // override is needed for someone who could already search.
+      { cap: 'prowlarr.search', label: 'Search Prowlarr indexers (grabbing needs Manage)' },
+      { cap: 'prowlarr.manage', label: 'Manage Prowlarr indexers, search and grab' },
       { cap: 'logs.view', label: 'View logs' },
       { cap: 'logs.manage', label: 'Delete logs' },
       // User management is role-gated (admin only), not a grantable capability:

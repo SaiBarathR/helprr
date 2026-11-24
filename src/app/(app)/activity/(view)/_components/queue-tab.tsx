@@ -36,11 +36,12 @@ import { invalidateActivity } from '@/lib/query-invalidation';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { applyPendingImports, pendingImportKey, usePendingImports } from '@/lib/manual-import-tracker';
 import { useCan } from '@/components/permission-provider';
+import { cn } from '@/lib/utils';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 import { RemoveQueueDialog, type RemoveQueueOptions } from '../../_components/remove-queue-dialog';
 import { compareActivityQueueItems } from '@/lib/activity-queue-sort';
 import type { ActivitySortDirectionPreference } from '@/lib/store';
-import { QUEUE_PAGE_SIZE, QUEUE_QUERY_KEY, QueuePage, QueueRecord, RemoveTarget, appNameFor, canManualImport, downloadSiblings, episodeLabel, formatBytes, getQueueCustomFormats, getQueueItemQuality, getQueueMediaHref, groupQueueByDownload, isPendingRelease, manualImportHref, packNoun, queueRecordKey, queueRemovalBatches, queueRemovalDelta, statusColor, statusLabel, uniqueQueueRecords } from './queue-records';
+import { QUEUE_PAGE_SIZE, QUEUE_QUERY_KEY, QueuePage, QueueRecord, RemoveTarget, appNameFor, bulkGrabOutcome, canManualImport, downloadSiblings, episodeLabel, formatBytes, getQueueCustomFormats, getQueueItemQuality, getQueueMediaHref, groupQueueByDownload, isPendingRelease, manualImportHref, packNoun, queueRecordKey, queueRemovalBatches, queueRemovalDelta, statusColor, statusLabel, uniqueQueueRecords } from './queue-records';
 import { ManualImportStrip, TabErrorState, useSourceChipLabel } from './shared';
 import { SortKey } from './view-state';
 
@@ -81,6 +82,7 @@ export function QueueTab({
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
   const [bulkRemoveOpen, setBulkRemoveOpen] = useState(false);
   const [grabbingKey, setGrabbingKey] = useState<string | null>(null);
+  const [bulkGrabbing, setBulkGrabbing] = useState(false);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   // Season-pack groups start collapsed; keyed by group key (stable across polls
   // since it derives from the download id), so an open group stays open on refetch.
@@ -153,6 +155,8 @@ export function QueueTab({
   // Only visible downloads count: a filter change drops hidden ones from the removal.
   const selectedGroups = sorted.filter((group) => selectedKeys.has(group.key));
   const selectedDownloads = `${selectedGroups.length} download${selectedGroups.length === 1 ? '' : 's'}`;
+  // Grab applies to the selected releases still held back; the rest are skipped.
+  const selectedPending = selectedGroups.flatMap((group) => group.items).filter(isPendingRelease);
   const exitSelection = () => {
     setSelectionMode(false);
     setSelectedKeys(new Set());
@@ -183,6 +187,43 @@ export function QueueTab({
       toast.error(e instanceof Error ? e.message : 'Failed to grab');
     } finally {
       setGrabbingKey(null);
+      void invalidateActivity(queryClient);
+    }
+  }
+
+  // Sends the selected pending releases, one request per instance (queue ids are per instance).
+  async function grabSelected() {
+    const skippedHere = selectedGroups.reduce((sum, group) => sum + group.items.length, 0) - selectedPending.length;
+    const tally = { grabbed: 0, notGrabbed: 0, unknown: 0, skipped: skippedHere };
+    setBulkGrabbing(true);
+    try {
+      await Promise.all(queueRemovalBatches(selectedPending).map(async ({ source, instanceId, chunks }) => {
+        for (const chunk of chunks) {
+          const res = await fetch('/api/activity/queue/grab', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source, instanceId, ids: chunk.map((item) => item.id) }),
+          }).catch(() => null);
+          const data = res?.ok ? await res.json().catch(() => null) : null;
+          const count = (key: string) => (Array.isArray(data?.[key]) ? data[key].length : 0);
+          if (data) {
+            tally.grabbed += count('grabbed');
+            tally.notGrabbed += count('notGrabbed');
+            tally.unknown += count('unknown');
+            tally.skipped += count('skipped');
+          } else if (res?.ok) {
+            // Accepted, but the answer is unreadable: the app may have sent them.
+            tally.unknown += chunk.length;
+          } else {
+            tally.notGrabbed += chunk.length;
+          }
+        }
+      }));
+      const { tone, message } = bulkGrabOutcome(tally);
+      toast[tone](message);
+      if (tally.grabbed > 0) exitSelection();
+    } finally {
+      setBulkGrabbing(false);
       void invalidateActivity(queryClient);
     }
   }
@@ -933,14 +974,29 @@ export function QueueTab({
         <FloatingActionBar className="p-2">
           <span className="flex-1 px-2 text-sm text-muted-foreground">{selectedGroups.length} selected</span>
           <Button variant="ghost" className="h-11" onClick={exitSelection}>Cancel</Button>
+          {/* Only while the selection holds a release the app is holding back.
+              On phones both buttons then keep only their icons, to fit. */}
+          {selectedPending.length > 0 && (
+            <Button
+              variant="secondary"
+              className="h-11 max-sm:w-11 max-sm:px-0"
+              // One bulk action at a time: a removal racing a grab would blur both outcomes.
+              disabled={bulkGrabbing || removing}
+              onClick={() => void grabSelected()}
+              aria-label={`Grab ${releasesLabel(selectedPending.length)} now`}
+            >
+              {bulkGrabbing ? <Loader2 className="sm:mr-2 h-4 w-4 animate-spin" /> : <Download className="sm:mr-2 h-4 w-4" />}
+              <span className="max-sm:sr-only">Grab</span>
+            </Button>
+          )}
           <Button
             variant="destructive"
-            className="h-11"
-            disabled={selectedGroups.length === 0}
+            className={cn('h-11', selectedPending.length > 0 && 'max-sm:w-11 max-sm:px-0')}
+            disabled={selectedGroups.length === 0 || bulkGrabbing}
             onClick={() => setBulkRemoveOpen(true)}
           >
-            <Trash2 className="mr-2 h-4 w-4" />
-            Remove
+            <Trash2 className={cn('h-4 w-4', selectedPending.length > 0 ? 'sm:mr-2' : 'mr-2')} />
+            <span className={cn(selectedPending.length > 0 && 'max-sm:sr-only')}>Remove</span>
           </Button>
         </FloatingActionBar>
       )}
@@ -960,6 +1016,8 @@ export function QueueTab({
     </>
   );
 }
+
+const releasesLabel = (n: number) => (n === 1 ? '1 pending release' : `${n} pending releases`);
 
 // --- Info row helper ---
 

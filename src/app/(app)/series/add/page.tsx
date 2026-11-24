@@ -68,6 +68,8 @@ function AddSeriesPageContent() {
   const [monitorOption, setMonitorOption] = useState('all');
   const [monitorNewItems, setMonitorNewItems] = useState<'all' | 'none'>('all');
   const [searchForMissingEpisodes, setSearchForMissingEpisodes] = useState(true);
+  // Off, as in Sonarr: it only finds upgrades for episodes already on disk.
+  const [searchForCutoffUnmetEpisodes, setSearchForCutoffUnmetEpisodes] = useState(false);
   const [seriesType, setSeriesType] = useState('standard');
   const [seasonFolder, setSeasonFolder] = useState(true);
   const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
@@ -290,7 +292,7 @@ function AddSeriesPageContent() {
       addOptions: {
         monitor: monitorOption,
         searchForMissingEpisodes,
-        searchForCutoffUnmetEpisodes: false,
+        searchForCutoffUnmetEpisodes,
       },
     });
   }
@@ -526,6 +528,12 @@ function AddSeriesPageContent() {
                   <div className="grouped-row">
                     <Label className="text-sm shrink-0">Start Search For Missing Episodes</Label>
                     <Switch aria-label="Start search for missing episodes" checked={searchForMissingEpisodes} onCheckedChange={setSearchForMissingEpisodes} />
+                  </div>
+
+                  <div className="grouped-row">
+                    {/* Wraps instead of pushing the switch off a 320 px screen. */}
+                    <Label className="text-sm min-w-0 pr-3">Start Search For Cutoff Unmet Episodes</Label>
+                    <Switch aria-label="Start search for cutoff unmet episodes" checked={searchForCutoffUnmetEpisodes} onCheckedChange={setSearchForCutoffUnmetEpisodes} />
                   </div>
 
                   <div className="grouped-row">
