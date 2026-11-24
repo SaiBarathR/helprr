@@ -15,7 +15,7 @@ import { WatchingWindowRow } from '@/components/notifications/watching-window-ro
 
 // Per-item download/import events are the only ones that carry quality + tag
 // metadata, so only they expose the filter inputs.
-const FILTERABLE_EVENTS = new Set(['grabbed', 'imported', 'downloadFailed', 'importFailed']);
+const FILTERABLE_EVENTS = new Set(['grabbed', 'imported', 'upgraded', 'downloadFailed', 'importFailed']);
 
 // Events that expose the muted-users filter (matched against the streaming
 // Jellyfin user at delivery — keep in sync with notification-service.ts).

@@ -250,6 +250,52 @@ describe('events that start off', () => {
   });
 });
 
+// "Upgraded" is its own event: on for a device that never chose, switched
+// apart from "Imported", filtered by quality like it, and gated by notify.media.
+describe('upgrade pushes', () => {
+  const device = (name: string, preferences: Record<string, unknown>[], user: Record<string, unknown> = {}) => ({
+    ...subscription,
+    id: name,
+    endpoint: `${subscription.endpoint}-${name}`,
+    consecutiveFailures: 0,
+    lastFailedAt: null,
+    lastSucceededAt: null,
+    preferences: preferences.map((p) => ({ tagFilter: null, qualityFilter: null, mutedUserFilter: null, ...p })),
+    user: { id: `user-${name}`, status: 'active', role: 'member', template: 'member', permissions: {}, settings: null, ...user },
+  });
+  const sentTo = () => mocks.sendNotification.mock.calls
+    .map(([target]) => (target as { endpoint: string }).endpoint.replace(`${subscription.endpoint}-`, ''));
+  const upgrade = { eventType: 'upgraded', title: 'Movie Upgraded', body: 'WEBDL-1080p → Bluray-2160p: Film', metadata: { source: 'radarr', instanceId: 'r1', movieId: 4, qualityName: 'Bluray-2160p' } };
+
+  it('reaches a device with no saved choice and one that keeps upgrades while muting imports, not one that turned upgrades off', async () => {
+    mocks.findMany.mockResolvedValueOnce([
+      device('unset', []),
+      device('upgrades-only', [{ eventType: 'imported', enabled: false }, { eventType: 'upgraded', enabled: true }]),
+      device('new-only', [{ eventType: 'imported', enabled: true }, { eventType: 'upgraded', enabled: false }]),
+    ]);
+    await notifyEvent(upgrade);
+    expect(sentTo()).toEqual(['unset', 'upgrades-only']);
+  });
+
+  it('applies the device quality filter set on "Upgraded"', async () => {
+    mocks.findMany.mockResolvedValueOnce([
+      device('4k', [{ eventType: 'upgraded', enabled: true, qualityFilter: 'Bluray-2160p' }]),
+      device('1080', [{ eventType: 'upgraded', enabled: true, qualityFilter: 'WEBDL-1080p' }]),
+    ]);
+    await notifyEvent(upgrade);
+    expect(sentTo()).toEqual(['4k']);
+  });
+
+  it('is never sent to someone without notify.media', async () => {
+    mocks.findMany.mockResolvedValueOnce([
+      device('member', []),
+      device('no-media', [], { permissions: { 'notify.media': false } }),
+    ]);
+    await notifyEvent(upgrade);
+    expect(sentTo()).toEqual(['member']);
+  });
+});
+
 // An event about a Lidarr album tells what is in the music library: only people
 // who may see that library get it. Other sources are unchanged.
 describe('Lidarr-sourced pushes', () => {

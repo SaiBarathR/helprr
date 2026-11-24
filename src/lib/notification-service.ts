@@ -191,7 +191,7 @@ export function safeNotificationMetadata(metadata: Record<string, unknown> | und
 // Tag/quality filters only make sense for the per-item download/import events
 // that actually carry quality + tag metadata. Calendar/health/request/etc.
 // events ignore the filters entirely.
-const FILTERABLE_EVENTS = new Set(['grabbed', 'imported', 'downloadFailed', 'importFailed']);
+const FILTERABLE_EVENTS = new Set(['grabbed', 'imported', 'upgraded', 'downloadFailed', 'importFailed']);
 
 // Critical alerts always break through a user's quiet hours — a service going
 // down at 3am is exactly what they'd want to know about.

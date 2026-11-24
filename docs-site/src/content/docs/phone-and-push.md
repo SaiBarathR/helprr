@@ -54,6 +54,13 @@ warnings of Sonarr, Radarr or Prowlarr have cleared and stayed clear for 2 minut
 minutes sends nothing. Each device can turn it
 off in **Settings → Notifications → Sonarr / Radarr**.
 
+When Sonarr or Radarr replaces a file with a better copy, you get **Episode Upgraded**
+or **Movie Upgraded** instead of "Imported", saying from which quality to which (for
+example "WEBDL-1080p → Bluray-2160p"). To hear only about new arrivals, turn off
+**Media Upgraded** in **Settings → Notifications → Sonarr / Radarr**; it is on for a
+new device, and a device or channel from before starts with the choice it had for
+**Media Imported**.
+
 **Settings → Notifications → Service outages → Alert after** sets how long a service
 must stay unreachable before the "is unreachable" notification (2 minutes by default;
 Immediately, or up to 30 minutes). A shorter blip, such as the internet dropping for a

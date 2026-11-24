@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db';
 
 export const EVENT_TYPES = [
-  'grabbed', 'imported', 'downloadFailed', 'importFailed',
+  'grabbed', 'imported', 'upgraded', 'downloadFailed', 'importFailed',
   'upcomingPremiere', 'healthWarning', 'healthRestored',
   'serviceDown', 'serviceRestored', 'diskLowSpace', 'databaseBackup',
   'torrentAdded', 'torrentCompleted', 'torrentDeleted',
@@ -28,7 +28,7 @@ export interface NotificationEventMeta {
   group: NotificationEventGroupId;
   label: string;
   description: string;
-  iconName: 'Download' | 'Check' | 'X' | 'AlertTriangle' | 'Clock' | 'Trash2' | 'Play' | 'Bell' | 'Newspaper';
+  iconName: 'Download' | 'Check' | 'CircleArrowUp' | 'X' | 'AlertTriangle' | 'Clock' | 'Trash2' | 'Play' | 'Bell' | 'Newspaper';
   colorClass: string;
 }
 
@@ -44,6 +44,12 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     label: 'Media Imported',
     description: 'When a download is imported to library',
     iconName: 'Check', colorClass: 'bg-green-500/10 text-green-500',
+  },
+  upgraded: {
+    type: 'upgraded', group: 'sonarrRadarr',
+    label: 'Media Upgraded',
+    description: 'When a better copy replaces a file already in the library',
+    iconName: 'CircleArrowUp', colorClass: 'bg-green-500/10 text-green-500',
   },
   downloadFailed: {
     type: 'downloadFailed', group: 'sonarrRadarr',
@@ -291,7 +297,7 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
   {
     id: 'sonarrRadarr',
     title: 'Sonarr / Radarr',
-    types: ['grabbed', 'imported', 'downloadFailed', 'importFailed', 'upcomingPremiere', 'healthWarning', 'healthRestored'],
+    types: ['grabbed', 'imported', 'upgraded', 'downloadFailed', 'importFailed', 'upcomingPremiere', 'healthWarning', 'healthRestored'],
   },
   {
     id: 'services',

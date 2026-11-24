@@ -145,6 +145,7 @@ import { createPollingCycleContext } from '@/lib/polling-cycle';
 import { jobReports, type JobReport } from '@/lib/polling-job-report';
 import { ConfigurationError } from '@/lib/config-error';
 import { EMPTY_HEALTH_HASH, HEALTH_CLEAR_HOLD_MS, resetHealthTracking } from '@/lib/polling/health-transition';
+import upgradeHistory from '@/lib/polling/__fixtures__/arr-upgrade-history.json';
 
 const SETTINGS = {
   notificationGroupingEnabled: false,
@@ -219,6 +220,25 @@ function arrInstance(id: string, label: string, kind: 'sonarr' | 'radarr' | 'lid
   };
   return { connection: { id, label, isDefault: true, updatedAt: new Date(0) }, client };
 }
+
+/** An instance whose history is real upgrade rows (upgrade-imports fixture), read from the given cursor. */
+function upgradeInstance(kind: 'sonarr' | 'radarr', cursor: { date: string; id: number }) {
+  mocks.states.set('u1', {
+    serviceConnectionId: 'u1', lastQueueIds: [], lastHistoryDate: new Date(cursor.date), lastHistoryId: cursor.id, lastHistorySeenIds: [cursor.id], lastHealthHash: EMPTY_HEALTH_HASH,
+  });
+  const client = {
+    queue: { totalRecords: 0, records: [] },
+    getTags: vi.fn(async () => []),
+    getHistory: vi.fn(async (page: number) => ({ records: page === 1 ? upgradeHistory[kind] : [] })),
+    getHealth: vi.fn(async () => []),
+  };
+  return [{ connection: { id: 'u1', label: 'Main', isDefault: true, updatedAt: new Date(0) }, client }];
+}
+
+const notified = (out: unknown[]) => out.flatMap((o) => {
+  const event = (o as { notify?: { eventType: string; title: string; body: string; url: string } }).notify;
+  return event ? [{ eventType: event.eventType, title: event.title, body: event.body, url: event.url }] : [];
+});
 
 function qbitFixture() {
   mocks.connections.QBITTORRENT = { id: 'q1' };
@@ -472,6 +492,50 @@ describe('pollers on fixed fixtures (golden)', () => {
     expect(alerts).toEqual([
       expect.objectContaining({ title: 'Now in your library: Dune', url: '/watchlist?focus=w1', userIds: ['u1'], ownerUserId: 'u1' }),
     ]);
+  });
+
+  it('pollSonarr on real history: an upgrade is sent as Episode Upgraded with its qualities, a new episode as Episode Imported', async () => {
+    mocks.sonarr = upgradeInstance('sonarr', { date: '2026-10-18T00:00:00Z', id: 1 });
+    const out = await run('pollSonarr');
+    expectGolden('pollSonarr:upgrades', out);
+    // The collector sends by event type: the upgrades, then the new episodes. Each opens its episode.
+    expect(notified(out)).toEqual([
+      { eventType: 'upgraded', title: 'Episode Upgraded', body: 'WEBDL-1080p → HDTV-1080p: Merry Berry Love (2026) s01e03 [Mkv - 1080p H264 - MultiLang Aac 2.0 - MultiSubs]', url: '/series/308/season/1/episode/13946?instance=u1' },
+      { eventType: 'upgraded', title: 'Episode Upgraded', body: 'WEBDL-720p → HDTV-1080p: [SubsPlease] Ao Ashi S2 - 03 (1080p) [81A40CFE]', url: '/series/172/season/2/episode/10964?instance=u1' },
+      { eventType: 'imported', title: 'Episode Imported', body: 'Merry Berry Love S01E03 MULTi 1080p WEB H264-AZR', url: '/series/308/season/1/episode/13946?instance=u1' },
+      { eventType: 'imported', title: 'Episode Imported', body: expect.stringMatching(/^\[Erai-raws\] Aoashi S02E03 /), url: '/series/172/season/2/episode/10964?instance=u1' },
+    ]);
+  });
+
+  it('pollSonarr: an import whose Upgrade deletion the previous poll already read is still an upgrade', async () => {
+    // The cursor stands on the deletion (9555): only the import (9556) is new.
+    mocks.sonarr = upgradeInstance('sonarr', { date: '2026-10-24T11:43:29Z', id: 9555 });
+    expect(notified(await run('pollSonarr')).map((e) => [e.eventType, e.title])).toEqual([['upgraded', 'Episode Upgraded']]);
+  });
+
+  it('pollRadarr on real history: upgrades are sent as Movie Upgraded, first imports as Movie Imported', async () => {
+    mocks.radarr = upgradeInstance('radarr', { date: '2026-10-01T00:00:00Z', id: 1 });
+    const out = await run('pollRadarr');
+    expectGolden('pollRadarr:upgrades', out);
+    expect(notified(out).map((e) => [e.eventType, e.body.split(': ')[0]])).toEqual([
+      ['upgraded', 'WEBDL-1080p → WEBDL-2160p'],
+      ['upgraded', 'Better WEBDL-2160p'],
+      ['upgraded', 'WEBRip-1080p → WEBDL-2160p'],
+      ['imported', 'Primetime.2026.1080p.AMZN.WEB-DL.DDP5.1.H264.MP4-BTM'],
+      ['imported', 'Insidious Out Of The Further (2026) [1080p] [WEBRip] [5.1] [YTS.GG - YTS.BZ]'],
+    ]);
+  });
+
+  it('pollRadarr with grouping on: a burst of upgrades is grouped as Movies Upgraded, apart from new imports', async () => {
+    mocks.radarr = upgradeInstance('radarr', { date: '2026-10-01T00:00:00Z', id: 1 });
+    const events = notified(await run('pollRadarr', { ...SETTINGS, notificationGroupingEnabled: true }));
+    expect(events.map((e) => [e.eventType, e.title])).toEqual([
+      ['upgraded', '3 Movies Upgraded'],
+      ['imported', 'Movie Imported'],
+      ['imported', 'Movie Imported'],
+    ]);
+    // Three different movies: the group opens History, not one title.
+    expect(events[0].url).toBe('/activity/history');
   });
 
   it('pollRadarr: an instance whose history fails is reported while the other carries on', async () => {

@@ -11,6 +11,7 @@ import { fetchAllQueueRecords } from '@/lib/activity-queue';
 import { getMediaHrefFromIds } from '@/lib/media-href';
 import crypto from 'crypto';
 import { notifyArrHealth } from './health-transition';
+import { radarrUpgradeOf, upgradeBody } from './upgrade-imports';
 import { movieArrivals, notifyWatchlistArrivals } from './watchlist-available';
 import { importFailureBody, downloadFailureBody, buildTagMap, mediaFilterMeta, readQueueSnapshots, errorMessage, getPollingState, historyCursorFromState, fetchNewHistoryPages, advanceHistoryCursor, notifyAndLog, instanceTitle, type CycleContext, type QueueSnapshot } from './shared';
 
@@ -179,13 +180,22 @@ export async function pollRadarr(context: CycleContext) {
           };
           const redirect = getMediaHrefFromIds(metadata) ?? '/activity/history';
 
-          collector.add({
+          // A better copy replacing the file it had is an upgrade, not a new
+          // arrival: its own event, so a household can keep only new arrivals.
+          const replaced = radarrUpgradeOf(item, historyRecords);
+          collector.add(replaced ? {
+            eventType: 'upgraded',
+            title: instanceTitle('Movie Upgraded', instanceLabel, n),
+            body: upgradeBody(item, replaced),
+            metadata: { ...metadata, redirect },
+            url: redirect,
+          } : {
             eventType: 'imported',
             title: instanceTitle('Movie Imported', instanceLabel, n),
             body: `${item.sourceTitle}`,
             metadata: { ...metadata, redirect },
             url: redirect,
-          }, { service: 'radarr', instanceId, reason: 'history-imported', historyId: item.id });
+          }, { service: 'radarr', instanceId, reason: replaced ? 'history-upgraded' : 'history-imported', historyId: item.id });
         }
       }
 

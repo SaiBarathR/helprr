@@ -2,6 +2,7 @@ import { createElement, type CSSProperties } from 'react';
 import {
   Bell,
   Check,
+  CircleArrowUp,
   Download,
   X,
   AlertTriangle,
@@ -14,7 +15,7 @@ import {
 import { EVENT_META, type NotificationEventType } from '@/lib/notification-events';
 
 const ICON_MAP: Record<NotificationEventMetaIconName, LucideIcon> = {
-  Download, Check, X, AlertTriangle, Clock, Trash2, Play, Bell, Newspaper,
+  Download, Check, CircleArrowUp, X, AlertTriangle, Clock, Trash2, Play, Bell, Newspaper,
 };
 
 type NotificationEventMetaIconName = (typeof EVENT_META)[NotificationEventType]['iconName'];
@@ -23,6 +24,7 @@ type NotificationEventMetaIconName = (typeof EVENT_META)[NotificationEventType][
 const HPR_COLOR_BY_ICON: Record<NotificationEventMetaIconName, string> = {
   Download: 'var(--hpr-blue)',
   Check: 'var(--hpr-green)',
+  CircleArrowUp: 'var(--hpr-green)',
   X: 'var(--hpr-rose)',
   AlertTriangle: 'var(--hpr-amber)',
   Clock: 'var(--hpr-purple)',

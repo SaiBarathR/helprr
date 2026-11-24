@@ -11,6 +11,7 @@ import { fetchAllQueueRecords } from '@/lib/activity-queue';
 import { getMediaHrefFromIds } from '@/lib/media-href';
 import crypto from 'crypto';
 import { notifyArrHealth } from './health-transition';
+import { sonarrUpgradeOf, upgradeBody } from './upgrade-imports';
 import { notifyWatchlistArrivals, seriesArrivals } from './watchlist-available';
 import { notifyWatchingEpisodes } from './watching-episodes';
 import { importFailureBody, downloadFailureBody, buildTagMap, mediaFilterMeta, readQueueSnapshots, errorMessage, getPollingState, historyCursorFromState, fetchNewHistoryPages, advanceHistoryCursor, notifyAndLog, instanceTitle, type CycleContext, type QueueSnapshot } from './shared';
@@ -190,13 +191,22 @@ export async function pollSonarr(context: CycleContext) {
           };
           const redirect = getMediaHrefFromIds(metadata) ?? '/activity/history';
 
-          collector.add({
+          // A better copy replacing the file it had is an upgrade, not a new
+          // arrival: its own event, so a household can keep only new arrivals.
+          const replaced = sonarrUpgradeOf(item, historyRecords);
+          collector.add(replaced ? {
+            eventType: 'upgraded',
+            title: instanceTitle('Episode Upgraded', instanceLabel, n),
+            body: upgradeBody(item, replaced),
+            metadata: { ...metadata, redirect },
+            url: redirect,
+          } : {
             eventType: 'imported',
             title: instanceTitle('Episode Imported', instanceLabel, n),
             body: `${item.sourceTitle}`,
             metadata: { ...metadata, redirect },
             url: redirect,
-          }, { service: 'sonarr', instanceId, reason: 'history-imported', historyId: item.id });
+          }, { service: 'sonarr', instanceId, reason: replaced ? 'history-upgraded' : 'history-imported', historyId: item.id });
         }
       }
 
