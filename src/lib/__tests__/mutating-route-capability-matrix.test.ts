@@ -66,6 +66,10 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'DELETE /api/anilist/list-entry',
     'POST /api/anime/automap/run',
     'POST /api/anime/automap/stop',
+    // qBittorrent categories: each one's folder becomes a download root that add and move accept.
+    'POST /api/qbittorrent/categories',
+    'PATCH /api/qbittorrent/categories',
+    'DELETE /api/qbittorrent/categories',
     // Library cleanup: rules, preview, marking Leaving soon and Delete now.
     'PUT /api/cleanup/library/config',
     'POST /api/cleanup/library/preview',
@@ -616,7 +620,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(276);
+    expect(handlers.size).toBe(279);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

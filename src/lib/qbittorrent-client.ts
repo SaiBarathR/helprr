@@ -28,6 +28,14 @@ export interface TorrentTracker {
   msg: string;
 }
 
+export interface QBittorrentCategory {
+  name: string;
+  /** Empty: qBittorrent's default save path plus the name (in subcategory mode, the parent's folder plus the last part). */
+  savePath: string;
+  /** qBittorrent 5: its own incomplete-downloads folder, false for none, absent or null for the global setting. */
+  download_path?: string | false | null;
+}
+
 export type QueueMove = 'topPrio' | 'increasePrio' | 'decreasePrio' | 'bottomPrio';
 
 export type ContentLayout = 'Original' | 'Subfolder' | 'NoSubfolder';
@@ -364,8 +372,48 @@ export class QBittorrentClient {
     await this.postMultipart('/api/v2/torrents/add', formData);
   }
 
-  async getCategories(): Promise<Record<string, { name: string; savePath: string }>> {
+  async getCategories(): Promise<Record<string, QBittorrentCategory>> {
     return this.get('/api/v2/torrents/categories');
+  }
+
+  /** An empty save path is qBittorrent's default: <default save path>/<name>. */
+  async createCategory(name: string, savePath: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('category', name);
+    params.append('savePath', savePath);
+    await this.post('/api/v2/torrents/createCategory', params.toString());
+  }
+
+  /**
+   * qBittorrent 5 resets a category's download path to the global one when
+   * editCategory leaves downloadPathEnabled out, so the category's own
+   * (`download_path` as categories reports it) is sent back unchanged.
+   */
+  async editCategory(name: string, savePath: string, downloadPath: QBittorrentCategory['download_path']): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('category', name);
+    params.append('savePath', savePath);
+    if (typeof downloadPath === 'string') {
+      params.append('downloadPathEnabled', 'true');
+      params.append('downloadPath', downloadPath);
+    } else if (downloadPath === false) {
+      params.append('downloadPathEnabled', 'false');
+    }
+    await this.post('/api/v2/torrents/editCategory', params.toString());
+  }
+
+  /** Its torrents lose the category (their files stay); in subcategory mode its subcategories go too. */
+  async removeCategories(names: string[]): Promise<void> {
+    if (names.length === 0) throw new Error('removeCategories needs at least one category');
+    const params = new URLSearchParams();
+    params.append('categories', names.join('\n'));
+    await this.post('/api/v2/torrents/removeCategories', params.toString());
+  }
+
+  /** qBittorrent's "Use subcategories": "a/b" is then a child of "a". */
+  async isSubcategoriesEnabled(): Promise<boolean> {
+    const preferences = await this.get<{ use_subcategories?: unknown }>('/api/v2/app/preferences');
+    return preferences.use_subcategories === true;
   }
 
   async getDefaultSavePath(): Promise<string> {

@@ -61,4 +61,35 @@ describe('isInsideDownloadRoots', () => {
     await expect(isInsideDownloadRoots(client, '/downloads/..\u0085')).resolves.toBe(false);
     await expect(isInsideDownloadRoots(client, '\u0085/downloads/x')).resolves.toBe(true);
   });
+
+  // qBittorrent 5.1.4 on Linux keeps "/downloads\\x" as it is: a folder named "downloads\\x" beside /downloads.
+  it('refuses a backslash under a Linux root', async () => {
+    await expect(isInsideDownloadRoots(client, '/downloads\\x')).resolves.toBe(false);
+    await expect(isInsideDownloadRoots(client, '/downloads/a\\..\\..\\etc')).resolves.toBe(false);
+  });
+
+  it('refuses parts made of dots and spaces, which Windows reads as a parent hop', async () => {
+    await expect(isInsideDownloadRoots(client, '/downloads/.. /x')).resolves.toBe(false);
+    await expect(isInsideDownloadRoots(client, '/downloads/.../x')).resolves.toBe(false);
+    await expect(isInsideDownloadRoots(client, '/downloads/./x')).resolves.toBe(true);
+  });
+
+  it('reads backslashes as separators under a Windows root', async () => {
+    const windows = {
+      getDefaultSavePath: vi.fn().mockResolvedValue('C:\\Downloads'),
+      getCategories: vi.fn().mockResolvedValue({}),
+    } as unknown as QBittorrentClient;
+    await expect(isInsideDownloadRoots(windows, 'C:\\Downloads\\Movies')).resolves.toBe(true);
+    await expect(isInsideDownloadRoots(windows, 'C:/Downloads/Movies')).resolves.toBe(true);
+    await expect(isInsideDownloadRoots(windows, 'C:\\Downloads\\..\\Windows')).resolves.toBe(false);
+    await expect(isInsideDownloadRoots(windows, 'C:\\Downloads-other')).resolves.toBe(false);
+  });
+
+  it('ignores a category root qBittorrent would read differently', async () => {
+    const odd = {
+      getDefaultSavePath: vi.fn().mockResolvedValue('/downloads'),
+      getCategories: vi.fn().mockResolvedValue({ odd: { name: 'odd', savePath: '/data\\odd' } }),
+    } as unknown as QBittorrentClient;
+    await expect(isInsideDownloadRoots(odd, '/data/odd/x')).resolves.toBe(false);
+  });
 });

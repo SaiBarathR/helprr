@@ -1,7 +1,10 @@
 'use client';
 
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Plus } from 'lucide-react';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
+import { useMe } from '@/components/permission-provider';
+import { NEW_CATEGORY_HREF } from './category-links';
 
 /** One torrent's, or the selection's, drawer state; `hash` joins several hashes with '|'. */
 export type CategoryDrawerState = { open: boolean; hash: string; bulk?: boolean };
@@ -20,6 +23,9 @@ export function TorrentCategoryDrawer({
   categories: Record<string, { name: string; savePath: string }>;
   pickCategory: (category: string) => Promise<unknown>;
 }) {
+  const router = useRouter();
+  // The API lets only an admin create one.
+  const canCreate = useMe()?.role === 'admin';
   const count = categoryDrawer.hash ? categoryDrawer.hash.split('|').length : 0;
   const pick = async (category: string) => {
     await pickCategory(category);
@@ -58,6 +64,18 @@ export function TorrentCategoryDrawer({
               ))}
               {Object.keys(categories).length === 0 && (
                 <p className="px-3 py-3 text-sm text-muted-foreground text-center">No categories found</p>
+              )}
+              {canCreate && (
+                <button
+                  className="flex items-center gap-2 w-full px-3 py-3 text-sm text-primary hover:bg-accent transition-colors"
+                  onClick={() => {
+                    setCategoryDrawer({ open: false, hash: '' });
+                    router.push(NEW_CATEGORY_HREF);
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                  New category
+                </button>
               )}
             </div>
           )}

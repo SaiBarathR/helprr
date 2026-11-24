@@ -10,16 +10,29 @@ const MAX_RENAME_LENGTH = 255;
 const MAX_SPEED_LIMIT = 2_147_483_647;
 const CONTENT_LAYOUTS: readonly ContentLayout[] = ['Original', 'Subfolder', 'NoSubfolder'];
 // C0, DEL and C1 (U+0085 among them).
-const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/;
+export const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/;
 // What qBittorrent's QString::trimmed() strips: JS whitespace plus U+0085, which
 // JS keeps. A path must be checked as qBittorrent will read it, or a trailing
 // U+0085 turns "<root>/.." into a segment that only looks harmless here.
 const QT_TRIM = /^[\s\u0085]+|[\s\u0085]+$/g;
 
-function normalizeSavePath(value: string): string | null {
-  const normalized = value.replace(QT_TRIM, '').replace(/\\/g, '/').replace(/\/+$/, '');
+// A drive letter or a UNC share: the only roots under which a backslash separates folders.
+const WINDOWS_ROOT = /^(?:[A-Za-z]:[\\/]|\\\\)/;
+
+/**
+ * The path as qBittorrent will read it under a root of that kind, or null when
+ * it can't be checked. On Linux and macOS a backslash is part of a folder's
+ * name, not a separator (qBittorrent 5.1.4 keeps "/downloads\\x" as it is: a
+ * folder beside /downloads), so a path holding one is refused there. A part
+ * made of dots (and spaces, which Windows drops from the end of a part, so
+ * ".. " is ".." there) is refused, bar ".".
+ */
+function normalizeSavePath(value: string, windows: boolean): string | null {
+  const trimmed = value.replace(QT_TRIM, '');
+  if (!windows && trimmed.includes('\\')) return null;
+  const normalized = trimmed.replace(/\\/g, '/').replace(/\/+$/, '');
   if (!normalized) return null;
-  if (normalized.split('/').some((segment) => segment === '..')) return null;
+  if (normalized.split('/').some((segment) => segment !== '.' && /^[\s\u0085.]*\.[\s\u0085.]*$/.test(segment))) return null;
   return normalized;
 }
 
@@ -30,16 +43,62 @@ function normalizeSavePath(value: string): string | null {
  * silently imply "may write torrent payloads anywhere qBittorrent can".
  */
 export async function isInsideDownloadRoots(client: QBittorrentClient, savepath: string): Promise<boolean> {
-  const normalized = normalizeSavePath(savepath);
-  if (!normalized) return false;
   const [defaultSavePath, categories] = await Promise.all([
     client.getDefaultSavePath(),
     client.getCategories(),
   ]);
-  const roots = [defaultSavePath, ...Object.values(categories).map((category) => category.savePath)]
-    .map((root) => (root ? normalizeSavePath(root) : null))
-    .filter((root): root is string => Boolean(root));
-  return roots.some((root) => normalized === root || normalized.startsWith(`${root}/`));
+  return isUnderRoots(savepath, [defaultSavePath, ...Object.values(categories).map((category) => category.savePath)]);
+}
+
+// Each root is read as the system it names would read it; a root that can't be is no root.
+function isUnderRoots(savepath: string, roots: string[]): boolean {
+  return roots.some((root) => {
+    if (!root) return false;
+    const windows = WINDOWS_ROOT.test(root.replace(QT_TRIM, ''));
+    const base = normalizeSavePath(root, windows);
+    const path = normalizeSavePath(savepath, windows);
+    return base !== null && path !== null && (path === base || path.startsWith(`${base}/`));
+  });
+}
+
+/**
+ * True when a category's save path resolves under `root`, qBittorrent's default
+ * save path. Not under the other categories' folders: a category's folder is
+ * itself a download root (see isInsideDownloadRoots), so a new one may only sit
+ * inside the folder qBittorrent was set up with, never chain outward from an
+ * earlier category.
+ */
+export function isInsideFolder(savepath: string, root: string): boolean {
+  return isUnderRoots(savepath, [root]);
+}
+
+const MAX_CATEGORY_NAME_LENGTH = 100;
+
+/**
+ * A new category's name, trimmed as qBittorrent will read it, or why it may
+ * not be made. qBittorrent saves a category with no save path of its own in
+ * <default save path>/<name> with ".." resolved, so "../x" would land outside
+ * every download folder. A part made only of dots and spaces is refused too:
+ * Windows drops a part's trailing dots and spaces, so ".. " is ".." there. "/"
+ * makes a subcategory, so it is allowed only while qBittorrent's subcategory
+ * mode is on.
+ */
+export function parseNewCategoryName(
+  value: unknown,
+  subcategories: boolean,
+): { ok: true; name: string } | { ok: false; error: string } {
+  const name = typeof value === 'string' ? value.replace(QT_TRIM, '') : '';
+  if (!name) return { ok: false, error: 'Enter a category name' };
+  if (name.length > MAX_CATEGORY_NAME_LENGTH || CONTROL_CHARACTERS.test(name) || name.includes('\\')) {
+    return { ok: false, error: 'A category name needs at most 100 characters and no backslash' };
+  }
+  if (name.split('/').some((segment) => /^[\s\u0085.]*$/.test(segment))) {
+    return { ok: false, error: 'Each part of a category name needs more than dots and spaces' };
+  }
+  if (name.includes('/') && !subcategories) {
+    return { ok: false, error: 'A "/" makes a subcategory: turn on subcategories in qBittorrent first' };
+  }
+  return { ok: true, name };
 }
 
 /** A new save path for torrents/setLocation, trimmed; null when it is not a usable path. */
