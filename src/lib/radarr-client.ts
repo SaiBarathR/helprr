@@ -24,6 +24,7 @@ import type {
   RootFolder,
   MediaManagementConfig,
   DiskSpace,
+  ArrUpdate,
   HealthCheck,
   RadarrLookupResult,
   Release,
@@ -551,13 +552,13 @@ export class RadarrClient {
     return this.get<HealthCheck[]>('/api/v3/health');
   }
 
-  async getSystemStatus(): Promise<SystemStatus> {
-    return this.get<SystemStatus>('/api/v3/system/status');
+  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
+  async getUpdates(): Promise<ArrUpdate[]> {
+    return this.get<ArrUpdate[]>('/api/v3/update');
   }
 
-  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
-  async getUpdates(): Promise<unknown[]> {
-    return this.get<unknown[]>('/api/v3/update');
+  async getSystemStatus(): Promise<SystemStatus> {
+    return this.get<SystemStatus>('/api/v3/system/status');
   }
 
   /** System → Tasks: each scheduled task with its interval and last and next run. */

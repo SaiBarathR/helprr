@@ -146,6 +146,7 @@ import { jobReports, type JobReport } from '@/lib/polling-job-report';
 import { ConfigurationError } from '@/lib/config-error';
 import { EMPTY_HEALTH_HASH, HEALTH_CLEAR_HOLD_MS, resetHealthTracking } from '@/lib/polling/health-transition';
 import upgradeHistory from '@/lib/polling/__fixtures__/arr-upgrade-history.json';
+import fileHistory from '@/lib/polling/__fixtures__/arr-file-history.json';
 
 const SETTINGS = {
   notificationGroupingEnabled: false,
@@ -225,7 +226,7 @@ function arrInstance(id: string, label: string, kind: 'sonarr' | 'radarr' | 'lid
  * An instance whose history is real upgrade rows (upgrade-imports fixture), read from the given cursor.
  * `page1` puts only that many rows on the first page and the rest on the second.
  */
-function upgradeInstance(kind: 'sonarr' | 'radarr', cursor: { date: string; id: number }, page1?: number) {
+function upgradeInstance(kind: 'sonarr' | 'radarr', cursor: { date: string; id: number }, page1?: number, fixture: { sonarr: unknown[]; radarr: unknown[] } = upgradeHistory) {
   mocks.states.set('u1', {
     serviceConnectionId: 'u1', lastQueueIds: [], lastHistoryDate: new Date(cursor.date), lastHistoryId: cursor.id, lastHistorySeenIds: [cursor.id], lastHealthHash: EMPTY_HEALTH_HASH,
   });
@@ -233,7 +234,7 @@ function upgradeInstance(kind: 'sonarr' | 'radarr', cursor: { date: string; id: 
     queue: { totalRecords: 0, records: [] },
     getTags: vi.fn(async () => []),
     getHistory: vi.fn(async (page: number) => {
-      const rows = upgradeHistory[kind];
+      const rows = fixture[kind];
       const cut = page1 ?? rows.length;
       return { records: page === 1 ? rows.slice(0, cut) : page === 2 ? rows.slice(cut) : [] };
     }),
@@ -546,6 +547,43 @@ describe('pollers on fixed fixtures (golden)', () => {
     ]);
     // Three different movies: the group opens History, not one title.
     expect(events[0].url).toBe('/activity/history');
+  });
+
+  it('pollSonarr on real file history: deletions (not the upgrade one) per file, a series rename as one', async () => {
+    mocks.sonarr = upgradeInstance('sonarr', { date: '2026-06-01T00:00:00Z', id: 1 }, undefined, fileHistory);
+    // Someone turned the file events on (a device or a channel).
+    mocks.recipients = [{ id: 'admin', timeZone: null }];
+    const out = await run('pollSonarr');
+    expectGolden('pollSonarr:files', out);
+    expect(notified(out).map((e) => [e.eventType, e.title, e.body.split(':')[0]])).toEqual([
+      ['upgraded', 'Episode Upgraded', 'WEBDL-1080p → HDTV-1080p'],
+      ['fileDeleted', 'Episode File Deleted', 'Monster S01E03 (Bluray-720p)'],
+      ['fileDeleted', 'Episode File Deleted', 'Monster S01E02 (Bluray-576p)'],
+      ['fileDeleted', 'Episode File Deleted', 'Monster S01E01 (HDTV-1080p)'],
+      ['fileDeleted', 'Episode File Deleted', 'Something in the Rain S01E16 (WEBRip-1080p)'],
+      ['fileDeleted', 'Episode File Deleted', 'Something in the Rain S01E15 (WEBRip-1080p)'],
+      ['fileRenamed', 'Files Renamed', 'Monster'],
+      ['fileRenamed', 'File Renamed', 'Haikyu!! S01E02'],
+    ]);
+  });
+
+  it('pollSonarr: file events nobody takes are not sent at all (no history row)', async () => {
+    mocks.sonarr = upgradeInstance('sonarr', { date: '2026-06-01T00:00:00Z', id: 1 }, undefined, fileHistory);
+    mocks.recipients = [];
+    expect(notified(await run('pollSonarr')).map((e) => e.eventType)).toEqual(['upgraded']);
+  });
+
+  it('pollRadarr on real file history with grouping on: deletions of one movie open it, its rename is its own', async () => {
+    mocks.radarr = upgradeInstance('radarr', { date: '2026-06-01T00:00:00Z', id: 1 }, undefined, fileHistory);
+    mocks.recipients = [{ id: 'admin', timeZone: null }];
+    const out = await run('pollRadarr', { ...SETTINGS, notificationGroupingEnabled: true });
+    expectGolden('pollRadarr:files', out);
+    expect(notified(out)).toEqual([
+      expect.objectContaining({ eventType: 'upgraded', title: 'Movie Upgraded' }),
+      { eventType: 'fileDeleted', title: 'Movie File Deleted', body: 'Maa Inti Bangaram (2026) (WEBRip-1080p): missing from disk', url: '/movies/549?instance=u1' },
+      { eventType: 'fileDeleted', title: 'Movie File Deleted', body: expect.stringMatching(/^Maa Inti Bangaram \(2026\) \(.+\): deleted$/), url: '/movies/549?instance=u1' },
+      { eventType: 'fileRenamed', title: 'File Renamed', body: 'Maa Inti Bangaram (2026): now Maa Inti Bangaram (2026) HDTV-1080p.mp4', url: '/movies/549?instance=u1' },
+    ]);
   });
 
   it('pollRadarr: an instance whose history fails is reported while the other carries on', async () => {

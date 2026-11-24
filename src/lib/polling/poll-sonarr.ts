@@ -11,10 +11,11 @@ import { fetchAllQueueRecords } from '@/lib/activity-queue';
 import { getMediaHrefFromIds } from '@/lib/media-href';
 import crypto from 'crypto';
 import { notifyArrHealth } from './health-transition';
+import { fileChangeNotices } from './file-changes';
 import { sonarrUpgradeOf, upgradeBody } from './upgrade-imports';
 import { notifyWatchlistArrivals, seriesArrivals } from './watchlist-available';
 import { notifyWatchingEpisodes } from './watching-episodes';
-import { importFailureBody, downloadFailureBody, buildTagMap, mediaFilterMeta, readQueueSnapshots, errorMessage, getPollingState, historyCursorFromState, fetchNewHistoryPages, advanceHistoryCursor, notifyAndLog, instanceTitle, type CycleContext, type QueueSnapshot } from './shared';
+import { importFailureBody, downloadFailureBody, buildTagMap, mediaFilterMeta, readQueueSnapshots, errorMessage, getPollingState, historyCursorFromState, fetchNewHistoryPages, advanceHistoryCursor, notifyAndLog, instanceTitle, wantedNotices, type CycleContext, type QueueSnapshot } from './shared';
 
 export async function pollSonarr(context: CycleContext) {
   context.registerInstanceSource('sonarr');
@@ -208,6 +209,11 @@ export async function pollSonarr(context: CycleContext) {
             url: redirect,
           }, { service: 'sonarr', instanceId, reason: replaced ? 'history-upgraded' : 'history-imported', historyId: item.id });
         }
+      }
+      // Files deleted (not for an upgrade) or renamed, whoever did it: in the
+      // arr itself, by Helprr or by the arr's own housekeeping.
+      for (const notice of await wantedNotices(fileChangeNotices(newHistory, { service: 'sonarr', instanceId, instanceLabel, instanceCount: n }))) {
+        collector.add(notice.event, notice.context);
       }
 
       // A new import means the library changed: bust the cached library here

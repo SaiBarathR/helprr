@@ -1395,6 +1395,37 @@ same: a device rule for `imported` without one for `upgraded`, and the
 channels of a `users` section without `upgradedEvent: true`. Lidarr imports
 are always `imported`.
 
+The opt-in Sonarr/Radarr events (AR-17) are in `DEFAULT_OFF_EVENT_TYPES`
+(`src/lib/notification-events.ts`), so a device without a row and a channel
+that does not list them get none; that is also their starting state on devices,
+channels and settings files from before them, so no migration or import marker
+was needed. While nobody takes one (`usersWhoCouldReceive`), the pollers do not
+send it at all (`wantedNotices` in `src/lib/polling/shared.ts`), so it adds no
+row to the admins' notification list.
+- `fileDeleted` / `fileRenamed` (`notify.media`) come from the history poll
+  (`src/lib/polling/file-changes.ts`): an `episodeFileDeleted`/`movieFileDeleted`
+  row is one notification per file, except reason `Upgrade` (the other half of
+  `upgraded`); renames are one per series or movie per poll. Bodies name the
+  title, episode, quality and reason, or the new file name, never a disk path.
+- `titleAdded` / `titleDeleted` (`notify.media`): the arrs write no history for
+  them, so the cache warm (`warmLibrary` in `src/lib/polling-service.ts`) hands
+  each library read to `src/lib/polling/library-changes.ts`, which keeps every
+  instance's `[id, name]` list in Redis (`helprr:library-ids:<service>:<id>`,
+  30-day TTL) and compares. The first list, a list after the connection changed
+  (`updatedAt`) and an instance that did not answer only record or are skipped;
+  the new list is saved before sending, so a refused write sends nothing. It is
+  saved whether or not anyone takes the events. A deleted title opens the
+  library page.
+- `arrUpdateAvailable` (`notify.health`, admins only): `checkArrUpdates`
+  (`src/lib/polling/arr-updates.ts`) reads each Sonarr, Radarr, Lidarr and
+  Prowlarr `GET /update` once a day; while no admin takes it, the apps are not
+  asked and it looks again hourly (as after a failure). The release marked `latest` is announced when it is not the
+  installed one and is listed above it, once per version and instance (Redis
+  `helprr:arr-update:notified:<id>` plus the dedupe key). It opens Settings →
+  Service status.
+- "Manual Interaction Required" is the existing `importFailed` (a queue item in
+  `importBlocked`, or `importPending` with a warning), for Sonarr as for Radarr.
+
 "Now in your library" (`watchlistAvailable`, `src/lib/polling/watchlist-available.ts`)
 is sent from the Radarr/Sonarr history poll: a non-upgrade import of a title on
 someone's watchlist sends that person their own copy (a follower event, gated by

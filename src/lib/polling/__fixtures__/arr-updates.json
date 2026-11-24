@@ -1,0 +1,139 @@
+{
+  "_note": "Real GET /update lists (Sonarr 4.0.20 and Radarr 7.0.3 /api/v3, Lidarr 3.2.1 and Prowlarr 3.0.2 /api/v1), read 2026-11-25, newest first, trimmed to the fields Helprr reads (urls, file names, hashes and changes removed). Prowlarr has 3.1.0 waiting.",
+  "sonarr": [
+    {
+      "version": "4.0.20.3014",
+      "branch": "main",
+      "releaseDate": "2026-09-16T16:40:21Z",
+      "installed": true,
+      "installable": false,
+      "latest": true
+    },
+    {
+      "version": "4.0.19.2979",
+      "branch": "main",
+      "releaseDate": "2026-06-26T17:24:52Z",
+      "installed": false,
+      "installable": false,
+      "latest": false
+    },
+    {
+      "version": "4.0.18.2971",
+      "branch": "main",
+      "releaseDate": "2026-06-24T14:51:53Z",
+      "installed": false,
+      "installable": false,
+      "latest": false
+    },
+    {
+      "version": "4.0.17.2952",
+      "branch": "main",
+      "releaseDate": "2026-03-19T14:56:49Z",
+      "installed": false,
+      "installable": false,
+      "latest": false
+    }
+  ],
+  "radarr": [
+    {
+      "version": "7.0.3.10918",
+      "branch": "master",
+      "releaseDate": "2026-11-16T01:40:22Z",
+      "installed": true,
+      "installable": false,
+      "latest": true
+    },
+    {
+      "version": "6.4.4.10685",
+      "branch": "master",
+      "releaseDate": "2026-09-16T18:13:40Z",
+      "installed": false,
+      "installable": false,
+      "latest": false
+    },
+    {
+      "version": "6.3.0.10514",
+      "branch": "master",
+      "releaseDate": "2026-07-12T16:54:55Z",
+      "installed": false,
+      "installable": false,
+      "latest": false
+    },
+    {
+      "version": "6.2.1.10461",
+      "branch": "master",
+      "releaseDate": "2026-06-09T19:31:36Z",
+      "installed": false,
+      "installable": false,
+      "latest": false
+    }
+  ],
+  "lidarr": [
+    {
+      "version": "3.2.1.5196",
+      "branch": "develop",
+      "releaseDate": "2026-11-08T15:52:21Z",
+      "installed": true,
+      "installable": false,
+      "latest": true
+    },
+    {
+      "version": "3.2.0.5144",
+      "branch": "develop",
+      "releaseDate": "2026-10-26T01:51:54Z",
+      "installed": false,
+      "installable": false,
+      "latest": false
+    },
+    {
+      "version": "3.1.6.5079",
+      "branch": "develop",
+      "releaseDate": "2026-10-26T01:51:41Z",
+      "installed": false,
+      "installable": false,
+      "latest": false
+    },
+    {
+      "version": "3.1.6.5078",
+      "branch": "develop",
+      "releaseDate": "2026-09-13T18:13:46Z",
+      "installed": false,
+      "installable": false,
+      "latest": false
+    }
+  ],
+  "prowlarr": [
+    {
+      "version": "3.1.0.5799",
+      "branch": "master",
+      "releaseDate": "2026-11-23T20:17:35Z",
+      "installed": false,
+      "installable": true,
+      "latest": true
+    },
+    {
+      "version": "3.0.2.5780",
+      "branch": "master",
+      "releaseDate": "2026-11-16T18:25:56Z",
+      "installed": true,
+      "installable": false,
+      "latest": false
+    },
+    {
+      "version": "2.7.0.5723",
+      "branch": "master",
+      "releaseDate": "2026-10-27T18:19:55Z",
+      "installed": false,
+      "installable": false,
+      "latest": false
+    },
+    {
+      "version": "2.6.5.5623",
+      "branch": "master",
+      "releaseDate": "2026-09-16T18:13:53Z",
+      "installed": false,
+      "installable": false,
+      "latest": false
+    }
+  ]
+}

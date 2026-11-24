@@ -3,7 +3,7 @@ import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { urlsToOrigins } from '@/lib/url-origins';
 import { MAX_TORRENT_BYTES } from '@/lib/manual-downloads/release-source';
-import type { HealthCheck, Tag } from '@/types/arr';
+import type { ArrUpdate, HealthCheck, Tag } from '@/types/arr';
 
 interface SystemStatus {
   version: string;
@@ -450,6 +450,11 @@ export class ProwlarrClient {
     return this.get<HealthCheck[]>('/api/v1/health');
   }
 
+  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
+  async getUpdates(): Promise<ArrUpdate[]> {
+    return this.get<ArrUpdate[]>('/api/v1/update');
+  }
+
   async getIndexer(id: number): Promise<ProwlarrIndexer> {
     return this.get<ProwlarrIndexer>(`/api/v1/indexer/${id}`);
   }
@@ -475,11 +480,6 @@ export class ProwlarrClient {
 
   async sendCommand(name: string): Promise<CommandResponse> {
     return this.post<CommandResponse>('/api/v1/command', { name });
-  }
-
-  /** Available versions, newest first; one is marked `latest`. Read-only: installing is never sent from Helprr. */
-  async getUpdates(): Promise<unknown[]> {
-    return this.get<unknown[]>('/api/v1/update');
   }
 
   /** System → Tasks: each scheduled task with its interval and last and next run. */

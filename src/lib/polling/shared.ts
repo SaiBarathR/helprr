@@ -1,7 +1,7 @@
 // Helpers the pollers share: queue and history readers, the history cursor,
 // media deep links, and sending a notification with its log line.
 import { prisma } from '@/lib/db';
-import { notifyEvent } from '@/lib/notification-service';
+import { notifyEvent, usersWhoCouldReceive } from '@/lib/notification-service';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { logger } from '@/lib/logger';
 import { noteJobFailure } from '@/lib/polling-job-report';
@@ -308,6 +308,32 @@ export async function notifyAndLog(
     }, { scope: 'polling' });
     return null;
   }
+}
+
+/**
+ * The notices whose event someone takes: an allowed user with a device switched
+ * on for it, or a channel set to it. The opt-in events (title added or deleted,
+ * file deleted or renamed, app update) are not sent at all while nobody takes
+ * them: every event sent is a row in the admins' notification list, and those
+ * would fill it (an import list adding a hundred titles) for people who chose
+ * not to hear about them. When the check fails they are sent, as before it.
+ */
+export async function wantedNotices<T extends { event: { eventType: string; metadata?: Record<string, unknown> } }>(notices: T[]): Promise<T[]> {
+  const wanted = new Map<string, boolean>();
+  const kept: T[] = [];
+  for (const notice of notices) {
+    const { eventType, metadata } = notice.event;
+    if (!wanted.has(eventType)) {
+      try {
+        wanted.set(eventType, (await usersWhoCouldReceive(eventType, metadata ?? {})).length > 0);
+      } catch (error) {
+        noteJobFailure(error);
+        wanted.set(eventType, true);
+      }
+    }
+    if (wanted.get(eventType)) kept.push(notice);
+  }
+  return kept;
 }
 
 /** Prefix a notification title with the instance label only when >1 instance of the type is connected. */
