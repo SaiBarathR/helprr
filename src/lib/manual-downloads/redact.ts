@@ -8,6 +8,12 @@ import { redact } from '@/lib/logger';
 export function redactUpstreamText(text: string): string {
   return String(redact(text))
     .replace(/magnet:\?[^\s"'<>]+/gi, 'magnet:[REDACTED]')
+    // A magnet whose name has unencoded spaces (Prowlarr writes them so) ends
+    // the match above at the first space, leaving its trackers behind. They
+    // are percent-encoded, so no URL rule sees them, and a private tracker's
+    // carries its passkey: blank every tracker or source wherever it is, also
+    // after `;`, an HTML-escaped `&amp;` or an encoded `%26`/`%3D`.
+    .replace(/((?:[?&;]|%26)(?:tr|ws|xs|as)(?:\.\d+)?(?:=|%3d))[^&;\s"'<>]+/gi, '$1[REDACTED]')
     .replace(/([?&](?:passkey|authkey|torrent_pass|pid|key|secret|sig|signature|apikey)=)[^&\s"'<>]+/gi, '$1[REDACTED]')
     .replace(/(\/\/[^/\s:@]+:)[^@\s/]+@/g, '$1[REDACTED]@');
 }

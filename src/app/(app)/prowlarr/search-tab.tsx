@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/drawer';
 import { Input } from '@/components/ui/input';
 import { useCan } from '@/components/permission-provider';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { formatBytes } from '@/lib/format';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { ApiError, ensureArray, jsonFetcher } from '@/lib/query-fetch';
@@ -51,19 +52,21 @@ const CATEGORIES = [
 type SearchIds = Partial<Record<ProwlarrSearchIdField, string>>;
 
 const TYPE_PLACEHOLDERS: Record<ProwlarrSearchType, string> = {
-  search: 'Search all indexers',
+  // Short enough to fit beside the two buttons at 320 px.
+  search: 'Search indexers',
   tvsearch: 'Search TV',
   movie: 'Search movies',
   music: 'Search music',
   book: 'Search books',
 };
 
+// Marked as examples, so an empty field never reads as one already filled in.
 const ID_PLACEHOLDERS: Record<ProwlarrSearchIdField, string> = {
-  tvdbId: '81189',
-  imdbId: 'tt0903747',
-  tmdbId: '1396',
-  season: '1',
-  episode: '1',
+  tvdbId: 'e.g. 81189',
+  imdbId: 'e.g. tt0903747',
+  tmdbId: 'e.g. 1396',
+  season: 'e.g. 1',
+  episode: 'e.g. 1',
 };
 
 /** The ids the type takes, trimmed; an IMDb id typed without its "tt" gets one. */
@@ -100,9 +103,12 @@ export function SearchTab() {
   const [categories, setCategories] = useRouteViewState<number[]>('searchCategories', []);
   const [type, setType] = useRouteViewState<ProwlarrSearchType>('searchType', 'search');
   const [ids, setIds] = useRouteViewState<SearchIds>('searchIds', {});
-  // Empty means every enabled indexer.
-  const [pickedIndexers, setPickedIndexers] = useRouteViewState<number[]>('searchIndexers', []);
+  // Null means every enabled indexer; an empty pick means none, and no search
+  // starts until one is ticked, so clearing the list never widens it to all
+  // (private trackers included).
+  const [pickedIndexers, setPickedIndexers] = useRouteViewState<number[] | null>('searchIndexers', null);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const isMobile = useIsMobile();
   const [submitted, setSubmitted] = useRouteViewState<{
     query: string; categories: string; type?: ProwlarrSearchType; ids?: SearchIds; indexerIds?: string;
   } | null>('searchSubmitted', null);
@@ -135,10 +141,11 @@ export function SearchTab() {
   // since gone or been disabled: dropping those ids could leave none, which
   // means every indexer, private trackers the user left out included. The
   // server refuses a stale pick and says to pick again.
-  const indexerIds = useMemo(() => [...pickedIndexers].sort((a, b) => a - b), [pickedIndexers]);
+  const indexerIds = useMemo(() => [...(pickedIndexers ?? [])].sort((a, b) => a - b), [pickedIndexers]);
+  const noIndexers = pickedIndexers !== null && pickedIndexers.length === 0;
   const typedIds = idsForType(type, ids);
   const hasId = Boolean(typedIds.tvdbId || typedIds.imdbId || typedIds.tmdbId);
-  const optionCount = (type === 'search' ? 0 : 1) + Object.keys(typedIds).length + (indexerIds.length > 0 ? 1 : 0);
+  const optionCount = (type === 'search' ? 0 : 1) + Object.keys(typedIds).length + (pickedIndexers !== null ? 1 : 0);
 
   const queryKey = ['prowlarr', 'search', submitted];
   const searchQuery = useQuery({
@@ -151,7 +158,9 @@ export function SearchTab() {
       if (submitted?.indexerIds) params.set('indexerIds', submitted.indexerIds);
       return jsonFetcher<ProwlarrSearchResponse>(`/api/prowlarr/search?${params}`)({ signal });
     },
-    enabled: armed && !!submitted,
+    // With no indexer ticked, a pull-to-refresh or retry that invalidates
+    // every query must not run the last search again either.
+    enabled: armed && !!submitted && !noIndexers,
     staleTime: Infinity,
     gcTime: 30 * 60_000,
     retry: false,
@@ -172,6 +181,8 @@ export function SearchTab() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    // Enter in the field submits too; an empty indexer list must not search every one.
+    if (noIndexers) return;
     const next = {
       query: draft.trim(),
       categories: [...categories].sort().join(','),
@@ -191,17 +202,17 @@ export function SearchTab() {
     setPickedIndexers(() => {
       // Editing the pick drops any id that is gone.
       const enabledIds = enabledIndexers.map((indexer) => indexer.id);
-      const current = indexerIds.length > 0 ? indexerIds.filter((value) => enabledIds.includes(value)) : enabledIds;
+      const current = pickedIndexers === null ? enabledIds : indexerIds.filter((value) => enabledIds.includes(value));
       const next = current.includes(id) ? current.filter((value) => value !== id) : [...current, id];
-      // Every one picked, or none left, is the same as all.
-      return next.length === 0 || next.length === enabledIndexers.length ? [] : next;
+      // Every one picked is the same as all; none left stays none.
+      return next.length === enabledIndexers.length ? null : next;
     });
   }
 
   function resetOptions() {
     setType('search');
     setIds({});
-    setPickedIndexers([]);
+    setPickedIndexers(null);
   }
 
   function toggleCategory(id: number) {
@@ -237,6 +248,104 @@ export function SearchTab() {
     }
   }
 
+  // A bottom sheet on phones, a dialog on wider screens, like the Send sheet.
+  const optionsBody = (
+    <>
+      <section className="space-y-2" aria-label="Search type">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Search type</p>
+        <div className="flex flex-wrap gap-1.5">
+          {PROWLARR_SEARCH_TYPES.map((option) => (
+            <Button
+              key={option.id}
+              variant={type === option.id ? 'default' : 'outline'}
+              size="sm"
+              className="h-8 px-2.5 text-xs"
+              aria-pressed={type === option.id}
+              onClick={() => setType(option.id)}
+            >
+              {option.label}
+            </Button>
+          ))}
+        </div>
+        {PROWLARR_SEARCH_ID_FIELDS[type].length > 0 && (
+          <>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              {PROWLARR_SEARCH_ID_FIELDS[type].map((field) => (
+                <label key={field} className="space-y-1 text-xs text-muted-foreground">
+                  <span>{PROWLARR_SEARCH_ID_LABELS[field]}</span>
+                  {/* The label is muted; a typed id is not, so it never looks like the placeholder. */}
+                  <Input
+                    className="text-foreground"
+                    value={ids[field] ?? ''}
+                    onChange={(event) => setIds((prev) => ({ ...prev, [field]: event.target.value }))}
+                    placeholder={ID_PLACEHOLDERS[field]}
+                    inputMode={field === 'imdbId' ? 'text' : 'numeric'}
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    maxLength={12}
+                  />
+                </label>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              With an ID the text can stay empty. Prowlarr skips indexers that can&rsquo;t search this way.
+            </p>
+          </>
+        )}
+      </section>
+
+      <section className="space-y-2" aria-label="Indexers">
+        <div className="flex items-center gap-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Indexers</p>
+          {pickedIndexers !== null && (
+            <Button variant="ghost" size="sm" className="ml-auto h-7 px-2 text-xs" onClick={() => setPickedIndexers(null)}>
+              Use all
+            </Button>
+          )}
+        </div>
+        {noIndexers && <p className="text-xs text-muted-foreground">None ticked: tick one, or Use all.</p>}
+        {enabledIndexers.length > 0 ? (
+          <div className="rounded-lg bg-muted/30 overflow-hidden divide-y divide-border/40">
+            {enabledIndexers.map((indexer) => {
+              const on = pickedIndexers === null || indexerIds.includes(indexer.id);
+              return (
+                <button
+                  key={indexer.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleIndexer(indexer.id)}
+                  className="flex min-h-11 w-full items-center gap-3 px-3 text-left text-sm transition-colors hover:bg-accent/50"
+                >
+                  <span className="min-w-0 flex-1 truncate">{indexer.name}</span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">
+                    {[indexer.protocol, indexer.privacy].filter(Boolean).join(' · ')}
+                  </span>
+                  <Check className={`h-4 w-4 shrink-0 ${on ? 'text-primary' : 'invisible'}`} />
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {indexersQuery.isLoading ? 'Loading…' : indexersQuery.isError ? 'Failed to load indexers.' : 'No enabled indexers.'}
+          </p>
+        )}
+      </section>
+    </>
+  );
+  const optionsFooter = (
+    <>
+      {/* 44 px tall on touch screens; desktop keeps the denser size. */}
+      <Button variant="outline" className="flex-1 pointer-coarse:h-11" onClick={resetOptions} disabled={optionCount === 0}>
+        Reset
+      </Button>
+      <Button className="flex-1 pointer-coarse:h-11" onClick={() => setOptionsOpen(false)}>
+        Done
+      </Button>
+    </>
+  );
+
   return (
     <div className="space-y-3">
       <form onSubmit={submit} className="flex gap-2">
@@ -266,11 +375,14 @@ export function SearchTab() {
         <Button
           type="submit"
           className="shrink-0"
-          disabled={(draft.trim().length < 2 && !hasId) || searchQuery.isFetching}
+          disabled={(draft.trim().length < 2 && !hasId) || noIndexers || searchQuery.isFetching}
         >
           <Search className="h-4 w-4" /> Search
         </Button>
       </form>
+      {noIndexers && (
+        <p className="text-xs text-muted-foreground">No indexer is ticked. Pick one in Search options to search.</p>
+      )}
 
       <div className="flex flex-wrap gap-1.5">
         {CATEGORIES.map((category) => (
@@ -307,8 +419,8 @@ export function SearchTab() {
       ) : searchQuery.isFetched && results.length === 0 ? (
         <div className="rounded-xl bg-card p-8 text-center text-sm text-muted-foreground">
           {submitted?.type && submitted.type !== 'search'
-            ? 'No results came back. Prowlarr skips indexers that can’t search this way, so try Any, or check the warnings above.'
-            : 'No results came back. If that looks wrong, an indexer may have failed: check the warnings above.'}
+            ? 'No results came back. Prowlarr skips indexers that can’t search by this type or ID, so the picked ones may not support it. Try Any, or search by name.'
+            : 'No results came back. If that looks wrong, an indexer may have failed: History’s Failed filter shows it.'}
         </div>
       ) : results.length > 0 ? (
         <>
@@ -382,102 +494,30 @@ export function SearchTab() {
         </>
       ) : null}
 
-      <Drawer open={optionsOpen} onOpenChange={setOptionsOpen}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Search options</DrawerTitle>
-            <DrawerDescription>Used by the next search.</DrawerDescription>
-          </DrawerHeader>
-          <div className="px-4 pb-2 space-y-5 overflow-y-auto flex-1 min-h-0">
-            <section className="space-y-2" aria-label="Search type">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Search type</p>
-              <div className="flex flex-wrap gap-1.5">
-                {PROWLARR_SEARCH_TYPES.map((option) => (
-                  <Button
-                    key={option.id}
-                    variant={type === option.id ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-8 px-2.5 text-xs"
-                    aria-pressed={type === option.id}
-                    onClick={() => setType(option.id)}
-                  >
-                    {option.label}
-                  </Button>
-                ))}
-              </div>
-              {PROWLARR_SEARCH_ID_FIELDS[type].length > 0 && (
-                <>
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    {PROWLARR_SEARCH_ID_FIELDS[type].map((field) => (
-                      <label key={field} className="space-y-1 text-xs text-muted-foreground">
-                        <span>{PROWLARR_SEARCH_ID_LABELS[field]}</span>
-                        <Input
-                          value={ids[field] ?? ''}
-                          onChange={(event) => setIds((prev) => ({ ...prev, [field]: event.target.value }))}
-                          placeholder={ID_PLACEHOLDERS[field]}
-                          inputMode={field === 'imdbId' ? 'text' : 'numeric'}
-                          autoCapitalize="off"
-                          autoCorrect="off"
-                          spellCheck={false}
-                          maxLength={12}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    With an ID the text can stay empty. Prowlarr skips indexers that can&rsquo;t search this way.
-                  </p>
-                </>
-              )}
-            </section>
-
-            <section className="space-y-2" aria-label="Indexers">
-              <div className="flex items-center gap-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Indexers</p>
-                {indexerIds.length > 0 && (
-                  <Button variant="ghost" size="sm" className="ml-auto h-7 px-2 text-xs" onClick={() => setPickedIndexers([])}>
-                    Use all
-                  </Button>
-                )}
-              </div>
-              {enabledIndexers.length > 0 ? (
-                <div className="rounded-lg bg-muted/30 overflow-hidden divide-y divide-border/40">
-                  {enabledIndexers.map((indexer) => {
-                    const on = indexerIds.length === 0 || indexerIds.includes(indexer.id);
-                    return (
-                      <button
-                        key={indexer.id}
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => toggleIndexer(indexer.id)}
-                        className="flex min-h-11 w-full items-center gap-3 px-3 text-left text-sm transition-colors hover:bg-accent/50"
-                      >
-                        <span className="min-w-0 flex-1 truncate">{indexer.name}</span>
-                        <span className="shrink-0 text-[11px] text-muted-foreground">
-                          {[indexer.protocol, indexer.privacy].filter(Boolean).join(' · ')}
-                        </span>
-                        <Check className={`h-4 w-4 shrink-0 ${on ? 'text-primary' : 'invisible'}`} />
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {indexersQuery.isLoading ? 'Loading…' : indexersQuery.isError ? 'Failed to load indexers.' : 'No enabled indexers.'}
-                </p>
-              )}
-            </section>
-          </div>
-          <DrawerFooter className="flex-row">
-            <Button variant="outline" className="flex-1" onClick={resetOptions} disabled={optionCount === 0}>
-              Reset
-            </Button>
-            <Button className="flex-1" onClick={() => setOptionsOpen(false)}>
-              Done
-            </Button>
-          </DrawerFooter>
-        </DrawerContent>
-      </Drawer>
+      {isMobile ? (
+        <Drawer open={optionsOpen} onOpenChange={setOptionsOpen}>
+          <DrawerContent>
+            <DrawerHeader>
+              <DrawerTitle>Search options</DrawerTitle>
+              <DrawerDescription>Used by the next search.</DrawerDescription>
+            </DrawerHeader>
+            <div className="px-4 pb-2 space-y-5 overflow-y-auto flex-1 min-h-0">{optionsBody}</div>
+            <DrawerFooter className="flex-row">{optionsFooter}</DrawerFooter>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog open={optionsOpen} onOpenChange={setOptionsOpen}>
+          {/* A column, so a long indexer list scrolls between the header and the buttons. */}
+          <DialogContent className="flex flex-col overflow-hidden sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Search options</DialogTitle>
+              <DialogDescription>Used by the next search.</DialogDescription>
+            </DialogHeader>
+            <div className="-mx-6 min-h-0 flex-1 space-y-5 overflow-y-auto px-6">{optionsBody}</div>
+            <div className="flex gap-2">{optionsFooter}</div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <SendToArrSheet
         release={sending}
