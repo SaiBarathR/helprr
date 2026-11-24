@@ -135,18 +135,18 @@ describe('GET /api/notifications (at most 200 rows)', () => {
 describe('GET /api/activity/wanted (at most 100 rows)', () => {
   it.each(sizeCases(20, 100))('pageSize=%s asks the instance for %d', async (raw, expected) => {
     const res = await activityWanted(get(`/api/activity/wanted?type=missing&instanceId=sonarr-1&${query('pageSize', raw)}`));
-    expect(mocks.sonarr.getWantedMissing).toHaveBeenCalledWith(1, expected);
+    expect(mocks.sonarr.getWantedMissing).toHaveBeenCalledWith(1, expected, { unmonitored: false });
     expect(await res.json()).toMatchObject({ page: 1, pageSize: expected });
   });
 
   it.each(pageCases)('page=%s asks the instance for page %d', async (raw, expected) => {
     await activityWanted(get(`/api/activity/wanted?type=missing&instanceId=sonarr-1&${query('page', raw)}`));
-    expect(mocks.sonarr.getWantedMissing).toHaveBeenCalledWith(expected, 20);
+    expect(mocks.sonarr.getWantedMissing).toHaveBeenCalledWith(expected, 20, { unmonitored: false });
   });
 
   it('bounds the cutoff list the same way', async () => {
     await activityWanted(get('/api/activity/wanted?type=cutoff&instanceId=sonarr-1&pageSize=99999'));
-    expect(mocks.sonarr.getCutoffUnmet).toHaveBeenCalledWith(1, 100);
+    expect(mocks.sonarr.getCutoffUnmet).toHaveBeenCalledWith(1, 100, { unmonitored: false });
   });
 
   it('carves a bounded window across several instances', async () => {
@@ -165,11 +165,44 @@ describe('GET /api/activity/wanted (at most 100 rows)', () => {
   it('asks Radarr for missing films oldest first and keeps Sonarr newest first', async () => {
     mocks.withRadarr = true;
     await activityWanted(get('/api/activity/wanted?type=missing&instanceId=radarr-1'));
-    expect(mocks.radarr.getWantedMissing).toHaveBeenCalledWith(1, 20, 'movieMetadata.inCinemas', 'ascending');
+    expect(mocks.radarr.getWantedMissing).toHaveBeenCalledWith(1, 20, 'movieMetadata.inCinemas', 'ascending', { unmonitored: false });
     await activityWanted(get('/api/activity/wanted?type=missing&instanceId=sonarr-1'));
-    expect(mocks.sonarr.getWantedMissing).toHaveBeenCalledWith(1, 20);
+    expect(mocks.sonarr.getWantedMissing).toHaveBeenCalledWith(1, 20, { unmonitored: false });
     await activityWanted(get('/api/activity/wanted?type=cutoff&instanceId=radarr-1'));
-    expect(mocks.radarr.getCutoffUnmet).toHaveBeenCalledWith(1, 20);
+    expect(mocks.radarr.getCutoffUnmet).toHaveBeenCalledWith(1, 20, { unmonitored: false });
+  });
+});
+
+describe('GET /api/activity/wanted with unmonitored=1', () => {
+  const page = (offset: number, total: number) => async (p: number, size: number) =>
+    ({ totalRecords: total, records: Array.from({ length: Math.max(0, Math.min(size, total - (p - 1) * size)) }, (_, i) => ({ id: offset + (p - 1) * size + i })) });
+
+  it('reads each instance again for its unmonitored items and lists them after every monitored one', async () => {
+    mocks.withRadarr = true;
+    mocks.sonarr.getWantedMissing.mockImplementation(async (p: number, size: number, options?: { unmonitored?: boolean }) =>
+      page(options?.unmonitored ? 500 : 0, options?.unmonitored ? 2 : 3)(p, size));
+    mocks.radarr.getWantedMissing.mockImplementation(async (p: number, size: number, _key: string, _dir: string, options?: { unmonitored?: boolean }) =>
+      page(options?.unmonitored ? 1500 : 1000, options?.unmonitored ? 1 : 2)(p, size));
+    const body = await (await activityWanted(get('/api/activity/wanted?type=missing&unmonitored=1'))).json();
+
+    expect(mocks.sonarr.getWantedMissing).toHaveBeenCalledWith(1, 1, { unmonitored: true });
+    expect(mocks.radarr.getWantedMissing).toHaveBeenCalledWith(1, 1, 'movieMetadata.inCinemas', 'ascending', { unmonitored: true });
+    expect(body).toMatchObject({ totalRecords: 8, unmonitoredTotal: 3 });
+    expect(body.records.map((r: { id: number }) => r.id)).toEqual([0, 1, 2, 1000, 1001, 500, 501, 1500]);
+    expect(body.records.map((r: { unmonitored?: boolean }) => r.unmonitored ?? false))
+      .toEqual([false, false, false, false, false, true, true, true]);
+  });
+
+  it('reads only monitored items without it, and the counts stay monitored only', async () => {
+    mocks.sonarr.getCutoffUnmet.mockResolvedValue({ totalRecords: 4, records: [] });
+    mocks.sonarr.getWantedMissing.mockResolvedValue({ totalRecords: 2, records: [] });
+    const page1 = await (await activityWanted(get('/api/activity/wanted?type=cutoff&unmonitored=true'))).json();
+    expect(page1.unmonitoredTotal).toBeUndefined();
+    const counts = await (await activityWanted(get('/api/activity/wanted?unmonitored=1'))).json();
+    expect(counts).toEqual({ missingTotal: 2, cutoffTotal: 4 });
+    for (const call of [...mocks.sonarr.getCutoffUnmet.mock.calls, ...mocks.sonarr.getWantedMissing.mock.calls]) {
+      expect(call.at(-1)).toEqual({ unmonitored: false });
+    }
   });
 });
 

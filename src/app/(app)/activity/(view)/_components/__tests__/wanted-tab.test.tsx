@@ -41,7 +41,7 @@ const INSTANCES = [
 ];
 
 let posts: Array<{ url: string; body: unknown }>;
-const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+const defaultFetch = async (url: string, init?: RequestInit) => {
   if (init?.method === 'POST') {
     posts.push({ url, body: JSON.parse(String(init.body)) });
     return Response.json(url.startsWith('/api/radarr/') ? mocks.radarrAnswer : { id: 1 });
@@ -49,12 +49,13 @@ const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
   if (url === '/api/instances') return Response.json(INSTANCES);
   if (url.startsWith('/api/activity/wanted?')) return Response.json({ records: RECORDS, totalRecords: 42 });
   return Response.json({});
-});
+};
+const fetchMock = vi.fn(defaultFetch);
 
 beforeEach(() => {
   mocks.canManage = true;
   posts = [];
-  fetchMock.mockClear();
+  fetchMock.mockClear().mockImplementation(defaultFetch);
   mocks.toast.success.mockClear();
   mocks.toast.error.mockClear();
   mocks.toast.info.mockClear();
@@ -64,7 +65,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderTab(props: Partial<{ type: 'missing' | 'cutoff'; filterBy: string[]; instanceFilter: string }> = {}) {
+function renderTab(props: Partial<{ type: 'missing' | 'cutoff'; filterBy: string[]; instanceFilter: string; showUnmonitored: boolean }> = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
@@ -196,5 +197,73 @@ describe('WantedTab', () => {
     // The instance list is still read, to name each row's instance on its app
     // chip; the page's instance filter loads the same cached list for everyone.
     expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/command')).length).toBe(0);
+  });
+
+  describe('with unmonitored items shown', () => {
+    const UNMONITORED = { id: 31, source: 'sonarr', mediaType: 'episode', instanceId: 'son-1', seriesId: 9, seasonNumber: 1, episodeNumber: 2, title: 'Ep 2', series: { id: 9, title: 'Paused Show' }, airDateUtc: ago(YEAR), unmonitored: true };
+    beforeEach(() => {
+      fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          posts.push({ url, body: JSON.parse(String(init.body)) });
+          return Response.json({ id: 1 });
+        }
+        if (url === '/api/instances') return Response.json(INSTANCES);
+        if (url.startsWith('/api/activity/wanted?')) {
+          const shown = new URL(url, 'http://x').searchParams.get('unmonitored') === '1';
+          return Response.json(shown
+            ? { records: [...RECORDS, UNMONITORED], totalRecords: 43, unmonitoredTotal: 1 }
+            : { records: RECORDS, totalRecords: 42 });
+        }
+        return Response.json({});
+      });
+    });
+
+    it('asks for them only when shown, and dims their rows', async () => {
+      renderTab();
+      await screen.findByText(/Classroom - S01E08/);
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('unmonitored'))).toBe(false);
+      expect(screen.queryByText(/Paused Show/)).toBeNull();
+    });
+
+    it('lists them dimmed after the others, and Search all still counts and searches the monitored ones', async () => {
+      renderTab({ filterBy: ['sonarr'], showUnmonitored: true });
+      const row = (await screen.findByText(/Paused Show - S01E02/)).closest('.opacity-50');
+      expect(row).toBeTruthy();
+      expect(within(row as HTMLElement).getByText('Unmonitored')).toBeTruthy();
+      expect(screen.getByText(/Classroom - S01E08/).closest('.opacity-50')).toBeNull();
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('unmonitored=1'))).toBe(true);
+
+      await waitFor(() => expect((screen.getByRole('button', { name: 'Search all' }) as HTMLButtonElement).disabled).toBe(false));
+      await userEvent.click(screen.getByRole('button', { name: 'Search all' }));
+      const dialog = await screen.findByRole('alertdialog');
+      expect(within(dialog).getByText('Search for all 42 missing items?')).toBeTruthy();
+      expect(within(dialog).getByText(/Unmonitored items are not searched; select them to search them/)).toBeTruthy();
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Search all' }));
+      await waitFor(() => expect(posts).toHaveLength(2));
+      // The whole-list commands, which search monitored items only.
+      expect(posts.map((p) => p.body)).toEqual([{ name: 'MissingEpisodeSearch' }, { name: 'MissingEpisodeSearch' }]);
+    });
+
+    it('searches an unmonitored item only when it is picked', async () => {
+      renderTab({ showUnmonitored: true });
+      await userEvent.click(await screen.findByRole('button', { name: 'Select' }));
+      await userEvent.click(screen.getByText(/Paused Show - S01E02/));
+      await userEvent.click(screen.getByRole('button', { name: 'Search selected' }));
+      await waitFor(() => expect(posts).toEqual([
+        { url: '/api/sonarr/command?instanceId=son-1', body: { name: 'EpisodeSearch', episodeIds: [31] } },
+      ]));
+    });
+
+    it('turns Search all off when every listed item is unmonitored', async () => {
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url === '/api/instances') return Response.json(INSTANCES);
+        if (url.startsWith('/api/activity/wanted?')) return Response.json({ records: [UNMONITORED], totalRecords: 1, unmonitoredTotal: 1 });
+        return Response.json({});
+      });
+      renderTab({ showUnmonitored: true });
+      await screen.findByText(/Paused Show - S01E02/);
+      await new Promise((r) => setTimeout(r, 50));
+      expect((screen.getByRole('button', { name: 'Search all' }) as HTMLButtonElement).disabled).toBe(true);
+    });
   });
 });

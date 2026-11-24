@@ -60,6 +60,8 @@ export default function ActivityPage() {
   const setFilterBy = useUIStore((s) => s.setActivityFilterBy);
   const savedInstance = useUIStore((s) => s.activityInstanceFilter);
   const setInstanceFilter = useUIStore((s) => s.setActivityInstanceFilter);
+  const savedShowUnmonitored = useUIStore((s) => s.activityShowUnmonitored);
+  const setShowUnmonitored = useUIStore((s) => s.setActivityShowUnmonitored);
   const searchParamsKey = searchParams.toString();
   // A ?source deep link (push notifications for a grab/failure) opens its own
   // view, like a Discover link: it never touches the saved filters, and changes
@@ -119,6 +121,9 @@ export default function ActivityPage() {
   }, [instanceOptions, savedInstance, setInstanceFilter]);
   const initRef = useRef(false);
   const availableSortOptions = SORT_OPTIONS_BY_TAB[tab];
+  // Only Missing and Cutoff can list unmonitored items; the saved choice waits on the other tabs.
+  const wantedTab = tab === 'missing' || tab === 'cutoff';
+  const showUnmonitored = wantedTab && savedShowUnmonitored;
 
   // Reconcile each URL view: a valid ?tab wins, otherwise resume the saved tab
   // after hydration. Guarded during render so URL changes don't paint a stale tab.
@@ -191,9 +196,13 @@ export default function ActivityPage() {
         onRemove: () => updateInstance('all'),
       }]
       : []),
+    ...(showUnmonitored
+      ? [{ id: 'unmonitored', label: 'Unmonitored', onRemove: () => setShowUnmonitored(false) }]
+      : []),
   ];
 
   function clearFilters() {
+    if (showUnmonitored) setShowUnmonitored(false);
     if (linkView) {
       updateLinkView({ sources: [], instance: 'all' });
       return;
@@ -340,6 +349,18 @@ export default function ActivityPage() {
                 ))}
               </>
             )}
+            {wantedTab && (
+              <>
+                <ResponsiveMenuSeparator />
+                <ResponsiveMenuLabel>Show</ResponsiveMenuLabel>
+                <ResponsiveMenuCheckboxItem
+                  checked={showUnmonitored}
+                  onCheckedChange={() => setShowUnmonitored(!showUnmonitored)}
+                >
+                  Unmonitored
+                </ResponsiveMenuCheckboxItem>
+              </>
+            )}
             {availableSortOptions.length > 0 && (
               <>
                 <ResponsiveMenuSeparator />
@@ -453,8 +474,8 @@ export default function ActivityPage() {
           />
         )}
         {tab === 'failed' && <FailedImportsTab filterBy={sources} instanceFilter={instanceFilter} />}
-        {tab === 'missing' && <WantedTab type="missing" filterBy={sources} instanceFilter={instanceFilter} />}
-        {tab === 'cutoff' && <WantedTab type="cutoff" filterBy={sources} instanceFilter={instanceFilter} />}
+        {tab === 'missing' && <WantedTab type="missing" filterBy={sources} instanceFilter={instanceFilter} showUnmonitored={showUnmonitored} />}
+        {tab === 'cutoff' && <WantedTab type="cutoff" filterBy={sources} instanceFilter={instanceFilter} showUnmonitored={showUnmonitored} />}
       </div>
     </div>
   );

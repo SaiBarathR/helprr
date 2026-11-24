@@ -22,9 +22,10 @@ type WantedPageResponse<T> = {
 };
 
 type WantedFetcher<T> = (page: number, pageSize: number) => Promise<WantedPageResponse<T>>;
+type WantedReadOptions = { unmonitored?: boolean };
 type WantedCapableClient<T> = {
-  getWantedMissing(page: number, pageSize: number): Promise<WantedPageResponse<T>>;
-  getCutoffUnmet(page: number, pageSize: number): Promise<WantedPageResponse<T>>;
+  getWantedMissing(page: number, pageSize: number, options?: WantedReadOptions): Promise<WantedPageResponse<T>>;
+  getCutoffUnmet(page: number, pageSize: number, options?: WantedReadOptions): Promise<WantedPageResponse<T>>;
 };
 
 function normalizeWantedType(value: string | null): WantedType | null {
@@ -68,12 +69,14 @@ type WantedRecord = { id?: number; artistId?: number };
 // Server-side filter dimensions. `sources` (empty/undefined = all sources) and
 // `instanceId` (undefined = all instances) intersect: a bucket survives only if
 // it matches both. `includeLidarr` is false for a viewer without music.view.
-type WantedFilter = { sources?: WantedSource[]; instanceId?: string; includeLidarr: boolean };
+// `includeUnmonitored` adds each instance's unmonitored list after the monitored ones.
+type WantedFilter = { sources?: WantedSource[]; instanceId?: string; includeLidarr: boolean; includeUnmonitored?: boolean };
 
 type WantedBucket = {
   source: WantedSource;
   instanceId: string;
   instanceLabel: string;
+  unmonitored: boolean;
   fetchPage: WantedFetcher<WantedRecord>;
   tag: (record: WantedRecord) => Record<string, unknown>;
 };
@@ -84,7 +87,7 @@ type WantedBucket = {
 // The filter narrows which buckets exist (by source set and/or instance), so
 // totalRecords and the page slice fall out correctly with no other edits.
 async function buildWantedBuckets(type: WantedType, filter: WantedFilter): Promise<WantedBucket[]> {
-  const { sources, instanceId, includeLidarr } = filter;
+  const { sources, instanceId, includeLidarr, includeUnmonitored } = filter;
   const want = (s: WantedSource) => !sources || sources.length === 0 || sources.includes(s);
   const [sonarrClients, radarrClients, lidarrClients] = await Promise.all([
     want('sonarr') ? getSonarrClients().catch(() => []) : Promise.resolve([]),
@@ -92,41 +95,51 @@ async function buildWantedBuckets(type: WantedType, filter: WantedFilter): Promi
     includeLidarr && want('lidarr') ? getLidarrClients().catch(() => []) : Promise.resolve([]),
   ]);
 
-  const makeFetch = (client: WantedCapableClient<WantedRecord>): WantedFetcher<WantedRecord> =>
+  const makeFetch = (client: WantedCapableClient<WantedRecord>, options: WantedReadOptions): WantedFetcher<WantedRecord> =>
     (page, pageSize) =>
-      type === 'cutoff' ? client.getCutoffUnmet(page, pageSize) : client.getWantedMissing(page, pageSize);
+      type === 'cutoff' ? client.getCutoffUnmet(page, pageSize, options) : client.getWantedMissing(page, pageSize, options);
 
+  // The apps list monitored or unmonitored items, never both: showing
+  // unmonitored ones reads each instance a second time with monitored=false.
+  // Those buckets come after every monitored one, so the list leads with what
+  // the apps search for themselves; their rows carry `unmonitored: true`.
   const buckets: WantedBucket[] = [];
-  for (const { connection, client } of sonarrClients) {
-    buckets.push({
-      source: 'sonarr',
-      instanceId: connection.id,
-      instanceLabel: connection.label,
-      fetchPage: makeFetch(client),
-      tag: (record) => ({ ...record, source: 'sonarr' as const, mediaType: 'episode' as const, instanceId: connection.id, instanceLabel: connection.label }),
-    });
-  }
-  for (const { connection, client } of radarrClients) {
-    buckets.push({
-      source: 'radarr',
-      instanceId: connection.id,
-      instanceLabel: connection.label,
-      // Missing films oldest first: the overdue ones lead and those not out yet
-      // come last. Sonarr's missing list has no unaired episodes, so it stays newest first.
-      fetchPage: type === 'missing'
-        ? (page, pageSize) => client.getWantedMissing(page, pageSize, 'movieMetadata.inCinemas', 'ascending')
-        : makeFetch(client),
-      tag: (record) => ({ ...record, source: 'radarr' as const, mediaType: 'movie' as const, instanceId: connection.id, instanceLabel: connection.label }),
-    });
-  }
-  for (const { connection, client } of lidarrClients) {
-    buckets.push({
-      source: 'lidarr',
-      instanceId: connection.id,
-      instanceLabel: connection.label,
-      fetchPage: makeFetch(client),
-      tag: (record) => ({ ...record, source: 'lidarr' as const, mediaType: 'album' as const, albumId: record.id, artistId: record.artistId, instanceId: connection.id, instanceLabel: connection.label }),
-    });
+  for (const unmonitored of includeUnmonitored ? [false, true] : [false]) {
+    const options = { unmonitored };
+    for (const { connection, client } of sonarrClients) {
+      buckets.push({
+        source: 'sonarr',
+        instanceId: connection.id,
+        instanceLabel: connection.label,
+        unmonitored,
+        fetchPage: makeFetch(client, options),
+        tag: (record) => ({ ...record, source: 'sonarr' as const, mediaType: 'episode' as const, instanceId: connection.id, instanceLabel: connection.label, ...(unmonitored ? { unmonitored } : {}) }),
+      });
+    }
+    for (const { connection, client } of radarrClients) {
+      buckets.push({
+        source: 'radarr',
+        instanceId: connection.id,
+        instanceLabel: connection.label,
+        unmonitored,
+        // Missing films oldest first: the overdue ones lead and those not out yet
+        // come last. Sonarr's missing list has no unaired episodes, so it stays newest first.
+        fetchPage: type === 'missing'
+          ? (page, pageSize) => client.getWantedMissing(page, pageSize, 'movieMetadata.inCinemas', 'ascending', options)
+          : (page, pageSize) => client.getCutoffUnmet(page, pageSize, options),
+        tag: (record) => ({ ...record, source: 'radarr' as const, mediaType: 'movie' as const, instanceId: connection.id, instanceLabel: connection.label, ...(unmonitored ? { unmonitored } : {}) }),
+      });
+    }
+    for (const { connection, client } of lidarrClients) {
+      buckets.push({
+        source: 'lidarr',
+        instanceId: connection.id,
+        instanceLabel: connection.label,
+        unmonitored,
+        fetchPage: makeFetch(client, options),
+        tag: (record) => ({ ...record, source: 'lidarr' as const, mediaType: 'album' as const, albumId: record.id, artistId: record.artistId, instanceId: connection.id, instanceLabel: connection.label, ...(unmonitored ? { unmonitored } : {}) }),
+      });
+    }
   }
   return instanceId ? buckets.filter((bucket) => bucket.instanceId === instanceId) : buckets;
 }
@@ -177,11 +190,15 @@ async function fetchWantedPage(type: WantedType, page: number, pageSize: number,
     page,
     pageSize,
     totalRecords: totals.reduce((sum, n) => sum + n, 0),
+    // How many of them are unmonitored: Search all leaves those out.
+    ...(filter.includeUnmonitored
+      ? { unmonitoredTotal: totals.reduce((sum, n, index) => (buckets[index].unmonitored ? sum + n : sum), 0) }
+      : {}),
     records: slices.flat(),
   };
 }
 
-async function fetchWantedCounts(filter: WantedFilter) {
+async function fetchWantedCounts(filter: Omit<WantedFilter, 'includeUnmonitored'>) {
   const totalFor = async (type: WantedType) => {
     const buckets = await buildWantedBuckets(type, filter);
     const totals = await Promise.all(buckets.map((bucket) => getWantedTotal(bucket.fetchPage)));
@@ -207,6 +224,9 @@ async function fetchWantedCounts(filter: WantedFilter) {
  *   backends (unknown tokens ignored; empty/absent = all). Falls back to the legacy
  *   single `source` param when `sources` is absent.
  * - `instanceId`: optional; restricts results to that connection's instance (absent = all)
+ * - `unmonitored`: optional; `1` also lists each instance's unmonitored items, after the
+ *   monitored ones, marked `unmonitored: true`, with their count in `unmonitoredTotal`.
+ *   The counts (no `type`) stay monitored only.
  *
  * When `type` is omitted the response contains `{ missingTotal, cutoffTotal }`.
  * When `type` is present the response merges records from both services, adds `source`
@@ -254,12 +274,16 @@ async function getHandler(request: NextRequest) {
       return NextResponse.json(await fetchWantedCounts(filter), { headers: WANTED_CACHE_HEADERS });
     }
 
-    const wantedPage = await fetchWantedPage(type, page, pageSize, filter);
+    const wantedPage = await fetchWantedPage(type, page, pageSize, {
+      ...filter,
+      includeUnmonitored: searchParams.get('unmonitored') === '1',
+    });
 
     return NextResponse.json({
       page: wantedPage.page,
       pageSize: wantedPage.pageSize,
       totalRecords: wantedPage.totalRecords,
+      ...('unmonitoredTotal' in wantedPage ? { unmonitoredTotal: wantedPage.unmonitoredTotal } : {}),
       records: wantedPage.records,
     }, { headers: WANTED_CACHE_HEADERS });
   } catch (error) {

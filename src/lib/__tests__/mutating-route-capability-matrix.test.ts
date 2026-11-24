@@ -112,6 +112,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'DELETE /api/activity/queue',
     'DELETE /api/activity/queue/[id]',
     'POST /api/activity/queue/[id]/grab',
+    'POST /api/activity/queue/grab',
     'POST /api/lidarr/command',
     'POST /api/lidarr/release',
     'POST /api/radarr/command',
@@ -620,7 +621,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(279);
+    expect(handlers.size).toBe(280);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
