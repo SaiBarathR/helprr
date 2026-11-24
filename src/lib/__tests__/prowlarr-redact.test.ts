@@ -9,14 +9,25 @@ describe('redactProwlarrText and magnets', () => {
   it('drops a whole magnet, its spaced name and every tracker with it', () => {
     const magnet = `magnet:?xt=urn:btih:1658902AEC7B&dn=Big Buck Bunny BDRip 360p&tr=${PRIVATE_TR}&tr=udp%3a%2f%2fopen.example%3a1337`;
     expect(redactProwlarrText(magnet)).toBe('magnet:[REDACTED]');
-    expect(redactProwlarrText(`  ${magnet.toUpperCase()}`)).toBe('magnet:[REDACTED]');
+    expect(redactProwlarrText(`  ${magnet.toUpperCase()}`)).toBe('  magnet:[REDACTED]');
   });
 
-  it('blanks the trackers of a magnet inside other text', () => {
-    const text = redactProwlarrText(`Failed for magnet:?xt=urn:btih:ABC&dn=Big Buck Bunny&tr=${PRIVATE_TR} timed out`);
-    expect(text).not.toContain(PASSKEY);
-    expect(text).not.toContain('private.example');
-    expect(text).toBe('Failed for magnet:[REDACTED] Buck Bunny&tr=[REDACTED] timed out');
+  it('cuts a magnet inside other text to the end of its line, however its trackers are written', () => {
+    const tails = [
+      `&tr=${PRIVATE_TR}`,
+      `&amp;tr=${PRIVATE_TR}`,
+      `;tr=${PRIVATE_TR}`,
+      `%26tr%3D${PRIVATE_TR}`,
+    ];
+    for (const tail of tails) {
+      const text = redactProwlarrText(`Failed for magnet:?xt=urn:btih:ABC&dn=Big Buck Bunny${tail} timed out\nnext line`);
+      expect(text, tail).toBe('Failed for magnet:[REDACTED]\nnext line');
+    }
+    expect(redactProwlarrText(`q=magnet%3A%3Fxt%3Durn%3Abtih%3AABC%26tr%3D${PRIVATE_TR}`)).toBe('q=magnet:[REDACTED]');
+  });
+
+  it('keeps the word magnet when no link follows it', () => {
+    expect(redactProwlarrText('This client does not support magnet: links')).toBe('This client does not support magnet: links');
   });
 
   it('leaves text without a magnet as it was, and still cuts URLs to their origin', () => {

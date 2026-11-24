@@ -158,7 +158,9 @@ export function SearchTab() {
       if (submitted?.indexerIds) params.set('indexerIds', submitted.indexerIds);
       return jsonFetcher<ProwlarrSearchResponse>(`/api/prowlarr/search?${params}`)({ signal });
     },
-    enabled: armed && !!submitted,
+    // With no indexer ticked, a pull-to-refresh or retry that invalidates
+    // every query must not run the last search again either.
+    enabled: armed && !!submitted && !noIndexers,
     staleTime: Infinity,
     gcTime: 30 * 60_000,
     retry: false,

@@ -16,5 +16,8 @@ describe('upstream text kept on a download', () => {
 
     expect(text).toBe('Grabbed magnet:[REDACTED] Buck Bunny 2008&tr=[REDACTED]&tr.1=[REDACTED]&ws=[REDACTED]');
     expect(text).not.toContain('a1b2c3d4');
+    for (const separator of ['&amp;tr=', ';tr=', '%26tr%3D', '&TR=']) {
+      expect(redactUpstreamText(`magnet:?xt=urn:btih:ABC&dn=A B${separator}${tracker}`), separator).not.toContain('a1b2c3d4');
+    }
   });
 });
