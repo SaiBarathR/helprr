@@ -10,6 +10,7 @@ import { useCan } from '@/components/permission-provider';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { isProwlarrTestAllResponse } from '@/lib/prowlarr-client';
 import type { ProwlarrApplicationSummary, UnsyncedConnection } from '@/lib/prowlarr-applications';
+import { prowlarrTagsQuery } from './prowlarr-tags-query';
 
 const SYNC_LEVELS: Record<string, string> = {
   disabled: 'Sync off',
@@ -31,6 +32,7 @@ export function ApplicationsTab() {
     queryFn: jsonFetcher<{ applications: ProwlarrApplicationSummary[]; unsynced: UnsyncedConnection[] }>('/api/prowlarr/applications'),
     staleTime: 60_000,
   });
+  const tagsQuery = useQuery(prowlarrTagsQuery);
 
   async function test(application: ProwlarrApplicationSummary) {
     setTestingId(application.id);
@@ -81,6 +83,7 @@ export function ApplicationsTab() {
 
   const applications = query.data?.applications ?? [];
   const unsynced = query.data?.unsynced ?? [];
+  const tagLabels = new Map((tagsQuery.data ?? []).map((tag) => [tag.id, tag.label]));
 
   return (
     <div className="space-y-3">
@@ -121,6 +124,9 @@ export function ApplicationsTab() {
                   <span className="text-[11px] text-muted-foreground">
                     {SYNC_LEVELS[application.syncLevel] ?? application.syncLevel}
                   </span>
+                  {application.tags.filter((id) => tagLabels.has(id)).map((id) => (
+                    <Badge key={id} variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">{tagLabels.get(id)}</Badge>
+                  ))}
                 </div>
               </div>
               {canManage && (

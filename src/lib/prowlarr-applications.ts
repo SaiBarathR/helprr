@@ -6,6 +6,7 @@ export interface ProwlarrApplicationSummary {
   implementationName: string;
   syncLevel: string;
   enable: boolean;
+  tags: number[];
 }
 
 export interface UnsyncedConnection {
@@ -92,5 +93,6 @@ export function toApplicationSummary(application: ProwlarrApplication): Prowlarr
     implementationName: application.implementationName,
     syncLevel: application.syncLevel,
     enable: application.enable,
+    tags: application.tags,
   };
 }

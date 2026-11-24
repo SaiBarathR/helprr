@@ -25,6 +25,8 @@ import {
 } from '@/lib/prowlarr-client';
 import { prowlarrStatsQuery } from './prowlarr-stats-query';
 import type { IndexerActions } from './use-indexer-actions';
+import { historyEventLabel } from './history-events';
+import { prowlarrTagsQuery } from './prowlarr-tags-query';
 import type { Tag } from '@/types/arr';
 import { formatDate as formatShortDate, formatDateTime } from '@/lib/date-format';
 
@@ -71,14 +73,6 @@ export function BlockedStatusDetails({ status }: { status: ProwlarrIndexerStatus
 const MIN_PRIORITY = 1;
 const MAX_PRIORITY = 50;
 
-const HISTORY_EVENT_LABELS: Record<string, string> = {
-  indexerQuery: 'Search',
-  indexerRss: 'RSS',
-  releaseGrabbed: 'Grab',
-  indexerAuth: 'Auth',
-  indexerInfo: 'Info',
-};
-
 /**
  * Priority, app profile and tags. Each change saves on its own; nothing here
  * opens the keyboard, which would push the drawer off screen on iOS. Users who
@@ -102,13 +96,7 @@ function IndexerQuickEdit({
     enabled: open,
     staleTime: 5 * 60_000,
   });
-  const tagsQuery = useQuery({
-    queryKey: ['prowlarr', 'tags'],
-    queryFn: jsonFetcher<Tag[]>('/api/prowlarr/tags'),
-    select: ensureArray,
-    enabled: open,
-    staleTime: 5 * 60_000,
-  });
+  const tagsQuery = useQuery({ ...prowlarrTagsQuery, enabled: open });
   const profiles = profilesQuery.data ?? [];
   const tags = tagsQuery.data ?? [];
   const pending = actions.pendingEdits.has(indexer.id);
@@ -347,7 +335,7 @@ export function IndexerSheet({
                   {records.map((record) => (
                     <div key={record.id} className="flex items-center gap-2 px-3 py-2 text-[11px]">
                       <span className="w-10 shrink-0 text-muted-foreground">
-                        {HISTORY_EVENT_LABELS[record.eventType] ?? record.eventType}
+                        {historyEventLabel(record.eventType)}
                       </span>
                       <span className="min-w-0 flex-1 truncate">{record.data?.query || record.data?.source || '—'}</span>
                       {record.successful === false && (
