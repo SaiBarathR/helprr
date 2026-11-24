@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => {
     store,
     user: { id: 'u1', username: 'member', role: 'member', capabilities: {} as Record<string, boolean> },
     logging: [] as Array<{ name: string; options?: unknown }>,
-    prowlarr: { searchReleases: vi.fn(), getIndexers: vi.fn(), fetchReleaseLink: vi.fn() },
+    prowlarr: { searchReleases: vi.fn(), getIndexers: vi.fn(async () => []), fetchReleaseLink: vi.fn() },
     preflight: vi.fn(),
     send: vi.fn(),
     redis: {
@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => {
 });
 vi.mock('@/lib/auth', () => ({
   requireUserCapability: async () => ({ ok: true, user: mocks.user }),
+  requireUserAnyCapability: async () => ({ ok: true, user: mocks.user }),
   requireUserAllCapabilities: async () => ({ ok: true, user: mocks.user }),
 }));
 vi.mock('@/lib/permissions', () => ({ can: (user: typeof mocks.user, cap: string) => user.capabilities[cap] === true }));

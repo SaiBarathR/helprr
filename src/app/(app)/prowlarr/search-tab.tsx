@@ -3,7 +3,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Check, Download, Loader2, Search, Send, SlidersHorizontal, X } from 'lucide-react';
+import { Check, ChevronDown, Download, Loader2, Search, Send, SlidersHorizontal, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,22 +32,27 @@ import {
   compareSearchResults,
   PROWLARR_RESULTS_PER_SORT,
   PROWLARR_SEARCH_ID_FIELDS,
+  PROWLARR_RELEASE_FLAGS,
   PROWLARR_SEARCH_ID_LABELS,
   PROWLARR_SEARCH_SORTS as SORTS,
   PROWLARR_SEARCH_TYPES,
+  type ProwlarrCategory,
   type ProwlarrSearchIdField,
   type ProwlarrSearchSort as SortId,
   type ProwlarrSearchType,
 } from '@/lib/prowlarr-search';
 import type { ProwlarrSearchResponse, ProwlarrSearchResult } from '@/app/api/prowlarr/search/route';
+import type { ProwlarrDownloadClientSummary } from '@/app/api/prowlarr/downloadclients/route';
 import { SendToArrSheet } from './send-to-arr-sheet';
 
+// One tap under the field; the rest of Prowlarr's tree is in Search options.
 const CATEGORIES = [
   { id: 2000, label: 'Movies' },
   { id: 5000, label: 'TV' },
   { id: 3000, label: 'Audio' },
   { id: 7000, label: 'Books' },
 ];
+const QUICK_CATEGORY_IDS = new Set(CATEGORIES.map(({ id }) => id));
 
 type SearchIds = Partial<Record<ProwlarrSearchIdField, string>>;
 
@@ -92,7 +97,9 @@ function formatAge(publishDate: string | null): string | null {
 
 /**
  * Search every indexer, or the ones picked, and send a release to Prowlarr's
- * own download client, or (a torrent) to Sonarr or Radarr for one title. This tab is a full page, so the search field's keyboard
+ * own download client, or (a torrent) to Sonarr or Radarr for one title.
+ * prowlarr.search is enough to search; grabbing and sending need
+ * prowlarr.manage, so those buttons show only with it. This tab is a full page, so the search field's keyboard
  * is safe here. A search can take as long as the slowest indexer, so it can be
  * cancelled. The type, ids and indexers sit in one Options sheet, so the
  * toolbar stays one row on a phone.
@@ -120,12 +127,16 @@ export function SearchTab() {
   const [grabbing, setGrabbing] = useState(false);
   const [grabbed, setGrabbed] = useState<ReadonlySet<string>>(() => new Set());
   const [sending, setSending] = useState<ProwlarrSearchResult | null>(null);
+  // Null leaves the choice to Prowlarr; kept for the next grab.
+  const [grabClient, setGrabClient] = useState<number | null>(null);
+  const [openCategories, setOpenCategories] = useState<ReadonlySet<number>>(() => new Set());
+  const canManage = useCan('prowlarr.manage');
   // What a manual download needs; the server checks it all again, with prowlarr.manage.
   const canAddTorrents = useCan('torrents.add');
   const canManageActivity = useCan('activity.manage');
   const canAddMovies = useCan('movies.add');
   const canAddSeries = useCan('series.add');
-  const canSendToArr = canAddTorrents && canManageActivity && (canAddMovies || canAddSeries);
+  const canSendToArr = canManage && canAddTorrents && canManageActivity && (canAddMovies || canAddSeries);
 
   // The same list (and cache) as the Indexers tab.
   const indexersQuery = useQuery({
@@ -133,6 +144,26 @@ export function SearchTab() {
     queryFn: jsonFetcher<ProwlarrIndexerSummary[]>('/api/prowlarr/indexers'),
     select: ensureArray,
   });
+  const categoriesQuery = useQuery({
+    queryKey: ['prowlarr', 'categories'],
+    queryFn: jsonFetcher<ProwlarrCategory[]>('/api/prowlarr/categories'),
+    select: ensureArray,
+    staleTime: 10 * 60_000,
+  });
+  const categoryNames = useMemo(() => new Map(
+    (categoriesQuery.data ?? []).flatMap(({ id, name, subCategories }) => [[id, name] as const, ...subCategories.map((sub) => [sub.id, sub.name] as const)]),
+  ), [categoriesQuery.data]);
+  // Only asked for when a grab is about to go, and only with manage.
+  const clientsQuery = useQuery({
+    queryKey: ['prowlarr', 'downloadclients'],
+    queryFn: jsonFetcher<ProwlarrDownloadClientSummary[]>('/api/prowlarr/downloadclients'),
+    select: ensureArray,
+    enabled: canManage && !!confirm,
+    staleTime: 60_000,
+  });
+  // A pick shows only when there is a choice to make for this release's protocol.
+  const clientChoices = (clientsQuery.data ?? []).filter((client) => client.protocol === confirm?.protocol);
+  const pickedClient = clientChoices.some((client) => client.id === grabClient) ? grabClient : null;
   const enabledIndexers = useMemo(
     () => (indexersQuery.data ?? []).filter((indexer) => indexer.enable).sort((a, b) => a.name.localeCompare(b.name)),
     [indexersQuery.data],
@@ -231,7 +262,7 @@ export function SearchTab() {
       const res = await fetch('/api/prowlarr/search/grab', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: release.id }),
+        body: JSON.stringify(pickedClient === null ? { id: release.id } : { id: release.id, downloadClientId: pickedClient }),
       });
       if (res.ok) {
         toast.success('Sent to the download client');
@@ -239,6 +270,8 @@ export function SearchTab() {
       } else {
         const data = await res.json().catch(() => ({}));
         toast.error(data.error || 'Grab failed');
+        // A client that has gone or been disabled drops off the list.
+        if (res.status === 400) void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'downloadclients'] });
       }
     } catch {
       toast.error('Grab failed');
@@ -332,6 +365,81 @@ export function SearchTab() {
           </p>
         )}
       </section>
+
+      <section className="space-y-2" aria-label="Categories">
+        <div className="flex items-center gap-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Categories</p>
+          {categories.length > 0 && (
+            <Button variant="ghost" size="sm" className="ml-auto h-7 px-2 text-xs" onClick={() => setCategories([])}>
+              Clear
+            </Button>
+          )}
+        </div>
+        {(categoriesQuery.data ?? []).length > 0 ? (
+          <div className="rounded-lg bg-muted/30 overflow-hidden divide-y divide-border/40">
+            {(categoriesQuery.data ?? []).map((category) => {
+              const on = categories.includes(category.id);
+              const open = openCategories.has(category.id);
+              const subsPicked = category.subCategories.filter((sub) => categories.includes(sub.id)).length;
+              return (
+                <div key={category.id}>
+                  <div className="flex min-h-11 items-center">
+                    <button
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggleCategory(category.id)}
+                      className="flex min-h-11 min-w-0 flex-1 items-center gap-3 pl-3 pr-1 text-left text-sm transition-colors hover:bg-accent/50"
+                    >
+                      <span className="min-w-0 flex-1 truncate">{category.name}</span>
+                      {!on && subsPicked > 0 && (
+                        <span className="shrink-0 text-[11px] text-muted-foreground">{subsPicked} picked</span>
+                      )}
+                      <Check className={`h-4 w-4 shrink-0 ${on ? 'text-primary' : 'invisible'}`} />
+                    </button>
+                    {category.subCategories.length > 0 && (
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        aria-label={`${open ? 'Hide' : 'Show'} ${category.name} subcategories`}
+                        onClick={() => setOpenCategories((prev) => {
+                          const next = new Set(prev);
+                          if (open) next.delete(category.id); else next.add(category.id);
+                          return next;
+                        })}
+                        className="flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/50"
+                      >
+                        <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+                      </button>
+                    )}
+                  </div>
+                  {open && category.subCategories.map((sub) => {
+                    // The whole category already covers each of its subcategories.
+                    const subOn = on || categories.includes(sub.id);
+                    return (
+                      <button
+                        key={sub.id}
+                        type="button"
+                        aria-pressed={subOn}
+                        disabled={on}
+                        onClick={() => toggleCategory(sub.id)}
+                        className="flex min-h-11 w-full items-center gap-3 border-t border-border/40 pl-7 pr-3 text-left text-sm transition-colors hover:bg-accent/50 disabled:opacity-60"
+                      >
+                        {/* "TV/Anime" under TV reads as "Anime". */}
+                        <span className="min-w-0 flex-1 truncate">{sub.name.replace(`${category.name}/`, '')}</span>
+                        <Check className={`h-4 w-4 shrink-0 ${subOn ? 'text-primary' : 'invisible'}`} />
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {categoriesQuery.isLoading ? 'Loading…' : 'Failed to load categories.'}
+          </p>
+        )}
+      </section>
     </>
   );
   const optionsFooter = (
@@ -397,6 +505,23 @@ export function SearchTab() {
             {category.label}
           </Button>
         ))}
+        {/* Picked in Search options; a tap takes one off. */}
+        {categories.filter((id) => !QUICK_CATEGORY_IDS.has(id)).map((id) => {
+          const label = categoryNames.get(id) ?? `Category ${id}`;
+          return (
+            <Button
+              key={id}
+              variant="default"
+              size="sm"
+              className="h-8 max-w-full gap-1 px-2.5 text-xs"
+              aria-label={`Remove ${label}`}
+              onClick={() => toggleCategory(id)}
+            >
+              <span className="truncate">{label}</span>
+              <X className="h-3 w-3 shrink-0" />
+            </Button>
+          );
+        })}
       </div>
 
       {searchQuery.isFetching ? (
@@ -463,8 +588,25 @@ export function SearchTab() {
                       <span>{release.indexer}</span>
                       <span>{formatBytes(release.size)}</span>
                       {release.seeders !== null && <span>{release.seeders} seeder{release.seeders === 1 ? '' : 's'}</span>}
+                      {release.grabs !== null && <span>{release.grabs} grab{release.grabs === 1 ? '' : 's'}</span>}
                       {age && <span>{age}</span>}
                     </div>
+                    {(release.flags.length > 0 || release.categories.length > 0) && (
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                        {release.flags.map((flag) => (
+                          <Badge
+                            key={flag}
+                            variant="outline"
+                            className={`text-[10px] px-1.5 py-0 ${flag === 'nuked' ? 'border-destructive/50 text-destructive' : 'border-primary/50 text-primary'}`}
+                          >
+                            {PROWLARR_RELEASE_FLAGS[flag]}
+                          </Badge>
+                        ))}
+                        {release.categories.length > 0 && (
+                          <span className="min-w-0 [overflow-wrap:anywhere]">{release.categories.join(', ')}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {canSendToArr && release.protocol === 'torrent' && (
                     <Button
@@ -477,16 +619,18 @@ export function SearchTab() {
                       <Send className="h-4 w-4" />
                     </Button>
                   )}
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-9 w-9 shrink-0"
-                    aria-label={sent ? `Sent: ${release.title}` : `Grab ${release.title}`}
-                    disabled={sent}
-                    onClick={() => setConfirm(release)}
-                  >
-                    {sent ? <Check className="h-4 w-4 text-green-500" /> : <Download className="h-4 w-4" />}
-                  </Button>
+                  {canManage && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
+                      aria-label={sent ? `Sent: ${release.title}` : `Grab ${release.title}`}
+                      disabled={sent}
+                      onClick={() => setConfirm(release)}
+                    >
+                      {sent ? <Check className="h-4 w-4 text-green-500" /> : <Download className="h-4 w-4" />}
+                    </Button>
+                  )}
                 </div>
               );
             })}
@@ -533,6 +677,25 @@ export function SearchTab() {
               &ldquo;{confirm?.title}&rdquo; goes to Prowlarr&rsquo;s download client. Sonarr and Radarr won&rsquo;t track it.
             </DialogDescription>
           </DialogHeader>
+          {clientChoices.length > 1 && (
+            <section className="space-y-2" aria-label="Download client">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Download client</p>
+              <div className="rounded-lg bg-muted/30 overflow-hidden divide-y divide-border/40">
+                {[{ id: null, name: 'Prowlarr’s choice' }, ...clientChoices].map((client) => (
+                  <button
+                    key={client.id ?? 'default'}
+                    type="button"
+                    aria-pressed={pickedClient === client.id}
+                    onClick={() => setGrabClient(client.id)}
+                    className="flex min-h-11 w-full items-center gap-3 px-3 text-left text-sm transition-colors hover:bg-accent/50"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{client.name}</span>
+                    <Check className={`h-4 w-4 shrink-0 ${pickedClient === client.id ? 'text-primary' : 'invisible'}`} />
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
           <div className="flex gap-2 mt-2">
             <Button className="flex-1" onClick={() => confirm && void grab(confirm)} disabled={grabbing}>
               {grabbing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Grab'}

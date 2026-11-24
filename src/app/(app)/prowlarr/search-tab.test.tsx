@@ -32,9 +32,11 @@ HTMLElement.prototype.releasePointerCapture ??= () => {};
 
 const result = (id: string, title: string, publishDate: string | null) => ({
   id, title, size: 1024, seeders: 5, leechers: 1, publishDate, indexer: 'YTS', protocol: 'torrent',
+  categories: [] as string[], grabs: null as number | null, flags: [] as string[],
 });
 
 const searches = () => vi.mocked(fetch).mock.calls.filter((call) => String(call[0]).startsWith('/api/prowlarr/search?'));
+const grabs = () => vi.mocked(fetch).mock.calls.filter((call) => String(call[0]) === '/api/prowlarr/search/grab');
 
 function setup(client = new QueryClient()) {
   return render(<QueryClientProvider client={client}><SearchTab /></QueryClientProvider>);
@@ -46,15 +48,27 @@ const indexers = [
   { id: 3, name: 'Off', enable: false, protocol: 'torrent', privacy: 'private' },
 ];
 
+const tree = [
+  { id: 2000, name: 'Movies', subCategories: [{ id: 2040, name: 'Movies/HD' }] },
+  { id: 5000, name: 'TV', subCategories: [{ id: 5070, name: 'TV/Anime' }] },
+];
+let clients = [{ id: 1, name: 'qBittorrent', protocol: 'torrent' }];
+
 function answer(body: unknown) {
-  vi.mocked(fetch).mockImplementation(async (url) => new Response(JSON.stringify(
-    String(url).startsWith('/api/prowlarr/indexers') ? indexers : body,
-  )));
+  vi.mocked(fetch).mockImplementation(async (url) => {
+    const path = String(url);
+    if (path.startsWith('/api/prowlarr/indexers')) return new Response(JSON.stringify(indexers));
+    if (path.startsWith('/api/prowlarr/categories')) return new Response(JSON.stringify(tree));
+    if (path.startsWith('/api/prowlarr/downloadclients')) return new Response(JSON.stringify(clients));
+    if (path === '/api/prowlarr/search/grab') return new Response(JSON.stringify({ ok: true }));
+    return new Response(JSON.stringify(body));
+  });
 }
 
 beforeEach(() => {
   seeded.clear();
-  caps.granted = new Set();
+  caps.granted = new Set(['prowlarr.manage']);
+  clients = [{ id: 1, name: 'qBittorrent', protocol: 'torrent' }];
   form.props = [];
   vi.stubGlobal('fetch', vi.fn());
   answer({ results: [result('a', 'Big Buck Bunny', '2026-01-01')], total: 1 });
@@ -128,7 +142,7 @@ describe('SearchTab', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Search options' }));
     // The sheet's TV type, not the TV category chip behind it.
     const sheet = within(await screen.findByRole('dialog'));
-    await userEvent.click(sheet.getByRole('button', { name: 'TV' }));
+    await userEvent.click(within(sheet.getByRole('region', { name: 'Search type' })).getByRole('button', { name: 'TV' }));
     await userEvent.type(screen.getByLabelText('TVDB ID'), '81189');
     await userEvent.type(screen.getByLabelText('Season'), '2');
     await userEvent.click(await sheet.findByRole('button', { name: /Nyaa/ }));
@@ -147,9 +161,9 @@ describe('SearchTab', () => {
   });
 
   it('shows why the server refused a search', async () => {
-    vi.mocked(fetch).mockImplementation(async (url) => (String(url).startsWith('/api/prowlarr/indexers')
-      ? new Response(JSON.stringify(indexers))
-      : new Response(JSON.stringify({ error: 'An indexer you picked is gone or disabled. Pick again.' }), { status: 400 })));
+    vi.mocked(fetch).mockImplementation(async (url) => (String(url).startsWith('/api/prowlarr/search?')
+      ? new Response(JSON.stringify({ error: 'An indexer you picked is gone or disabled. Pick again.' }), { status: 400 })
+      : new Response(JSON.stringify(String(url).startsWith('/api/prowlarr/indexers') ? indexers : []))));
     setup();
     await userEvent.type(screen.getByRole('textbox'), 'bunny');
     await userEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -189,7 +203,7 @@ describe('SearchTab', () => {
     setup();
     await userEvent.click(screen.getByRole('button', { name: 'Search options' }));
     const sheet = within(await screen.findByRole('dialog'));
-    await userEvent.click(sheet.getByRole('button', { name: 'TV' }));
+    await userEvent.click(within(sheet.getByRole('region', { name: 'Search type' })).getByRole('button', { name: 'TV' }));
     const tvdb = screen.getByLabelText('TVDB ID') as HTMLInputElement;
 
     // The label around it is muted; the field must not inherit that.
@@ -246,7 +260,7 @@ describe('SearchTab', () => {
   });
 
   describe('Send to Sonarr or Radarr', () => {
-    const SEND_CAPS = ['torrents.add', 'activity.manage', 'movies.add'];
+    const SEND_CAPS = ['prowlarr.manage', 'torrents.add', 'activity.manage', 'movies.add'];
     async function searchFor(results: unknown[]) {
       answer({ results, total: results.length });
       const view = setup();
@@ -302,5 +316,91 @@ describe('SearchTab', () => {
         view.unmount();
       }
     });
+  });
+
+  async function searchBunny(results: unknown[]) {
+    answer({ results, total: results.length });
+    setup();
+    await userEvent.type(screen.getByRole('textbox'), 'bunny');
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+  }
+
+  it('lets a member who can search but not manage search, with no grab or send', async () => {
+    caps.granted = new Set(['prowlarr.search', 'torrents.add', 'activity.manage', 'movies.add']);
+    await searchBunny([result('a', 'Big Buck Bunny', '2026-01-01')]);
+
+    await screen.findByText('Big Buck Bunny');
+    expect(screen.queryByRole('button', { name: /^Grab / })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Send to Sonarr or Radarr/ })).toBeNull();
+  });
+
+  it('shows grabs, flags and category names on a row', async () => {
+    await searchBunny([{ ...result('a', 'Big Buck Bunny', '2026-01-01'), grabs: 12, flags: ['freeleech', 'internal'], categories: ['Movies/HD'] }]);
+
+    expect(await screen.findByText('12 grabs')).toBeTruthy();
+    expect(screen.getByText('Freeleech')).toBeTruthy();
+    expect(screen.getByText('Internal')).toBeTruthy();
+    expect(screen.getByText('Movies/HD')).toBeTruthy();
+  });
+
+  it('searches by a subcategory picked in the options sheet, shown as a chip that takes it off', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Search options' }));
+    const sheet = within(await screen.findByRole('dialog'));
+    await userEvent.click(await sheet.findByRole('button', { name: 'Show TV subcategories' }));
+    await userEvent.click(sheet.getByRole('button', { name: 'Anime' }));
+    await userEvent.click(sheet.getByRole('button', { name: 'Done' }));
+
+    expect(screen.getByRole('button', { name: 'Remove TV/Anime' })).toBeTruthy();
+    await userEvent.type(screen.getByRole('textbox'), 'bunny');
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+    await screen.findByText('Big Buck Bunny');
+    expect(new URL(String(searches()[0][0]), 'http://x').searchParams.get('categories')).toBe('5070');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove TV/Anime' }));
+    expect(screen.queryByRole('button', { name: 'Remove TV/Anime' })).toBeNull();
+  });
+
+  it('counts a whole category as covering its subcategories', async () => {
+    seeded.set('searchCategories', [5000]);
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Search options' }));
+    const sheet = within(await screen.findByRole('dialog'));
+    await userEvent.click(await sheet.findByRole('button', { name: 'Show TV subcategories' }));
+
+    const anime = sheet.getByRole('button', { name: 'Anime' }) as HTMLButtonElement;
+    expect(anime.getAttribute('aria-pressed')).toBe('true');
+    expect(anime.disabled).toBe(true);
+  });
+
+  it('grabs with Prowlarr choosing the client when there is only one', async () => {
+    await searchBunny([result('tok-a', 'Big Buck Bunny', '2026-01-01')]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Grab Big Buck Bunny' }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some((call) => String(call[0]) === '/api/prowlarr/downloadclients')).toBe(true));
+
+    expect(screen.queryByRole('region', { name: 'Download client' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Grab' }));
+
+    await waitFor(() => expect(grabs()).toHaveLength(1));
+    expect(JSON.parse(String(grabs()[0][1]?.body))).toEqual({ id: 'tok-a' });
+  });
+
+  it('grabs to the client picked among this protocol\'s, or leaves it to Prowlarr', async () => {
+    clients = [
+      { id: 1, name: 'qBittorrent', protocol: 'torrent' },
+      { id: 5, name: 'Spare qBit', protocol: 'torrent' },
+      { id: 2, name: 'SABnzbd', protocol: 'usenet' },
+    ];
+    await searchBunny([result('tok-a', 'Big Buck Bunny', '2026-01-01')]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Grab Big Buck Bunny' }));
+    const picker = within(await screen.findByRole('region', { name: 'Download client' }));
+
+    expect(picker.getByRole('button', { name: 'Prowlarr’s choice' }).getAttribute('aria-pressed')).toBe('true');
+    expect(picker.queryByRole('button', { name: 'SABnzbd' })).toBeNull();
+    await userEvent.click(picker.getByRole('button', { name: 'Spare qBit' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Grab' }));
+
+    await waitFor(() => expect(grabs()).toHaveLength(1));
+    expect(JSON.parse(String(grabs()[0][1]?.body))).toEqual({ id: 'tok-a', downloadClientId: 5 });
   });
 });

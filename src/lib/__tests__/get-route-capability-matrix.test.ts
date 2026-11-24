@@ -196,7 +196,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/notifications',
   ],
   'cap:prowlarr.manage': [
-    'GET /api/prowlarr/search',
+    // Download client names for a grab; their fields stay on the server.
+    'GET /api/prowlarr/downloadclients',
   ],
   'cap:prowlarr.view': [
     'GET /api/prowlarr/applications',
@@ -403,6 +404,11 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'any:torrents.view|settings.downloads': [
     'GET /api/qbittorrent/bandwidth-schedule',
   ],
+  // Manage includes search; grabbing stays under manage.
+  'any:prowlarr.search|prowlarr.manage': [
+    'GET /api/prowlarr/categories',
+    'GET /api/prowlarr/search',
+  ],
   'filtered-capability': [
     'GET /api/services/external-urls',
     'GET /api/services/health',
@@ -585,7 +591,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(292);
+    expect(handlers.size).toBe(294);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
