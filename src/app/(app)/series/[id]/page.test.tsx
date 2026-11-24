@@ -461,6 +461,7 @@ describe('series detail page (characterization)', () => {
     await user.click(menu().getByRole('menuitem', { name: 'Delete' }));
     const drawer = screen.getByRole('dialog');
     await user.click(within(drawer).getByRole('checkbox', { name: 'Add import-list exclusion' }));
+    const before = vi.mocked(fetch).mock.calls.length;
     await user.click(within(drawer).getByRole('button', { name: 'Delete Series' }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/series'));
     expect(mocks.sent.at(-1)).toEqual({
@@ -468,6 +469,12 @@ describe('series detail page (characterization)', () => {
       path: '/api/sonarr/7?deleteFiles=false&addImportListExclusion=true&instanceId=son-1',
       body: null,
     });
+    // The page is still mounted until the route changes: nothing refetches the
+    // series it just deleted (that was a 404 for /api/sonarr/7).
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const after = vi.mocked(fetch).mock.calls.slice(before)
+      .map(([input, init]) => `${init?.method ?? 'GET'} ${new URL(String(input), 'http://helprr.test').pathname}`);
+    expect(after.filter((call) => call.startsWith('GET') && /\/api\/sonarr\/(7|episode)/.test(call))).toEqual([]);
   });
 
   it('expands a season into its TMDB episodes, linking those Sonarr has', async () => {

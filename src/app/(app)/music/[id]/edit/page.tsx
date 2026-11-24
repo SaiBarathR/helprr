@@ -127,13 +127,13 @@ export default function ArtistEditPage() {
   }
 
   if (loading && !artist) {
-    return <><PageHeader title="Edit Artist" /><PageSpinner /></>;
+    return <><PageHeader title="Edit Artist" backHref={detailHref} /><PageSpinner /></>;
   }
 
   if (!artist) {
     return (
       <div>
-        <PageHeader title="Edit Artist" />
+        <PageHeader title="Edit Artist" backHref={detailHref} />
         <NotFoundState message="Artist not found" />
       </div>
     );
@@ -141,7 +141,7 @@ export default function ArtistEditPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title={`Edit ${artist.artistName}`} />
+      <PageHeader title={`Edit ${artist.artistName}`} backHref={detailHref} />
 
       <div className="mx-auto max-w-2xl px-4 space-y-6 mt-4 pb-8">
         <div className="grouped-section">

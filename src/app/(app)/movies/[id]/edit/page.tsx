@@ -120,13 +120,13 @@ export default function MovieEditPage() {
   }
 
   if (loading && !movie) {
-    return <><PageHeader title="Edit Movie" /><PageSpinner /></>;
+    return <><PageHeader title="Edit Movie" backHref={detailHref} /><PageSpinner /></>;
   }
 
   if (!movie) {
     return (
       <div>
-        <PageHeader title="Edit Movie" />
+        <PageHeader title="Edit Movie" backHref={detailHref} />
         <div className="text-center py-12 text-muted-foreground">
           Movie not found
         </div>
@@ -136,7 +136,7 @@ export default function MovieEditPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title={`Edit ${movie.title}`} />
+      <PageHeader title={`Edit ${movie.title}`} backHref={detailHref} />
 
       <div className="mx-auto max-w-2xl px-4 space-y-6 mt-4 pb-8">
         {/* Settings Section */}

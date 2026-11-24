@@ -12,9 +12,18 @@ import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 export function useRemoveQueriesOnUnmount(): (...keys: QueryKey[]) => void {
   const queryClient = useQueryClient();
   const keys = useRef<QueryKey[]>([]);
-  useEffect(() => () => {
-    for (const queryKey of keys.current) queryClient.removeQueries({ queryKey });
-    keys.current = [];
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      for (const queryKey of keys.current) queryClient.removeQueries({ queryKey });
+      keys.current = [];
+    };
   }, [queryClient]);
-  return useCallback((...more: QueryKey[]) => { keys.current.push(...more); }, []);
+  // A delete that finishes after the user has already left removes at once.
+  return useCallback((...more: QueryKey[]) => {
+    if (mounted.current) keys.current.push(...more);
+    else for (const queryKey of more) queryClient.removeQueries({ queryKey });
+  }, [queryClient]);
 }

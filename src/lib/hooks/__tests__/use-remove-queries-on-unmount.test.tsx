@@ -28,3 +28,17 @@ describe('useRemoveQueriesOnUnmount', () => {
     expect(fetchTitle).not.toHaveBeenCalled();
   });
 });
+
+describe('useRemoveQueriesOnUnmount after leaving', () => {
+  it('removes at once when the delete finishes after the page is gone', () => {
+    const client = new QueryClient();
+    const key = ['radarr', 'detail', 'inst', 129];
+    client.setQueryData(key, { id: 129 });
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    const { result, unmount } = renderHook(() => useRemoveQueriesOnUnmount(), { wrapper });
+    const remove = result.current;
+    unmount();
+    remove(key);
+    expect(client.getQueryCache().find({ queryKey: key })).toBeUndefined();
+  });
+});

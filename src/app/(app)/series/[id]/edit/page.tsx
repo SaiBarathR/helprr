@@ -130,13 +130,13 @@ export default function SeriesEditPage() {
   }
 
   if (loading && !series) {
-    return <><PageHeader title="Edit Series" /><PageSpinner /></>;
+    return <><PageHeader title="Edit Series" backHref={detailHref} /><PageSpinner /></>;
   }
 
   if (!series) {
     return (
       <div>
-        <PageHeader title="Edit Series" />
+        <PageHeader title="Edit Series" backHref={detailHref} />
         <NotFoundState message="Series not found" />
       </div>
     );
@@ -144,7 +144,7 @@ export default function SeriesEditPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title={`Edit ${series.title}`} />
+      <PageHeader title={`Edit ${series.title}`} backHref={detailHref} />
 
       <div className="mx-auto max-w-2xl px-4 pt-4 pb-8 space-y-6">
         {/* Quality Profile */}
