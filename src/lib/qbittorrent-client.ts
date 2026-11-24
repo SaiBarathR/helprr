@@ -2,7 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { NotServiceApiError } from '@/lib/service-response';
-import type { QBittorrentTorrentInfo, QBittorrentTransferInfo } from '@/types';
+import type { QBittorrentServerStats, QBittorrentTorrentInfo, QBittorrentTransferInfo } from '@/types';
 
 /** qBittorrent turned the Web UI username or password down (it answered "Fails."). */
 export class QBittorrentLoginError extends Error {}
@@ -486,6 +486,32 @@ export class QBittorrentClient {
   // Transfer
   async getTransferInfo(): Promise<QBittorrentTransferInfo> {
     return this.get<QBittorrentTransferInfo>('/api/v2/transfer/info');
+  }
+
+  /**
+   * All-time totals and free disk space. Only sync/maindata has them, and only
+   * in a full update (rid=0), which also lists every torrent: callers cache it.
+   * Copied out field by field, so the torrent and tracker maps (magnets,
+   * tracker URLs with passkeys) never leave this method.
+   */
+  async getServerStats(): Promise<QBittorrentServerStats> {
+    const data = await this.get<{ server_state?: unknown }>('/api/v2/sync/maindata', { rid: 0 });
+    const state = data?.server_state;
+    if (!state || typeof state !== 'object') throw new NotServiceApiError();
+    const { free_space_on_disk, alltime_dl, alltime_ul, global_ratio } = state as Record<string, unknown>;
+    const count = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null);
+    const downloaded = count(alltime_dl);
+    const uploaded = count(alltime_ul);
+    // qBittorrent sends the ratio as text in the host's locale ("1.43", "1,43",
+    // or "-" before any data): when it doesn't parse, work it out from the totals.
+    const sent = typeof global_ratio === 'string' && global_ratio.trim() !== '' ? count(Number(global_ratio)) : count(global_ratio);
+    const derived = downloaded && uploaded !== null ? Math.round((uploaded / downloaded) * 100) / 100 : null;
+    return {
+      freeSpaceOnDisk: count(free_space_on_disk),
+      alltimeDownloaded: downloaded,
+      alltimeUploaded: uploaded,
+      globalRatio: sent ?? derived,
+    };
   }
 
   // Global speed limits. Read and written as preferences, not through

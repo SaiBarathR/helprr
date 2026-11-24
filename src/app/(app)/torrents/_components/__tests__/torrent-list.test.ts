@@ -49,7 +49,9 @@ describe('torrent list formatting', () => {
 describe('torrent list filters and sorting', () => {
   it('matches each filter against qBittorrent 4 and 5 states', () => {
     expect(matchesTorrentFilter(torrent({ state: 'stalledDL' }), 'downloading')).toBe(true);
-    expect(matchesTorrentFilter(torrent({ state: 'stoppedUP' }), 'seeding')).toBe(true);
+    // Like qBittorrent's own filter and the widget counters, a stopped finished torrent is Paused, not Seeding.
+    expect(matchesTorrentFilter(torrent({ state: 'stoppedUP' }), 'seeding')).toBe(false);
+    expect(matchesTorrentFilter(torrent({ state: 'stalledUP' }), 'seeding')).toBe(true);
     expect(matchesTorrentFilter(torrent({ state: 'stoppedDL' }), 'paused')).toBe(true);
     expect(matchesTorrentFilter(torrent({ state: 'pausedUP' }), 'paused')).toBe(true);
     expect(matchesTorrentFilter(torrent({ state: 'uploading' }), 'downloading')).toBe(false);

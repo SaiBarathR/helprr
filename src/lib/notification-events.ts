@@ -2,7 +2,7 @@ import { prisma } from '@/lib/db';
 
 export const EVENT_TYPES = [
   'grabbed', 'imported', 'downloadFailed', 'importFailed',
-  'upcomingPremiere', 'healthWarning',
+  'upcomingPremiere', 'healthWarning', 'healthRestored',
   'serviceDown', 'serviceRestored', 'diskLowSpace', 'databaseBackup',
   'torrentAdded', 'torrentCompleted', 'torrentDeleted',
   'jellyfinPlaybackStart',
@@ -68,6 +68,12 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     label: 'Health Warning',
     description: 'When a service has health issues',
     iconName: 'AlertTriangle', colorClass: 'bg-orange-500/10 text-orange-500',
+  },
+  healthRestored: {
+    type: 'healthRestored', group: 'sonarrRadarr',
+    label: 'Health Restored',
+    description: 'When a service\'s health issues have cleared',
+    iconName: 'Check', colorClass: 'bg-green-500/10 text-green-500',
   },
   serviceDown: {
     type: 'serviceDown', group: 'services',
@@ -285,7 +291,7 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
   {
     id: 'sonarrRadarr',
     title: 'Sonarr / Radarr',
-    types: ['grabbed', 'imported', 'downloadFailed', 'importFailed', 'upcomingPremiere', 'healthWarning'],
+    types: ['grabbed', 'imported', 'downloadFailed', 'importFailed', 'upcomingPremiere', 'healthWarning', 'healthRestored'],
   },
   {
     id: 'services',

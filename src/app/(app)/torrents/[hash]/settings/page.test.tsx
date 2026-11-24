@@ -26,6 +26,13 @@ const TORRENT = {
   save_path: '/downloads',
   tags: 'movies',
   priority: 2,
+  // Its own ratio and seeding time, the global inactive limit (none set there).
+  ratio_limit: 1.5,
+  seeding_time_limit: 120,
+  inactive_seeding_time_limit: -2,
+  max_ratio: 1.5,
+  max_seeding_time: 120,
+  max_inactive_seeding_time: -1,
 };
 
 let root: Root;
@@ -198,6 +205,51 @@ describe('torrent settings page', () => {
     for (const label of ['Move to the top of the queue', 'Move up the queue', 'Move down the queue', 'Move to the bottom of the queue']) {
       expect(button(label).disabled).toBe(true);
     }
+  });
+
+  it('shows the share limits and saves all three together', async () => {
+    // qBittorrent's answer to the re-read that follows a save.
+    postResponse = async () => {
+      torrents = [{ ...TORRENT, ratio_limit: 2.25, max_ratio: 2.25 }];
+      return Response.json({ success: true });
+    };
+    await renderPage();
+    expect(document.body.textContent).toContain('Ratio Limit1.5');
+    expect(document.body.textContent).toContain('Seeding Time Limit2 h');
+    expect(document.body.textContent).toContain('Inactive Seeding LimitGlobal (Unlimited)');
+
+    const row = [...document.querySelectorAll<HTMLButtonElement>('button.grouped-row')]
+      .find((el) => el.textContent?.startsWith('Ratio Limit'))!;
+    await act(async () => row.click());
+    // The editor opens on the current values: 1.5, and 120 minutes as 2 hours.
+    expect(document.querySelector<HTMLInputElement>('input[aria-label="Seeding Time Limit"]')!.value).toBe('2');
+    await type(document.querySelector<HTMLInputElement>('input[aria-label="Ratio Limit"]')!, '2.25');
+    await act(async () => document.querySelector<HTMLInputElement>('input[aria-label="Ratio Limit"]')!.form!.requestSubmit());
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Share limits updated'));
+
+    expect(posts).toEqual([{ hash: 'abc', action: 'setShareLimits', ratioLimit: 2.25, seedingTimeLimit: 120, inactiveSeedingTimeLimit: -2 }]);
+    await waitFor(() => expect(document.body.textContent).toContain('Ratio Limit2.25'));
+  });
+
+  it('refuses a share limit qBittorrent would read as infinite', async () => {
+    await renderPage();
+    const row = [...document.querySelectorAll<HTMLButtonElement>('button.grouped-row')]
+      .find((el) => el.textContent?.startsWith('Ratio Limit'))!;
+    await act(async () => row.click());
+    await type(document.querySelector<HTMLInputElement>('input[aria-label="Ratio Limit"]')!, '9999');
+    await act(async () => document.querySelector<HTMLInputElement>('input[aria-label="Ratio Limit"]')!.form!.requestSubmit());
+
+    expect(mocks.toast.error).toHaveBeenCalledWith('The ratio limit can be at most 9998');
+    expect(posts).toEqual([]);
+  });
+
+  it('shows the share limits read-only without torrents.bandwidth', async () => {
+    mocks.caps = new Set(['torrents.manage']);
+    await renderPage();
+
+    expect(document.body.textContent).toContain('Ratio Limit1.5');
+    const shareButtons = [...document.querySelectorAll('button.grouped-row')].filter((el) => /Ratio|Seeding/.test(el.textContent ?? ''));
+    expect(shareButtons).toEqual([]);
   });
 
   it('shows only the sections the user may change', async () => {

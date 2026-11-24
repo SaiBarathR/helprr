@@ -10,6 +10,7 @@ import { PollNotificationCollector } from '@/lib/notification-grouping';
 import { fetchAllQueueRecords } from '@/lib/activity-queue';
 import { getMediaHrefFromIds } from '@/lib/media-href';
 import crypto from 'crypto';
+import { notifyArrHealth } from './health-transition';
 import { notifyWatchlistArrivals, seriesArrivals } from './watchlist-available';
 import { notifyWatchingEpisodes } from './watching-episodes';
 import { importFailureBody, downloadFailureBody, buildTagMap, mediaFilterMeta, readQueueSnapshots, errorMessage, getPollingState, historyCursorFromState, fetchNewHistoryPages, advanceHistoryCursor, notifyAndLog, instanceTitle, type CycleContext, type QueueSnapshot } from './shared';
@@ -216,14 +217,9 @@ export async function pollSonarr(context: CycleContext) {
         healthCount: health.length,
         changed: Boolean(state.lastHealthHash && healthHash !== state.lastHealthHash),
       }, { scope: 'polling' });
-      if (state.lastHealthHash && healthHash !== state.lastHealthHash && health.length > 0) {
-        await notifyAndLog({
-          eventType: 'healthWarning',
-          title: instanceTitle('Sonarr Health Warning', instanceLabel, n),
-          body: health.map((h) => h.message).join('; ').slice(0, 200),
-          url: '/settings',
-        }, { service: 'sonarr', instanceId, reason: 'health-changed', healthCount: health.length });
-      }
+      const savedHealthHash = await notifyArrHealth({
+        service: 'sonarr', instanceId, instanceLabel, instanceCount: n, state, health, healthHash,
+      });
 
       // Collapse same-type bursts (e.g. a season pack) into one grouped
       // notification per (instance, eventType); below-threshold groups and
@@ -239,7 +235,7 @@ export async function pollSonarr(context: CycleContext) {
           lastHistoryDate: cursor.lastHistoryDate,
           lastHistoryId: cursor.lastHistoryId,
           lastHistorySeenIds: cursor.lastHistorySeenIds,
-          lastHealthHash: healthHash,
+          lastHealthHash: savedHealthHash,
         },
       });
       // After the import alerts and the cursor: Jellyfin lookups must never
