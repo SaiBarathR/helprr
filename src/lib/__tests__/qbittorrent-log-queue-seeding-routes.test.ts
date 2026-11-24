@@ -126,11 +126,16 @@ describe('redactQbitLogText', () => {
     ['Successfully listening on IP. IP: "2001:db8:85a3::8a2e:370:7334". Port: "TCP/6881"', 'Successfully listening on IP. IP: "[IP]". Port: "TCP/6881"'],
     ['Peer 2001:0db8:0000:0000:0000:ff00:0042:8329 banned', 'Peer [IP] banned'],
     ['Peer [fe80::1]:51413 and 10.0.0.7:6881', 'Peer [[IP]]:51413 and [IP]:6881'],
+    ['IPv6: 2001:db8::1: refused', 'IPv6: [IP]: refused'],
+    ['Mapped 0:0:0:0:0:ffff:192.168.1.9 and FE80::A1B2 in capitals', 'Mapped [IP] and [IP] in capitals'],
+    ['peer_10.0.0.1 and 1.2.3.4abc', 'peer_[IP] and [IP]abc'],
     // Wildcard and loopback addresses say nothing about the host.
     ['Trying to listen on: "0.0.0.0:6881,[::]:6881" and 127.0.0.1', 'Trying to listen on: "0.0.0.0:6881,[::]:6881" and 127.0.0.1'],
     // Times, versions, hashes and C++ names are not addresses.
-    ['Started at 12:30:45, v5.1.4.10, hash 0123456789abcdef0123456789abcdef01234567, BitTorrent::Session',
-      'Started at 12:30:45, v5.1.4.10, hash 0123456789abcdef0123456789abcdef01234567, BitTorrent::Session'],
+    ['qBittorrent v5.1.4 started at 12:30:45, hash 0123456789abcdef0123456789abcdef01234567, BitTorrent::Session',
+      'qBittorrent v5.1.4 started at 12:30:45, hash 0123456789abcdef0123456789abcdef01234567, BitTorrent::Session'],
+    // Four numbers glued to a word could be an address: masked, the safe side.
+    ['libtorrent v2.0.11.0', 'libtorrent v[IP]'],
     ['Tracker http://tracker.example/announce?passkey=abc failed', 'Tracker http://tracker.example failed'],
     ['Added magnet:?xt=urn:btih:abc&tr=http://t.example/a?pk=1 to the queue', 'Added magnet:[REDACTED]'],
   ])('%s', (input, output) => {

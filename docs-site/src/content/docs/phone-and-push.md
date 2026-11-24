@@ -82,8 +82,9 @@ again. **Torrent Stalled** comes when a download has had no data, or a magnet no
 metadata, for the time set under it in **Settings → Notifications → qBittorrent →
 Stalled for** (30 minutes by default; admins choose from 5 minutes to 24 hours, for
 everyone). It opens the torrent's trackers, whose messages usually say why. Each comes
-once each time a torrent gets into that state, and again only after it has recovered;
-a stall is timed from when Helprr first sees it, also after Helprr restarts. Both are
+once each time a torrent gets into that state, and again only after it has recovered
+(for a stall: had data for that same time again); a stall is timed from when Helprr
+first sees it, also after Helprr restarts. Both are
 off until you turn them on, on each device and channel, including ones from before
 Helprr had them.
 

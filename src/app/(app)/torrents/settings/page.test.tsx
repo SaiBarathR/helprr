@@ -395,5 +395,42 @@ describe('qBittorrent settings page', () => {
       await act(async () => confirm.click());
       await waitFor(() => expect(queuePatches).toEqual([{ max_ratio_act: 3 }]));
     });
+
+    it('asks before a lower limit removes torrents already past it, but not for a higher one', async () => {
+      mocks.me = { role: 'admin' };
+      queueSeeding = { ...QUEUE_SEEDING, max_ratio_act: 1 };
+      await renderPage();
+      await waitFor(() => expect(queueSwitch()).not.toBeNull());
+
+      await saveLimit('Ratio Limit', '3');
+      await waitFor(() => expect(queuePatches).toHaveLength(1));
+      expect(queuePatches[0]).toMatchObject({ max_ratio_enabled: true, max_ratio: 3 });
+      expect(document.body.textContent).not.toContain('Remove torrents past this limit?');
+
+      await saveLimit('Ratio Limit', '0.5');
+      await waitFor(() => expect(document.body.textContent).toContain('Remove torrents past this limit?'));
+      expect(document.body.textContent).toContain('(its files stay)');
+      expect(queuePatches).toHaveLength(1);
+      const confirm = [...document.querySelectorAll('button')].find((el) => el.textContent === 'Save and remove')!;
+      await act(async () => confirm.click());
+      await waitFor(() => expect(queuePatches).toHaveLength(2));
+      expect(queuePatches[1]).toMatchObject({ max_ratio_enabled: true, max_ratio: 0.5 });
+    });
+
+    it('asks before removing torrents (files kept) when a limit is reached', async () => {
+      mocks.me = { role: 'admin' };
+      await renderPage();
+      await waitFor(() => expect(queueSwitch()).not.toBeNull());
+      const action = [...document.querySelectorAll<HTMLSelectElement>('select')].find((el) => [...el.options].some((o) => o.text === 'Remove torrent'))!;
+      await act(async () => {
+        action.value = '1';
+        action.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await waitFor(() => expect(document.body.textContent).toContain('Remove torrents that reach a limit?'));
+      expect(queuePatches).toEqual([]);
+      const confirm = [...document.querySelectorAll('button')].find((el) => el.textContent === 'Remove torrents')!;
+      await act(async () => confirm.click());
+      await waitFor(() => expect(queuePatches).toEqual([{ max_ratio_act: 1 }]));
+    });
   });
 });

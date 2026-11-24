@@ -1142,6 +1142,9 @@ password, the program run on completion), checks types, ranges and the
 (qBittorrent reads a missing value as 0, which would act on every seeding torrent).
 The client rebuilds the payload from the same list. Reading needs `torrents.view`;
 writing is admin-only and records a `SETTINGS_UPDATED` security event with the keys.
+The page asks before choosing a removing action, and, while one is chosen,
+before a save that turns a limit on or lowers it (torrents already past it go at
+once); the server accepts an explicit 0, as qBittorrent's Web UI does.
 
 qBittorrent's main log (QBT-24, `/api/qbittorrent/log`, admin-only, page
 `/torrents/log`) lists forward from an id only, so the route reads all it keeps
@@ -1464,16 +1467,22 @@ row to the admins' notification list.
 qBittorrent's `torrentErrored` and `torrentStalled` (QBT-12, `notify.torrents`)
 come from the qBittorrent poll (`src/lib/polling/torrent-problems.ts`). Each
 torrent's entry in its `PollingState.lastQueueIds` carries `errored`,
-`stuckSince` and `stuckSent`, saved every poll with the rest, so no Redis key or
+`stuckSince`, `stuckSent` and `unstuckSince`, saved every poll with the rest, so no Redis key or
 extra write is needed: `torrentErrored` goes out when a torrent is in `error` or
 `missingFiles` and was not at the last poll (also for one new since then), and
 again only after it has left those states. `torrentStalled` goes out once per
 stall when `stalledDL`, `metaDL` or `forcedMetaDL` has lasted
 `AppSettings.torrentStalledAlertMins` (5–1440, default 30, an admin setting
-under the Torrent Stalled switch), timed from the first poll that saw it; any
-other state ends the stall. The first run, and entries saved before these
+under the Torrent Stalled switch), timed from the first poll that saw it.
+Before the push any other state ends the stall; after it, the stall ends only
+once the torrent has been out of those states for the stall time, so one that
+gets a moment of data now and then is not announced again each time.
+`checkingResumeData`, `checkingDL`, `checkingUP`, `moving` and `unknown` carry
+the marks over unchanged, so a torrent still errored after qBittorrent
+restarts is not announced twice. The first run, and entries saved before these
 marks (no `errored`), only record, so an upgrade announces nothing already
-broken. Both are in `DEFAULT_OFF_EVENT_TYPES`, so devices and channels without
+broken. While nobody takes one, `wantedNotices` drops it (no history row); the
+marks are saved anyway, so turning it on later replays nothing. Both are in `DEFAULT_OFF_EVENT_TYPES`, so devices and channels without
 a choice get none and no migration seeded them. They open
 `/torrents/<hash>/settings` (an error: Location) and
 `/torrents/<hash>/trackers` (a stall).

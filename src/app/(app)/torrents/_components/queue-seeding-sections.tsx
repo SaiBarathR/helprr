@@ -25,7 +25,14 @@ const PREFS_URL = '/api/qbittorrent/queue-seeding';
 const KEY = ['qbittorrent', 'queue-seeding'] as const;
 // The queue buttons of the torrent pages read whether queueing is on from here.
 const OPTIONS_KEY = ['qbittorrent', 'options'] as const;
+const REMOVE: ShareLimitAction = 1;
 const REMOVE_WITH_FILES: ShareLimitAction = 3;
+const LIMIT_FIELDS: (keyof ShareLimitValues)[] = ['ratio_limit', 'seeding_time_limit', 'inactive_seeding_time_limit'];
+
+/** What the confirm dialog is asking about. */
+type Pending =
+  | { kind: 'action'; action: ShareLimitAction }
+  | { kind: 'limits'; values: ShareLimitValues; resolve: (saved: boolean) => void };
 
 type CountKey = 'max_active_downloads' | 'max_active_uploads' | 'max_active_torrents';
 const COUNTS: { key: CountKey; label: string }[] = [
@@ -144,7 +151,7 @@ export function QueueSeedingSections({ isAdmin }: { isAdmin: boolean }) {
     staleTime: 0,
   });
   const prefs = query.data;
-  const [confirmAction, setConfirmAction] = useState(false);
+  const [pending, setPending] = useState<Pending | null>(null);
 
   const { mutateAsync, isPending } = useMutation({
     mutationFn: patchPreferences,
@@ -197,7 +204,7 @@ export function QueueSeedingSections({ isAdmin }: { isAdmin: boolean }) {
     inactive_seeding_time_limit: prefs.max_inactive_seeding_time_enabled ? prefs.max_inactive_seeding_time : -1,
   };
   // A limit's value goes only with its switch on (parseQueueSeedingPatch).
-  const saveSeeding = (values: ShareLimitValues) => save({
+  const writeSeeding = (values: ShareLimitValues) => save({
     max_ratio_enabled: values.ratio_limit >= 0,
     ...(values.ratio_limit >= 0 && { max_ratio: values.ratio_limit }),
     max_seeding_time_enabled: values.seeding_time_limit >= 0,
@@ -205,10 +212,25 @@ export function QueueSeedingSections({ isAdmin }: { isAdmin: boolean }) {
     max_inactive_seeding_time_enabled: values.inactive_seeding_time_limit >= 0,
     ...(values.inactive_seeding_time_limit >= 0 && { max_inactive_seeding_time: values.inactive_seeding_time_limit }),
   });
+  const removes = prefs.max_ratio_act === REMOVE || prefs.max_ratio_act === REMOVE_WITH_FILES;
+  // While a reached limit removes torrents, a limit turned on or lowered
+  // removes every torrent already past it at once: ask first, as for choosing
+  // a removing action. Resolves false when cancelled (the editor stays open).
+  const saveSeeding = (values: ShareLimitValues): Promise<boolean> => {
+    const tightened = LIMIT_FIELDS.some((field) =>
+      values[field] >= 0 && (seedingValues[field] < 0 || values[field] < seedingValues[field]));
+    if (!removes || !tightened) return writeSeeding(values);
+    return new Promise((resolve) => setPending({ kind: 'limits', values, resolve }));
+  };
   const actionLabel = SHARE_LIMIT_ACTIONS.find((a) => a.value === prefs.max_ratio_act)?.label ?? 'Unknown';
   const setAction = (value: ShareLimitAction) => {
-    if (value === REMOVE_WITH_FILES) setConfirmAction(true);
+    if (value === REMOVE || value === REMOVE_WITH_FILES) setPending({ kind: 'action', action: value });
     else void save({ max_ratio_act: value }, 'Limit action updated');
+  };
+  const withFiles = pending?.kind === 'action' ? pending.action === REMOVE_WITH_FILES : prefs.max_ratio_act === REMOVE_WITH_FILES;
+  const closeConfirm = (saved: boolean) => {
+    if (pending?.kind === 'limits') pending.resolve(saved);
+    setPending(null);
   };
 
   return (
@@ -288,15 +310,23 @@ export function QueueSeedingSections({ isAdmin }: { isAdmin: boolean }) {
       </GroupedSection>
 
       <ConfirmDialog
-        open={confirmAction}
-        onOpenChange={setConfirmAction}
-        title="Remove torrents and their files?"
-        description="Every torrent that reaches a seeding limit will be removed from qBittorrent with its downloaded files, including torrents already past a limit."
-        confirmLabel="Remove with files"
+        open={pending !== null}
+        onOpenChange={(open) => { if (!open) closeConfirm(false); }}
+        title={pending?.kind === 'limits'
+          ? 'Remove torrents past this limit?'
+          : withFiles ? 'Remove torrents and their files?' : 'Remove torrents that reach a limit?'}
+        description={pending?.kind === 'limits'
+          ? `A torrent that reaches a seeding limit is removed from qBittorrent${withFiles ? ' with its downloaded files' : ' (its files stay)'}. Every torrent already past the new limit goes at once.`
+          : `Every torrent that reaches a seeding limit will be removed from qBittorrent${withFiles ? ' with its downloaded files' : ' (its files stay)'}, including torrents already past a limit.`}
+        confirmLabel={pending?.kind === 'limits' ? 'Save and remove' : withFiles ? 'Remove with files' : 'Remove torrents'}
         destructive
         busy={isPending}
         onConfirm={async () => {
-          if (await save({ max_ratio_act: REMOVE_WITH_FILES }, 'Limit action updated')) setConfirmAction(false);
+          if (!pending) return;
+          const saved = pending.kind === 'limits'
+            ? await writeSeeding(pending.values)
+            : await save({ max_ratio_act: pending.action }, 'Limit action updated');
+          if (saved) closeConfirm(true);
         }}
       />
     </>

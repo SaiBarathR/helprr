@@ -686,7 +686,7 @@ export class QBittorrentClient {
   /**
    * qBittorrent's main log (log/main) at the given levels, oldest first: the
    * entries after `lastKnownId`, or all it keeps (-1). Raw: the caller
-   * rebuilds and redacts each entry (src/lib/qbittorrent-log.ts).
+   * rebuilds and redacts each entry (src/lib/server/qbittorrent-log.ts).
    */
   async getMainLog(levels: { normal: boolean; info: boolean; warning: boolean; critical: boolean }, lastKnownId = -1): Promise<unknown> {
     return this.get<unknown>('/api/v2/log/main', { ...levels, last_known_id: lastKnownId });

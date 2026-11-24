@@ -82,6 +82,7 @@ export default function TorrentLogPage() {
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="min-h-[44px]"
                   disabled={query.isFetchingNextPage}
                   onClick={() => void query.fetchNextPage()}
                 >

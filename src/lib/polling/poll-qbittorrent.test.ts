@@ -90,7 +90,7 @@ describe('pollQBittorrent: errored, missing files and stalled torrents (QBT-12)'
     expect(await poll(minutes(3), [{ hash: 'b', state: 'missingFiles' }])).toEqual([]);
   });
 
-  it('pushes a stall once it lasts the set time, once, and starts over after data flows', async () => {
+  it('pushes a stall once it lasts the set time, once, and only a new stall after data has flowed for that long', async () => {
     await poll(minutes(0), [{ hash: 's', state: 'stalledDL' }]);
     expect(await poll(minutes(29), [{ hash: 's', state: 'stalledDL' }])).toEqual([]);
 
@@ -100,11 +100,36 @@ describe('pollQBittorrent: errored, missing files and stalled torrents (QBT-12)'
     })]);
     expect(await poll(minutes(90), [{ hash: 's', state: 'stalledDL' }])).toEqual([]);
 
-    // Data again: the next stall is timed from when it starts.
+    // Data for the stall time (30 min) ends the stall; the next one is timed from its start.
     await poll(minutes(91), [{ hash: 's', state: 'downloading' }]);
-    await poll(minutes(92), [{ hash: 's', state: 'stalledDL' }]);
-    expect(await poll(minutes(121), [{ hash: 's', state: 'stalledDL' }])).toEqual([]);
-    expect(types(await poll(minutes(122), [{ hash: 's', state: 'stalledDL' }]))).toEqual(['torrentStalled']);
+    await poll(minutes(121), [{ hash: 's', state: 'downloading' }]);
+    await poll(minutes(122), [{ hash: 's', state: 'stalledDL' }]);
+    expect(await poll(minutes(151), [{ hash: 's', state: 'stalledDL' }])).toEqual([]);
+    expect(types(await poll(minutes(152), [{ hash: 's', state: 'stalledDL' }]))).toEqual(['torrentStalled']);
+  });
+
+  it('keeps a torrent that flickers out of the stall for a moment as one stall, with one push', async () => {
+    await poll(minutes(0), [{ hash: 's', state: 'stalledDL' }]);
+    expect(types(await poll(minutes(30), [{ hash: 's', state: 'stalledDL' }]))).toEqual(['torrentStalled']);
+    for (let m = 31; m < 200; m += 2) {
+      expect(await poll(minutes(m), [{ hash: 's', state: 'downloading' }])).toEqual([]);
+      expect(await poll(minutes(m + 1), [{ hash: 's', state: 'stalledDL' }])).toEqual([]);
+    }
+  });
+
+  it('times a stall again from the start when data flows before its push', async () => {
+    await poll(minutes(0), [{ hash: 's', state: 'stalledDL' }]);
+    await poll(minutes(20), [{ hash: 's', state: 'downloading' }]);
+    await poll(minutes(21), [{ hash: 's', state: 'stalledDL' }]);
+    expect(await poll(minutes(50), [{ hash: 's', state: 'stalledDL' }])).toEqual([]);
+    expect(types(await poll(minutes(51), [{ hash: 's', state: 'stalledDL' }]))).toEqual(['torrentStalled']);
+  });
+
+  it('does not announce again a torrent still errored after qBittorrent checks it on restart', async () => {
+    await poll(minutes(0), [{ hash: 'a', state: 'uploading', progress: 1 }]);
+    expect(types(await poll(minutes(1), [{ hash: 'a', state: 'missingFiles', progress: 1 }]))).toEqual(['torrentErrored']);
+    expect(await poll(minutes(2), [{ hash: 'a', state: 'checkingResumeData', progress: 1 }])).toEqual([]);
+    expect(await poll(minutes(3), [{ hash: 'a', state: 'missingFiles', progress: 1 }])).toEqual([]);
   });
 
   it('counts a magnet stuck on its metadata, and follows the set time', async () => {

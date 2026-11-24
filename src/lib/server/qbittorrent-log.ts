@@ -19,15 +19,18 @@ const KEPT = new Set(['0.0.0.0', '127.0.0.1', '::', '::1']);
 
 const H = '[0-9a-f]{1,4}';
 const V4 = '\\d{1,3}(?:\\.\\d{1,3}){3}';
-// One with an IPv4 tail (::ffff:1.2.3.4) first, or the hex groups would stop
-// at its first number; then all eight groups, or a "::" shortened one. Not
-// inside a longer word or hex run, so a hash or "Session::" is left alone.
+// One with an IPv4 tail (::ffff:1.2.3.4, 0:0:0:0:0:ffff:1.2.3.4) first, or
+// the hex groups would stop at its first number; then all eight groups, or a
+// "::" shortened one. Not inside a longer word or hex run, so a hash or
+// "Session::" is left alone; a colon after it may end a label ("IP: …: …").
 const IPV6 = new RegExp(
-  `(?<![\\w:.])(?:(?:${H}:){0,6}(?:${H})?::(?:${H}:){0,5}${V4}|(?:${H}:){7}${H}|(?:${H}:){0,7}(?:${H})?::(?:${H}(?::${H}){0,6})?)(?![\\w:])`,
+  `(?<![\\w:.])(?:(?:${H}:){6}${V4}|(?:${H}:){0,6}(?:${H})?::(?:${H}:){0,5}${V4}|(?:${H}:){7}${H}|(?:${H}:){0,7}(?:${H})?::(?:${H}(?::${H}){0,6})?)(?!\\w|:[0-9a-f])`,
   'gi',
 );
-// A full stop after it may end the sentence; one before a digit makes it a longer number.
-const IPV4 = /(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?!\w|\.\d)/g;
+// Only digits bound it, so one glued to a word (peer_10.0.0.1) goes too. A
+// full stop after it may end the sentence; one before a digit makes it a
+// longer number (a version like 5.1.4.10 is masked: the safe side).
+const IPV4 = /(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?!\d|\.\d)/g;
 
 function maskIps(text: string): string {
   const mask = (address: string) => (KEPT.has(address.toLowerCase()) ? address : MASK);

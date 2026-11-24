@@ -19,8 +19,9 @@ Use the Web UI's address and port.
 upload or run at once) and its global **Seeding Limits** (a ratio, a seeding time and an
 inactive seeding time, and what happens when a torrent reaches one: stop it, remove it,
 remove it with its files, or super seed). Everyone who sees torrents can read them; only
-admins can change them, since they apply to every torrent. Choosing **Remove torrent and
-its files** asks first. While queueing is off the queue buttons on a torrent stay off.
+admins can change them, since they apply to every torrent. Choosing to remove torrents asks
+first, and so does turning on or lowering a limit while torrents are removed at a limit
+(those already past it go at once). While queueing is off the queue buttons on a torrent stay off.
 
 Admins also get **Torrents → Settings → Log**: qBittorrent's own messages, newest first,
 filtered by level, with **Load more** for older ones. It shows what qBittorrent keeps
