@@ -52,7 +52,8 @@ own help. Tap an instance's row there to see it any time. When all of the
 warnings of Sonarr, Radarr or Prowlarr have cleared and stayed clear for 2 minutes,
 **Health Restored** follows; a warning that clears and comes back within those 2
 minutes sends nothing. Each device can turn it
-off in **Settings → Notifications → Sonarr / Radarr**.
+off in **Settings → Notifications → Sonarr / Radarr**; a device from before starts with
+the choice it had for **Health Warning**.
 
 When Sonarr or Radarr replaces a file with a better copy, you get **Episode Upgraded**
 or **Movie Upgraded** instead of "Imported", saying from which quality to which (for

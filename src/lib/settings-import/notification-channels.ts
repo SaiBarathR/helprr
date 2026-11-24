@@ -5,14 +5,16 @@ import type { ExportedNotificationChannel } from '@/lib/settings-export';
 import { isChannelType, MAX_CHANNELS_PER_USER } from '@/lib/notification-channels/catalog';
 import { decryptSecrets, encryptSecrets, toFieldMap, validateChannelInput } from '@/lib/notification-channels/config';
 import { parseChannelEvents, parseChannelName } from '@/lib/notification-channels/requests';
+import type { LATER_EVENTS } from './notifications';
 
 /**
  * Create or update the account's channels by name. A file without secrets
  * keeps the ones already saved on this install for the same address; a channel
  * that would then lack a required secret is skipped, to be set up again.
- * Events are cut down to what the account may receive here. In a file from
- * before the "upgraded" event (`fromBeforeUpgraded`), a channel set to
- * "imported" got upgrades too, so it gets "upgraded" as well.
+ * Events are cut down to what the account may receive here. For each later
+ * event the file predates (`predates`), a channel set to the older event it
+ * starts from gets the later one as well: "imported" got upgrades too, and
+ * "healthWarning" now has "healthRestored".
  */
 export async function applyUserNotificationChannelsInTxn(
   tx: Prisma.TransactionClient,
@@ -20,7 +22,7 @@ export async function applyUserNotificationChannelsInTxn(
   userId: string,
   ownerLabel: string,
   skipped: string[],
-  fromBeforeUpgraded = false,
+  predates: typeof LATER_EVENTS = [],
 ): Promise<number> {
   const owner = await tx.user.findUnique({
     where: { id: userId },
@@ -53,8 +55,8 @@ export async function applyUserNotificationChannelsInTxn(
       continue;
     }
     const fileEvents: unknown = channel.events;
-    const listed = fromBeforeUpgraded && Array.isArray(fileEvents) && fileEvents.includes('imported') && !fileEvents.includes('upgraded')
-      ? [...fileEvents, 'upgraded']
+    const listed = Array.isArray(fileEvents)
+      ? predates.reduce<unknown[]>((events, { from, to }) => (events.includes(from) && !events.includes(to) ? [...events, to] : events), fileEvents)
       : fileEvents;
     const data = {
       type: channel.type,

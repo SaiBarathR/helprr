@@ -131,6 +131,7 @@ describe('migration readiness', () => {
     expect(names).toContain('20261114120000_settings_updated_audit');
     expect(names).toContain('20261118120000_service_down_alert_delay');
     expect(names).toContain('20261124120000_upgraded_notification_event');
-    expect(names).toHaveLength(48);
+    expect(names).toContain('20261124140000_health_restored_preferences');
+    expect(names).toHaveLength(49);
   });
 });

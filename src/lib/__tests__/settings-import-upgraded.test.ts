@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { applyNotificationDeviceInTxn } from '@/lib/settings-import/notifications';
+import { applyNotificationDeviceInTxn, laterEventsMissingFrom } from '@/lib/settings-import/notifications';
 import { applyUserNotificationChannelsInTxn } from '@/lib/settings-import/notification-channels';
 import type { NotificationEventType } from '@/lib/notification-events';
 
@@ -43,12 +43,12 @@ describe('importing a file from before "Upgraded"', () => {
   it('adds "upgraded" to a channel set to "imported" in an older file, and not in a newer one', async () => {
     vi.stubEnv('JWT_SECRET', 'settings-import-test-secret-long-enough-for-aes');
     const old = channelTx();
-    await applyUserNotificationChannelsInTxn(old.tx, [channel(['imported', 'grabbed'])] as never, 'u1', 'User', [], true);
+    await applyUserNotificationChannelsInTxn(old.tx, [channel(['imported', 'grabbed'])] as never, 'u1', 'User', [], laterEventsMissingFrom({ accounts: [] }));
     expect(old.events()).toEqual([['imported', 'grabbed', 'upgraded']]);
 
     // A newer file without it: the person turned upgrades off on purpose.
     const fresh = channelTx();
-    await applyUserNotificationChannelsInTxn(fresh.tx, [channel(['imported', 'grabbed'])] as never, 'u1', 'User', [], false);
+    await applyUserNotificationChannelsInTxn(fresh.tx, [channel(['imported', 'grabbed'])] as never, 'u1', 'User', [], laterEventsMissingFrom({ accounts: [], upgradedEvent: true, healthRestoredEvent: true }));
     expect(fresh.events()).toEqual([['imported', 'grabbed']]);
   });
 });

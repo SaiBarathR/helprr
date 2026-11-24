@@ -422,6 +422,12 @@ export interface ExportedUsers {
    * "upgraded" on import, since upgrades were sent as imports then.
    */
   upgradedEvent?: true;
+  /**
+   * Set by exports made since the "healthRestored" notification event existed.
+   * Without it (an older export) a channel set to "healthWarning" also gets
+   * "healthRestored" on import, as the migration that added it did.
+   */
+  healthRestoredEvent?: true;
 }
 
 export interface SettingsExportPayload {
