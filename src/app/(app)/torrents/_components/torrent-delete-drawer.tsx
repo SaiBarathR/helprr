@@ -2,6 +2,7 @@
 
 import type { Dispatch, SetStateAction } from 'react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter, DrawerClose } from '@/components/ui/drawer';
 import { Loader2 } from 'lucide-react';
 
@@ -35,12 +36,10 @@ export function TorrentDeleteDrawer({
         </DrawerHeader>
 
         <div className="px-4 space-y-3">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
+          <label className="flex min-h-11 items-center gap-2 cursor-pointer">
+            <Checkbox
               checked={deleteDrawer.deleteFiles}
-              onChange={(e) => setDeleteDrawer({ ...deleteDrawer, deleteFiles: e.target.checked })}
-              className="rounded border-border"
+              onCheckedChange={(checked) => setDeleteDrawer({ ...deleteDrawer, deleteFiles: checked === true })}
             />
             <span className="text-sm">Also delete downloaded files</span>
           </label>
