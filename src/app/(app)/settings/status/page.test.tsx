@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   healthCalls: [] as string[],
   healthUrls: [] as string[],
   statuses: [] as unknown[],
+  systemUrls: [] as string[],
+  posts: [] as Array<{ url: string; body: unknown }>,
 }));
 vi.mock('@/components/permission-provider', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/components/permission-provider')>()),
@@ -49,8 +51,15 @@ beforeEach(() => {
   mocks.healthCalls = [];
   mocks.healthUrls = [];
   mocks.statuses = statuses;
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+  mocks.systemUrls = [];
+  mocks.posts = [];
+  // vaul captures the pointer on a press inside the sheet; jsdom has no pointer capture.
+  Element.prototype.setPointerCapture ??= () => {};
+  Element.prototype.releasePointerCapture ??= () => {};
+  Element.prototype.hasPointerCapture ??= () => false;
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/services/health') return new Response(JSON.stringify(mocks.statuses));
+    if (url.startsWith('/api/admin/arr-system/')) return systemResponse(url, init);
     const match = url.match(/^\/api\/(sonarr|radarr|lidarr)\/health\?instanceId=(.+)$/);
     if (match) {
       mocks.healthCalls.push(match[2]);
@@ -62,6 +71,43 @@ beforeEach(() => {
     return new Response('{}');
   }));
 });
+
+const SYSTEM: Record<string, unknown> = {
+  'son-1': { version: '4.0.20.3014', branch: 'main', updateVersion: null, updateChecked: true },
+  'son-2': { version: '4.0.20.3014', branch: 'main', updateVersion: '4.0.21.3100', updateChecked: true },
+  'pro-1': { version: '3.0.2.5780', branch: 'master', updateVersion: '3.1.0.5799', updateChecked: true },
+};
+const TASKS = [
+  { taskName: 'ApplicationUpdateCheck', name: 'Application Update Check', intervalMinutes: 360, lastExecution: null, nextExecution: null, lastDurationSeconds: null, canRun: false },
+  { taskName: 'CheckHealth', name: 'Check Health', intervalMinutes: 360, lastExecution: '2026-11-24T13:47:56.000Z', nextExecution: null, lastDurationSeconds: 0.6, canRun: true },
+];
+function logEntry(id: number) {
+  return { id, time: '2026-11-24T13:47:56.000Z', level: id === 1 ? 'error' : 'warn', logger: 'Torznab', message: `Entry ${id}`, exception: '' };
+}
+
+function systemResponse(url: string, init?: RequestInit): Response {
+  mocks.systemUrls.push(url);
+  const instance = new URL(url, 'http://x').searchParams.get('instanceId') ?? '';
+  if (url.startsWith('/api/admin/arr-system/status')) return new Response(JSON.stringify(SYSTEM[instance] ?? {}));
+  if (url.startsWith('/api/admin/arr-system/tasks/')) {
+    return new Response(JSON.stringify({ id: 9, name: 'CheckHealth', status: 'completed' }));
+  }
+  if (url.startsWith('/api/admin/arr-system/tasks')) {
+    if (init?.method === 'POST') {
+      mocks.posts.push({ url, body: JSON.parse(String(init.body)) });
+      return new Response(JSON.stringify({ id: 9, name: 'CheckHealth', status: 'queued' }));
+    }
+    return new Response(JSON.stringify(TASKS));
+  }
+  const page = Number(new URL(url, 'http://x').searchParams.get('page'));
+  const first = (page - 1) * 50 + 1;
+  return new Response(JSON.stringify({
+    page,
+    pageSize: 50,
+    totalRecords: 60,
+    entries: Array.from({ length: page === 1 ? 50 : 10 }, (_, index) => logEntry(first + index)),
+  }));
+}
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -82,7 +128,7 @@ describe('Service status health', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Anime.*2 health issues/ }));
     const sheet = await screen.findByRole('dialog');
-    expect(within(sheet).getByText('Sonarr · Anime health')).toBeTruthy();
+    expect(within(sheet).getByText('Sonarr · Anime')).toBeTruthy();
     const messages = within(sheet).getAllByText(/Missing root folder|Indexers unavailable/).map((el) => el.textContent);
     expect(messages).toEqual(['Missing root folder: /anime', 'Indexers unavailable: Nyaa']);
     expect(within(sheet).getByText('· Root Folder')).toBeTruthy();
@@ -96,7 +142,7 @@ describe('Service status health', () => {
     renderPage();
     const sheet = await screen.findByRole('dialog');
     await waitFor(() => expect(within(sheet).getByText('Missing root folder: /anime')).toBeTruthy());
-    expect(within(sheet).getByText('Sonarr · Anime health')).toBeTruthy();
+    expect(within(sheet).getByText('Sonarr · Anime')).toBeTruthy();
     // Back to this page, or a reload, doesn't open it again; the page's history state stays.
     expect(replace).toHaveBeenCalledWith({ kept: true }, '', '/settings/status');
     replace.mockRestore();
@@ -107,7 +153,7 @@ describe('Service status health', () => {
     renderPage();
     const sheet = await screen.findByRole('dialog');
     await waitFor(() => expect(within(sheet).getByText('Missing root folder: /anime')).toBeTruthy());
-    expect(within(sheet).getByText('Sonarr · Anime health')).toBeTruthy();
+    expect(within(sheet).getByText('Sonarr · Anime')).toBeTruthy();
     expect(within(sheet).queryByText(/Radarr/)).toBeNull();
     // Not even briefly: the wrong service's health is never asked for.
     expect(mocks.healthUrls).not.toContain('/api/radarr/health?instanceId=son-2');
@@ -138,5 +184,64 @@ describe('Service status health', () => {
     mocks.me = { ...MEMBER, capabilities: { ...MEMBER.capabilities, 'notify.health': true } };
     renderPage();
     expect(await screen.findByText('2 health issues')).toBeTruthy();
+  });
+});
+
+describe('Service status, for admins: versions, tasks and logs', () => {
+  const withProwlarr = [...statuses, { instanceId: 'pro-1', type: 'PROWLARR', name: 'Prowlarr', label: 'Prowlarr', ok: true }];
+
+  it("shows each reachable instance's version and offered update", async () => {
+    mocks.statuses = withProwlarr;
+    renderPage();
+    expect(await screen.findByText('v4.0.20.3014')).toBeTruthy();
+    expect(screen.getByText('v4.0.20.3014 · update available (v4.0.21.3100)')).toBeTruthy();
+    expect(screen.getByText('v3.0.2.5780 · update available (v3.1.0.5799)')).toBeTruthy();
+    // An unreachable instance is not asked.
+    expect(mocks.systemUrls.some((url) => url.includes('rad-1'))).toBe(false);
+  });
+
+  it('opens Prowlarr on its tasks, and runs only an allowed one', async () => {
+    mocks.statuses = withProwlarr;
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Prowlarr.*update available/ }));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).queryByRole('tab', { name: 'Health' })).toBeNull();
+    expect(within(sheet).getByRole('tab', { name: 'Tasks', selected: true })).toBeTruthy();
+    expect(await within(sheet).findByText(/v3\.1\.0\.5799 is available: update it where Prowlarr runs/)).toBeTruthy();
+    expect(await within(sheet).findByText('Application Update Check')).toBeTruthy();
+    // Only the allowed task has Run now.
+    expect(within(sheet).getAllByRole('button', { name: /^Run .* now$/ }).map((b) => b.getAttribute('aria-label')))
+      .toEqual(['Run Check Health now']);
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Run Check Health now' }));
+    await waitFor(() => expect(mocks.posts).toEqual([
+      { url: '/api/admin/arr-system/tasks?instanceId=pro-1', body: { name: 'CheckHealth' } },
+    ]));
+  });
+
+  it('pages through the log, and asks for errors only when switched', async () => {
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Anime.*2 health issues/ }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.click(within(sheet).getByRole('tab', { name: 'Logs' }));
+    expect(await within(sheet).findByText('Entry 50')).toBeTruthy();
+    expect(within(sheet).getByText('60 warning and error entries')).toBeTruthy();
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Load more' }));
+    expect(await within(sheet).findByText('Entry 60')).toBeTruthy();
+    expect(within(sheet).queryByRole('button', { name: 'Load more' })).toBeNull();
+    await userEvent.click(within(sheet).getByRole('switch', { name: 'Errors only' }));
+    await waitFor(() => expect(mocks.systemUrls).toContain('/api/admin/arr-system/logs?level=error&page=1&instanceId=son-2'));
+  });
+
+  it('shows a member only health: no versions, tasks or logs, nothing asked', async () => {
+    mocks.me = { ...MEMBER, capabilities: { ...MEMBER.capabilities, 'notify.health': true, 'prowlarr.manage': true } };
+    mocks.statuses = withProwlarr;
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Anime.*2 health issues/ }));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByText('Sonarr · Anime health')).toBeTruthy();
+    expect(within(sheet).queryByRole('tab')).toBeNull();
+    expect(screen.queryByText(/update available/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Prowlarr/ })).toBeNull();
+    expect(mocks.systemUrls).toEqual([]);
   });
 });

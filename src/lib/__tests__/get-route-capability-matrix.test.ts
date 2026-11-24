@@ -20,6 +20,11 @@ const AUTH_CALLS = new Set([
 
 const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   admin: [
+    // One Sonarr/Radarr/Lidarr/Prowlarr instance's version, tasks, a run's state, and its redacted log.
+    'GET /api/admin/arr-system/status',
+    'GET /api/admin/arr-system/tasks',
+    'GET /api/admin/arr-system/tasks/[id]',
+    'GET /api/admin/arr-system/logs',
     'GET /api/admin/database-backup',
     'GET /api/admin/polling-status',
     'GET /api/admin/support-bundle',
@@ -585,7 +590,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(292);
+    expect(handlers.size).toBe(296);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
