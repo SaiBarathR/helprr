@@ -98,7 +98,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
     'torrentsFilter', 'torrentsCategoryFilter', 'torrentsTagFilter', 'torrentsTrackerFilter',
     'torrentsSortKey', 'torrentsSortDir', 'torrentsView',
   ],
-  activity: ['activityTab', 'activitySortBy', 'activitySortDirection', 'activityFilterBy', 'activityInstanceFilter'],
+  activity: ['activityTab', 'activitySortBy', 'activitySortDirection', 'activityFilterBy', 'activityInstanceFilter', 'activityShowUnmonitored'],
   requests: ['requestsTab', 'requestsFilter', 'requestsUserFilter', 'requestsTypeFilter', 'requestsSort', 'requestsSortDirection'],
   notificationFilters: ['notificationsFilters'],
   calendar: [

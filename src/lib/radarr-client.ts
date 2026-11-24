@@ -210,17 +210,20 @@ export class RadarrClient {
 
   // Wanted
   // Radarr accepts only the sort keys its wanted controllers allow-list (see docs/upstream-compatibility.md).
+  // It lists only monitored films unless sent monitored=false, which lists the
+  // unmonitored ones instead (never both at once).
   async getWantedMissing(
     page = 1,
     pageSize = 20,
     sortKey: 'movieMetadata.inCinemas' | 'movieMetadata.sortTitle' = 'movieMetadata.inCinemas',
     sortDirection: 'ascending' | 'descending' = 'descending',
+    { unmonitored = false } = {},
   ): Promise<{ page: number; pageSize: number; totalRecords: number; records: RadarrMovie[] }> {
-    return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey, sortDirection });
+    return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey, sortDirection, ...(unmonitored ? { monitored: false } : {}) });
   }
 
-  async getCutoffUnmet(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: RadarrMovie[] }> {
-    return this.get('/api/v3/wanted/cutoff', { page, pageSize, sortKey: 'movieMetadata.inCinemas', sortDirection: 'descending' });
+  async getCutoffUnmet(page = 1, pageSize = 20, { unmonitored = false } = {}): Promise<{ page: number; pageSize: number; totalRecords: number; records: RadarrMovie[] }> {
+    return this.get('/api/v3/wanted/cutoff', { page, pageSize, sortKey: 'movieMetadata.inCinemas', sortDirection: 'descending', ...(unmonitored ? { monitored: false } : {}) });
   }
 
   // Calendar
@@ -297,6 +300,12 @@ export class RadarrClient {
   // Sends a delayed (pending) release to the download client now.
   async grabQueueItem(id: number): Promise<void> {
     await this.post(`/api/v3/queue/grab/${id}`);
+  }
+
+  // Sends several pending releases at once. The app grabs them in order and stops
+  // at the first id that is no longer pending (404), keeping the ones before it.
+  async grabQueueBulk(ids: number[]): Promise<void> {
+    await this.post('/api/v3/queue/grab/bulk', { ids });
   }
 
   // Blocklist — releases the *arr will not grab again. Removing an entry lets

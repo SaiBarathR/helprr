@@ -30,6 +30,8 @@ export interface WantedRecord {
   albumId?: number;
   releaseDate?: string;
   artist?: { id: number; artistName: string };
+  // Set by /api/activity/wanted on rows from an app's unmonitored list.
+  unmonitored?: boolean;
 }
 
 // Row identity for list keys and per-item search state: multi-instance setups

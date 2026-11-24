@@ -76,9 +76,15 @@ async function sendSearches(requests: SearchRequest[]): Promise<{ ok: number; fa
  *
  * @param type - Specifies which set of wanted items to display: `'missing'` or `'cutoff'`.
  * @param filterBy - Selected sources for results (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources, otherwise results are limited to the selected sources.
+ * @param showUnmonitored - Also list the apps' unmonitored items, dimmed, after the monitored ones. Search all still searches only the monitored ones.
  * @returns The tab content element that lists records, shows loading and empty states, provides per-record, selected and "Search all" actions, and supports "Load more" pagination.
  */
-export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cutoff'; filterBy: string[]; instanceFilter: string }) {
+export function WantedTab({ type, filterBy, instanceFilter, showUnmonitored = false }: {
+  type: 'missing' | 'cutoff';
+  filterBy: string[];
+  instanceFilter: string;
+  showUnmonitored?: boolean;
+}) {
   const PAGE_SIZE = 20;
   const canManageActivity = useCan('activity.manage');
   const sourceChipLabel = useSourceChipLabel();
@@ -94,7 +100,7 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
 
   // A selection belongs to the list it was made on: a filter change drops it, so
   // switching back can't bring hidden picks into "Search selected".
-  const listKey = `${sourcesKey}|${instanceFilter}`;
+  const listKey = `${sourcesKey}|${instanceFilter}|${showUnmonitored}`;
   const [selectionListKey, setSelectionListKey] = useState(listKey);
   if (selectionListKey !== listKey) {
     setSelectionListKey(listKey);
@@ -106,14 +112,15 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
   // every filter combination is a genuinely different result — key on all of them
   // and request the page directly. No client-side filtering, no auto-advance.
   const wantedQuery = useInfiniteQuery({
-    queryKey: ['activity', 'wanted', type, sourcesKey, instanceFilter],
+    queryKey: ['activity', 'wanted', type, sourcesKey, instanceFilter, showUnmonitored ? 'unmonitored' : 'monitored'],
     queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams({ type, page: String(pageParam), pageSize: String(PAGE_SIZE) });
       if (filterBy.length > 0) params.set('sources', filterBy.join(','));
       if (instanceFilter !== 'all') params.set('instanceId', instanceFilter);
+      if (showUnmonitored) params.set('unmonitored', '1');
       const res = await fetch(`/api/activity/wanted?${params}`, { signal });
       if (!res.ok) throw new ApiError(res.status, `GET /api/activity/wanted → ${res.status}`);
-      return (await res.json()) as { records: WantedRecord[]; totalRecords: number };
+      return (await res.json()) as { records: WantedRecord[]; totalRecords: number; unmonitoredTotal?: number };
     },
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) =>
@@ -135,6 +142,8 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
     });
   }, [wantedQuery.data]);
   const totalRecords = wantedQuery.data?.pages.at(-1)?.totalRecords ?? 0;
+  // Search all searches only the monitored items, so its confirm counts only those.
+  const monitoredTotal = Math.max(0, totalRecords - (wantedQuery.data?.pages.at(-1)?.unmonitoredTotal ?? 0));
   // Films that are not out anywhere yet sit in their own group on Missing,
   // folded away, so the list reads as what is actually out and missing.
   const notReleased = type === 'missing' ? records.filter((r) => isNotReleased(r)) : [];
@@ -154,9 +163,9 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
   const listName = type === 'missing' ? 'missing' : 'cutoff unmet';
   // Helprr searches Radarr's missing films by id, leaving out the "Not released yet" ones.
   const skipsUnreleased = type === 'missing' && searchAllInstances.some((i) => i.source === 'radarr');
-  const searchAllNote = skipsUnreleased
+  const searchAllNote = (skipsUnreleased
     ? ' Radarr searches only the films that are out: those not released yet are skipped.'
-    : '';
+    : '') + (showUnmonitored ? ' Unmonitored items are not searched; select them to search them.' : '');
 
   // Surface fetch failures instead of silently rendering "No missing items" (or
   // stale rows under keepPreviousData). Mirrors the toast-on-error the action
@@ -264,8 +273,11 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
         {dated && (
           <span>{`${dated.label} ${formatDistanceToNow(dated.date, { addSuffix: true })}`}</span>
         )}
+        {record.unmonitored && <span className="sr-only">Unmonitored</span>}
       </div>
     );
+    // Dimmed like the calendar's unmonitored entries.
+    const dimmed = record.unmonitored ? 'opacity-50' : '';
 
     if (selectionMode) {
       const selected = selectedKeys.has(key);
@@ -275,7 +287,7 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
           type="button"
           onClick={() => toggleSelected(key)}
           aria-pressed={selected}
-          className="w-full text-left flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors"
+          className={cn('w-full text-left flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors', dimmed)}
         >
           <Checkbox checked={selected} tabIndex={-1} aria-hidden className="pointer-events-none" />
           <div className="p-1.5 rounded bg-muted">{icon}</div>
@@ -329,7 +341,7 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
           },
         ]}
       >
-        <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors">
+        <div className={cn('flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors', dimmed)}>
           {href ? (
             <Link href={href} className="p-1.5 rounded bg-muted hover:bg-muted/80 transition-colors">
               {icon}
@@ -393,7 +405,8 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
             className="h-8"
             onClick={() => setConfirmSearchAll(true)}
             // While a filter change loads, the count shown is still the old list's.
-            disabled={bulkSearching || searchAllInstances.length === 0 || wantedQuery.isPlaceholderData}
+            // Nothing to search when every listed item is unmonitored.
+            disabled={bulkSearching || searchAllInstances.length === 0 || wantedQuery.isPlaceholderData || monitoredTotal === 0}
           >
             <Search className="mr-1.5 h-4 w-4" />
             Search all
@@ -455,8 +468,8 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
         onOpenChange={(open) => { if (!open && !bulkSearching) setConfirmSearchAll(false); }}
         title={searchAllTitle({
           listName,
-          totalRecords,
-          notReleased: notReleased.length,
+          totalRecords: monitoredTotal,
+          notReleased: notReleased.filter((r) => !r.unmonitored).length,
           allLoaded: !wantedQuery.hasNextPage,
           skipsUnreleased,
         })}
