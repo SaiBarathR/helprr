@@ -86,7 +86,9 @@ export default function TorrentFilesPage() {
 
   const filesQuery = useQuery({
     queryKey: filesKey,
-    queryFn: jsonFetcher<{ files: TorrentFile[] }>(`/api/qbittorrent/${hash}/details`),
+    // The files route, not /details: that one also asks qBittorrent for the
+    // properties, trackers and magnet, which this page doesn't show.
+    queryFn: jsonFetcher<{ files: TorrentFile[] }>(`/api/qbittorrent/${hash}/files`),
     select: (d) => d.files ?? [],
     // Pause polling while a priority change is in flight so the next poll can't
     // overwrite the optimistic update before the server commits (matches the old

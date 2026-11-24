@@ -16,7 +16,7 @@ vi.mock('@/components/layout/navigation-provider', () => ({
   useNavigation: () => null,
 }));
 const permissions = vi.hoisted(() => ({ me: null as null | { role: string } }));
-const viewport = vi.hoisted(() => ({ narrow: false }));
+const viewport = vi.hoisted(() => ({ width: 1440 }));
 vi.mock('@/components/permission-provider', () => ({
   useMe: () => permissions.me,
   useCan: () => false,
@@ -34,9 +34,14 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} });
-  viewport.narrow = false;
-  // useIsMobile caches one query object per width, so the answer is read live.
-  vi.stubGlobal('matchMedia', () => ({ get matches() { return viewport.narrow; }, addEventListener() {}, removeEventListener() {} }));
+  viewport.width = 1440;
+  // useIsMobile asks `(max-width: Npx)` and caches one query object per width,
+  // so the answer is read live against the test's viewport width.
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    get matches() { return viewport.width <= Number(/max-width:\s*([\d.]+)px/.exec(query)?.[1] ?? Infinity); },
+    addEventListener() {},
+    removeEventListener() {},
+  }));
   vi.stubGlobal('fetch', vi.fn(async () => Response.json([])));
 });
 
@@ -117,8 +122,9 @@ it('folds Select and the list refresh into an admin\'s ⋯ menu on the narrowest
   vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(String(url) === '/api/instances'
     ? [{ id: 'son-1', label: 'main', type: 'SONARR' }]
     : [])));
-  // Every width query matches: a phone below 359px.
-  viewport.narrow = true;
+  // 366px: the row is 354px with Select and Add, so Select moves into the menu
+  // below 367px (a 360px Android phone included).
+  viewport.width = 366;
   // jsdom has no pointer capture, which the drawer asks for on a press inside it.
   HTMLElement.prototype.setPointerCapture ??= () => {};
   HTMLElement.prototype.releasePointerCapture ??= () => {};
@@ -130,5 +136,23 @@ it('folds Select and the list refresh into an admin\'s ⋯ menu on the narrowest
     .toEqual(['Select series', 'Refresh list', 'RSS Sync', 'Refresh all series', 'Cancel']);
   await userEvent.click(within(sheet).getByRole('button', { name: 'Select series' }));
   expect(await screen.findByRole('button', { name: 'Cancel selection' })).toBeTruthy();
+  client.clear();
+});
+
+it('keeps Select on the row from 367px, where it fits, with only the refresh in the ⋯ menu', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(String(url) === '/api/instances'
+    ? [{ id: 'son-1', label: 'main', type: 'SONARR' }]
+    : [])));
+  viewport.width = 367;
+  HTMLElement.prototype.setPointerCapture ??= () => {};
+  HTMLElement.prototype.releasePointerCapture ??= () => {};
+  permissions.me = { role: 'admin' };
+  const client = renderPage();
+  // The CSS edge matches the menu's: the row's Select hides below 367px.
+  expect((await screen.findByRole('button', { name: 'Select series' })).className).toContain('max-[367px]:hidden');
+  await userEvent.click(await screen.findByRole('button', { name: 'More actions' }));
+  const sheet = await screen.findByRole('dialog', { name: 'More actions' });
+  expect(within(sheet).getAllByRole('button').map((b) => b.textContent))
+    .toEqual(['Refresh list', 'RSS Sync', 'Refresh all series', 'Cancel']);
   client.clear();
 });

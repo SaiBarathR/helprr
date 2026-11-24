@@ -824,13 +824,15 @@ export default function MusicPage() {
             </Tooltip>
           )}
 
-          {/* Below 360px the row has no room for it; pull to refresh does the same. */}
+          {/* With Select and Add the row needs a 367px screen (354px of buttons in
+              a row 12px narrower than the screen); below that it has no room for
+              this, and pull to refresh does the same. */}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={refresh}
                 disabled={refreshing}
-                className="max-[359px]:hidden p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default"
+                className="max-[367px]:hidden p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default"
                 aria-label="Refresh Music"
               >
                 <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
@@ -844,7 +846,7 @@ export default function MusicPage() {
               <TooltipTrigger asChild>
                 <Link
                   href="/music/add"
-                  className="relative touch-target touch-target-center ml-1 max-[359px]:ml-0 md:ml-0 md:p-2 md:min-h-[44px] md:min-w-[44px] p-1 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                  className="relative touch-target touch-target-center ml-1 max-[367px]:ml-0 md:ml-0 md:p-2 md:min-h-[44px] md:min-w-[44px] p-1 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
                   aria-label="Add Artist"
                 >
                   <Plus className="md:h-5 md:w-5 h-6 w-6" />
