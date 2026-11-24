@@ -507,12 +507,65 @@ describe('pollers on fixed fixtures (golden)', () => {
       body: 'All health checks pass again',
       url: `/settings/status?health=${kind}&instance=i1`,
       metadata: { source: kind, instanceId: 'i1', redirect: `/settings/status?health=${kind}&instance=i1` },
-      dedupeKey: `${kind}-health-restored:i1:${new Date(NOW + HEALTH_CLEAR_HOLD_MS).toISOString()}`,
+      // Keyed on when the all-clear began (the first clear poll), not on updatedAt.
+      dedupeKey: `${kind}-health-restored:i1:${NOW}`,
     }]);
     expect(state.lastHealthHash).toBe(EMPTY_HEALTH_HASH);
 
     vi.setSystemTime(NOW + 3 * HEALTH_CLEAR_HOLD_MS);
     expect(await cycle()).toEqual([]);
+  });
+
+  it.each([
+    ['pollSonarr', 'sonarr'],
+    ['pollRadarr', 'radarr'],
+  ] as const)('%s: a warning that clears and returns inside the hold sends nothing; pushes not recorded are retried', async (method, kind) => {
+    resetHealthTracking();
+    const instance = arrInstance('i1', 'Main', kind, false);
+    const issues = [{ message: 'Main indexer is down' }];
+    let health: Array<{ message: string }> = issues;
+    instance.client.getHealth = vi.fn(async () => health);
+    mocks[kind] = [instance];
+    const notifyEvent = vi.mocked((await import('@/lib/notification-service')).notifyEvent);
+    const cycle = async () => {
+      mocks.out = [];
+      const out = await run(method);
+      const update = out.find((o) => 'pollingState.update' in (o as object)) as { 'pollingState.update': { data: { lastHealthHash: string } } };
+      const state = mocks.states.get('i1')!;
+      state.lastHealthHash = update['pollingState.update'].data.lastHealthHash;
+      state.lastQueueIds = [];
+      return out.flatMap((o) => {
+        const event = (o as { notify?: { eventType: string } }).notify;
+        return event?.eventType.startsWith('health') ? [event.eventType] : [];
+      });
+    };
+
+    await cycle(); // first run: the baseline, with issues
+    const withIssues = mocks.states.get('i1')!.lastHealthHash;
+    health = [];
+    expect(await cycle()).toEqual([]);
+    vi.setSystemTime(NOW + HEALTH_CLEAR_HOLD_MS - 1000);
+    health = issues;
+    expect(await cycle()).toEqual([]);
+    expect(mocks.states.get('i1')!.lastHealthHash).toBe(withIssues);
+
+    // A restore that could not be recorded keeps the old hash, and the next cycle sends it.
+    health = [];
+    await cycle();
+    vi.setSystemTime(NOW + 3 * HEALTH_CLEAR_HOLD_MS);
+    notifyEvent.mockRejectedValueOnce(new Error('history insert failed'));
+    expect(await cycle()).toEqual([]);
+    expect(mocks.states.get('i1')!.lastHealthHash).toBe(withIssues);
+    expect(await cycle()).toEqual(['healthRestored']);
+    expect(mocks.states.get('i1')!.lastHealthHash).toBe(EMPTY_HEALTH_HASH);
+
+    // So does a warning that could not be recorded.
+    health = issues;
+    notifyEvent.mockRejectedValueOnce(new Error('history insert failed'));
+    expect(await cycle()).toEqual([]);
+    expect(mocks.states.get('i1')!.lastHealthHash).toBe(EMPTY_HEALTH_HASH);
+    expect(await cycle()).toEqual(['healthWarning']);
+    expect(mocks.states.get('i1')!.lastHealthHash).toBe(withIssues);
   });
 
   it('pollSonarr: clients that cannot be built fail the job and send nothing', async () => {

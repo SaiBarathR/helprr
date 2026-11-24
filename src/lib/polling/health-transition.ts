@@ -26,6 +26,8 @@ export interface HealthDecision {
   notify: 'warning' | 'restored' | null;
   /** The hash to store for this cycle. */
   save: string;
+  /** For a restore: when the all-clear began, the same on every retry of it. */
+  clearSince?: number;
 }
 
 /**
@@ -53,7 +55,7 @@ export function healthTransition(
   // Left set until the empty hash is stored (the next cycle clears it), so a
   // restore that could not be recorded is retried without a new wait.
   clearSince.set(id, since);
-  return { notify: 'restored', save: hash };
+  return { notify: 'restored', save: hash, clearSince: since };
 }
 
 /**
@@ -65,7 +67,7 @@ export async function notifyArrHealth(args: {
   instanceId: string;
   instanceLabel: string;
   instanceCount: number;
-  state: { lastHealthHash: string | null; updatedAt: Date };
+  state: { lastHealthHash: string | null };
   health: Array<{ message?: unknown }>;
   healthHash: string;
 }): Promise<string> {
@@ -77,14 +79,16 @@ export async function notifyArrHealth(args: {
   const url = arrHealthHref(service, instanceId);
   const metadata = { source: service, instanceId, redirect: url };
   if (decision.notify === 'warning') {
-    await notifyAndLog({
+    const sent = await notifyAndLog({
       eventType: 'healthWarning',
       title: instanceTitle(`${name} Health Warning`, instanceLabel, instanceCount),
       body: health.map((h) => redactHealthMessage(h.message)).join('; ').slice(0, 200),
       url,
       metadata,
     }, { service, instanceId, reason: 'health-changed', healthCount: health.length });
-    return decision.save;
+    // Not recorded (null): keep the old hash so the next cycle tries again,
+    // and a later all-clear never follows a warning nobody received.
+    return sent === null ? state.lastHealthHash ?? decision.save : decision.save;
   }
   const sent = await notifyAndLog({
     eventType: 'healthRestored',
@@ -92,9 +96,10 @@ export async function notifyArrHealth(args: {
     body: 'All health checks pass again',
     url,
     metadata,
-    // updatedAt moves whenever the poller saves its state, so a cycle whose
-    // save failed repeats this key and the history row stops a second push.
-    dedupeKey: `${service}-health-restored:${instanceId}:${state.updatedAt.toISOString()}`,
+    // Keyed on when the all-clear began, which stays until the empty hash is
+    // stored: a cycle whose save failed repeats it and the history row stops
+    // a second push. (updatedAt would not do: the reachability poll moves it.)
+    dedupeKey: `${service}-health-restored:${instanceId}:${decision.clearSince}`,
   }, { service, instanceId, reason: 'health-restored' });
   // Not recorded (null): keep the old hash so the next cycle tries again.
   return sent === null ? state.lastHealthHash ?? decision.save : decision.save;

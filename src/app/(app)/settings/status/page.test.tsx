@@ -82,12 +82,17 @@ describe('Service status health', () => {
     expect(within(sheet).getByRole('link', { name: /Learn more/ }).getAttribute('href')).toBe('https://wiki.servarr.com/sonarr/system#indexers');
   });
 
-  it("opens the instance a health push's link names", async () => {
+  it("opens the instance a health push's link names, then drops the link from the URL", async () => {
+    window.history.replaceState({ kept: true }, '', '/settings/status?health=sonarr&instance=son-2');
+    const replace = vi.spyOn(window.history, 'replaceState');
     mocks.search = new URLSearchParams('health=sonarr&instance=son-2');
     renderPage();
     const sheet = await screen.findByRole('dialog');
     await waitFor(() => expect(within(sheet).getByText('Missing root folder: /anime')).toBeTruthy());
     expect(within(sheet).getByText('Sonarr · Anime health')).toBeTruthy();
+    // Back to this page, or a reload, doesn't open it again; the page's history state stays.
+    expect(replace).toHaveBeenCalledWith({ kept: true }, '', '/settings/status');
+    replace.mockRestore();
   });
 
   it('shows no health to a member without notify.health, and ignores the link', async () => {

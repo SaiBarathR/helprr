@@ -63,7 +63,8 @@ export async function pollProwlarr() {
       body: 'All health checks pass again',
       url: '/prowlarr',
       metadata: { source: 'prowlarr', redirect: '/prowlarr' },
-      dedupeKey: `prowlarr-health-restored:${state.updatedAt.toISOString()}`,
+      // When the all-clear began: the same on a retry after a failed save.
+      dedupeKey: `prowlarr-health-restored:${decision.clearSince}`,
     }, { service: 'prowlarr', instanceId: connection.id, reason: 'health-restored' });
     if (sent === null) return;
   }

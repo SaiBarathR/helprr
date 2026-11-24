@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/drawer';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import type { HealthService } from '@/lib/arr-health-link';
 import type { HealthCheck } from '@/types/arr';
 import { cn } from '@/lib/utils';
@@ -24,7 +25,7 @@ const HEALTH_LABEL: Record<string, string> = { error: 'Error', warning: 'Warning
 /** One instance's health, shared by its Service status row and its sheet. */
 export function arrHealthQuery(service: HealthService, instanceId: string) {
   return {
-    queryKey: ['arr-health', service, instanceId],
+    queryKey: queryKeys.arrHealth(service, instanceId),
     queryFn: jsonFetcher<HealthCheck[]>(`/api/${service}/health`, instanceId),
     select: ensureArray<HealthCheck>,
     staleTime: 60_000,

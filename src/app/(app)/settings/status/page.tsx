@@ -1,7 +1,7 @@
 'use client';
 
 import Link from '@/components/ui/app-link';
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Download, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -99,7 +99,22 @@ export default function ServiceStatusPage() {
       setHealthTarget(link);
       setHealthOpen(true);
     }
+  } else if (!link && handledLink) {
+    setHandledLink(null);
   }
+  // Drop a handled link from the URL, so Back to this page or a reload doesn't
+  // open the sheet again. A layout effect, so it runs before the sheet's own
+  // history entry is pushed (a passive effect) and edits this page's entry,
+  // not the sheet's. The router's state is kept so Back here doesn't reload.
+  useLayoutEffect(() => {
+    if (!handledLink) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('health') === null) return;
+    params.delete('health');
+    params.delete('instance');
+    const query = params.toString();
+    window.history.replaceState(window.history.state, '', query ? `/settings/status?${query}` : '/settings/status');
+  }, [handledLink]);
   const targetStatus = healthTarget ? statuses.find((s) => s.instanceId === healthTarget.instanceId) : undefined;
   const healthTitle = !healthTarget
     ? ''
