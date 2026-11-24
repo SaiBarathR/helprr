@@ -11,9 +11,9 @@ const mocks = vi.hoisted(() => ({
   getSonarrClient: vi.fn(),
   getRadarrClient: vi.fn(),
   getLidarrClient: vi.fn(),
-  sonarr: { markHistoryFailed: vi.fn(), grabQueueItem: vi.fn(), deleteQueueBulk: vi.fn() },
-  radarr: { markHistoryFailed: vi.fn(), grabQueueItem: vi.fn(), deleteQueueBulk: vi.fn() },
-  lidarr: { markHistoryFailed: vi.fn(), grabQueueItem: vi.fn(), deleteQueueBulk: vi.fn() },
+  sonarr: { markHistoryFailed: vi.fn(), grabQueueItem: vi.fn(), grabQueueBulk: vi.fn(), deleteQueueBulk: vi.fn() },
+  radarr: { markHistoryFailed: vi.fn(), grabQueueItem: vi.fn(), grabQueueBulk: vi.fn(), deleteQueueBulk: vi.fn() },
+  lidarr: { markHistoryFailed: vi.fn(), grabQueueItem: vi.fn(), grabQueueBulk: vi.fn(), deleteQueueBulk: vi.fn() },
 }));
 
 vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.requireUserCapability }));
@@ -37,6 +37,7 @@ vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handl
 
 import { POST as markFailed } from './history/[id]/failed/route';
 import { POST as grab } from './queue/[id]/grab/route';
+import { POST as bulkGrab } from './queue/grab/route';
 import { DELETE as bulkRemove } from './queue/route';
 
 const user = { id: 'user-1', username: 'owner' };
@@ -62,10 +63,11 @@ beforeEach(() => {
   mocks.getRadarrClient.mockResolvedValue(mocks.radarr);
   mocks.getLidarrClient.mockResolvedValue(mocks.lidarr);
   // The re-read after a bulk removal: an empty queue, so every id was removed.
-  mocks.fetchAllQueueRecords.mockResolvedValue({ records: [], totalRecords: 0 });
+  mocks.fetchAllQueueRecords.mockReset().mockResolvedValue({ records: [], totalRecords: 0 });
   for (const client of [mocks.sonarr, mocks.radarr, mocks.lidarr]) {
     client.markHistoryFailed.mockResolvedValue(undefined);
     client.grabQueueItem.mockResolvedValue(undefined);
+    client.grabQueueBulk.mockResolvedValue(undefined);
     client.deleteQueueBulk.mockResolvedValue(undefined);
   }
 });
@@ -75,6 +77,11 @@ const actions = [
   ['POST /api/activity/history/[id]/failed', (body: unknown) => markFailed(request('POST', '/api/activity/history/41/failed', body), idParams('41'))],
   ['POST /api/activity/queue/[id]/grab', (body: unknown) => grab(request('POST', '/api/activity/queue/7/grab', body), idParams('7'))],
   ['DELETE /api/activity/queue', (body: unknown) => bulkRemove(request('DELETE', '/api/activity/queue', { ids: [7], ...(body as object) }))],
+  ['POST /api/activity/queue/grab', (body: unknown) => {
+    // Queue item 7 is a pending release on whichever instance is read.
+    mocks.fetchAllQueueRecords.mockResolvedValueOnce({ records: [{ id: 7, status: 'delay' }], totalRecords: 1 });
+    return bulkGrab(request('POST', '/api/activity/queue/grab', { ids: [7], ...(body as object) }));
+  }],
 ] as const;
 
 describe.each(actions)('%s', (_name, call) => {
@@ -304,5 +311,105 @@ describe('DELETE /api/activity/queue', () => {
       itemCount: 2,
       details: expect.objectContaining({ outcome: 'partial-unknown' }),
     }));
+  });
+});
+
+describe('POST /api/activity/queue/grab', () => {
+  const queue = (...records: Array<{ id: number; status: string }>) => ({ records, totalRecords: records.length });
+  const send = (body: unknown) => bulkGrab(request('POST', '/api/activity/queue/grab', body));
+
+  it('sends only the ids still pending on that instance, in one call, and says which it skipped', async () => {
+    mocks.fetchAllQueueRecords.mockResolvedValueOnce(queue(
+      { id: 1, status: 'delay' },
+      { id: 2, status: 'downloading' },
+      { id: 3, status: 'downloadClientUnavailable' },
+    ));
+    const res = await send({ source: 'sonarr', instanceId: 'son-2', ids: [1, 2, 3, 4, 1] });
+    expect(res.status).toBe(200);
+    expect(mocks.getSonarrClient).toHaveBeenCalledWith('son-2');
+    expect(mocks.sonarr.grabQueueBulk).toHaveBeenCalledTimes(1);
+    expect(mocks.sonarr.grabQueueBulk).toHaveBeenCalledWith([1, 3]);
+    expect(await res.json()).toEqual({ grabbed: [1, 3], notGrabbed: [], unknown: [], skipped: [2, 4] });
+    expect(mocks.bumpQueueCacheVersion).toHaveBeenCalled();
+  });
+
+  it('sends nothing when none of the ids is pending', async () => {
+    mocks.fetchAllQueueRecords.mockResolvedValueOnce(queue({ id: 2, status: 'downloading' }));
+    const res = await send({ source: 'radarr', instanceId: 'rad-1', ids: [2] });
+    expect(await res.json()).toEqual({ grabbed: [], notGrabbed: [], unknown: [], skipped: [2] });
+    expect(mocks.radarr.grabQueueBulk).not.toHaveBeenCalled();
+  });
+
+  it('refuses to send blind when the queue cannot be read', async () => {
+    mocks.fetchAllQueueRecords.mockRejectedValueOnce(new Error('down'));
+    expect((await send({ source: 'radarr', instanceId: 'rad-1', ids: [2] })).status).toBe(502);
+    // A partial read (capped pagination) is not trusted either.
+    mocks.fetchAllQueueRecords.mockResolvedValueOnce({ records: [{ id: 2, status: 'delay' }], totalRecords: 5 });
+    expect((await send({ source: 'radarr', instanceId: 'rad-1', ids: [2] })).status).toBe(502);
+    expect(mocks.radarr.grabQueueBulk).not.toHaveBeenCalled();
+  });
+
+  it('after a part-way failure, reads the queue again to say which were sent', async () => {
+    mocks.fetchAllQueueRecords
+      .mockResolvedValueOnce(queue({ id: 1, status: 'delay' }, { id: 2, status: 'delay' }, { id: 3, status: 'delay' }))
+      .mockResolvedValueOnce(queue({ id: 3, status: 'delay' }, { id: 90, status: 'downloading' }))
+      .mockResolvedValueOnce(queue({ id: 3, status: 'delay' }, { id: 90, status: 'downloading' }));
+    // The retry of the one still pending fails as well.
+    mocks.lidarr.grabQueueBulk.mockRejectedValueOnce(new Error('404')).mockRejectedValueOnce(new Error('500'));
+    const res = await send({ source: 'lidarr', instanceId: 'lid-1', ids: [1, 2, 3] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ grabbed: [1, 2], notGrabbed: [3], unknown: [], skipped: [] });
+    expect(mocks.bumpQueueCacheVersion).toHaveBeenCalled();
+  });
+
+  it('sends again what is still pending after a stop the batch itself caused (a season pack)', async () => {
+    // 1 and 2 are two episodes of one pending pack: grabbing 1 sends the pack and drops 2.
+    mocks.fetchAllQueueRecords
+      .mockResolvedValueOnce(queue({ id: 1, status: 'delay' }, { id: 2, status: 'delay' }, { id: 3, status: 'delay' }, { id: 4, status: 'delay' }))
+      .mockResolvedValueOnce(queue({ id: 3, status: 'delay' }, { id: 4, status: 'delay' }, { id: 90, status: 'downloading' }));
+    mocks.sonarr.grabQueueBulk.mockRejectedValueOnce(new Error('404')).mockResolvedValueOnce(undefined);
+    const res = await send({ source: 'sonarr', instanceId: 'son-1', ids: [1, 2, 3, 4] });
+    expect(mocks.sonarr.grabQueueBulk).toHaveBeenNthCalledWith(1, [1, 2, 3, 4]);
+    expect(mocks.sonarr.grabQueueBulk).toHaveBeenNthCalledWith(2, [3, 4]);
+    expect(await res.json()).toEqual({ grabbed: [1, 2, 3, 4], notGrabbed: [], unknown: [], skipped: [] });
+  });
+
+  it('stops retrying after a round that sends nothing more', async () => {
+    mocks.fetchAllQueueRecords
+      .mockResolvedValueOnce(queue({ id: 1, status: 'delay' }, { id: 2, status: 'delay' }, { id: 3, status: 'delay' }))
+      .mockResolvedValueOnce(queue({ id: 2, status: 'delay' }, { id: 3, status: 'delay' }))
+      .mockResolvedValueOnce(queue({ id: 2, status: 'delay' }, { id: 3, status: 'delay' }));
+    mocks.sonarr.grabQueueBulk.mockRejectedValue(new Error('client down'));
+    const res = await send({ source: 'sonarr', instanceId: 'son-1', ids: [1, 2, 3] });
+    expect(mocks.sonarr.grabQueueBulk).toHaveBeenCalledTimes(2);
+    expect(await res.json()).toEqual({ grabbed: [1], notGrabbed: [2, 3], unknown: [], skipped: [] });
+  });
+
+  it('fails when the app sent none, and says unknown when the second read fails', async () => {
+    mocks.fetchAllQueueRecords
+      .mockResolvedValueOnce(queue({ id: 1, status: 'delay' }))
+      .mockResolvedValueOnce(queue({ id: 1, status: 'delay' }));
+    mocks.sonarr.grabQueueBulk.mockRejectedValueOnce(new Error('client down'));
+    expect((await send({ source: 'sonarr', instanceId: 'son-1', ids: [1] })).status).toBeGreaterThanOrEqual(500);
+
+    mocks.fetchAllQueueRecords
+      .mockResolvedValueOnce(queue({ id: 1, status: 'delay' }))
+      .mockRejectedValueOnce(new Error('down'));
+    mocks.sonarr.grabQueueBulk.mockRejectedValueOnce(new Error('client down'));
+    const res = await send({ source: 'sonarr', instanceId: 'son-1', ids: [1] });
+    expect(await res.json()).toEqual({ grabbed: [], notGrabbed: [], unknown: [1], skipped: [] });
+  });
+
+  it.each([
+    [{ source: 'sonarr', instanceId: 'son-1' }],
+    [{ source: 'sonarr', instanceId: 'son-1', ids: [] }],
+    [{ source: 'sonarr', instanceId: 'son-1', ids: ['1'] }],
+    [{ source: 'sonarr', instanceId: 'son-1', ids: [-1] }],
+    [{ source: 'sonarr', instanceId: 'son-1', ids: [2_147_483_648] }],
+    [{ source: 'sonarr', instanceId: 'son-1', ids: Array.from({ length: 1001 }, (_, i) => i) }],
+    [['sonarr']],
+  ])('rejects a bad body %#', async (body) => {
+    expect((await send(body)).status).toBe(400);
+    expect(mocks.getSonarrClient).not.toHaveBeenCalled();
   });
 });

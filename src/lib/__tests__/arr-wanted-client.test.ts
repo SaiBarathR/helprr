@@ -59,4 +59,45 @@ describe('arr wanted client sort keys', () => {
       params: { page: 2, pageSize: 40, sortKey: 'releaseDate', sortDirection: 'descending', includeArtist: true },
     });
   });
+
+  it.each([
+    ['Sonarr', () => new SonarrClient('http://sonarr.local', 'key'), 'v3'],
+    ['Radarr', () => new RadarrClient('http://radarr.local', 'key'), 'v3'],
+    ['Lidarr', () => new LidarrClient('http://lidarr.local', 'key'), 'v1'],
+  ] as const)('%s reads the unmonitored list only when asked, with monitored=false', async (_name, make, version) => {
+    const client = make();
+    await client.getWantedMissing(1, 20);
+    expect(mocks.get.mock.lastCall?.[1].params).not.toHaveProperty('monitored');
+    await client.getCutoffUnmet(1, 20, { unmonitored: true });
+    expect(mocks.get).toHaveBeenLastCalledWith(`/api/${version}/wanted/cutoff`, {
+      params: expect.objectContaining({ monitored: false }),
+    });
+  });
+
+  it('Radarr reads the unmonitored missing list in the order asked', async () => {
+    await new RadarrClient('http://radarr.local', 'key').getWantedMissing(1, 20, 'movieMetadata.inCinemas', 'ascending', { unmonitored: true });
+    expect(mocks.get).toHaveBeenLastCalledWith('/api/v3/wanted/missing', {
+      params: { page: 1, pageSize: 20, sortKey: 'movieMetadata.inCinemas', sortDirection: 'ascending', monitored: false },
+    });
+  });
+});
+
+describe('Sonarr cutoff unmet series ids', () => {
+  const records = (ids: number[]) => ids.map((seriesId) => ({ seriesId }));
+
+  beforeEach(() => mocks.get.mockReset());
+
+  // Sonarr sorts only by air date, so paging could skip rows that share one at a page edge.
+  it('reads the list as one page, one id per series, and says when it was cut short', async () => {
+    mocks.get.mockResolvedValueOnce({ data: { totalRecords: 3, records: records([4, 4, 9]) } });
+    const client = new SonarrClient('http://sonarr.local', 'key');
+    expect(await client.getCutoffUnmetSeriesIds()).toEqual({ seriesIds: [4, 9], complete: true });
+    expect(mocks.get).toHaveBeenCalledWith('/api/v3/wanted/cutoff', {
+      params: { page: 1, pageSize: 20_000, includeSeries: false, includeEpisodeFile: false, includeImages: false, monitored: true },
+      timeout: 60_000,
+    });
+
+    mocks.get.mockResolvedValueOnce({ data: { totalRecords: 30_000, records: records([1, 2]) } });
+    expect(await client.getCutoffUnmetSeriesIds()).toEqual({ seriesIds: [1, 2], complete: false });
+  });
 });

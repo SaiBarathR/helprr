@@ -765,6 +765,9 @@ function EditUserDialog({
   });
 
   const permBusy = applyTemplateMutation.isPending || toggleCapMutation.isPending;
+  // The Prowlarr search routes take manage as well, so with manage on the
+  // search switch shows on and can't be turned off on its own.
+  const searchInManage = effective?.['prowlarr.manage'] === true;
 
   function saveIdentity() {
     if (passwordError) {
@@ -991,12 +994,22 @@ function EditUserDialog({
                     <div className="flex items-center justify-between py-1.5">
                       <span className="text-sm pr-3">{item.label}</span>
                       <Switch
-                        checked={effective[item.cap as Capability] === true}
+                        checked={effective[item.cap as Capability] === true || (item.cap === 'prowlarr.search' && searchInManage)}
                         onCheckedChange={(v) => void toggleCap(item.cap as Capability, v)}
-                        disabled={permBusy}
+                        disabled={permBusy || (item.cap === 'prowlarr.search' && searchInManage)}
                         aria-label={item.label}
                       />
                     </div>
+                    {item.cap === 'prowlarr.search' && searchInManage && (
+                      <p className="pb-1.5 text-xs text-muted-foreground">Included in Manage Prowlarr.</p>
+                    )}
+                    {item.cap === 'prowlarr.search'
+                      && (effective['prowlarr.search'] === true || searchInManage)
+                      && effective['prowlarr.view'] !== true && (
+                      <p className="pb-1.5 text-xs text-amber-500">
+                        Can search, but can&apos;t open the Prowlarr page: turn on View Prowlarr too.
+                      </p>
+                    )}
                     {item.cap === 'requests.create'
                       && effective['requests.create'] === true
                       && effective['discover.view'] !== true && (

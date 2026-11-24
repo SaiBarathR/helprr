@@ -39,7 +39,14 @@ import {
   MUSIC_SORT_KEYS,
   SERIES_FILTERS,
   SERIES_SORT_KEYS,
+  EMPTY_LIBRARY_FACETS,
+  type LibraryFacetFilters,
 } from '@/lib/library-filtering';
+import {
+  sanitizeLibraryFacets,
+  sanitizeSavedLibraryFilters,
+  type SavedLibraryFilter,
+} from '@/lib/library-saved-filters';
 
 const MEDIA_VIEW_MODES = ['posters', 'overview', 'table'] as const;
 export type MediaViewMode = (typeof MEDIA_VIEW_MODES)[number];
@@ -274,7 +281,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 56;
+export const STORE_VERSION = 57;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -578,6 +585,11 @@ interface UIState {
   setMoviesInstanceFilter: (id: string) => void;
   moviesWatchFilter: MediaWatchFilterPreference;
   setMoviesWatchFilter: (filter: MediaWatchFilterPreference) => void;
+  // Tag, quality profile, root folder and genre picks (see LibraryFacetFilters).
+  moviesFacetFilter: LibraryFacetFilters;
+  setMoviesFacetFilter: (filter: LibraryFacetFilters) => void;
+  moviesSavedFilters: SavedLibraryFilter[];
+  setMoviesSavedFilters: (filters: SavedLibraryFilter[]) => void;
   moviesVisibleFields: VisibleFieldsByMode;
   setMoviesVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
   // Series preferences
@@ -597,6 +609,11 @@ interface UIState {
   setSeriesInstanceFilter: (id: string) => void;
   seriesWatchFilter: MediaWatchFilterPreference;
   setSeriesWatchFilter: (filter: MediaWatchFilterPreference) => void;
+  // Tag, quality profile, root folder and genre picks (see LibraryFacetFilters).
+  seriesFacetFilter: LibraryFacetFilters;
+  setSeriesFacetFilter: (filter: LibraryFacetFilters) => void;
+  seriesSavedFilters: SavedLibraryFilter[];
+  setSeriesSavedFilters: (filters: SavedLibraryFilter[]) => void;
   seriesVisibleFields: VisibleFieldsByMode;
   setSeriesVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
   // Music preferences (artist-centric)
@@ -614,6 +631,11 @@ interface UIState {
   setMusicFilter: (filter: string[]) => void;
   musicInstanceFilter: string;
   setMusicInstanceFilter: (id: string) => void;
+  // Tag, quality profile, root folder and genre picks (see LibraryFacetFilters).
+  musicFacetFilter: LibraryFacetFilters;
+  setMusicFacetFilter: (filter: LibraryFacetFilters) => void;
+  musicSavedFilters: SavedLibraryFilter[];
+  setMusicSavedFilters: (filters: SavedLibraryFilter[]) => void;
   musicVisibleFields: VisibleFieldsByMode;
   setMusicVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
   // Discover preferences
@@ -663,6 +685,9 @@ interface UIState {
   // type has >1 instance.
   activityInstanceFilter: string;
   setActivityInstanceFilter: (id: string) => void;
+  // Missing and Cutoff also list unmonitored items (dimmed, left out of Search all).
+  activityShowUnmonitored: boolean;
+  setActivityShowUnmonitored: (show: boolean) => void;
   // Requests page (Seerr)
   requestsTab: RequestsTabPreference;
   setRequestsTab: (tab: RequestsTabPreference) => void;
@@ -798,6 +823,8 @@ const PERSISTED_KEYS = [
   'moviesFilter',
   'moviesInstanceFilter',
   'moviesWatchFilter',
+  'moviesFacetFilter',
+  'moviesSavedFilters',
   'moviesVisibleFields',
   'seriesView',
   'seriesPosterSize',
@@ -807,6 +834,8 @@ const PERSISTED_KEYS = [
   'seriesFilter',
   'seriesInstanceFilter',
   'seriesWatchFilter',
+  'seriesFacetFilter',
+  'seriesSavedFilters',
   'seriesVisibleFields',
   'musicView',
   'musicPosterSize',
@@ -815,6 +844,8 @@ const PERSISTED_KEYS = [
   'musicSortDirection',
   'musicFilter',
   'musicInstanceFilter',
+  'musicFacetFilter',
+  'musicSavedFilters',
   'musicVisibleFields',
   'discoverContentType',
   'discoverSort',
@@ -835,6 +866,7 @@ const PERSISTED_KEYS = [
   'activitySortDirection',
   'activityFilterBy',
   'activityInstanceFilter',
+  'activityShowUnmonitored',
   'requestsTab',
   'requestsFilter',
   'requestsUserFilter',
@@ -965,6 +997,15 @@ const PERSISTED_CHOICE_LISTS: Partial<Record<PersistedKey, readonly unknown[]>> 
 // tracker hosts): any strings, nothing else.
 const STRING_LIST_KEYS: ReadonlySet<string> = new Set(['torrentsCategoryFilter', 'torrentsTagFilter', 'torrentsTrackerFilter']);
 
+// The library pages' tag/profile/root folder/genre picks, and their saved filters,
+// whose status filters are held to that page's own list.
+const FACET_FILTER_KEYS: ReadonlySet<string> = new Set(['moviesFacetFilter', 'seriesFacetFilter', 'musicFacetFilter']);
+const SAVED_FILTER_STATUS_CHOICES: Partial<Record<PersistedKey, readonly string[]>> = {
+  moviesSavedFilters: MOVIE_FILTERS,
+  seriesSavedFilters: SERIES_FILTERS,
+  musicSavedFilters: MUSIC_FILTERS,
+};
+
 // Percentages: a number in 0–100, rounded. One outside it is not a value the
 // sliders make, so the default stays rather than a clamped guess.
 const PERCENT_KEYS: ReadonlySet<string> = new Set(['glassIntensity', 'calendarImageOpacity']);
@@ -988,6 +1029,9 @@ function usablePersistedValue(key: PersistedKey, value: unknown, fallback: unkno
   const listChoices = PERSISTED_CHOICE_LISTS[key];
   if (listChoices) return Array.isArray(value) ? value.filter((entry) => listChoices.includes(entry)) : UNUSABLE;
   if (STRING_LIST_KEYS.has(key)) return Array.isArray(value) ? value.filter((entry) => typeof entry === 'string') : UNUSABLE;
+  if (FACET_FILTER_KEYS.has(key)) return sanitizeLibraryFacets(value) ?? UNUSABLE;
+  const savedFilterStatuses = SAVED_FILTER_STATUS_CHOICES[key];
+  if (savedFilterStatuses) return sanitizeSavedLibraryFilters(value, savedFilterStatuses) ?? UNUSABLE;
   if (VISIBLE_FIELDS_KEYS.has(key)) return isVisibleFieldsByMode(value) ? value : UNUSABLE;
   if (key === 'searchHistory') return isSearchHistoryMap(value) ? value : UNUSABLE;
   if (PERCENT_KEYS.has(key)) {
@@ -1068,6 +1112,10 @@ export const useUIStore = create<UIState>()(
       setMoviesInstanceFilter: (id) => set({ moviesInstanceFilter: id }),
       moviesWatchFilter: 'all',
       setMoviesWatchFilter: (filter) => set({ moviesWatchFilter: filter }),
+      moviesFacetFilter: { ...EMPTY_LIBRARY_FACETS },
+      setMoviesFacetFilter: (filter) => set({ moviesFacetFilter: filter }),
+      moviesSavedFilters: [],
+      setMoviesSavedFilters: (filters) => set({ moviesSavedFilters: filters }),
       moviesVisibleFields: { ...DEFAULT_MOVIES_FIELDS },
       setMoviesVisibleFields: (mode, fields) => set((state) => ({
         moviesVisibleFields: { ...state.moviesVisibleFields, [mode]: fields },
@@ -1089,6 +1137,10 @@ export const useUIStore = create<UIState>()(
       setSeriesInstanceFilter: (id) => set({ seriesInstanceFilter: id }),
       seriesWatchFilter: 'all',
       setSeriesWatchFilter: (filter) => set({ seriesWatchFilter: filter }),
+      seriesFacetFilter: { ...EMPTY_LIBRARY_FACETS },
+      setSeriesFacetFilter: (filter) => set({ seriesFacetFilter: filter }),
+      seriesSavedFilters: [],
+      setSeriesSavedFilters: (filters) => set({ seriesSavedFilters: filters }),
       seriesVisibleFields: { ...DEFAULT_SERIES_FIELDS },
       setSeriesVisibleFields: (mode, fields) => set((state) => ({
         seriesVisibleFields: { ...state.seriesVisibleFields, [mode]: fields },
@@ -1108,6 +1160,10 @@ export const useUIStore = create<UIState>()(
       setMusicFilter: (filter) => set({ musicFilter: filter }),
       musicInstanceFilter: 'all',
       setMusicInstanceFilter: (id) => set({ musicInstanceFilter: id }),
+      musicFacetFilter: { ...EMPTY_LIBRARY_FACETS },
+      setMusicFacetFilter: (filter) => set({ musicFacetFilter: filter }),
+      musicSavedFilters: [],
+      setMusicSavedFilters: (filters) => set({ musicSavedFilters: filters }),
       musicVisibleFields: { ...DEFAULT_MUSIC_FIELDS },
       setMusicVisibleFields: (mode, fields) => set((state) => ({
         musicVisibleFields: { ...state.musicVisibleFields, [mode]: fields },
@@ -1155,6 +1211,8 @@ export const useUIStore = create<UIState>()(
       setActivityFilterBy: (filterBy) => set({ activityFilterBy: filterBy }),
       activityInstanceFilter: 'all',
       setActivityInstanceFilter: (id) => set({ activityInstanceFilter: id }),
+      activityShowUnmonitored: false,
+      setActivityShowUnmonitored: (show) => set({ activityShowUnmonitored: show }),
       // Requests
       requestsTab: 'requests',
       setRequestsTab: (tab) => set({ requestsTab: tab }),

@@ -1157,6 +1157,8 @@ function HistoryTab({ indexerId, onIndexerChange }: {
 export default function ProwlarrPage() {
   const queryClient = useQueryClient();
   const canManage = useCan('prowlarr.manage');
+  // Manage includes search, as the search routes have it.
+  const canSearch = useCan('prowlarr.search') || canManage;
   const [syncing, setSyncing] = useState(false);
   const [testingAll, setTestingAll] = useState(false);
   const [testAllResults, setTestAllResults] = useState<ProwlarrTestAllResponse | null>(null);
@@ -1446,7 +1448,7 @@ export default function ProwlarrPage() {
             <TabsTrigger value="indexers">Indexers</TabsTrigger>
             <TabsTrigger value="stats">Stats</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
-            {canManage && <TabsTrigger value="search">Search</TabsTrigger>}
+            {canSearch && <TabsTrigger value="search">Search</TabsTrigger>}
             <TabsTrigger value="apps">Apps</TabsTrigger>
           </TabsList>
         </div>
@@ -1466,7 +1468,7 @@ export default function ProwlarrPage() {
           <HistoryTab indexerId={historyIndexerId} onIndexerChange={setHistoryIndexerId} />
         </TabsContent>
 
-        {canManage && (
+        {canSearch && (
           <TabsContent value="search" className="mt-4">
             <SearchTab />
           </TabsContent>

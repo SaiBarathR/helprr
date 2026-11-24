@@ -62,6 +62,26 @@ describe('editing a user', () => {
     await client.invalidateQueries({ queryKey: ['users', 'permissions', 'u2'] });
     await waitFor(() => expect(screen.queryByText(/Can request, but can.t browse Discover/)).toBeNull());
   });
+
+  it('shows Prowlarr search as on, and fixed, while Manage Prowlarr includes it', async () => {
+    mocks.permissions = { template: 'member', effective: { 'prowlarr.view': true, 'prowlarr.search': false, 'prowlarr.manage': true } };
+    render(<QueryClientProvider client={new QueryClient()}><UsersAdminPage /></QueryClientProvider>);
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+
+    const search = await screen.findByRole('switch', { name: /^Search Prowlarr indexers/ });
+    expect(search.getAttribute('aria-checked')).toBe('true');
+    expect((search as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('Included in Manage Prowlarr.')).toBeTruthy();
+  });
+
+  it('warns when the user can search Prowlarr but not open its page', async () => {
+    mocks.permissions = { template: 'member', effective: { 'prowlarr.view': false, 'prowlarr.search': true } };
+    render(<QueryClientProvider client={new QueryClient()}><UsersAdminPage /></QueryClientProvider>);
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+
+    expect(await screen.findByText(/Can search, but can.t open the Prowlarr page/)).toBeTruthy();
+    expect((screen.getByRole('switch', { name: /^Search Prowlarr indexers/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
 });
 
 describe('invite and reset links', () => {

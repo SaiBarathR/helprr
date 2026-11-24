@@ -14,11 +14,26 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 import { deleteTorrentsAudited, TORRENT_DELETE_REFUSALS } from '@/lib/file-audit';
 import { isInsideDownloadRoots, parseAddTorrentOptions, parseLocation, parseShareLimits, parseTags } from '@/lib/qbittorrent-inputs';
 import { projectTorrentsForSummary } from '@/lib/qbittorrent-summary';
+import { boundedBodyErrorResponse, readBoundedFormData } from '@/lib/server/bounded-body';
+import {
+  checkTorrentLink,
+  fetchTorrentLink,
+  PRIVATE_LINK_MESSAGE,
+  TorrentLinkError,
+  type FetchedTorrentLink,
+} from '@/lib/torrent-link-fetch';
 
 const MAGNET_VERIFY_TIMEOUT_MS = 5000;
 const MAGNET_VERIFY_INTERVAL_MS = 500;
 // Real .torrent files top out around a few MB; bound the buffer we parse.
 const MAX_TORRENT_FILE_BYTES = 25 * 1024 * 1024;
+// What one add takes (qBittorrent itself has no cap): the request waits on every
+// link's fetch and every confirmation.
+const MAX_ADD_ITEMS = 20;
+const LINK_FETCH_CONCURRENCY = 3;
+// The proxy hands a route at most 10 MB of body (Next's proxyClientMaxBodySize,
+// left at its default), so several files share that.
+const MAX_ADD_FORM_BYTES = 10 * 1024 * 1024;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -214,21 +229,228 @@ function isSuccessfulAddResponse(value: string): boolean {
   return value.length === 0 || /^ok\.?$/i.test(value);
 }
 
-async function waitForTorrentHash(client: QBittorrentClient, hash: string): Promise<boolean> {
+/** The added hashes qBittorrent lists within the deadline, each with its name. */
+async function waitForTorrentHashes(client: QBittorrentClient, hashes: string[]): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
   const deadline = Date.now() + MAGNET_VERIFY_TIMEOUT_MS;
 
-  while (Date.now() <= deadline) {
-    const torrents = await client.getTorrents(undefined, undefined, undefined, undefined, hash);
-    if (torrents.length > 0) {
-      return true;
+  while (hashes.length > 0 && Date.now() <= deadline) {
+    const missing = hashes.filter((hash) => !found.has(hash));
+    let torrents: Awaited<ReturnType<QBittorrentClient['getTorrents']>>;
+    try {
+      torrents = await client.getTorrents(undefined, undefined, undefined, undefined, missing.join('|'));
+    } catch (error) {
+      // The torrents were sent: a failed look is "not confirmed" for what is
+      // still missing, not a failure of the whole add.
+      console.warn('[qbittorrent] add confirmation poll failed:', error instanceof Error ? error.message : error);
+      break;
     }
+    for (const torrent of torrents) {
+      const hash = String(torrent.hash ?? '').toLowerCase();
+      if (missing.includes(hash)) found.set(hash, typeof torrent.name === 'string' ? torrent.name : '');
+    }
+    if (found.size === hashes.length) break;
 
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) break;
     await new Promise((resolve) => setTimeout(resolve, Math.min(MAGNET_VERIFY_INTERVAL_MS, remainingMs)));
   }
 
-  return false;
+  return found;
+}
+
+/** A torrent ready to hand to qBittorrent, its hash known. */
+type AddSource =
+  | { kind: 'magnet'; magnet: string; hash: string }
+  | { kind: 'file'; bytes: Uint8Array<ArrayBuffer>; filename: string; hash: string; fetched: boolean };
+
+/**
+ * How one item ended. `status` (and `cause`, an error to rethrow) answer a
+ * one-item add the way this route always has; several items get the list.
+ */
+type AddOutcome =
+  | { result: 'added'; hash: string; name?: string }
+  | { result: 'exists'; hash: string }
+  | { result: 'failed'; error: string; status: number; cause?: unknown };
+
+type SharedAddOptions = AddTorrentOptions & {
+  category?: string;
+  savepath?: string;
+  paused?: boolean;
+  stopCondition?: 'MetadataReceived' | 'FilesChecked';
+};
+
+function failed(error: string, status: number, cause?: unknown): AddOutcome {
+  return { result: 'failed', error, status, cause };
+}
+
+/** At most `limit` of `run` at once, results in input order. */
+async function mapWithLimit<T, R>(items: T[], limit: number, run: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await run(items[index]);
+    }
+  }));
+  return results;
+}
+
+type AddLine = { kind: 'magnet'; magnet: string; hash: string } | { kind: 'link'; url: string };
+
+/** The magnets and http(s) links, one per line; refused whole when a line is neither, so nothing is half-added. */
+function parseAddLines(urls: string): { ok: true; lines: AddLine[] } | { ok: false; error: string } {
+  const raw = urls.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (raw.length > MAX_ADD_ITEMS) return { ok: false, error: `Add at most ${MAX_ADD_ITEMS} torrents at once` };
+  const lines: AddLine[] = [];
+  for (const [index, line] of raw.entries()) {
+    const where = raw.length > 1 ? `Line ${index + 1}: ` : '';
+    if (/^https?:/i.test(line)) {
+      const checked = checkTorrentLink(line);
+      if (!checked.ok) return { ok: false, error: `${where}${checked.error}` };
+      lines.push({ kind: 'link', url: checked.url.toString() });
+      continue;
+    }
+    if (!/^magnet:/i.test(line)) return { ok: false, error: `${where}Enter a magnet link or an http(s) link to a .torrent file` };
+    try {
+      lines.push({ kind: 'magnet', magnet: line, hash: parseMagnetInfoHash(line).normalizedHexHash });
+    } catch (error) {
+      if (error instanceof MagnetParseError) return { ok: false, error: `${where}${error.message}` };
+      throw error;
+    }
+  }
+  return { ok: true, lines };
+}
+
+/** Fetch a link (see torrent-link-fetch for the limits) and learn its hash: a .torrent, or the magnet it redirected to. */
+async function resolveLink(url: string): Promise<AddSource | AddOutcome> {
+  let fetched: FetchedTorrentLink;
+  try {
+    fetched = await fetchTorrentLink(url);
+  } catch (error) {
+    if (!(error instanceof TorrentLinkError)) throw error;
+    return failed(error.message, error.message === PRIVATE_LINK_MESSAGE ? 400 : 502);
+  }
+  try {
+    if (fetched.kind === 'magnet') {
+      return { kind: 'magnet', magnet: fetched.magnet, hash: parseMagnetInfoHash(fetched.magnet).normalizedHexHash };
+    }
+    return { kind: 'file', bytes: fetched.bytes, filename: 'link.torrent', hash: parseTorrentInfoHash(fetched.bytes), fetched: true };
+  } catch (error) {
+    if (error instanceof MagnetParseError) return failed('The link led to a magnet link without a usable hash', 502);
+    if (error instanceof TorrentParseError) return failed('The link did not give a .torrent file', 502);
+    throw error;
+  }
+}
+
+/**
+ * Add each torrent and confirm it by hash. Settled items pass through as they
+ * are; a torrent qBittorrent has, or that came earlier in the same list, is
+ * not added again.
+ */
+async function addTorrents(
+  client: QBittorrentClient,
+  items: Array<AddSource | AddOutcome>,
+  options: SharedAddOptions,
+): Promise<AddOutcome[]> {
+  const outcomes: Array<AddOutcome | null> = items.map((item) => ('result' in item ? item : null));
+  const firstIndex = new Map<string, number>();
+  // A second copy in the same list ends as the first did ("already there" once it is in).
+  const duplicates: Array<{ index: number; of: number }> = [];
+  const toCheck: Array<{ index: number; source: AddSource }> = [];
+  items.forEach((item, index) => {
+    if ('result' in item) return;
+    const first = firstIndex.get(item.hash);
+    if (first !== undefined) {
+      duplicates.push({ index, of: first });
+      return;
+    }
+    firstIndex.set(item.hash, index);
+    toCheck.push({ index, source: item });
+  });
+
+  const existing = toCheck.length > 0
+    ? new Set((await client.getTorrents(undefined, undefined, undefined, undefined, toCheck.map(({ source }) => source.hash).join('|')))
+      .map((torrent) => String(torrent.hash ?? '').toLowerCase()))
+    : new Set<string>();
+
+  const sent: Array<{ index: number; hash: string }> = [];
+  for (const { index, source } of toCheck) {
+    if (existing.has(source.hash)) {
+      outcomes[index] = { result: 'exists', hash: source.hash };
+      continue;
+    }
+    try {
+      if (source.kind === 'magnet') {
+        const addResponse = normalizeAddResponse(await client.addMagnet(source.magnet, options));
+        if (isExplicitAddFailure(addResponse)) {
+          outcomes[index] = failed('qBittorrent rejected the magnet link', 502);
+          continue;
+        }
+        if (!isSuccessfulAddResponse(addResponse)) {
+          outcomes[index] = failed('Unexpected qBittorrent add response', 502);
+          continue;
+        }
+      } else {
+        const { stopCondition, ...fileOptions } = options;
+        // A fetched .torrent already has its metadata, so "stop once metadata
+        // arrives" (asked for a link, which may have turned out to be a magnet)
+        // means adding it stopped.
+        await client.addTorrentFile(source.bytes, source.filename, source.fetched && stopCondition === 'MetadataReceived'
+          ? { ...fileOptions, paused: true }
+          : fileOptions);
+      }
+      sent.push({ index, hash: source.hash });
+    } catch (error) {
+      outcomes[index] = failed('qBittorrent did not take it', 502, error);
+    }
+  }
+
+  const confirmed = await waitForTorrentHashes(client, sent.map(({ hash }) => hash));
+  for (const { index, hash } of sent) {
+    outcomes[index] = confirmed.has(hash)
+      ? { result: 'added', hash, ...(confirmed.get(hash) ? { name: confirmed.get(hash) } : {}) }
+      : failed('qBittorrent did not confirm the torrent within 5 seconds', 502);
+  }
+  for (const { index, of } of duplicates) {
+    const first = outcomes[of]!;
+    outcomes[index] = first.result === 'failed' ? first : { result: 'exists', hash: first.hash };
+  }
+  // Fail-soft: the adds happened, and the next poll catches up anyway.
+  if (sent.length > 0) {
+    try {
+      await bumpQbitCacheVersion();
+    } catch {
+      // Ignored as above.
+    }
+  }
+  return outcomes as AddOutcome[];
+}
+
+/**
+ * One item answers as this route always has (200 with its hash, 409, or the
+ * error with its status); several answer 200 with a result per item, in the
+ * order sent (blank lines left out), which never repeats a link (it can carry
+ * a passkey).
+ */
+function addResponse(outcomes: AddOutcome[]): NextResponse {
+  if (outcomes.length === 1) {
+    const [outcome] = outcomes;
+    if (outcome.result === 'added') {
+      return NextResponse.json({ success: true, hash: outcome.hash, ...(outcome.name ? { name: outcome.name } : {}) });
+    }
+    if (outcome.result === 'exists') return NextResponse.json({ error: 'Torrent already exists' }, { status: 409 });
+    if (outcome.cause !== undefined) throw outcome.cause;
+    return NextResponse.json({ error: outcome.error }, { status: outcome.status });
+  }
+  return NextResponse.json({
+    results: outcomes.map((outcome, index) => outcome.result === 'failed'
+      ? { index, result: 'failed', error: outcome.error }
+      : outcome.result === 'added'
+        ? { index, result: 'added', hash: outcome.hash, ...(outcome.name ? { name: outcome.name } : {}) }
+        : { index, result: 'exists', hash: outcome.hash }),
+  });
 }
 
 async function getHandler(request: NextRequest) {
@@ -277,15 +499,24 @@ async function postHandler(request: NextRequest) {
       if (!can(auth.user, 'torrents.add')) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
-      const formData = await request.formData();
-      const file = formData.get('file') as File | null;
-      if (!file) {
+      let formData: FormData;
+      try {
+        formData = await readBoundedFormData(request, MAX_ADD_FORM_BYTES);
+      } catch (error) {
+        const response = boundedBodyErrorResponse(error);
+        if (response) return response;
+        throw error;
+      }
+      const files = formData.getAll('file').filter((entry): entry is File => entry instanceof File);
+      if (files.length === 0) {
         return NextResponse.json({ error: 'No file provided' }, { status: 400 });
       }
-      if (file.size > MAX_TORRENT_FILE_BYTES) {
+      if (files.length > MAX_ADD_ITEMS) {
+        return NextResponse.json({ error: `Add at most ${MAX_ADD_ITEMS} torrents at once` }, { status: 400 });
+      }
+      if (files.some((file) => file.size > MAX_TORRENT_FILE_BYTES)) {
         return NextResponse.json({ error: 'Torrent file is too large' }, { status: 400 });
       }
-      const buffer = new Uint8Array(await file.arrayBuffer());
       const category = formData.get('category') as string | null;
       const savepath = formData.get('savepath') as string | null;
       const paused = formData.get('paused') === 'true';
@@ -319,42 +550,25 @@ async function postHandler(request: NextRequest) {
         }
       }
 
-      let fileHash: string;
-      try {
-        fileHash = parseTorrentInfoHash(buffer);
-      } catch (error) {
-        if (error instanceof TorrentParseError) {
-          logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file', validationFailed: true });
-          return NextResponse.json({ error: error.message }, { status: 400 });
+      const items: Array<AddSource | AddOutcome> = [];
+      for (const file of files) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        try {
+          items.push({ kind: 'file', bytes, filename: file.name, hash: parseTorrentInfoHash(bytes), fetched: false });
+        } catch (error) {
+          if (!(error instanceof TorrentParseError)) throw error;
+          items.push(failed(error.message, 400));
         }
-        throw error;
       }
 
-      const existingFile = await client.getTorrents(undefined, undefined, undefined, undefined, fileHash);
-      if (existingFile.length > 0) {
-        logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file', duplicate: true });
-        return NextResponse.json({ error: 'Torrent already exists' }, { status: 409 });
-      }
-
-      await client.addTorrentFile(buffer, file.name, {
+      const outcomes = await addTorrents(client, items, {
         ...parsedOptions.options,
         category: category || undefined,
         savepath: savepath || undefined,
         paused,
       });
-
-      const fileConfirmed = await waitForTorrentHash(client, fileHash);
-      if (!fileConfirmed) {
-        logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file', verifyTimeout: true });
-        return NextResponse.json(
-          { error: 'qBittorrent did not confirm the torrent within 5 seconds' },
-          { status: 502 }
-        );
-      }
-
-      await bumpQbitCacheVersion();
-      logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file' });
-      return NextResponse.json({ success: true, hash: fileHash });
+      logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file', count: files.length });
+      return addResponse(outcomes);
     }
 
     let rawBody: unknown;
@@ -396,35 +610,16 @@ async function postHandler(request: NextRequest) {
       return NextResponse.json({ error: 'urls (magnet link) is required' }, { status: 400 });
     }
 
-    let normalizedHash: string;
-    try {
-      normalizedHash = parseMagnetInfoHash(urls).normalizedHexHash;
-    } catch (error) {
-      if (error instanceof MagnetParseError) {
-        logApiDuration('/api/qbittorrent', startedAt, {
-          method: 'POST',
-          mode: 'magnet',
-          validationFailed: true,
-        });
-        return NextResponse.json({ error: error.message }, { status: 400 });
-      }
-      throw error;
+    const parsedLines = parseAddLines(urls);
+    if (!parsedLines.ok) {
+      logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet', validationFailed: true });
+      return NextResponse.json({ error: parsedLines.error }, { status: 400 });
     }
 
     const parsedOptions = parseAddTorrentOptions((field) => body[field]);
     if (!parsedOptions.ok) {
       logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet', validationFailed: true });
       return NextResponse.json({ error: parsedOptions.error }, { status: 400 });
-    }
-
-    const existing = await client.getTorrents(undefined, undefined, undefined, undefined, normalizedHash);
-    if (existing.length > 0) {
-      logApiDuration('/api/qbittorrent', startedAt, {
-        method: 'POST',
-        mode: 'magnet',
-        duplicate: true,
-      });
-      return NextResponse.json({ error: 'Torrent already exists' }, { status: 409 });
     }
 
     const category = isNonEmptyString(body.category) ? body.category.trim() : undefined;
@@ -455,47 +650,24 @@ async function postHandler(request: NextRequest) {
       ? body.stopCondition
       : undefined;
 
-    const addResponseRaw = await client.addMagnet(urls.trim(), {
+    // Links are fetched only once everything else has passed.
+    const items = await mapWithLimit(parsedLines.lines, LINK_FETCH_CONCURRENCY, async (line) =>
+      line.kind === 'link' ? resolveLink(line.url) : line
+    );
+    const outcomes = await addTorrents(client, items, {
       ...parsedOptions.options,
       category,
       savepath,
       paused,
       stopCondition,
     });
-    const addResponse = normalizeAddResponse(addResponseRaw);
-    if (isExplicitAddFailure(addResponse)) {
-      logApiDuration('/api/qbittorrent', startedAt, {
-        method: 'POST',
-        mode: 'magnet',
-        addRejected: true,
-      });
-      return NextResponse.json({ error: 'qBittorrent rejected the magnet link' }, { status: 502 });
-    }
-    if (!isSuccessfulAddResponse(addResponse)) {
-      logApiDuration('/api/qbittorrent', startedAt, {
-        method: 'POST',
-        mode: 'magnet',
-        addRejected: true,
-      });
-      return NextResponse.json({ error: 'Unexpected qBittorrent add response' }, { status: 502 });
-    }
-
-    const confirmed = await waitForTorrentHash(client, normalizedHash);
-    if (!confirmed) {
-      logApiDuration('/api/qbittorrent', startedAt, {
-        method: 'POST',
-        mode: 'magnet',
-        verifyTimeout: true,
-      });
-      return NextResponse.json(
-        { error: 'qBittorrent did not confirm the torrent within 5 seconds' },
-        { status: 502 }
-      );
-    }
-
-    await bumpQbitCacheVersion();
-    logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet' });
-    return NextResponse.json({ success: true, hash: normalizedHash });
+    logApiDuration('/api/qbittorrent', startedAt, {
+      method: 'POST',
+      mode: 'magnet',
+      count: items.length,
+      links: parsedLines.lines.filter((line) => line.kind === 'link').length,
+    });
+    return addResponse(outcomes);
   } catch (error) {
     logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', failed: true });
     return upstreamErrorResponse(error, 'Failed to add torrent');
@@ -503,4 +675,6 @@ async function postHandler(request: NextRequest) {
 }
 
 export const GET = withApiLogging(getHandler, 'api/qbittorrent');
-export const POST = withApiLogging(postHandler, 'api/qbittorrent');
+// No bodies in the logs: a pasted link (or a magnet's tracker) can carry a passkey
+// in its path, where the logger's key=value redaction doesn't reach.
+export const POST = withApiLogging(postHandler, 'api/qbittorrent', { logBodies: false });

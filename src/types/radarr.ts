@@ -20,6 +20,8 @@ export interface RadarrMovie {
   year: number;
   hasFile: boolean;
   path: string;
+  // The root folder the movie's folder sits in; Radarr resolves it on every read.
+  rootFolderPath?: string;
   qualityProfileId: number;
   monitored: boolean;
   minimumAvailability: string;
@@ -106,6 +108,7 @@ export type RadarrMovieListItem = Pick<
   | 'year'
   | 'hasFile'
   | 'path'
+  | 'rootFolderPath'
   | 'qualityProfileId'
   | 'monitored'
   | 'runtime'
@@ -116,7 +119,10 @@ export type RadarrMovieListItem = Pick<
   | 'popularity'
   | 'studio'
   | 'certification'
-> & Partial<InstanceTag> & Partial<ResolvedLabels>;
+> & Partial<InstanceTag> & Partial<ResolvedLabels> & {
+  // The file is below its quality profile's cutoff (movieFile.qualityCutoffNotMet).
+  qualityCutoffNotMet?: boolean;
+};
 
 export type RadarrCalendarEntry = RadarrMovie;
 
@@ -192,6 +198,12 @@ export interface CollectionSummary {
   movieCount: number;
   missingMovies: number; // not-in-library count, from Radarr
   movies: CollectionMovieSummary[];
+  // What Radarr applies when it adds one of the collection's movies (Edit collection).
+  qualityProfileId?: number;
+  rootFolderPath?: string;
+  minimumAvailability?: string;
+  searchOnAdd?: boolean;
+  tags?: number[];
   instanceId?: string;
   instanceLabel?: string;
 }

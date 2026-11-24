@@ -236,3 +236,30 @@ export function queueRemovalBatches(items: QueueRecord[]): Array<{ source: strin
     return { source, instanceId, chunks };
   });
 }
+
+/** What a bulk grab did, summed over its per-instance answers. */
+export type BulkGrabTally = { grabbed: number; notGrabbed: number; unknown: number; skipped: number };
+
+const releases = (n: number) => (n === 1 ? '1 release' : `${n} releases`);
+
+/**
+ * The toast for a bulk grab. `skipped` counts the selected items that were not
+ * pending (on the Queue tab or by the time the app was asked), so none were sent.
+ */
+export function bulkGrabOutcome({ grabbed, notGrabbed, unknown, skipped }: BulkGrabTally): { tone: 'success' | 'warning' | 'error'; message: string } {
+  const skippedNote = skipped > 0 ? ` ${skipped} not pending, skipped.` : '';
+  if (grabbed === 0 && unknown === 0) {
+    return notGrabbed > 0
+      ? { tone: 'error', message: `Failed to grab ${releases(notGrabbed)}.${skippedNote}` }
+      : { tone: 'warning', message: `Nothing sent: ${skipped === 1 ? 'the release is' : `the ${skipped} releases are`} no longer pending.` };
+  }
+  if (notGrabbed === 0 && unknown === 0) {
+    return { tone: 'success', message: `Sent ${releases(grabbed)} to the download client.${skippedNote}` };
+  }
+  const parts = [
+    grabbed > 0 ? `Sent ${grabbed} of ${releases(grabbed + notGrabbed + unknown)}.` : '',
+    notGrabbed > 0 ? `${notGrabbed} could not be sent.` : '',
+    unknown > 0 ? `${unknown} may not have been sent: check the queue.` : '',
+  ].filter(Boolean).join(' ');
+  return { tone: 'warning', message: `${parts}${skippedNote}` };
+}

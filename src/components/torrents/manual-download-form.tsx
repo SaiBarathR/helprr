@@ -64,6 +64,8 @@ interface ManualDownloadFormProps {
   defaultService?: Service;
   /** Cancel closes the sheet the form is in; by default it goes back to Torrents. */
   onCancel?: () => void;
+  /** Said instead of "paste a magnet link first" when what was given is something this form can't send. */
+  sourceHint?: string;
 }
 
 // Each picked .torrent file gets its own identity: two files with the same
@@ -95,7 +97,7 @@ const APP = { RADARR: 'Radarr', SONARR: 'Sonarr' } as const;
  * everything first (the preflight) and shows what Arr will do; sending is
  * only offered for the exact choices that were checked.
  */
-export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFiles, choosingFiles = false, defaultService, onCancel }: ManualDownloadFormProps) {
+export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFiles, choosingFiles = false, defaultService, onCancel, sourceHint }: ManualDownloadFormProps) {
   const router = useRouter();
   const canMovies = useCan('movies.add');
   const canSeries = useCan('series.add');
@@ -482,7 +484,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFi
         )}
         {!body && !busy && (
           <p className="text-center text-xs text-muted-foreground">
-            {!sourceReady ? (release.kind === 'magnet' ? 'Paste a magnet link first.' : 'Choose a .torrent file first.') : !target ? `Choose the ${service === 'RADARR' ? 'movie' : 'series'} it is for.` : 'Choose a quality profile and root folder.'}
+            {!sourceReady ? (sourceHint ?? (release.kind === 'magnet' ? 'Paste a magnet link first.' : 'Choose a .torrent file first.')) : !target ? `Choose the ${service === 'RADARR' ? 'movie' : 'series'} it is for.` : 'Choose a quality profile and root folder.'}
           </p>
         )}
         <Button variant="outline" className="w-full" onClick={() => (onCancel ? onCancel() : router.push('/torrents'))} disabled={busy}>Cancel</Button>

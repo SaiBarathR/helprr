@@ -125,6 +125,46 @@ describe('edit series page', () => {
   });
 });
 
+describe('renaming the folder', () => {
+  const folderField = () => screen.getByLabelText('Folder') as HTMLInputElement;
+
+  it('starts from the current folder name and moves the files into the renamed folder after a confirmation', async () => {
+    renderPage();
+    await waitFor(() => expect(folderField().value).toBe('Show'));
+    expect(screen.queryByLabelText('Move Files')).toBeNull();
+
+    fireEvent.change(folderField(), { target: { value: 'Show (2020)' } });
+    expect(screen.getByText('New path: /tv/Show (2020)')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    const confirm = await screen.findByRole('alertdialog', { name: 'Move files for Show?' });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Move files' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0].url).toBe('/api/sonarr/7?moveFiles=true&instanceId=son-2');
+    expect(puts[0].body).toEqual(expect.objectContaining({ path: '/tv/Show (2020)' }));
+  });
+
+  it('joins a new root folder and a new name', async () => {
+    renderPage();
+    await waitFor(() => expect(rootFolderSelect().value).toBe('/tv'));
+    fireEvent.change(rootFolderSelect(), { target: { value: '/tv2' } });
+    fireEvent.change(folderField(), { target: { value: 'Show (2020)' } });
+    fireEvent.click(screen.getByLabelText('Move Files'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0].body).toEqual(expect.objectContaining({ path: '/tv2/Show (2020)' }));
+  });
+
+  it.each(['..', 'Show.', ' Show', 'a/b', ''])('explains why %j cannot be saved and keeps Save off', async (name) => {
+    renderPage();
+    await waitFor(() => expect(folderField().value).toBe('Show'));
+    fireEvent.change(folderField(), { target: { value: name } });
+    expect(folderField().getAttribute('aria-invalid')).toBe('true');
+    expect(document.getElementById(folderField().getAttribute('aria-describedby')!)?.textContent).toBeTruthy();
+    expect(screen.queryByLabelText('Move Files')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
 describe('leaving the edit page', () => {
   it('goes Back after saving when it was opened from inside Helprr', async () => {
     sessionStorage.setItem('helprr:in-app-history', '1');

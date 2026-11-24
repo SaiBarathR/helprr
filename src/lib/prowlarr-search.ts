@@ -81,3 +81,89 @@ export function keepTopForEverySort<T extends Sortable>(rows: T[], limit = PROWL
   }
   return rows.filter((row) => kept.has(row));
 }
+
+/** One of Prowlarr's standard categories, with its subcategories (one level, as Prowlarr has them). */
+export interface ProwlarrCategory {
+  id: number;
+  name: string;
+  subCategories: { id: number; name: string }[];
+}
+
+function isNamedCategory(value: unknown): value is { id: number; name: string; subCategories?: unknown } {
+  const record = value as { id?: unknown; name?: unknown } | null;
+  return Number.isInteger(record?.id) && typeof record?.name === 'string' && record.name.length > 0;
+}
+
+/**
+ * Prowlarr's category tree (GET /api/v1/indexer/categories), kept to ids and
+ * names. Its list ends with a second "Other" (id 0, subcategories 10 and 20),
+ * a placeholder for releases with no category that no indexer is searched by,
+ * so that branch is left out.
+ */
+export function parseProwlarrCategoryTree(raw: unknown): ProwlarrCategory[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(isNamedCategory)
+    .filter(({ id }) => id > 0)
+    .map(({ id, name, subCategories }) => ({
+      id,
+      name,
+      subCategories: (Array.isArray(subCategories) ? subCategories : [])
+        .filter(isNamedCategory)
+        .map((sub) => ({ id: sub.id, name: sub.name })),
+    }));
+}
+
+/** Every id in the tree, top-level and sub. */
+export function prowlarrCategoryIds(tree: readonly ProwlarrCategory[]): Set<number> {
+  return new Set(tree.flatMap(({ id, subCategories }) => [id, ...subCategories.map((sub) => sub.id)]));
+}
+
+/** Standard Newznab categories end below 100000; above that are an indexer's own, which Prowlarr sends unnamed. */
+const CUSTOM_CATEGORY_START = 100_000;
+
+/**
+ * The names to show for a release's categories: the standard ones, most
+ * specific first, so "Movies/HD" stands in for "Movies" when both are there.
+ */
+export function releaseCategoryNames(categories: unknown, limit = 2): string[] {
+  if (!Array.isArray(categories)) return [];
+  const named = categories.filter(isNamedCategory).filter(({ id }) => id > 0 && id < CUSTOM_CATEGORY_START);
+  const ids = new Set(named.map(({ id }) => id));
+  const names = named
+    // A parent (2000) goes when one of its own subcategories (2001–2999) is there.
+    .filter(({ id }) => id % 1000 !== 0 || ![...ids].some((other) => other !== id && Math.floor(other / 1000) * 1000 === id))
+    .sort((a, b) => (a.id % 1000 === 0 ? 1 : 0) - (b.id % 1000 === 0 ? 1 : 0))
+    .map(({ name }) => name);
+  return [...new Set(names)].slice(0, limit);
+}
+
+/**
+ * The indexer flags shown on a result (Prowlarr's IndexerFlag names). Anything
+ * else is dropped. The ratio flags mean nothing on a public tracker, which
+ * Prowlarr marks freeleech throughout, so the route leaves those off there.
+ */
+export const PROWLARR_RELEASE_FLAGS = {
+  freeleech: 'Freeleech',
+  halfleech: 'Halfleech',
+  freeleech25: '25% freeleech',
+  freeleech75: '75% freeleech',
+  doubleupload: 'Double upload',
+  internal: 'Internal',
+  exclusive: 'Exclusive',
+  scene: 'Scene',
+  nuked: 'Nuked',
+} as const;
+
+export type ProwlarrReleaseFlag = keyof typeof PROWLARR_RELEASE_FLAGS;
+
+const RATIO_FLAGS: ReadonlySet<ProwlarrReleaseFlag> = new Set(['freeleech', 'halfleech', 'freeleech25', 'freeleech75', 'doubleupload']);
+
+export function releaseFlags(flags: unknown, publicIndexer: boolean): ProwlarrReleaseFlag[] {
+  if (!Array.isArray(flags)) return [];
+  const known = flags
+    .map((flag) => (typeof flag === 'string' ? flag.toLowerCase() : ''))
+    .filter((flag): flag is ProwlarrReleaseFlag => Object.hasOwn(PROWLARR_RELEASE_FLAGS, flag))
+    .filter((flag) => !(publicIndexer && RATIO_FLAGS.has(flag)));
+  return [...new Set(known)];
+}

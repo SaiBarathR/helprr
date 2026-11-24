@@ -9,6 +9,8 @@ import { formatDateValue } from './format';
 export interface InfoRow {
   label: string;
   value: string;
+  /** Makes the value a button (the quality profile opens its sheet). */
+  onSelect?: () => void;
 }
 
 /** The status badge: DOWNLOADED once every episode has a file, else Sonarr's status. */
@@ -44,6 +46,7 @@ export function buildSeriesInfoRows({
   tmdbData,
   animeDetail,
   qualityProfileName,
+  onQualityProfileSelect,
   tagLabels,
   rootFolderPath,
 }: {
@@ -51,6 +54,7 @@ export function buildSeriesInfoRows({
   tmdbData: DiscoverTvFullDetail | null;
   animeDetail: AniListDetailResponse | null;
   qualityProfileName: string | undefined;
+  onQualityProfileSelect?: () => void;
   tagLabels: string[];
   rootFolderPath: string | undefined;
 }): InfoRow[] {
@@ -102,7 +106,7 @@ export function buildSeriesInfoRows({
   }
 
   return [
-    { label: 'Quality Profile', value: qualityProfileName || 'Unknown' },
+    { label: 'Quality Profile', value: qualityProfileName || 'Unknown', onSelect: onQualityProfileSelect },
     { label: 'Series Type', value: series.seriesType.charAt(0).toUpperCase() + series.seriesType.slice(1) },
     ...(showType ? [{ label: 'Show Type', value: showType }] : []),
     ...(series.certification ? [{ label: 'Certification', value: series.certification }] : []),

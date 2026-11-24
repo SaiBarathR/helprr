@@ -18,6 +18,7 @@ import type {
   BlocklistResponse,
   HistoryItem,
   QualityProfile,
+  QualityProfileResource,
   RootFolder,
   DiskSpace,
   HealthCheck,
@@ -301,23 +302,27 @@ export class LidarrClient {
   }
 
   // Wanted
-  async getWantedMissing(page = 1, pageSize = 20): Promise<WantedResponse> {
+  // Lidarr lists only monitored albums of monitored artists unless sent
+  // monitored=false, which lists the others instead (never both at once).
+  async getWantedMissing(page = 1, pageSize = 20, { unmonitored = false } = {}): Promise<WantedResponse> {
     return this.get('/api/v1/wanted/missing', {
       page,
       pageSize,
       sortKey: 'releaseDate',
       sortDirection: 'descending',
       includeArtist: true,
+      ...(unmonitored ? { monitored: false } : {}),
     });
   }
 
-  async getCutoffUnmet(page = 1, pageSize = 20): Promise<WantedResponse> {
+  async getCutoffUnmet(page = 1, pageSize = 20, { unmonitored = false } = {}): Promise<WantedResponse> {
     return this.get('/api/v1/wanted/cutoff', {
       page,
       pageSize,
       sortKey: 'releaseDate',
       sortDirection: 'descending',
       includeArtist: true,
+      ...(unmonitored ? { monitored: false } : {}),
     });
   }
 
@@ -372,6 +377,12 @@ export class LidarrClient {
   // Sends a delayed (pending) release to the download client now.
   async grabQueueItem(id: number): Promise<void> {
     await this.post(`/api/v1/queue/grab/${id}`);
+  }
+
+  // Sends several pending releases at once. The app grabs them in order and stops
+  // at the first id that is no longer pending (404), keeping the ones before it.
+  async grabQueueBulk(ids: number[]): Promise<void> {
+    await this.post('/api/v1/queue/grab/bulk', { ids });
   }
 
   // Blocklist — releases the *arr will not grab again. Removing an entry lets
@@ -479,6 +490,10 @@ export class LidarrClient {
   // Configuration
   async getQualityProfiles(): Promise<QualityProfile[]> {
     return this.get<QualityProfile[]>('/api/v1/qualityprofile');
+  }
+
+  async getQualityProfile(id: number): Promise<QualityProfileResource> {
+    return this.get<QualityProfileResource>(`/api/v1/qualityprofile/${id}`);
   }
 
   async getMetadataProfiles(): Promise<LidarrMetadataProfile[]> {

@@ -40,6 +40,7 @@ function toListItem(artist: LidarrArtist): LidarrArtistListItem {
     added: artist.added,
     statistics: artist.statistics,
     path: artist.path,
+    rootFolderPath: artist.rootFolderPath,
     tags: artist.tags,
     nextAlbum: artist.nextAlbum,
     lastAlbum: artist.lastAlbum,

@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Manage torrents permission. Users who aren't admins still never see a tracker's full URL:
   to change one they type the whole new URL. A private torrent's trackers are an admin's
   to change, since a public tracker added to it can get the account banned.
+- **Add torrents from .torrent links, and several at once.** Torrents → Add takes magnet
+  links and http(s) links to .torrent files, one per line, or several .torrent files, up
+  to 20 at a time, and says how each one went: added, already in qBittorrent, or not
+  added and why. The ones not added stay in the form to fix or try again. Helprr
+  downloads a link itself, only from addresses on the internet (never from your own
+  network), so it can check the torrent and offer Choose Files for a single link.
+- **Share magnets and .torrent files to Helprr on Android.** Sharing a magnet link, a
+  link to a .torrent file, or a .torrent file to the installed app opens Torrents → Add
+  with it filled in, for users who may add torrents.
 
 ### Fixed
 
