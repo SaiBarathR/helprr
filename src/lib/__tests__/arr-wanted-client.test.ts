@@ -60,3 +60,23 @@ describe('arr wanted client sort keys', () => {
     });
   });
 });
+
+describe('Sonarr cutoff unmet series ids', () => {
+  const records = (ids: number[]) => ids.map((seriesId) => ({ seriesId }));
+
+  beforeEach(() => mocks.get.mockReset());
+
+  // Sonarr sorts only by air date, so paging could skip rows that share one at a page edge.
+  it('reads the list as one page, one id per series, and says when it was cut short', async () => {
+    mocks.get.mockResolvedValueOnce({ data: { totalRecords: 3, records: records([4, 4, 9]) } });
+    const client = new SonarrClient('http://sonarr.local', 'key');
+    expect(await client.getCutoffUnmetSeriesIds()).toEqual({ seriesIds: [4, 9], complete: true });
+    expect(mocks.get).toHaveBeenCalledWith('/api/v3/wanted/cutoff', {
+      params: { page: 1, pageSize: 20_000, includeSeries: false, includeEpisodeFile: false, includeImages: false, monitored: true },
+      timeout: 60_000,
+    });
+
+    mocks.get.mockResolvedValueOnce({ data: { totalRecords: 30_000, records: records([1, 2]) } });
+    expect(await client.getCutoffUnmetSeriesIds()).toEqual({ seriesIds: [1, 2], complete: false });
+  });
+});

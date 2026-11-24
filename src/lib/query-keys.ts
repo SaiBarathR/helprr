@@ -24,6 +24,8 @@ export const queryKeys = {
   // ── Library lists ────────────────────────────────────────────────
   library: (svc: ArrService, o: { full?: boolean; instanceId?: string } = {}) =>
     [svc, 'library', o.full ? 'full' : 'slim', inst(o.instanceId)] as const,
+  /** Series on Sonarr's Wanted → Cutoff Unmet, for the Series filter; under library so list invalidation reaches it. */
+  cutoffUnmetSeries: () => ['sonarr', 'library', 'cutoff-unmet'] as const,
 
   // Radarr collections (movie groupings). Keyed like library lists for prefix invalidation.
   collections: (svc: ArrService, id?: string) => [svc, 'collections', inst(id)] as const,

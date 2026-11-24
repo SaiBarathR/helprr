@@ -252,6 +252,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/sonarr/[id]',
     'GET /api/sonarr/episodefile',
     'GET /api/sonarr/history/series',
+    'GET /api/sonarr/cutoff-unmet',
     'GET /api/sonarr',
   ],
   'cap:settings.instances': [
@@ -591,7 +592,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(294);
+    expect(handlers.size).toBe(295);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

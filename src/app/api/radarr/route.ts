@@ -39,6 +39,7 @@ function toListItem(movie: RadarrMovie): RadarrMovieListItem {
     year: movie.year,
     hasFile: movie.hasFile,
     path: movie.path,
+    rootFolderPath: movie.rootFolderPath,
     qualityProfileId: movie.qualityProfileId,
     monitored: movie.monitored,
     runtime: movie.runtime,
@@ -49,6 +50,7 @@ function toListItem(movie: RadarrMovie): RadarrMovieListItem {
     popularity: movie.popularity,
     studio: movie.studio,
     certification: movie.certification,
+    qualityCutoffNotMet: movie.hasFile && movie.movieFile?.qualityCutoffNotMet === true,
   };
 }
 

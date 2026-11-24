@@ -19,6 +19,7 @@ import { MediaTable } from '@/components/media/media-table';
 import { ViewSelector } from '@/components/media/view-selector';
 import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
+import { useLibraryFilterMenu } from '@/components/media/library-filter-menu';
 import {
   ActiveFilterBar,
   FilterDot,
@@ -116,6 +117,7 @@ const filterOptions = [
   { value: 'released', label: 'Released' },
   { value: 'inCinemas', label: 'In Cinemas' },
   { value: 'announced', label: 'Announced' },
+  { value: 'cutoffUnmet', label: 'Cutoff Unmet' },
 ] as const;
 
 const sortOptions = [
@@ -256,6 +258,10 @@ export default function MoviesPage() {
   const setInstanceFilter = useUIStore((s) => s.setMoviesInstanceFilter);
   const watchFilter = useUIStore((s) => s.moviesWatchFilter);
   const setWatchFilter = useUIStore((s) => s.setMoviesWatchFilter);
+  const facetFilter = useUIStore((s) => s.moviesFacetFilter);
+  const setFacetFilter = useUIStore((s) => s.setMoviesFacetFilter);
+  const savedFilters = useUIStore((s) => s.moviesSavedFilters);
+  const setSavedFilters = useUIStore((s) => s.setMoviesSavedFilters);
   const visibleFieldsByMode = useUIStore((s) => s.moviesVisibleFields);
   const setVisibleFieldsForMode = useUIStore((s) => s.setMoviesVisibleFields);
   const search = useUIStore((s) => s.moviesSearch);
@@ -307,7 +313,7 @@ export default function MoviesPage() {
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [viewMode, posterSize, loading, movies.length, search, filter, watchFilter, instanceFilter]);
+  }, [viewMode, posterSize, loading, movies.length, search, filter, facetFilter, watchFilter, instanceFilter]);
 
   useEffect(() => {
     persistViewState(search);
@@ -349,13 +355,14 @@ export default function MoviesPage() {
 
   const baseRows = useMemo(() => deriveMovieBaseRows(preparedRows, {
     filter: filter as MovieFilter[],
+    facets: facetFilter,
     instanceFilter,
     sort: sort as MovieSortKey,
     sortDir,
     watchPredicate: canFilterByWatchStatus && watchMapReady && watchFilter !== 'all'
       ? (movie) => matchesWatchFilter(watchFilter, watchLookup, 'radarr', movie.instanceId, movie.id)
       : undefined,
-  }), [preparedRows, filter, instanceFilter, sort, sortDir, canFilterByWatchStatus, watchMapReady, watchFilter, watchLookup]);
+  }), [preparedRows, filter, facetFilter, instanceFilter, sort, sortDir, canFilterByWatchStatus, watchMapReady, watchFilter, watchLookup]);
 
   const filtered = useMemo(
     () => preparedItems(searchPreparedRows(baseRows, deferredSearch)),
@@ -741,10 +748,24 @@ export default function MoviesPage() {
     }
   }, [sort, sortDir, setSort, setSortDir]);
 
+  const filterMenu = useLibraryFilterMenu({
+    items: movies,
+    status: filter,
+    setStatus: setFilter,
+    facets: facetFilter,
+    setFacets: setFacetFilter,
+    instance: instanceFilter,
+    setInstance: setInstanceFilter,
+    watch: watchFilter,
+    setWatch: setWatchFilter,
+    saved: savedFilters,
+    updateSaved: (update) => setSavedFilters(update(useUIStore.getState().moviesSavedFilters)),
+  });
   // The filter menu's choices, named so a filtered library is never mistaken
   // for the whole one. The search box is a filter too, but shows itself.
   const menuFilters: ActiveFilter[] = [
     ...multiSelectFilters(filter, filterOptions, setFilter),
+    ...filterMenu.facetChips,
     // Same gate as the filter itself: until the watch map loads it hides nothing.
     ...(canFilterByWatchStatus && watchMapReady && watchFilter !== 'all'
       ? [{
@@ -763,9 +784,7 @@ export default function MoviesPage() {
   ];
   const activeFilters = [...menuFilters, ...searchFilter(search, () => setSearch(''))];
   const clearFilters = () => {
-    setFilter([]);
-    setWatchFilter('all');
-    setInstanceFilter('all');
+    filterMenu.clearMenuFilters();
     setSearch('');
   };
   const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Title';
@@ -782,7 +801,9 @@ export default function MoviesPage() {
           <ResponsiveMenu
             title="Filter"
             titleInDropdown
-            contentClassName="w-48"
+            open={filterMenu.menuOpen}
+            onOpenChange={filterMenu.setMenuOpen}
+            contentClassName="w-60"
             trigger={(
               <button
                 className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
@@ -796,6 +817,7 @@ export default function MoviesPage() {
               </button>
             )}
           >
+            {filterMenu.savedSection}
             <ResponsiveMenuCheckboxItem
               checked={filter.length === 0}
               onCheckedChange={() => setFilter([])}
@@ -860,6 +882,7 @@ export default function MoviesPage() {
                 ))}
               </>
             )}
+            {filterMenu.facetGroups}
           </ResponsiveMenu>
 
           <ResponsiveMenu
@@ -1129,11 +1152,13 @@ export default function MoviesPage() {
                 monitored: 'monitored',
                 rating: 'imdbRating',
               }}
-              resetPageKey={`${search}|${filter.join(',')}|${instanceFilter}|${watchFilter}|${sort}|${sortDir}`}
+              resetPageKey={`${search}|${filter.join(',')}|${JSON.stringify(facetFilter)}|${instanceFilter}|${watchFilter}|${sort}|${sortDir}`}
             />
           </div>
         );
       })()}
+
+      {filterMenu.dialogs}
 
       <RenamePreviewDialog
         open={renameTarget !== null}

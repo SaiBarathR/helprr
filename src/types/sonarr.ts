@@ -15,6 +15,8 @@ export interface SonarrSeries {
   seasons: SonarrSeason[];
   year: number;
   path: string;
+  // The root folder the series' folder sits in; Sonarr resolves it on every read.
+  rootFolderPath?: string;
   qualityProfileId: number;
   seasonFolder: boolean;
   monitored: boolean;
@@ -62,6 +64,7 @@ export type SonarrSeriesListItem = Pick<
   | 'images'
   | 'year'
   | 'path'
+  | 'rootFolderPath'
   | 'qualityProfileId'
   | 'monitored'
   | 'runtime'
