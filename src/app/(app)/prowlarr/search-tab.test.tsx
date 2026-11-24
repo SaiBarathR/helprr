@@ -403,4 +403,40 @@ describe('SearchTab', () => {
     await waitFor(() => expect(grabs()).toHaveLength(1));
     expect(JSON.parse(String(grabs()[0][1]?.body))).toEqual({ id: 'tok-a', downloadClientId: 5 });
   });
+
+  it('drops a picked subcategory when its whole category is ticked', async () => {
+    seeded.set('searchCategories', [5070]);
+    setup();
+    expect(await screen.findByRole('button', { name: 'Remove TV/Anime' })).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Search options' }));
+    const sheet = within(await screen.findByRole('dialog'));
+    await userEvent.click(within(sheet.getByRole('region', { name: 'Categories' })).getByRole('button', { name: /^TV/ }));
+    await userEvent.click(sheet.getByRole('button', { name: 'Done' }));
+
+    expect(screen.queryByRole('button', { name: 'Remove TV/Anime' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'TV' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('clears the categories too on Reset', async () => {
+    seeded.set('searchCategories', [2000, 5070]);
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Search options' }));
+    const sheet = within(await screen.findByRole('dialog'));
+    await userEvent.click(sheet.getByRole('button', { name: 'Reset' }));
+    await userEvent.click(sheet.getByRole('button', { name: 'Done' }));
+
+    expect(screen.queryByRole('button', { name: 'Remove TV/Anime' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Movies' }).getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('says so when the category tree does not load', async () => {
+    vi.mocked(fetch).mockImplementation(async (url) => (String(url).startsWith('/api/prowlarr/categories')
+      ? new Response(JSON.stringify({ error: 'down' }), { status: 502 })
+      : new Response(JSON.stringify(String(url).startsWith('/api/prowlarr/indexers') ? indexers : []))));
+    setup(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+    await userEvent.click(screen.getByRole('button', { name: 'Search options' }));
+
+    expect(await within(await screen.findByRole('dialog')).findByText('Failed to load categories.')).toBeTruthy();
+  });
 });

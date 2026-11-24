@@ -153,17 +153,6 @@ export function SearchTab() {
   const categoryNames = useMemo(() => new Map(
     (categoriesQuery.data ?? []).flatMap(({ id, name, subCategories }) => [[id, name] as const, ...subCategories.map((sub) => [sub.id, sub.name] as const)]),
   ), [categoriesQuery.data]);
-  // Only asked for when a grab is about to go, and only with manage.
-  const clientsQuery = useQuery({
-    queryKey: ['prowlarr', 'downloadclients'],
-    queryFn: jsonFetcher<ProwlarrDownloadClientSummary[]>('/api/prowlarr/downloadclients'),
-    select: ensureArray,
-    enabled: canManage && !!confirm,
-    staleTime: 60_000,
-  });
-  // A pick shows only when there is a choice to make for this release's protocol.
-  const clientChoices = (clientsQuery.data ?? []).filter((client) => client.protocol === confirm?.protocol);
-  const pickedClient = clientChoices.some((client) => client.id === grabClient) ? grabClient : null;
   const enabledIndexers = useMemo(
     () => (indexersQuery.data ?? []).filter((indexer) => indexer.enable).sort((a, b) => a.name.localeCompare(b.name)),
     [indexersQuery.data],
@@ -197,6 +186,18 @@ export function SearchTab() {
     retry: false,
   });
 
+  // Asked for once there are results to grab, and only with manage, so the
+  // picker is there when the grab dialog opens rather than popping in.
+  const clientsQuery = useQuery({
+    queryKey: ['prowlarr', 'downloadclients'],
+    queryFn: jsonFetcher<ProwlarrDownloadClientSummary[]>('/api/prowlarr/downloadclients'),
+    select: ensureArray,
+    enabled: canManage && (searchQuery.data?.results.length ?? 0) > 0,
+    staleTime: 60_000,
+  });
+  // A pick shows only when there is a choice to make for this release's protocol.
+  const clientChoices = (clientsQuery.data ?? []).filter((client) => client.protocol === confirm?.protocol);
+  const pickedClient = clientChoices.some((client) => client.id === grabClient) ? grabClient : null;
   // The server keeps each sort's best rows, so this cut matches the one it made.
   const results = useMemo(
     () => [...(searchQuery.data?.results ?? [])]
@@ -244,10 +245,15 @@ export function SearchTab() {
     setType('search');
     setIds({});
     setPickedIndexers(null);
+    setCategories([]);
   }
 
   function toggleCategory(id: number) {
-    setCategories((prev) => (prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id]));
+    // A whole category covers its subcategories, so ticking it drops theirs.
+    const subIds = categoriesQuery.data?.find((category) => category.id === id)?.subCategories.map((sub) => sub.id) ?? [];
+    setCategories((prev) => (prev.includes(id)
+      ? prev.filter((value) => value !== id)
+      : [...prev.filter((value) => !subIds.includes(value)), id]));
   }
 
   function cancel() {
@@ -445,7 +451,7 @@ export function SearchTab() {
   const optionsFooter = (
     <>
       {/* 44 px tall on touch screens; desktop keeps the denser size. */}
-      <Button variant="outline" className="flex-1 pointer-coarse:h-11" onClick={resetOptions} disabled={optionCount === 0}>
+      <Button variant="outline" className="flex-1 pointer-coarse:h-11" onClick={resetOptions} disabled={optionCount === 0 && categories.length === 0}>
         Reset
       </Button>
       <Button className="flex-1 pointer-coarse:h-11" onClick={() => setOptionsOpen(false)}>

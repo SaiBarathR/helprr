@@ -25,6 +25,7 @@ import {
 const MAX_QUERY_LENGTH = 200;
 // Prowlarr's tree has about 75; more than this is not a real pick.
 const MAX_CATEGORIES = 100;
+const FLAGS_READ_TIMEOUT_MS = 5_000;
 const SEARCH_TYPES = new Set<string>(PROWLARR_SEARCH_TYPES.map(({ id }) => id));
 const MAX_INDEXER_IDS = 100;
 const WHOLE_ID = /^\d{1,10}$/;
@@ -134,11 +135,16 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       }
     }
     // The indexer list only trims the ratio flags off public trackers' rows,
-    // so a search without picks still runs when it can't be read.
+    // so a search without picks still runs when it can't be read, and a slow
+    // read doesn't hold the results back.
+    let flagsTimer: ReturnType<typeof setTimeout> | undefined;
     const [found, indexers] = await Promise.all([
       client.searchReleases({ query, type, categories, indexerIds }, request.signal),
-      indexersRead.catch(() => []),
-    ]);
+      Promise.race([
+        indexersRead.catch(() => []),
+        new Promise<[]>((resolve) => { flagsTimer = setTimeout(() => resolve([]), FLAGS_READ_TIMEOUT_MS); }),
+      ]),
+    ]).finally(() => clearTimeout(flagsTimer));
     const publicIndexers = new Set(indexers.filter((indexer) => indexer.privacy === 'public').map(({ id }) => id));
     const valid = (Array.isArray(found) ? found : [])
       .filter((release): release is ProwlarrRelease => Boolean(release?.guid && release.title && release.indexerId));

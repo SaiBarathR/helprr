@@ -168,6 +168,23 @@ describe('GET /api/prowlarr/search', () => {
     expect((await res.json()).results[0].flags).toEqual(['freeleech']);
   });
 
+  it('does not wait on a slow indexer list that only trims flags', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      mocks.prowlarr.getIndexers.mockReturnValue(new Promise(() => {}));
+      mocks.prowlarr.searchReleases.mockResolvedValue([{ ...release, indexerFlags: ['freeleech'] }]);
+
+      const pending = search('q=bunny');
+      await vi.advanceTimersByTimeAsync(5_000);
+      const res = await pending;
+
+      expect(res.status).toBe(200);
+      expect((await res.json()).results[0].flags).toEqual(['freeleech']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('takes any category in Prowlarr\'s tree, subcategories included, and reads the tree once', async () => {
     await search('q=bunny&categories=5070,2040');
     await search('q=bunny&categories=2000');
@@ -327,6 +344,14 @@ describe('POST /api/prowlarr/search/grab', () => {
     expect((await grab({ id: await token() })).status).toBe(200);
   });
 
+  it('leaves the client to Prowlarr when the pick is null', async () => {
+    const res = await grab({ id: await token(), downloadClientId: null });
+
+    expect(res.status).toBe(200);
+    expect(mocks.prowlarr.grabRelease).toHaveBeenCalledWith({ guid: release.guid, indexerId: 7, downloadClientId: undefined });
+    expect(mocks.prowlarr.getDownloadClients).not.toHaveBeenCalled();
+  });
+
   it('sends to the download client picked', async () => {
     const res = await grab({ id: await token(), downloadClientId: 4 });
 
@@ -423,6 +448,12 @@ describe('GET /api/prowlarr/downloadclients', () => {
       { id: 2, name: 'SABnzbd', protocol: 'usenet' },
       { id: 4, name: 'Spare', protocol: 'torrent' },
     ]);
+  });
+
+  it('returns an empty list when Prowlarr answers with something else', async () => {
+    mocks.prowlarr.getDownloadClients.mockResolvedValue({ message: 'odd' });
+
+    expect(await (await clientsGet()).json()).toEqual([]);
   });
 
   it('needs manage, not search', async () => {
