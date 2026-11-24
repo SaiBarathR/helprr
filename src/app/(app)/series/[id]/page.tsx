@@ -47,6 +47,7 @@ import { useSeriesActions } from './_components/use-series-actions';
 import { buildSeasonDetailRows, buildSeriesInfoRows, formatNextAiring, seriesStatusBadge } from './_components/series-info';
 import { SeriesHeaderActions } from './_components/series-header-actions';
 import { SeriesHero } from './_components/series-hero';
+import { QualityProfileSheet } from '@/components/media/quality-profile-sheet';
 import { SeriesSeasons } from './_components/series-seasons';
 import { SeriesInformation } from './_components/series-information';
 import { SeriesAnimeSections } from './_components/series-anime-sections';
@@ -88,6 +89,7 @@ export default function SeriesDetailPage() {
 
   const [showDelete, setShowDelete] = useState(false);
   const [showRenamePreview, setShowRenamePreview] = useState(false);
+  const [showQualityProfile, setShowQualityProfile] = useState(false);
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const externalUrls = useExternalUrls();
   const sonarrExternalUrl = useExternalUrlResolver()('SONARR', instance);
@@ -253,11 +255,13 @@ export default function SeriesDetailPage() {
     : canViewAnime ? `/anime/explore?search=${encodeURIComponent(series.title)}` : null;
   const alertReleaseDate =
     tmdbData?.releaseDate ?? series.releaseDate ?? series.firstAired ?? null;
+  const qualityProfileName = qualityProfiles.find((qp) => qp.id === series.qualityProfileId)?.name;
   const infoRows = buildSeriesInfoRows({
     series,
     tmdbData,
     animeDetail,
-    qualityProfileName: qualityProfiles.find((qp) => qp.id === series.qualityProfileId)?.name,
+    qualityProfileName,
+    onQualityProfileSelect: () => setShowQualityProfile(true),
     tagLabels: tags.filter((t) => series.tags.includes(t.id)).map((t) => t.label),
     rootFolderPath: rootFolders.find((rf) => series.path?.startsWith(rf.path))?.path,
   });
@@ -615,6 +619,15 @@ export default function SeriesDetailPage() {
         mediaId={series.id}
         mediaTitle={series.title}
         instanceId={instance}
+      />
+
+      <QualityProfileSheet
+        service="sonarr"
+        instanceId={instance}
+        profileId={series.qualityProfileId}
+        profileName={qualityProfileName}
+        open={showQualityProfile}
+        onOpenChange={setShowQualityProfile}
       />
     </div>
   );

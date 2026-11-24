@@ -20,6 +20,8 @@ import {
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ArrHistoryList } from '@/components/media/arr-history-list';
 import { CustomFormatChips } from '@/components/media/custom-format-chips';
+import { QualityProfileSheet, QualityProfileValue } from '@/components/media/quality-profile-sheet';
+import { useQualityProfiles } from '@/lib/hooks/use-reference-data';
 import type { HistoryItem, MovieFileResource, RadarrMovie } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
@@ -86,6 +88,7 @@ export default function MovieFilesPage() {
   const movieId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
+  const [showQualityProfile, setShowQualityProfile] = useState(false);
   const canManageFiles = useCan('movies.manageFiles');
 
   async function copyText(value: string, label: string) {
@@ -138,6 +141,7 @@ export default function MovieFilesPage() {
     enabled: Number.isFinite(movieId) && movieQuery.data?.hasFile === true,
     select: (d) => (Array.isArray(d) ? d : []),
   });
+  const { data: qualityProfiles = [] } = useQualityProfiles('radarr', instance);
 
   if (loading && !movie) {
     return <><PageHeader title="Files & information" /><PageSpinner /></>;
@@ -153,6 +157,7 @@ export default function MovieFilesPage() {
   }
 
   const movieFile = movie.movieFile;
+  const qualityProfileName = qualityProfiles.find((qp) => qp.id === movie.qualityProfileId)?.name;
   const mediaInfo = movieFile?.mediaInfo;
   const qualityName = movieFile?.quality?.quality?.name ?? 'Unknown';
   const fileResource = movieFile
@@ -296,6 +301,17 @@ export default function MovieFilesPage() {
               No file on disk
             </div>
           )}
+          {movie.hasFile && movieFile && (
+            // What the file is measured against: why it is "cutoff unmet" or keeps upgrading.
+            <div className="flex items-center justify-between rounded-2xl border px-4">
+              <span className="shrink-0 text-sm text-muted-foreground">Quality Profile</span>
+              <QualityProfileValue
+                name={qualityProfileName || 'Unknown'}
+                onOpen={() => setShowQualityProfile(true)}
+                className="my-0"
+              />
+            </div>
+          )}
         </section>
 
         <section className="space-y-2">
@@ -351,6 +367,14 @@ export default function MovieFilesPage() {
         </DrawerContent>
       </Drawer>
 
+      <QualityProfileSheet
+        service="radarr"
+        instanceId={instance}
+        profileId={movie.qualityProfileId}
+        profileName={qualityProfileName}
+        open={showQualityProfile}
+        onOpenChange={setShowQualityProfile}
+      />
     </div>
   );
 }
