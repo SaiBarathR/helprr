@@ -61,10 +61,21 @@ function renderHarness(service?: 'radarr' | 'sonarr') {
 }
 
 describe('QualityProfileSheet', () => {
+  it('reads nothing and says so for a title without a profile', () => {
+    const client = new QueryClient();
+    render(
+      <QueryClientProvider client={client}>
+        <QualityProfileSheet service="sonarr" profileId={undefined} open onOpenChange={() => {}} />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText('This title has no quality profile.')).toBeTruthy();
+    expect(requested).toEqual([]);
+  });
+
   it('reads nothing until the profile name is tapped, then shows the profile from its instance', async () => {
     renderHarness();
     expect(requested).toEqual([]);
-    await userEvent.click(screen.getByRole('button', { name: /HD-1080p/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Quality profile: HD-1080p' }));
 
     const dialog = await screen.findByRole('dialog');
     expect(requested).toEqual(['/api/radarr/qualityprofiles/4?instanceId=rad-1']);

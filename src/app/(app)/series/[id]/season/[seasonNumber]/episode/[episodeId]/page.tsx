@@ -347,6 +347,7 @@ export default function EpisodeDetailPage() {
   }
 
   const episodeFile = episode.episodeFile;
+  const qualityProfileName = qualityProfiles.find((qp) => qp.id === series.qualityProfileId)?.name;
   const mediaInfo = episodeFile?.mediaInfo;
   const epCode = `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`;
   const searchHref = arrInteractiveSearchHref(
@@ -670,7 +671,7 @@ export default function EpisodeDetailPage() {
             <div className="flex justify-between items-center gap-4 px-4 py-2.5 border-b">
               <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Quality Profile</span>
               <QualityProfileValue
-                name={qualityProfiles.find((qp) => qp.id === series.qualityProfileId)?.name || 'Unknown'}
+                name={qualityProfileName || 'Unknown'}
                 onOpen={() => setShowQualityProfile(true)}
               />
             </div>
@@ -941,7 +942,7 @@ export default function EpisodeDetailPage() {
         service="sonarr"
         instanceId={instance}
         profileId={series.qualityProfileId}
-        profileName={qualityProfiles.find((qp) => qp.id === series.qualityProfileId)?.name}
+        profileName={qualityProfileName}
         open={showQualityProfile}
         onOpenChange={setShowQualityProfile}
       />

@@ -108,7 +108,9 @@ describe.each(ROUTES)('GET /api/$label/qualityprofiles/[id]', (route) => {
     expect(mocks.resolveConnection).toHaveBeenCalledWith(route.type, 'inst-1');
     expect(mocks.constructed).toEqual([`${route.label}:http://${route.label}`]);
     expect(mocks.getQualityProfile).toHaveBeenCalledWith(4);
-    expect(res.headers.get('Cache-Control')).toContain('private');
+    expect(res.headers.get('Cache-Control')).toBe('private, max-age=60');
+    expect(res.headers.get('Vary')).toBe('Cookie');
+    expect(mocks.getCachedJson).toHaveBeenCalledWith(`${route.label}-qualityprofile`, 'inst-1:4');
     expect(mocks.setCachedJson).toHaveBeenCalledWith(`${route.label}-qualityprofile`, 'inst-1:4', expect.any(Object), 120);
   });
 

@@ -125,7 +125,7 @@ export function QualityProfileSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const query = useQuery({
-    queryKey: [...queryKeys.qualityProfiles(service, instanceId), profileId],
+    queryKey: queryKeys.qualityProfile(service, instanceId, profileId),
     queryFn: jsonFetcher<QualityProfileSummary>(`/api/${service}/qualityprofiles/${profileId}`, instanceId),
     enabled: open && profileId != null,
     staleTime: 60_000,
@@ -151,6 +151,8 @@ export function QualityProfileSheet({
             </div>
           ) : profile ? (
             <ProfileBody profile={profile} />
+          ) : !query.isError ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">This title has no quality profile.</p>
           ) : null}
         </div>
         <DrawerFooter className="mx-auto w-full max-w-md">
@@ -181,6 +183,7 @@ export function QualityProfileValue({
     <button
       type="button"
       onClick={onOpen}
+      aria-label={`Quality profile: ${name}`}
       aria-haspopup="dialog"
       className={cn(
         'ml-4 inline-flex min-h-[44px] min-w-[44px] max-w-[60%] items-center justify-end gap-0.5 text-right text-sm text-primary hover:underline',

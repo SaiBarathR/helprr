@@ -68,4 +68,15 @@ describe('summarizeQualityProfile', () => {
     });
     expect(summarizeQualityProfile({ ...PROFILE, language: { id: 1, name: 'English' } }).language).toBe('English');
   });
+
+  it('names a cutoff that is not allowed, and a format the app sent without a name', () => {
+    const summary = summarizeQualityProfile({
+      ...PROFILE,
+      cutoff: 19,
+      formatItems: [{ format: 12, score: 5 }],
+    });
+    expect(summary.cutoff).toBe('Bluray-2160p');
+    expect(summary.qualities.some((quality) => quality.isCutoff)).toBe(false);
+    expect(summary.formats).toEqual([{ name: 'Format 12', score: 5 }]);
+  });
 });

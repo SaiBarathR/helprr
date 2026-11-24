@@ -5,13 +5,19 @@ import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
 import { LidarrClient } from '@/lib/lidarr-client';
 import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
-import { REFERENCE_CACHE_HEADERS } from '@/lib/cache/reference-headers';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import type { QualityProfileItemResource, QualityProfileResource, QualityProfileSummary } from '@/types';
 
 // The same 120s as the reference-label maps: a profile edited in the *arr app
-// shows here within two minutes, and the sheet doesn't re-read it on every tap.
+// shows here within about three minutes (this plus the browser's minute), and
+// the sheet doesn't re-read it on every tap. Shorter than the pickers' reference
+// headers because the sheet is what someone opens right after changing it.
 const PROFILE_TTL_SECONDS = 120;
+const PROFILE_CACHE_HEADERS = {
+  'Cache-Control': 'private, max-age=60',
+  // Auth-gated: a cached answer must never be replayed to another session.
+  'Vary': 'Cookie',
+} as const;
 
 function itemName(item: QualityProfileItemResource): string {
   return item.quality?.name ?? item.name ?? 'Unknown';
@@ -98,7 +104,7 @@ export async function qualityProfileResponse(
       summary = summarizeQualityProfile(await clientFor(type, connection).getQualityProfile(id));
       await setCachedJson(scope, keySeed, summary, PROFILE_TTL_SECONDS);
     }
-    return NextResponse.json(summary, { headers: REFERENCE_CACHE_HEADERS });
+    return NextResponse.json(summary, { headers: PROFILE_CACHE_HEADERS });
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to fetch quality profile');
   }
