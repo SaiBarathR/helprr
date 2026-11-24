@@ -25,6 +25,7 @@ function actions(): IndexerActions {
   return {
     testingId: null, deletingId: null, confirmDelete: null, pendingEdits: new Map(),
     setConfirmDelete: vi.fn(), handleTest: vi.fn(), handleEdit: vi.fn(), handleToggle: vi.fn(), handleDelete: vi.fn(),
+    handleBulkEdit: vi.fn(), bulkDeleting: false, handleBulkDelete: vi.fn(),
   };
 }
 

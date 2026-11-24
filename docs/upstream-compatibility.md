@@ -647,6 +647,25 @@ ignores an unknown `sortKey` and always orders that list by air date, which can 
 or repeat rows across page edges. Lidarr's artist list (not qualified here) falls back
 to the folder above the artist's own when it has no `rootFolderPath`.
 
+### Prowlarr indexer tools (2026-11-25)
+
+Checked against the test host's Prowlarr `3.0.2.5780`:
+
+- **Indexer proxies** (live, read and test only): `GET /api/v1/indexerproxy` returns
+  each proxy with `name`, `implementation`, `implementationName`, `tags` and
+  `fields` (the host and login). A proxy serves the indexers that share one of its
+  tags; one without tags serves none. `POST /api/v1/indexerproxy/test` takes the whole
+  proxy as read, and `POST /api/v1/indexerproxy/testall` answers like the indexer
+  test-all.
+- **CheckHealth** (live): `POST /api/v1/command` with `CheckHealth` reruns the health
+  checks; `GET /api/v1/command/{id}` follows it to `completed`.
+- **Indexer `added`** (live): `GET /api/v1/indexer` carries each indexer's `added`
+  date, which the Added sort reads.
+- **Bulk delete** (source, not called on a real Prowlarr): `DELETE /api/v1/indexer/bulk`
+  with `{ ids }` deletes the ids it has, skips unknown ones without an error (unlike
+  the bulk editor, which refuses a batch with a gone id), and answers `{}`, so Helprr
+  checks the ids first and reads the list again afterwards.
+
 ## Before reporting an upstream compatibility problem
 
 1. In **Settings → Instances**, re-test the affected connection and record the exact
