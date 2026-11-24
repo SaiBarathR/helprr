@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   requireUserCapability: vi.fn(),
   bump: vi.fn(),
   client: {
+    getTorrents: vi.fn(),
     getTorrentTrackers: vi.fn(),
     addTrackers: vi.fn(),
     editTracker: vi.fn(),
@@ -57,6 +58,43 @@ beforeEach(() => {
   vi.clearAllMocks();
   signInAs('member');
   mocks.client.getTorrentTrackers.mockResolvedValue(LIST);
+  // A public torrent unless a test says otherwise.
+  mocks.client.getTorrents.mockResolvedValue([{ hash: HASH, private: false }]);
+});
+
+describe('private torrents', () => {
+  const remove = { action: 'remove', index: 3, shown: 'https://tracker.invalid', tier: 0, count: 5 };
+
+  it('are an admin’s to change: a member is refused every action', async () => {
+    mocks.client.getTorrents.mockResolvedValue([{ hash: HASH, private: true }]);
+    for (const body of [remove, { ...remove, action: 'edit', url: PUBLIC }, { action: 'add', urls: [PUBLIC] }]) {
+      expect((await post(body)).status).toBe(403);
+    }
+    expect(mocks.client.getTorrentTrackers).not.toHaveBeenCalled();
+    noUpstreamChange();
+  });
+
+  it('count as private when qBittorrent doesn’t say (4.x has no `private` field)', async () => {
+    mocks.client.getTorrents.mockResolvedValue([{ hash: HASH }]);
+    expect((await post({ action: 'add', urls: [PUBLIC] })).status).toBe(403);
+    noUpstreamChange();
+  });
+
+  it('answer 404 for a torrent that is gone', async () => {
+    mocks.client.getTorrents.mockResolvedValue([]);
+    expect((await post({ action: 'add', urls: [PUBLIC] })).status).toBe(404);
+    noUpstreamChange();
+  });
+
+  it('can be changed by an admin, with no extra lookup', async () => {
+    signInAs('admin');
+    mocks.client.getTorrents.mockResolvedValue([{ hash: HASH, private: true }]);
+    mocks.client.getTorrentTrackers.mockResolvedValue([tracker(ANNOUNCE, 0), tracker(PUBLIC, 1)]);
+    const res = await post({ action: 'remove', index: 1, shown: PUBLIC, tier: 1, count: 2 });
+    expect(res.status).toBe(200);
+    expect(mocks.client.getTorrents).not.toHaveBeenCalled();
+    expect(mocks.client.removeTrackers).toHaveBeenCalledWith(HASH, [PUBLIC]);
+  });
 });
 
 describe('authorization', () => {

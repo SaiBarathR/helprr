@@ -28,7 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   heading in a torrent's details, lists its trackers with Edit and Remove in each row's
   menu (or a long press) and takes new ones, one announce URL per line. It needs the
   Manage torrents permission. Users who aren't admins still never see a tracker's full URL:
-  to change one they type the whole new URL.
+  to change one they type the whole new URL. A private torrent's trackers are an admin's
+  to change, since a public tracker added to it can get the account banned.
 
 ## [1.18.1] - 2026-11-24
 

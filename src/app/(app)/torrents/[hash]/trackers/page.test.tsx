@@ -32,6 +32,7 @@ const MEMBER_LIST = [tracker('** [DHT] **'), tracker('https://tracker.invalid'),
 
 const fetchMock = vi.fn();
 let posts: Record<string, unknown>[];
+let detailsPrivate: boolean | null;
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -42,12 +43,13 @@ beforeEach(() => {
   mocks.caps = new Set(['torrents.manage']);
   mocks.role = 'member';
   posts = [];
+  detailsPrivate = false;
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
     if (init?.method === 'POST') {
       posts.push(JSON.parse(String(init.body)));
       return Response.json({ trackers: MEMBER_LIST.slice(0, 2) });
     }
-    return Response.json({ properties: {}, files: [], trackers: MEMBER_LIST, magnet: null });
+    return Response.json({ properties: {}, files: [], trackers: MEMBER_LIST, magnet: null, private: detailsPrivate });
   });
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -70,6 +72,26 @@ describe('Manage Trackers', () => {
     expect(screen.queryByText('** [DHT] **')).toBeNull();
     expect(screen.queryByRole('button', { name: /More actions/ })).toBeNull();
     expect(screen.queryByLabelText('Trackers to add')).toBeNull();
+  });
+
+  it('keeps a private torrent’s trackers read-only for a member, and when qBittorrent doesn’t say', async () => {
+    for (const flag of [true, null]) {
+      detailsPrivate = flag;
+      const { unmount } = render(<TorrentTrackersPage />, { wrapper });
+      expect(await screen.findByText('https://tracker.invalid')).toBeTruthy();
+      expect(screen.getByText(/only an admin can change its trackers/)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /More actions/ })).toBeNull();
+      expect(screen.queryByLabelText('Trackers to add')).toBeNull();
+      unmount();
+    }
+  });
+
+  it('lets an admin change a private torrent’s trackers', async () => {
+    mocks.role = 'admin';
+    detailsPrivate = true;
+    render(<TorrentTrackersPage />, { wrapper });
+    expect(await screen.findByRole('button', { name: 'More actions for https://tracker.invalid' })).toBeTruthy();
+    expect(screen.queryByText(/only an admin can change its trackers/)).toBeNull();
   });
 
   it('starts a member’s edit empty and sends the tracker’s place, not a URL it was never given', async () => {
@@ -95,7 +117,7 @@ describe('Manage Trackers', () => {
         return Response.json({ error: 'The tracker list changed. Check it and try again.' }, { status: 409 });
       }
       const trackers = reordered ? [MEMBER_LIST[0], MEMBER_LIST[2], MEMBER_LIST[1]] : MEMBER_LIST;
-      return Response.json({ properties: {}, files: [], trackers, magnet: null });
+      return Response.json({ properties: {}, files: [], trackers, magnet: null, private: false });
     });
     render(<TorrentTrackersPage />, { wrapper });
     await openRowMenu('https://tracker.invalid');

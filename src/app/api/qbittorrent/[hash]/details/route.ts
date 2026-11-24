@@ -57,6 +57,8 @@ async function getHandler(
       files,
       trackers: trackersForViewer(trackers, fullUrls),
       magnet: magnetForViewer(torrent?.magnet_uri, fullUrls),
+      // Whether only an admin may change its trackers (null: qBittorrent didn't say).
+      private: typeof torrent?.private === 'boolean' ? torrent.private : null,
     });
   } catch (error) {
     logApiDuration('/api/qbittorrent/[hash]/details', startedAt, { method: 'GET', failed: true });

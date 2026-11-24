@@ -19,6 +19,8 @@ export interface TorrentDetailData {
   trackers: TorrentTracker[];
   /** The magnet to copy, built on the server: without `tr=` unless the user is an admin. */
   magnet: string | null;
+  /** Whether the torrent is private (null when qBittorrent doesn't say). */
+  private?: boolean | null;
 }
 
 /** One torrent's details: transfer, session, settings (read-only), timing, network, magnet, files and trackers (read-only). */

@@ -16,7 +16,7 @@ const LIST_CHANGED = 'The tracker list changed. Check it and try again.';
 
 /*
  * Add, edit or remove one torrent's trackers, under torrents.manage like its
- * other settings. Edits and removals name the tracker by its place in the list
+ * other settings (a private torrent's: an admin's only, see below). Edits and removals name the tracker by its place in the list
  * (see qbittorrent-tracker-edits.ts), so a user who is not an admin can change
  * a private tracker without ever being sent its passkey; the answer is the new
  * list as this user may see it. Not operation-audited: like tags, location and
@@ -54,6 +54,17 @@ async function postHandler(
     const fullUrls = seesTrackerUrls(auth.user);
     const client = await getQBittorrentClient();
     let count: number;
+
+    // A private torrent's trackers are the owner's tracker account: a third-party
+    // tracker added to it leaks the torrent (private trackers ban for that), and a
+    // removed or replaced passkey tracker stops seeding until an admin, the only
+    // one who can see the URL, puts it back. So they are an admin's to change.
+    // When qBittorrent doesn't say (4.x has no `private` field), it counts as private.
+    if (!fullUrls) {
+      const [info] = await client.getTorrents(undefined, undefined, undefined, undefined, hash, request.signal);
+      if (!info) return refuse(404, 'Torrent not found', 'missing');
+      if (info.private !== false) return refuse(403, 'Only an admin can change a private torrent’s trackers', 'private');
+    }
 
     if (action === 'add') {
       const parsed = parseTrackerUrls(input.urls);

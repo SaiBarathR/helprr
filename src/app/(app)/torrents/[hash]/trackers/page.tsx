@@ -62,12 +62,20 @@ export default function TorrentTrackersPage() {
   const queryClient = useQueryClient();
   const trackersKey = ['qbittorrent', hash, 'trackers'] as const;
 
+  // A private torrent's trackers are an admin's to change; the route decides, and a
+  // torrent qBittorrent doesn't call public counts as private. Read with the list.
+  const [isPrivate, setIsPrivate] = useState<boolean | null>(null);
   const trackersQuery = useQuery({
     queryKey: trackersKey,
-    queryFn: async ({ signal }) =>
-      (await jsonFetcher<{ trackers: TorrentTracker[] }>(`/api/qbittorrent/${hash}/details`)({ signal })).trackers ?? [],
+    queryFn: async ({ signal }) => {
+      const details = await jsonFetcher<{ trackers: TorrentTracker[]; private?: boolean | null }>(`/api/qbittorrent/${hash}/details`)({ signal });
+      setIsPrivate(details.private ?? null);
+      return details.trackers ?? [];
+    },
   });
   const all = trackersQuery.data;
+  const privateLocked = canManage && !fullUrls && isPrivate !== false;
+  const editable = canManage && !privateLocked;
 
   const [editing, setEditing] = useState<TrackerRef | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -135,7 +143,7 @@ export default function TorrentTrackersPage() {
     else toast.success(after.length > 0 ? `Added ${trackerLabel(added)}` : 'Trackers added');
   };
 
-  const title = canManage ? 'Manage Trackers' : 'Trackers';
+  const title = editable ? 'Manage Trackers' : 'Trackers';
 
   if (trackersQuery.isLoading) {
     return <><PageHeader title={title} subtitle={torrentName} backHref="/torrents" /><PageSpinner /></>;
@@ -168,9 +176,11 @@ export default function TorrentTrackersPage() {
       <div className="mt-3 pb-8">
         <GroupedSection
           title={`Trackers (${rows.length})`}
-          footer={canManage && !fullUrls
-            ? 'Only admins see full tracker URLs. To change one, type its whole new announce URL, passkey included.'
-            : undefined}
+          footer={privateLocked
+            ? 'This torrent is private: only an admin can change its trackers.'
+            : editable && !fullUrls
+              ? 'Only admins see full tracker URLs. To change one, type its whole new announce URL, passkey included.'
+              : undefined}
         >
           {rows.length === 0 && (
             <div className="grouped-row">
@@ -214,7 +224,7 @@ export default function TorrentTrackersPage() {
                 groups={[
                   {
                     id: 'tracker',
-                    actions: canManage
+                    actions: editable
                       ? [
                           { id: 'edit-tracker', label: 'Edit tracker', icon: <Pencil className="h-4 w-4" />, disabled: isPending, onSelect: () => startEdit(ref) },
                           { id: 'remove-tracker', label: 'Remove tracker', icon: <Trash2 className="h-4 w-4" />, destructive: true, disabled: isPending, onSelect: () => setRemoving(ref) },
@@ -232,7 +242,7 @@ export default function TorrentTrackersPage() {
                       {tracker.msg && ` · ${tracker.msg}`}
                     </p>
                   </div>
-                  {canManage && (
+                  {editable && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -259,7 +269,7 @@ export default function TorrentTrackersPage() {
               </QuickContextMenu>
             ),
           )}
-          {canManage && (
+          {editable && (
             <form className="grouped-row grouped-row-stacked gap-2" onSubmit={add}>
               <Textarea
                 value={addValue}
