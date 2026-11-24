@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   If people other than admins could view torrents, renew your private trackers' passkeys
   (usually on the tracker's profile or security page), then update the trackers in
   qBittorrent.
+- **Your public IP address no longer reaches the browser.** qBittorrent reports the
+  external IPv4 and IPv6 address it last saw, and every refresh of the torrents list,
+  the torrents widget and qBittorrent's Settings page passed it on, so any user allowed to
+  view torrents could read your home connection's address. Helprr now sends only the
+  speeds, totals, limits, DHT nodes and connection status those screens show, to admins
+  too, since no screen shows the address.
 
 ### Added
 
@@ -30,6 +36,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Manage torrents permission. Users who aren't admins still never see a tracker's full URL:
   to change one they type the whole new URL. A private torrent's trackers are an admin's
   to change, since a public tracker added to it can get the account banned.
+
+### Fixed
+
+- Editing a category's folder says what qBittorrent will do with its torrents as it is
+  set: move the automatically managed ones, or switch them to manual management and leave
+  them where they are.
+- On Add Torrent, the empty Save at field shows the folder the torrent will really go to.
+  With automatic management off (or off by default in qBittorrent) that is the default
+  save path, not the category's folder, unless qBittorrent uses category paths in manual
+  mode.
+- Torrents: a refused category shows its reason under the field instead of a toast over
+  it; toasts no longer cover the selection bar on a phone; at 389 px Location, Tags & Queue
+  is no longer both in the bar and in its ⋯ menu; Set Category shows each category's name
+  in full, and after New category it comes back with the same torrents selected; the bulk
+  limits page names the global limit as a torrent's page does ("Global (Unlimited)");
+  removing a public torrent's tracker no longer warns about passkeys; Escape closes a
+  tracker's edit; the alternative speed button tells screen readers whether it is on;
+  users who can't act on several torrents at once no longer get checkboxes.
 
 ## [1.18.1] - 2026-11-24
 

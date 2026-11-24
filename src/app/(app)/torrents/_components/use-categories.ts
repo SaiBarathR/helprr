@@ -3,15 +3,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
-import type { QBittorrentCategory } from '@/lib/qbittorrent-client';
+import type { QBittorrentCategory, SavePathPreferences } from '@/lib/qbittorrent-client';
 import type { ArrCategoryUse } from '@/lib/qbittorrent-category-usage';
 
-export interface CategoryDetails {
+/** With qBittorrent's save-path settings (subcategory mode: "a/b" is a child of "a", removed with it). */
+export interface CategoryDetails extends SavePathPreferences {
   categories: Record<string, QBittorrentCategory>;
   /** Where a category with no save path of its own saves: <this>/<name>. */
   defaultSavePath: string;
-  /** qBittorrent's subcategory mode: "a/b" is a child of "a", removed with it. */
-  subcategories: boolean;
 }
 
 // Under ['qbittorrent', 'categories'], so invalidating that also refreshes the add page's list.
@@ -28,7 +27,15 @@ export function useCategoryDetails() {
 
 export type CategoryChangeResult =
   | { ok: true }
-  | { ok: false; error: string; needsConfirm?: boolean; uses?: ArrCategoryUse[]; unchecked?: string[] };
+  | {
+    ok: false;
+    error: string;
+    /** The form field the error is about, when the server says. */
+    field?: 'name' | 'savePath';
+    needsConfirm?: boolean;
+    uses?: ArrCategoryUse[];
+    unchecked?: string[];
+  };
 
 /** Create (POST), save (PATCH) or remove (DELETE); a 401 goes to sign-in like other mutations. */
 export async function sendCategoryChange(
@@ -54,6 +61,7 @@ export async function sendCategoryChange(
   return {
     ok: false,
     error: typeof data?.error === 'string' ? data.error : 'qBittorrent did not take the change',
+    field: data?.field === 'name' || data?.field === 'savePath' ? data.field : undefined,
     needsConfirm: data?.needsConfirm === true,
     uses: Array.isArray(data?.uses) ? data.uses : [],
     unchecked: Array.isArray(data?.unchecked) ? data.unchecked : [],

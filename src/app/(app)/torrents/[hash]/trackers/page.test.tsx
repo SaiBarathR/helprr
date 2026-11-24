@@ -18,10 +18,10 @@ vi.mock('@/components/permission-provider', () => ({
 }));
 vi.mock('@/components/layout/page-header', () => ({ PageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
-// The confirm dialog is reduced to its confirm button.
+// The confirm dialog is reduced to its text and confirm button.
 vi.mock('@/components/ui/confirm-dialog', () => ({
-  ConfirmDialog: ({ open, confirmLabel, onConfirm }: { open: boolean; confirmLabel?: string; onConfirm: () => void }) =>
-    (open ? <button onClick={onConfirm}>{confirmLabel}</button> : null),
+  ConfirmDialog: ({ open, description, confirmLabel, onConfirm }: { open: boolean; description?: ReactNode; confirmLabel?: string; onConfirm: () => void }) =>
+    (open ? <div><p>{description}</p><button onClick={onConfirm}>{confirmLabel}</button></div> : null),
 }));
 
 import TorrentTrackersPage from './page';
@@ -144,6 +144,8 @@ describe('Manage Trackers', () => {
     render(<TorrentTrackersPage />, { wrapper });
     await openRowMenu('udp://public.invalid:1337');
     await userEvent.click(await screen.findByRole('menuitem', { name: /Remove tracker/ }));
+    // A public torrent's tracker has no passkey to warn about.
+    expect(screen.queryByText(/Adding a private tracker back/)).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(posts).toEqual([{ action: 'remove', index: 2, shown: 'udp://public.invalid:1337', tier: 0, count: 3 }]));
     await waitFor(() => expect(screen.queryByText('udp://public.invalid:1337')).toBeNull());
@@ -154,5 +156,23 @@ describe('Manage Trackers', () => {
     await userEvent.type(await screen.findByLabelText('Trackers to add'), ' https://a.invalid/announce {Enter}{Enter}wss://b.invalid/x');
     await userEvent.click(screen.getByRole('button', { name: 'Add Trackers' }));
     await waitFor(() => expect(posts).toEqual([{ action: 'add', urls: ['https://a.invalid/announce', 'wss://b.invalid/x'] }]));
+  });
+
+  it('warns about the passkey before removing a private torrent’s tracker', async () => {
+    mocks.role = 'admin';
+    detailsPrivate = true;
+    render(<TorrentTrackersPage />, { wrapper });
+    await openRowMenu('udp://public.invalid:1337');
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Remove tracker/ }));
+    expect(screen.getByText(/Adding a private tracker back needs its full announce URL/)).toBeTruthy();
+  });
+
+  it('closes the edit form on Escape, sending nothing', async () => {
+    render(<TorrentTrackersPage />, { wrapper });
+    await openRowMenu('https://tracker.invalid');
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Edit tracker/ }));
+    await userEvent.type(screen.getByLabelText('New tracker URL'), 'https://x.invalid{Escape}');
+    expect(screen.queryByLabelText('New tracker URL')).toBeNull();
+    expect(posts).toEqual([]);
   });
 });

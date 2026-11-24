@@ -35,6 +35,8 @@ import { useCan } from '@/components/permission-provider';
 import type { AddTorrentOptions, ContentLayout, TorrentFile } from '@/lib/qbittorrent-client';
 import { TagAdder } from '../_components/torrent-organize-sections';
 import { useTorrentOptions } from '../_components/use-torrent';
+import { useCategoryDetails } from '../_components/use-categories';
+import { addSaveFolder } from '../_components/category-links';
 import {
   buildFileTree,
   getAllFileIndices,
@@ -168,19 +170,18 @@ function AddTorrentPageContent() {
   // The advanced fallback: the Sonarr/Radarr choices, kept while the files are chosen.
   const [fallback, setFallback] = useState<FallbackDraft | null>(null);
 
-  const categoriesQuery = useQuery({
-    queryKey: ['qbittorrent', 'categories'],
-    queryFn: jsonFetcher<Record<string, { name: string; savePath: string }>>('/api/qbittorrent/categories'),
-    staleTime: 60_000,
-  });
+  // With qBittorrent's save-path settings, so the empty Save at field can show where the torrent really goes.
+  const categoryDetails = useCategoryDetails().data;
   const categories = useMemo(
-    () => Object.values(categoriesQuery.data ?? {}),
-    [categoriesQuery.data],
+    () => Object.values(categoryDetails?.categories ?? {}),
+    [categoryDetails],
   );
   const selectedCategory = category === NO_CATEGORY ? undefined : category;
-  const categorySavePath = categories.find((c) => c.name === selectedCategory)?.savePath;
   // Under automatic management qBittorrent picks the folder from the category.
   const autoPicksFolder = autoTmm === 'on';
+  const emptySavePathFolder = categoryDetails
+    ? addSaveFolder(categoryDetails, selectedCategory, autoTmm === QBIT_DEFAULT ? undefined : autoPicksFolder)
+    : null;
 
   const tagOptions = useTorrentOptions();
   const tagSuggestions = (tagOptions.data?.tags ?? [])
@@ -428,7 +429,7 @@ function AddTorrentPageContent() {
             </label>
             <Input
               id="save-path"
-              placeholder={autoPicksFolder ? 'Set by the category' : categorySavePath || 'qBittorrent default'}
+              placeholder={emptySavePathFolder ?? (autoPicksFolder ? 'Set by the category' : 'qBittorrent default')}
               value={autoPicksFolder ? '' : savePath}
               onChange={(e) => setSavePath(e.target.value)}
               disabled={autoPicksFolder}

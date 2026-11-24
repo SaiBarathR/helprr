@@ -1079,6 +1079,15 @@ user and token, and a Check and the Send after it read the same release; a
 larger .torrent is fetched again. Usenet results are not offered: manual
 downloads follow torrents only.
 
+qBittorrent's `transfer/info` also carries `last_external_address_v4` and `_v6`,
+the owner's public IP. `/api/qbittorrent/transfer` and the summary (full, `view=delta`,
+`view=counters`, and the cache and delta history behind them) rebuild it with
+`normalizeTransferInfo` (`src/lib/qbittorrent-summary.ts`): speeds, session totals,
+rate limits, DHT nodes and connection status, for every user. Preferences are read
+through methods that copy out named keys (`getSpeedLimits`, `getSavePathPreferences`,
+`isQueueingEnabled`), since `app/preferences` holds the Web UI and proxy passwords, and
+`sync/maindata` only through `getServerStats`.
+
 qBittorrent's announce URLs carry a private tracker's passkey, in the path or the
 query, and so does each `tr=` of a torrent's magnet. The torrent lists
 (`/api/qbittorrent`, its summary and delta, and the caches behind them) are

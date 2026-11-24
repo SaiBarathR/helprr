@@ -18,6 +18,24 @@ import { defaultCategoryFolder } from './category-links';
 import { sendCategoryChange, useCategoryDetails } from './use-categories';
 
 type ArrWarning = { uses: ArrCategoryUse[]; unchecked: string[] };
+/** A refused save, shown under the field it is about (or above the buttons). */
+type SaveError = { message: string; field?: 'name' | 'savePath' };
+
+function FieldError({ id, error }: { id: string; error: string | undefined }) {
+  if (!error) return null;
+  return <p id={id} role="alert" className="mb-1 text-destructive">{error}</p>;
+}
+
+/** What saving a new folder does to the category's torrents, as qBittorrent is set. */
+function relocationNote(relocate: boolean | null): string {
+  if (relocate === true) {
+    return 'Saving a new folder moves its torrents under automatic management there. Torrents under manual management stay where they are.';
+  }
+  if (relocate === false) {
+    return "Saving a new folder doesn't move its torrents: qBittorrent switches those under automatic management to manual management, and they stay where they are. To move them instead, set qBittorrent's \"When Category Save Path changed\" to Relocate.";
+  }
+  return 'Saving a new folder moves its torrents under automatic management there, unless qBittorrent is set to switch them to manual management.';
+}
 
 function Message({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -45,6 +63,7 @@ export function CategoryForm({ editName }: { editName?: string }) {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [arrWarning, setArrWarning] = useState<ArrWarning | null>(null);
+  const [saveError, setSaveError] = useState<SaveError | null>(null);
 
   // Seed once: a background refetch must not overwrite what is being typed.
   if (existing && savePath === null) setSavePath(existing.savePath);
@@ -81,6 +100,9 @@ export function CategoryForm({ editName }: { editName?: string }) {
   const root = details.defaultSavePath.replace(/[\\/]+$/, '');
   const implicitFolder = root ? defaultCategoryFolder(categoryName || 'name', details) : null;
   const canSave = !saving && !removing && (editing ? path !== (existing?.savePath ?? '') : categoryName !== '');
+  const nameError = saveError?.field === 'name' ? saveError.message : undefined;
+  const pathError = saveError?.field === 'savePath' ? saveError.message : undefined;
+  const formError = saveError && !saveError.field ? saveError.message : undefined;
   // In subcategory mode qBittorrent removes "a/…" with "a".
   const subcategories = editing && details.subcategories
     ? Object.keys(details.categories).filter((key) => key.startsWith(`${editName}/`)).sort()
@@ -97,10 +119,11 @@ export function CategoryForm({ editName }: { editName?: string }) {
     event.preventDefault();
     if (!canSave) return;
     setSaving(true);
+    setSaveError(null);
     const result = await sendCategoryChange(editing ? 'PATCH' : 'POST', { name: categoryName, savePath: path });
     setSaving(false);
     if (!result.ok) {
-      toast.error(result.error);
+      setSaveError({ message: result.error, field: result.field });
       return;
     }
     done(editing ? 'Category saved' : `Created ${categoryName}`);
@@ -131,9 +154,14 @@ export function CategoryForm({ editName }: { editName?: string }) {
       <form className="mt-3 pb-8 readable-column" onSubmit={handleSubmit}>
         <GroupedSection
           title="Name"
-          footer={editing
-            ? "qBittorrent can't rename a category."
-            : details.subcategories ? 'A "/" makes a subcategory, like tv/anime.' : undefined}
+          footer={(nameError || editing || details.subcategories) && (
+            <>
+              <FieldError id="category-name-error" error={nameError} />
+              {editing
+                ? "qBittorrent can't rename a category."
+                : details.subcategories ? 'A "/" makes a subcategory, like tv/anime.' : null}
+            </>
+          )}
         >
           <div className="grouped-row">
             {editing ? (
@@ -141,9 +169,14 @@ export function CategoryForm({ editName }: { editName?: string }) {
             ) : (
               <Input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setSaveError(null);
+                }}
                 placeholder="Category name"
                 aria-label="Category name"
+                aria-invalid={nameError ? true : undefined}
+                aria-describedby={nameError ? 'category-name-error' : undefined}
                 maxLength={100}
                 disabled={saving}
                 autoCapitalize="none"
@@ -158,13 +191,12 @@ export function CategoryForm({ editName }: { editName?: string }) {
           title="Save Path"
           footer={
             <>
+              <FieldError id="category-path-error" error={pathError} />
               {implicitFolder
                 ? `Leave it empty for qBittorrent's default folder (${implicitFolder}). A folder of its own must be inside ${root}.`
                 : "Leave it empty for qBittorrent's default folder."}
               {editing && (
-                <span className="block mt-1">
-                  Saving a new folder moves its torrents under automatic management there, unless qBittorrent is set to switch them to manual management.
-                </span>
+                <span className="block mt-1">{relocationNote(details.relocateOnCategoryPathChange)}</span>
               )}
             </>
           }
@@ -172,9 +204,14 @@ export function CategoryForm({ editName }: { editName?: string }) {
           <div className="grouped-row">
             <Input
               value={savePath ?? ''}
-              onChange={(e) => setSavePath(e.target.value)}
+              onChange={(e) => {
+                setSavePath(e.target.value);
+                setSaveError(null);
+              }}
               placeholder={implicitFolder ?? 'Default folder'}
               aria-label="Save path"
+              aria-invalid={pathError ? true : undefined}
+              aria-describedby={pathError ? 'category-path-error' : undefined}
               disabled={saving || removing}
               autoCapitalize="none"
               autoCorrect="off"
@@ -183,6 +220,7 @@ export function CategoryForm({ editName }: { editName?: string }) {
           </div>
         </GroupedSection>
 
+        {formError && <p role="alert" className="mb-3 px-4 text-xs text-destructive">{formError}</p>}
         <div className="flex gap-3">
           <Button type="submit" className="flex-1 h-11" disabled={!canSave}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     getCategories: vi.fn(),
     getDefaultSavePath: vi.fn(),
     isSubcategoriesEnabled: vi.fn(),
+    getSavePathPreferences: vi.fn(),
     createCategory: vi.fn(),
     editCategory: vi.fn(),
     removeCategories: vi.fn(),
@@ -62,6 +63,9 @@ beforeEach(() => {
   mocks.requireUserCapability.mockResolvedValue({ ok: true, user: ADMIN, session: {} });
   mocks.qbit.getDefaultSavePath.mockResolvedValue('/downloads');
   mocks.qbit.isSubcategoriesEnabled.mockResolvedValue(false);
+  mocks.qbit.getSavePathPreferences.mockResolvedValue({
+    subcategories: false, autoTmmByDefault: false, categoryPathsInManualMode: false, relocateOnCategoryPathChange: false,
+  });
   mocks.qbit.getCategories.mockResolvedValue({
     tv: { name: 'tv', savePath: '/downloads/tv' },
     movies: { name: 'movies', savePath: '/data/movies', download_path: '/downloads/incomplete' },
@@ -95,9 +99,13 @@ describe('who may change categories', () => {
     expect(mocks.requireAdmin).not.toHaveBeenCalled();
   });
 
-  it('adds the default save path and subcategory mode for the Categories screen', async () => {
+  it('adds the default save path and where torrents save for the Categories screen and the add page', async () => {
     const res = await GET(new NextRequest('http://localhost/api/qbittorrent/categories?details=1'));
-    expect(await res.json()).toEqual(expect.objectContaining({ defaultSavePath: '/downloads', subcategories: false }));
+    const body = await res.json();
+    expect(Object.keys(body).sort()).toEqual([
+      'autoTmmByDefault', 'categories', 'categoryPathsInManualMode', 'defaultSavePath', 'relocateOnCategoryPathChange', 'subcategories',
+    ]);
+    expect(body).toEqual(expect.objectContaining({ defaultSavePath: '/downloads', subcategories: false, relocateOnCategoryPathChange: false }));
   });
 });
 
@@ -139,6 +147,8 @@ describe('creating a category', () => {
     mocks.qbit.isSubcategoriesEnabled.mockResolvedValue(true);
     const res = await create({ name });
     expect(res.status).toBe(400);
+    // The form shows it under the name.
+    expect((await res.json()).field).toBe('name');
     expect(mocks.qbit.createCategory).not.toHaveBeenCalled();
     expect(mocks.bump).not.toHaveBeenCalled();
   });
@@ -166,12 +176,14 @@ describe('creating a category', () => {
   ])('refuses a save path %s', async (_label, savePath) => {
     const res = await create({ name: 'anime', savePath });
     expect(res.status).toBe(400);
+    expect((await res.json()).field).toBe('savePath');
     expect(mocks.qbit.createCategory).not.toHaveBeenCalled();
   });
 
   it('refuses a name already taken', async () => {
     const res = await create({ name: 'tv' });
     expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'There is already a category named tv', field: 'name' });
     expect(mocks.qbit.createCategory).not.toHaveBeenCalled();
   });
 
@@ -183,6 +195,7 @@ describe('creating a category', () => {
     );
     const res = await create({ name: 'anime' });
     expect(res.status).toBe(409);
+    expect((await res.json()).field).toBe('name');
     expect(mocks.bump).not.toHaveBeenCalled();
   });
 });
@@ -203,6 +216,7 @@ describe('editing a category', () => {
   it('refuses moving it outside the default save path', async () => {
     const res = await edit({ name: 'tv', savePath: '/etc' });
     expect(res.status).toBe(400);
+    expect((await res.json()).field).toBe('savePath');
     expect(mocks.qbit.editCategory).not.toHaveBeenCalled();
   });
 

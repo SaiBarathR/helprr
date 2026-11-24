@@ -1,5 +1,5 @@
 import { etagJson } from '@/lib/etag-json';
-import { projectTorrentsForSummary, torrentCounters } from '@/lib/qbittorrent-summary';
+import { normalizeTransferInfo, projectTorrentsForSummary, torrentCounters } from '@/lib/qbittorrent-summary';
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
@@ -38,7 +38,13 @@ async function loadSummary(
     client.getTransferInfo().catch(() => null),
     client.getSpeedLimitsMode().catch(() => 0),
   ]);
-  return { torrents: projectTorrentsForSummary(torrents), transferInfo, speedLimitsMode };
+  // Field by field: qBittorrent's transfer/info also carries its last external
+  // IPv4 and IPv6 address (the owner's public IP), which no screen shows.
+  return {
+    torrents: projectTorrentsForSummary(torrents),
+    transferInfo: transferInfo ? normalizeTransferInfo(transferInfo) : null,
+    speedLimitsMode,
+  };
 }
 
 async function getSummaryCached(

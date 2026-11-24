@@ -3,6 +3,7 @@ import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
+import { normalizeTransferInfo } from '@/lib/qbittorrent-summary';
 
 async function getHandler() {
   const auth = await requireUserCapability('torrents.view');
@@ -13,7 +14,8 @@ async function getHandler() {
     const client = await getQBittorrentClient();
     const info = await client.getTransferInfo();
     logApiDuration('/api/qbittorrent/transfer', startedAt, { method: 'GET' });
-    return NextResponse.json(info);
+    // Without qBittorrent's last external addresses (the owner's public IP).
+    return NextResponse.json(normalizeTransferInfo(info));
   } catch (error) {
     console.error('Failed to fetch transfer info:', error);
     logApiDuration('/api/qbittorrent/transfer', startedAt, { method: 'GET', failed: true });

@@ -36,6 +36,18 @@ export interface QBittorrentCategory {
   download_path?: string | false | null;
 }
 
+/** qBittorrent's settings for where torrents save (getSavePathPreferences). */
+export interface SavePathPreferences {
+  /** "Use subcategories": "a/b" is then a child of "a". */
+  subcategories: boolean;
+  /** "Default Torrent Management Mode" is Automatic. */
+  autoTmmByDefault: boolean | null;
+  /** "Use Category paths in Manual Mode". */
+  categoryPathsInManualMode: boolean | null;
+  /** "When Category Save Path changed" is Relocate (else: switch to manual). */
+  relocateOnCategoryPathChange: boolean | null;
+}
+
 export type QueueMove = 'topPrio' | 'increasePrio' | 'decreasePrio' | 'bottomPrio';
 
 export type ContentLayout = 'Original' | 'Subfolder' | 'NoSubfolder';
@@ -414,6 +426,24 @@ export class QBittorrentClient {
   async isSubcategoriesEnabled(): Promise<boolean> {
     const preferences = await this.get<{ use_subcategories?: unknown }>('/api/v2/app/preferences');
     return preferences.use_subcategories === true;
+  }
+
+  /**
+   * The preferences that decide where a torrent saves, copied out one by one:
+   * app/preferences also carries the Web UI and proxy passwords. null where
+   * qBittorrent doesn't send one (an older version).
+   */
+  async getSavePathPreferences(): Promise<SavePathPreferences> {
+    const preferences = await this.get<Record<string, unknown>>('/api/v2/app/preferences');
+    const flag = (value: unknown) => (typeof value === 'boolean' ? value : null);
+    return {
+      subcategories: preferences.use_subcategories === true,
+      autoTmmByDefault: flag(preferences.auto_tmm_enabled),
+      categoryPathsInManualMode: flag(preferences.use_category_paths_in_manual_mode),
+      // qBittorrent's "When Category Save Path changed": true relocates the
+      // category's automatically managed torrents, false switches them to manual.
+      relocateOnCategoryPathChange: flag(preferences.category_changed_tmm_enabled),
+    };
   }
 
   async getDefaultSavePath(): Promise<string> {

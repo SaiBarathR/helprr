@@ -176,6 +176,17 @@ describe('bulk speed limits page', () => {
     expect(posts).toEqual([]);
   });
 
+  it("names the global limit in force as a torrent's own page does", async () => {
+    setSpeedLimitTargets([
+      { ...target('a'), ratio_limit: -2, max_ratio: -1, seeding_time_limit: 60, max_seeding_time: 60, inactive_seeding_time_limit: -2, max_inactive_seeding_time: 1440 },
+      { ...target('b'), ratio_limit: -2, max_ratio: -1, seeding_time_limit: 60, max_seeding_time: 60, inactive_seeding_time_limit: -2, max_inactive_seeding_time: 1440 },
+    ]);
+    await renderPage();
+    expect(rowText('Ratio Limit')).toBe('Ratio LimitGlobal (Unlimited)');
+    expect(rowText('Inactive Seeding Limit')).toBe('Inactive Seeding LimitGlobal (1 d)');
+    expect(rowText('Seeding Time Limit')).toBe('Seeding Time Limit1 h');
+  });
+
   it('explains when the user may not change speed limits', async () => {
     mocks.caps = new Set();
     setSpeedLimitTargets([target('a')]);

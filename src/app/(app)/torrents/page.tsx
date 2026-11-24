@@ -35,16 +35,34 @@ import {
   torrentFacetOptions,
   type TorrentFacetFilters,
 } from './_components/torrent-list';
-import { TorrentRow } from './_components/torrent-row';
+import { TorrentRow, selectionAllowed } from './_components/torrent-row';
 import { useTorrentsSummary } from './_components/use-torrents-summary';
 import { useTorrentTable } from './_components/use-torrent-table';
 import { TorrentsToolbar, type TorrentFacetGroup } from './_components/torrents-toolbar';
 import { TorrentsBulkBar } from './_components/torrents-bulk-bar';
 import { TorrentDetailDrawer, type TorrentDetailData } from './_components/torrent-detail-drawer';
 import { TorrentDeleteDrawer } from './_components/torrent-delete-drawer';
-import { TorrentCategoryDrawer, type CategoryDrawerState } from './_components/torrent-category-drawer';
+import { TorrentCategoryDrawer, clearCategoryDrawerReturn, peekCategoryDrawerReturn, type CategoryDrawerState } from './_components/torrent-category-drawer';
 import { PageTitle } from '@/components/layout/page-title';
 
+
+type CategoryList = Record<string, { name: string; savePath: string }>;
+
+/** qBittorrent's categories (null when it refused); offline, the ones the loaded torrents name. */
+async function fetchCategories(torrents: QBittorrentTorrent[]): Promise<CategoryList | null> {
+  try {
+    // Fetch categories via a dedicated endpoint call
+    const res = await fetch('/api/qbittorrent/categories');
+    return res.ok ? await res.json() : null;
+  } catch {
+    // Fallback: extract unique categories from loaded torrents
+    const cats: CategoryList = {};
+    torrents.forEach((t) => {
+      if (t.category) cats[t.category] = { name: t.category, savePath: '' };
+    });
+    return cats;
+  }
+}
 
 // --- Main page ---
 
@@ -55,6 +73,7 @@ export default function TorrentsPage() {
   const canManageTorrents = useCan('torrents.manage');
   const canDeleteTorrents = useCan('torrents.delete');
   const canBandwidthTorrents = useCan('torrents.bandwidth');
+  const canSelectTorrents = selectionAllowed(canManageTorrents, canDeleteTorrents, canBandwidthTorrents);
   const canAddTorrents = useCan('torrents.add');
   const canViewLinked = useCan('activity.view');
   const hasHydrated = useUIStore((s) => s.hasHydrated);
@@ -79,7 +98,12 @@ export default function TorrentsPage() {
   const isBelowLg = useIsMobile(1023);
   const isTableView = viewMode === 'table' || (viewMode === 'auto' && !isBelowLg);
   const [search, setSearch] = useRouteViewState('search', '');
-  const [selectedTorrents, setSelectedTorrents] = useState<Set<string>>(new Set());
+  // Back from New category, opened in the category drawer: that drawer again,
+  // for the same torrents (still selected), with the new category listed.
+  const [categoryReturn] = useState(peekCategoryDrawerReturn);
+  const [selectedTorrents, setSelectedTorrents] = useState<Set<string>>(
+    () => new Set(categoryReturn?.bulk ? categoryReturn.hash.split('|') : []),
+  );
   const [listOffsetTop, setListOffsetTop] = useState(0);
 
   const [detailHash, setDetailHash] = useState<string | null>(null);
@@ -104,9 +128,11 @@ export default function TorrentsPage() {
   const [deleting, setDeleting] = useState(false);
 
   // Category drawer
-  const [categoryDrawer, setCategoryDrawer] = useState<CategoryDrawerState>({ open: false, hash: '' });
-  const [categories, setCategories] = useState<Record<string, { name: string; savePath: string }>>({});
-  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoryDrawer, setCategoryDrawer] = useState<CategoryDrawerState>(
+    () => (categoryReturn ? { open: true, ...categoryReturn } : { open: false, hash: '' }),
+  );
+  const [categories, setCategories] = useState<CategoryList>({});
+  const [categoriesLoading, setCategoriesLoading] = useState(categoryReturn !== null);
 
   const {
     torrents,
@@ -154,8 +180,13 @@ export default function TorrentsPage() {
     }
   }, []);
 
+  // A selection brought back from New category waits for the first list: the
+  // empty one before it would drop every hash.
+  const listedRef = useRef(false);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- prune selected hashes when refreshed torrent data no longer contains them
+    if (torrents.length > 0) listedRef.current = true;
+    if (!listedRef.current) return;
+    // Prune selected hashes when refreshed torrent data no longer contains them.
     setSelectedTorrents((prev) => {
       if (prev.size === 0) return prev;
       const availableHashes = new Set(torrents.map((torrent) => torrent.hash));
@@ -330,26 +361,23 @@ export default function TorrentsPage() {
     setDeleteDrawer({ open: true, hash, name, deleteFiles });
   }, []);
 
-  const openCategoryDrawer = useCallback(async (hash: string, bulk?: boolean) => {
+  const showCategories = useCallback((loaded: CategoryList | null) => {
+    if (loaded) setCategories(loaded);
+    setCategoriesLoading(false);
+  }, []);
+
+  const openCategoryDrawer = useCallback((hash: string, bulk?: boolean) => {
     setCategoryDrawer({ open: true, hash, bulk });
     setCategoriesLoading(true);
-    try {
-      // Fetch categories via a dedicated endpoint call
-      const res = await fetch('/api/qbittorrent/categories');
-      if (res.ok) {
-        setCategories(await res.json());
-      }
-    } catch {
-      // Fallback: extract unique categories from loaded torrents
-      const cats: Record<string, { name: string; savePath: string }> = {};
-      torrents.forEach((t) => {
-        if (t.category) cats[t.category] = { name: t.category, savePath: '' };
-      });
-      setCategories(cats);
-    } finally {
-      setCategoriesLoading(false);
-    }
-  }, [torrents]);
+    void fetchCategories(torrentsRef.current).then(showCategories);
+  }, [showCategories, torrentsRef]);
+
+  // Taken once the page is up, so a later visit doesn't open the drawer again.
+  useEffect(() => {
+    if (!categoryReturn) return;
+    clearCategoryDrawerReturn();
+    void fetchCategories(torrentsRef.current).then(showCategories);
+  }, [categoryReturn, showCategories, torrentsRef]);
 
   const openBulkCategory = useCallback(() => {
     void openCategoryDrawer(Array.from(selectedTorrents).join('|'), true);
@@ -371,8 +399,13 @@ export default function TorrentsPage() {
   const openBulkSpeedLimits = useCallback(() => {
     setSpeedLimitTargets(torrents
       .filter((t) => selectedTorrents.has(t.hash))
-      .map(({ hash, name, dl_limit, up_limit, ratio_limit, seeding_time_limit, inactive_seeding_time_limit }) =>
-        ({ hash, name, dl_limit, up_limit, ratio_limit, seeding_time_limit, inactive_seeding_time_limit })));
+      .map(({
+        hash, name, dl_limit, up_limit, ratio_limit, seeding_time_limit, inactive_seeding_time_limit,
+        max_ratio, max_seeding_time, max_inactive_seeding_time,
+      }) => ({
+        hash, name, dl_limit, up_limit, ratio_limit, seeding_time_limit, inactive_seeding_time_limit,
+        max_ratio, max_seeding_time, max_inactive_seeding_time,
+      })));
     router.push('/torrents/speed-limits');
   }, [router, selectedTorrents, torrents]);
 
@@ -526,6 +559,7 @@ export default function TorrentsPage() {
     openRename,
     canManageTorrents,
     canDeleteTorrents,
+    canSelect: canSelectTorrents,
   });
 
   return (
@@ -558,7 +592,7 @@ export default function TorrentsPage() {
           the filter button's dot stays in view. */}
       <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
 
-      {selectedTorrents.size > 0 && (
+      {canSelectTorrents && selectedTorrents.size > 0 && (
         <TorrentsBulkBar
           selectedTorrents={selectedTorrents}
           canManageTorrents={canManageTorrents}
@@ -614,7 +648,7 @@ export default function TorrentsPage() {
       ) : (
         <div className="space-y-0">
           <div className="flex items-center gap-2 px-3 pb-2">
-            {!isTableView && (
+            {!isTableView && canSelectTorrents && (
               <label className="relative flex touch-target" data-context-menu-ignore>
                 <input
                   type="checkbox"

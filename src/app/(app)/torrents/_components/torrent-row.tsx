@@ -50,6 +50,15 @@ export interface TorrentRowProps {
   onRename: (hash: string) => void;
 }
 
+/**
+ * Selecting torrents is only for their bulk actions: Start, Stop and the rest
+ * (manage), Speed & Share Limits (bandwidth), Delete (delete). Without any of
+ * them a selection bar would offer nothing but Clear.
+ */
+export function selectionAllowed(canManage: boolean, canDelete: boolean, canBandwidth: boolean): boolean {
+  return canManage || canDelete || canBandwidth;
+}
+
 export function torrentContextActionGroups({
   torrent,
   selected,
@@ -61,9 +70,12 @@ export function torrentContextActionGroups({
   onRename,
   canManageTorrents,
   canDeleteTorrents,
+  canSelect,
 }: TorrentRowProps & {
   canManageTorrents: boolean;
   canDeleteTorrents: boolean;
+  /** Whether the user has any bulk action (selectionAllowed). */
+  canSelect: boolean;
 }): ContextActionGroup[] {
   return [
     {
@@ -75,12 +87,12 @@ export function torrentContextActionGroups({
           icon: <Info className="h-4 w-4" />,
           onSelect: () => onFetchDetail(torrent.hash),
         },
-        {
+        ...(canSelect ? [{
           id: 'toggle-selection',
           label: selected ? 'Deselect' : 'Select',
           icon: <CheckCircle2 className="h-4 w-4" />,
           onSelect: () => onToggleSelect(torrent.hash),
-        },
+        }] : []),
       ],
     },
     {
@@ -248,6 +260,7 @@ export const TorrentRow = memo(function TorrentRow({
   const hasSpeedLimit = torrent.dl_limit > 0 || torrent.up_limit > 0;
   const canManageTorrents = useCan('torrents.manage');
   const canDeleteTorrents = useCan('torrents.delete');
+  const canSelect = selectionAllowed(canManageTorrents, canDeleteTorrents, useCan('torrents.bandwidth'));
   const stopped = PAUSED_STATES.has(torrent.state);
   const contextGroups = torrentContextActionGroups({
     torrent,
@@ -260,6 +273,7 @@ export const TorrentRow = memo(function TorrentRow({
     onRename,
     canManageTorrents,
     canDeleteTorrents,
+    canSelect,
   });
 
   return (
@@ -283,15 +297,17 @@ export const TorrentRow = memo(function TorrentRow({
       <div className="flex items-start gap-3">
         {/* The label carries the 44px hit area (a native checkbox can't), and
             is marked so a long press on it selects instead of opening the menu. */}
-        <label className="relative mt-1 flex touch-target" data-context-menu-ignore>
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={() => onToggleSelect(torrent.hash)}
-            className="rounded border-border"
-            aria-label={`Select ${torrent.name}`}
-          />
-        </label>
+        {canSelect && (
+          <label className="relative mt-1 flex touch-target" data-context-menu-ignore>
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={() => onToggleSelect(torrent.hash)}
+              className="rounded border-border"
+              aria-label={`Select ${torrent.name}`}
+            />
+          </label>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <button

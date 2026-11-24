@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   caps: new Set<string>(),
+  me: null as { role: string } | null,
   mobile: true,
   detailTotalSize: 2 * 1024 ** 3,
   push: vi.fn(),
@@ -20,7 +21,7 @@ const mocks = vi.hoisted(() => ({
   action: (() => Response.json({ success: true })) as (body: Record<string, unknown>) => Response,
 }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: mocks.push, replace: vi.fn(), back: vi.fn() }) }));
-vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap), useMe: () => null }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap), useMe: () => mocks.me }));
 vi.mock('@/components/layout/badge-provider', () => ({ useBadgeActions: () => ({ adjustBadge: mocks.adjustBadge }) }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 vi.mock('@/lib/client-refresh-settings', () => ({ getRefreshIntervalMs: vi.fn(async () => 60_000) }));
@@ -147,6 +148,7 @@ class ResizeObserverStub { observe() {} disconnect() {} unobserve() {} }
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.caps = new Set(['torrents.manage', 'torrents.delete', 'torrents.bandwidth', 'torrents.add', 'activity.view']);
+  mocks.me = null;
   mocks.mobile = true;
   mocks.detailTotalSize = 2 * 1024 ** 3;
   mocks.sent = [];
@@ -595,8 +597,11 @@ describe('torrents page (characterization)', () => {
   it('toggles alternative speed limits, and goes to rename, settings, linked downloads and add', async () => {
     const { user } = renderPage();
     await waitFor(() => expect(names()).toHaveLength(3));
-    await user.click(screen.getByRole('button', { name: 'Alternative Speed Limits' }));
+    const altSpeed = screen.getByRole('button', { name: 'Alternative Speed Limits' });
+    expect(altSpeed.getAttribute('aria-pressed')).toBe('false');
+    await user.click(altSpeed);
     await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Alternative speed mode toggled'));
+    expect(altSpeed.getAttribute('aria-pressed')).toBe('true');
     expect(mocks.sent.find((sent) => sent.path === '/api/qbittorrent/transfer/limits')?.body).toEqual({ action: 'toggleSpeedLimitsMode' });
 
     await user.click(actionsFor('Alpha.Movie').getByRole('button', { name: 'Rename' }));
@@ -627,9 +632,55 @@ describe('torrents page (characterization)', () => {
     expect(actionsFor('Alpha.Movie').queryByRole('button', { name: /Delete/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Torrent actions' })).toBeNull();
     for (const name of ['Alternative Speed Limits', 'qBittorrent settings', 'Linked downloads', 'Add Torrent']) expect(screen.queryByRole('button', { name })).toBeNull();
+    // No bulk action, so nothing to select for: no checkboxes, no Select in the row menu, no bar with only Clear.
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(actionsFor('Alpha.Movie').queryByRole('button', { name: 'Select' })).toBeNull();
+    expect(actionsFor('Alpha.Movie').getByRole('button', { name: 'View details' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
+    void user;
+  });
+
+  it('offers selection on the wide-screen table only with a bulk action', async () => {
+    mocks.mobile = false;
+    mocks.caps = new Set(['torrents.bandwidth']);
+    renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    expect(screen.getByRole('checkbox', { name: 'Select all' })).toBeTruthy();
+    cleanup();
+
+    mocks.caps = new Set();
+    renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.getAllByRole('columnheader')[0].textContent).toBe('Name');
+  });
+
+  it('comes back from New category to the drawer, with the selection it was opened for', async () => {
+    mocks.me = { role: 'admin' };
+    const { user } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
     await user.click(screen.getByRole('checkbox', { name: 'Select Alpha.Movie' }));
-    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Clear' })).toBeTruthy();
+    await user.click(screen.getByRole('checkbox', { name: 'Select Charlie' }));
+    await user.click(within(screen.getByRole('button', { name: 'More actions' }).nextElementSibling as HTMLElement).getByRole('menuitem', { name: 'Set Category' }));
+    await user.click(await within(screen.getByRole('dialog')).findByRole('button', { name: 'New category' }));
+    expect(mocks.push).toHaveBeenCalledWith('/torrents/categories/new');
+    cleanup();
+
+    // Back on Torrents after Create: the same drawer, the new category listed, the two still selected.
+    const again = renderPage();
+    const drawer = screen.getByRole('dialog');
+    expect(within(drawer).getByRole('heading', { name: 'Set Category for 2 torrents' })).toBeTruthy();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    expect((screen.getByRole('checkbox', { name: 'Select Alpha.Movie' }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole('checkbox', { name: 'Select Charlie' }) as HTMLInputElement).checked).toBe(true);
+    await again.user.click(await within(drawer).findByRole('button', { name: /^tv/ }));
+    await waitFor(() => expect(posted()).toContainEqual({ hash: 'aaa|ccc', action: 'setCategory', category: 'tv' }));
+    cleanup();
+
+    // Once: a later visit opens nothing.
+    renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('shows a table with sortable headers on a wide screen', async () => {

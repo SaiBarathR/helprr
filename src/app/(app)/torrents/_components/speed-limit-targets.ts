@@ -8,6 +8,10 @@ export interface SpeedLimitTarget {
   ratio_limit?: number;
   seeding_time_limit?: number;
   inactive_seeding_time_limit?: number;
+  // The limits in force (qBittorrent's max_*): the global ones where the torrent uses them.
+  max_ratio?: number;
+  max_seeding_time?: number;
+  max_inactive_seeding_time?: number;
 }
 
 // The list hands its selection to /torrents/speed-limits in memory: a selection

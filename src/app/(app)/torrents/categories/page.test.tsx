@@ -35,7 +35,11 @@ const DETAILS = {
   },
   defaultSavePath: '/downloads/',
   subcategories: false,
+  autoTmmByDefault: false,
+  categoryPathsInManualMode: false,
+  relocateOnCategoryPathChange: false as boolean | null,
 };
+let details = DETAILS;
 
 let calls: { method: string; body: Record<string, unknown> }[];
 let respond: (method: string, body: Record<string, unknown>) => Response;
@@ -43,12 +47,13 @@ let respond: (method: string, body: Record<string, unknown>) => Response;
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.me = { role: 'admin' };
+  details = DETAILS;
   calls = [];
   respond = () => Response.json({ success: true });
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     if (!init?.method || init.method === 'GET') {
       expect(url).toBe('/api/qbittorrent/categories?details=1');
-      return Response.json(DETAILS);
+      return Response.json(details);
     }
     const body = JSON.parse(String(init.body)) as Record<string, unknown>;
     calls.push({ method: init.method, body });
@@ -103,15 +108,51 @@ describe('Category form', () => {
     expect(calls).toEqual([{ method: 'POST', body: { name: 'music', savePath: '/downloads/music' } }]);
   });
 
-  it('shows the refusal and stays on the page', async () => {
-    respond = () => Response.json({ error: "The save path must be inside qBittorrent's default save path (/downloads)" }, { status: 400 });
+  it('shows the refusal under the field it is about and stays on the page', async () => {
+    const PATH_ERROR = "The save path must be inside qBittorrent's default save path (/downloads)";
+    respond = () => Response.json({ error: PATH_ERROR, field: 'savePath' }, { status: 400 });
     const user = userEvent.setup();
     renderWithQuery(<CategoryForm />);
     await user.type(await screen.findByLabelText('Category name'), 'music');
     await user.type(screen.getByLabelText('Save path'), '/etc');
     await user.click(screen.getByRole('button', { name: 'Create' }));
-    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith("The save path must be inside qBittorrent's default save path (/downloads)"));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(PATH_ERROR);
+    const field = screen.getByLabelText('Save path');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(field.getAttribute('aria-describedby')).toBe(alert.id);
+    expect(mocks.toast.error).not.toHaveBeenCalled();
     expect(mocks.back).not.toHaveBeenCalled();
+
+    // Typing again clears it.
+    await user.type(field, 'x');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('shows a name refusal under the name, and one about neither field above the buttons', async () => {
+    respond = () => Response.json({ error: 'There is already a category named tv', field: 'name' }, { status: 409 });
+    const user = userEvent.setup();
+    renderWithQuery(<CategoryForm />);
+    const name = await screen.findByLabelText('Category name');
+    await user.type(name, 'tv');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect((await screen.findByRole('alert')).id).toBe(name.getAttribute('aria-describedby'));
+
+    respond = () => Response.json({ error: 'Failed to create the category' }, { status: 502 });
+    await user.type(name, '2');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('Failed to create the category');
+    expect(name.getAttribute('aria-invalid')).toBeNull();
+  });
+
+  it.each([
+    [true, /moves its torrents under automatic management there\. Torrents under manual management stay/],
+    [false, /doesn't move its torrents: qBittorrent switches those under automatic management to manual management/],
+    [null, /unless qBittorrent is set to switch them to manual management/],
+  ])('says what saving a new folder does when qBittorrent relocates: %s', async (relocate, text) => {
+    details = { ...DETAILS, relocateOnCategoryPathChange: relocate };
+    renderWithQuery(<CategoryForm editName="tv" />);
+    expect(await screen.findByText(text)).toBeTruthy();
   });
 
   it('warns of the arr that uses a category before removing it anyway', async () => {
