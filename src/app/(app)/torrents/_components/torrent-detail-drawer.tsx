@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { Copy, FolderOpen, Loader2, Pencil, SlidersHorizontal } from 'lucide-react';
+import { Copy, FolderOpen, Hash, Loader2, Pencil, SlidersHorizontal, Users } from 'lucide-react';
 import type { QBittorrentTorrent } from '@/types';
 import type { TorrentFile, TorrentTracker } from '@/lib/qbittorrent-client';
 import { formatSpeedLimit } from './speed-limit-input';
@@ -24,7 +24,17 @@ export interface TorrentDetailData {
   private?: boolean | null;
 }
 
-/** One torrent's details: transfer, session, settings (read-only), timing, network, magnet, files and trackers (read-only). */
+async function copyText(text: string, what: string) {
+  try {
+    // Throws outside a secure context too (Helprr over plain http), where there is no clipboard API.
+    await navigator.clipboard.writeText(text);
+    toast.success(`${what} copied`);
+  } catch {
+    toast.error('Failed to copy');
+  }
+}
+
+/** One torrent's details: transfer, session, settings (read-only), timing, network, torrent info, magnet, files and trackers (read-only). */
 export function TorrentDetailDrawer({
   detailHash,
   setDetailHash,
@@ -156,12 +166,33 @@ export function TorrentDetailDrawer({
                   {detailTorrent && detailTorrent.eta > 0 && detailTorrent.eta < 8640000 && (
                     <DetailRow label="ETA" value={formatEta(detailTorrent.eta)} />
                   )}
+                  {/* qBittorrent reports -1 or 0 when no peer has had the whole torrent, or no announce is due (stopped). */}
+                  {Number(detailData.properties.last_seen) > 0 && (
+                    <DetailRow label="Last Seen Complete" value={formatDateTime(Number(detailData.properties.last_seen) * 1000)} />
+                  )}
+                  {Number(detailData.properties.reannounce) > 0 && (
+                    <DetailRow label="Next Reannounce" value={formatEta(Number(detailData.properties.reannounce))} />
+                  )}
                 </div>
               </div>
 
               {/* Network */}
               <div>
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Network</h3>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Network</h3>
+                  <button
+                    className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                    onClick={() => {
+                      const name = detailHash ? torrentNameByHash.get(detailHash) || '' : '';
+                      setDetailHash(null);
+                      setDetailData(null);
+                      router.push(`/torrents/${detailHash}/peers?name=${encodeURIComponent(name)}`);
+                    }}
+                  >
+                    <Users className="h-3.5 w-3.5" />
+                    {canManageTorrents ? 'Manage Peers' : 'View Peers'}
+                  </button>
+                </div>
                 <div className="rounded-lg border divide-y">
                   <DetailRow label="Seeds" value={`${detailData.properties.seeds} (${detailData.properties.seeds_total} total)`} />
                   <DetailRow label="Peers" value={`${detailData.properties.peers} (${detailData.properties.peers_total} total)`} />
@@ -169,6 +200,55 @@ export function TorrentDetailDrawer({
                   <DetailRow label="Wasted" value={formatBytes(Number(detailData.properties.total_wasted) || 0)} />
                   <DetailRow label="Save Path" value={String(detailData.properties.save_path || '-')} />
                 </div>
+              </div>
+
+              {/* Torrent: what it is, from its metadata. The comment and "created by" come
+                  cleaned for anyone but an admin (a tracker can put a passkey link there). */}
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Torrent</h3>
+                <div className="rounded-lg border divide-y">
+                  {detailHash && <DetailRow label="Hash" value={detailHash} mono />}
+                  {typeof detailData.private === 'boolean' && (
+                    <DetailRow label="Private" value={detailData.private ? 'Yes' : 'No'} />
+                  )}
+                  {/* -1 until the torrent has its metadata. */}
+                  {Number(detailData.properties.pieces_num) > 0 && (
+                    <DetailRow
+                      label="Pieces"
+                      value={`${Number(detailData.properties.pieces_have) || 0} / ${Number(detailData.properties.pieces_num)} × ${formatBytes(Number(detailData.properties.piece_size))}`}
+                    />
+                  )}
+                  {Number(detailData.properties.creation_date) > 0 && (
+                    <DetailRow label="Created On" value={formatDateTime(Number(detailData.properties.creation_date) * 1000)} />
+                  )}
+                  {typeof detailData.properties.created_by === 'string' && detailData.properties.created_by && (
+                    <DetailRow label="Created By" value={detailData.properties.created_by} />
+                  )}
+                  {typeof detailData.properties.comment === 'string' && detailData.properties.comment && (
+                    <div className="px-3 py-2 space-y-0.5">
+                      <p className="text-xs text-muted-foreground">Comment</p>
+                      <p className="text-xs whitespace-pre-wrap break-words">{detailData.properties.comment}</p>
+                    </div>
+                  )}
+                </div>
+                {detailHash && (
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                      disabled={!torrentNameByHash.get(detailHash)}
+                      onClick={() => void copyText(torrentNameByHash.get(detailHash) || '', 'Name')}
+                    >
+                      <Copy className="mr-2 h-3.5 w-3.5" />
+                      Copy Name
+                    </Button>
+                    <Button variant="outline" size="sm" className="text-xs" onClick={() => void copyText(detailHash, 'Hash')}>
+                      <Hash className="mr-2 h-3.5 w-3.5" />
+                      Copy Hash
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {/* Magnet Link */}
@@ -181,10 +261,7 @@ export function TorrentDetailDrawer({
                     className="w-full text-xs"
                     onClick={() => {
                       if (!detailData.magnet) return;
-                      navigator.clipboard.writeText(detailData.magnet).then(
-                        () => toast.success('Magnet URI copied'),
-                        () => toast.error('Failed to copy')
-                      );
+                      void copyText(detailData.magnet, 'Magnet URI');
                     }}
                   >
                     <Copy className="mr-2 h-3.5 w-3.5" />
@@ -280,11 +357,11 @@ export function TorrentDetailDrawer({
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between px-3 py-2">
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs text-right max-w-[60%] break-words">{value}</span>
+      <span className={`text-xs text-right max-w-[60%] ${mono ? 'font-mono break-all' : 'break-words'}`}>{value}</span>
     </div>
   );
 }

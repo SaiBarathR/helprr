@@ -72,6 +72,8 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/qbittorrent/categories',
     'PATCH /api/qbittorrent/categories',
     'DELETE /api/qbittorrent/categories',
+    // A peer ban is global and kept in qBittorrent's banned IP list.
+    'POST /api/qbittorrent/[hash]/peers/ban',
     // Library cleanup: rules, preview, marking Leaving soon and Delete now.
     'PUT /api/cleanup/library/config',
     'POST /api/cleanup/library/preview',
@@ -361,7 +363,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
   ],
   'cap:torrents.add': ['POST /api/qbittorrent'],
   'cap:torrents.bandwidth': ['POST /api/qbittorrent/transfer/limits'],
-  'cap:torrents.manage': ['POST /api/qbittorrent/[hash]/files/priority', 'POST /api/qbittorrent/[hash]/trackers'],
+  'cap:torrents.manage': ['POST /api/qbittorrent/[hash]/files/priority', 'POST /api/qbittorrent/[hash]/peers', 'POST /api/qbittorrent/[hash]/trackers'],
   'cap:watchlist.edit': [
     'DELETE /api/watchlist/[id]',
     'PATCH /api/watchlist/[id]',
@@ -636,7 +638,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(287);
+    expect(handlers.size).toBe(289);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
