@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { ChevronRight, Loader2 } from 'lucide-react';
+import Link from '@/components/ui/app-link';
 import { PageHeader } from '@/components/layout/page-header';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { ErrorState } from '@/components/ui/error-state';
@@ -14,7 +15,7 @@ import { handleAuthError } from '@/lib/query-client';
 import { formatBytes } from '@/lib/format';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { useUIStore, type TorrentsViewPreference } from '@/lib/store';
-import { useCan } from '@/components/permission-provider';
+import { useCan, useMe } from '@/components/permission-provider';
 import type { QBittorrentServerStats, QBittorrentTransferInfo } from '@/types';
 import { SpeedLimitInput, formatSpeedLimit } from '../_components/speed-limit-input';
 
@@ -54,6 +55,7 @@ function StatRow({ label, value }: { label: string; value: string }) {
 export default function QBittorrentSettingsPage() {
   const queryClient = useQueryClient();
   const canBandwidth = useCan('torrents.bandwidth');
+  const isAdmin = useMe()?.role === 'admin';
   const hasHydrated = useUIStore((s) => s.hasHydrated);
   const viewMode = useUIStore((s) => s.torrentsView);
   const setViewMode = useUIStore((s) => s.setTorrentsView);
@@ -183,6 +185,19 @@ export default function QBittorrentSettingsPage() {
               </SelectContent>
             </Select>
           </div>
+        </GroupedSection>
+
+        <GroupedSection title="Organize">
+          <Link
+            href="/torrents/categories"
+            className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
+          >
+            <span className="text-sm">Categories</span>
+            <span className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
+              {isAdmin ? 'Add, edit and remove' : 'Folders and names'}
+              <ChevronRight className="h-4 w-4" />
+            </span>
+          </Link>
         </GroupedSection>
 
         <GroupedSection

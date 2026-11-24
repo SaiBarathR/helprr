@@ -36,10 +36,55 @@ export async function isInsideDownloadRoots(client: QBittorrentClient, savepath:
     client.getDefaultSavePath(),
     client.getCategories(),
   ]);
-  const roots = [defaultSavePath, ...Object.values(categories).map((category) => category.savePath)]
+  return isUnderRoots(normalized, [defaultSavePath, ...Object.values(categories).map((category) => category.savePath)]);
+}
+
+function isUnderRoots(normalized: string, roots: string[]): boolean {
+  return roots
     .map((root) => (root ? normalizeSavePath(root) : null))
-    .filter((root): root is string => Boolean(root));
-  return roots.some((root) => normalized === root || normalized.startsWith(`${root}/`));
+    .filter((root): root is string => Boolean(root))
+    .some((root) => normalized === root || normalized.startsWith(`${root}/`));
+}
+
+/**
+ * True when a category's save path resolves under `root`, qBittorrent's default
+ * save path. Not under the other categories' folders: a category's folder is
+ * itself a download root (see isInsideDownloadRoots), so a new one may only sit
+ * inside the folder qBittorrent was set up with, never chain outward from an
+ * earlier category.
+ */
+export function isInsideFolder(savepath: string, root: string): boolean {
+  const normalized = normalizeSavePath(savepath);
+  return normalized !== null && isUnderRoots(normalized, [root]);
+}
+
+const MAX_CATEGORY_NAME_LENGTH = 100;
+
+/**
+ * A new category's name, trimmed as qBittorrent will read it, or why it may
+ * not be made. qBittorrent saves a category with no save path of its own in
+ * <default save path>/<name> with ".." resolved, so "../x" would land outside
+ * every download folder. A part made only of dots and spaces is refused too:
+ * Windows drops a part's trailing dots and spaces, so ".. " is ".." there. "/"
+ * makes a subcategory, so it is allowed only while qBittorrent's subcategory
+ * mode is on.
+ */
+export function parseNewCategoryName(
+  value: unknown,
+  subcategories: boolean,
+): { ok: true; name: string } | { ok: false; error: string } {
+  const name = typeof value === 'string' ? value.replace(QT_TRIM, '') : '';
+  if (!name) return { ok: false, error: 'Enter a category name' };
+  if (name.length > MAX_CATEGORY_NAME_LENGTH || CONTROL_CHARACTERS.test(name) || name.includes('\\')) {
+    return { ok: false, error: 'A category name needs at most 100 characters and no backslash' };
+  }
+  if (name.split('/').some((segment) => /^[\s\u0085.]*$/.test(segment))) {
+    return { ok: false, error: 'Each part of a category name needs more than dots and spaces' };
+  }
+  if (name.includes('/') && !subcategories) {
+    return { ok: false, error: 'A "/" makes a subcategory: turn on subcategories in qBittorrent first' };
+  }
+  return { ok: true, name };
 }
 
 /** A new save path for torrents/setLocation, trimmed; null when it is not a usable path. */

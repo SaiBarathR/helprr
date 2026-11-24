@@ -93,4 +93,32 @@ describe('qBittorrent location, tag and queue calls', () => {
     await expect(client.setSpeedLimits({ web_ui_password: 'pwned' } as never)).rejects.toThrow();
     expect(requests).toHaveLength(1);
   });
+  it('creates, edits and removes categories', async () => {
+    await client.createCategory('anime', '');
+    await client.removeCategories(['tv', '../escape']);
+    expect(requests).toEqual([
+      { method: 'POST', path: '/api/v2/torrents/createCategory', body: { category: 'anime', savePath: '' } },
+      { method: 'POST', path: '/api/v2/torrents/removeCategories', body: { categories: 'tv\n../escape' } },
+    ]);
+    await expect(client.removeCategories([])).rejects.toThrow();
+  });
+
+  // qBittorrent 5 resets the download path to the global one when downloadPathEnabled is left out.
+  it.each([
+    ['its own download path', '/downloads/incomplete', { downloadPathEnabled: 'true', downloadPath: '/downloads/incomplete' }],
+    ['no download path', false, { downloadPathEnabled: 'false' }],
+    ['the global download path', null, {}],
+    ['a qBittorrent without download paths', undefined, {}],
+  ] as const)('sends back %s when editing a category', async (_label, downloadPath, sent) => {
+    await client.editCategory('tv', '/downloads/tv', downloadPath);
+    expect(requests).toEqual([
+      { method: 'POST', path: '/api/v2/torrents/editCategory', body: { category: 'tv', savePath: '/downloads/tv', ...sent } },
+    ]);
+  });
+
+  it('reads the subcategory mode', async () => {
+    expect(await client.isSubcategoriesEnabled()).toBe(false);
+    preferences.use_subcategories = true;
+    expect(await client.isSubcategoriesEnabled()).toBe(true);
+  });
 });
