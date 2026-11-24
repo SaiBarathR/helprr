@@ -18,6 +18,8 @@ import {
 } from '@/components/ui/responsive-menu';
 import { Badge } from '@/components/ui/badge';
 import { CustomFormatChips } from '@/components/media/custom-format-chips';
+import { QualityProfileSheet, QualityProfileValue } from '@/components/media/quality-profile-sheet';
+import { useQualityProfiles } from '@/lib/hooks/use-reference-data';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
@@ -187,6 +189,7 @@ export default function EpisodeDetailPage() {
   const [showScheduleAlert, setShowScheduleAlert] = useState(false);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
+  const [showQualityProfile, setShowQualityProfile] = useState(false);
 
   const canDeleteSeries = useCan('series.delete');
   const canManageActivity = useCan('activity.manage');
@@ -203,6 +206,7 @@ export default function EpisodeDetailPage() {
     enabled: Number.isFinite(seriesId) && Number.isFinite(episodeId),
   });
   const series = seriesQuery.data ?? null;
+  const { data: qualityProfiles = [] } = useQualityProfiles('sonarr', instance);
   const episodesQuery = useQuery({
     queryKey: episodesWithFileKey(seriesId, instance),
     queryFn: jsonFetcher<EpisodeWithFile[]>(`/api/sonarr/${seriesId}/episodes?includeEpisodeFile=true`, instance),
@@ -343,6 +347,7 @@ export default function EpisodeDetailPage() {
   }
 
   const episodeFile = episode.episodeFile;
+  const qualityProfileName = qualityProfiles.find((qp) => qp.id === series.qualityProfileId)?.name;
   const mediaInfo = episodeFile?.mediaInfo;
   const epCode = `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`;
   const searchHref = arrInteractiveSearchHref(
@@ -662,6 +667,14 @@ export default function EpisodeDetailPage() {
               <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Quality</span>
               <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{episodeFile.quality?.quality?.name || 'Unknown'}</span>
             </div>
+            {/* What the file is measured against: why it is "cutoff unmet" or keeps upgrading. */}
+            <div className="flex justify-between items-center gap-4 px-4 py-2.5 border-b">
+              <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Quality Profile</span>
+              <QualityProfileValue
+                name={qualityProfileName || 'Unknown'}
+                onOpen={() => setShowQualityProfile(true)}
+              />
+            </div>
             {(episodeFile.customFormats?.some((cf) => cf.name) || (episodeFile.customFormatScore ?? 0) !== 0) && (
               <div className="flex justify-between items-center gap-4 px-4 py-2.5 border-b">
                 <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Custom Formats</span>
@@ -924,6 +937,15 @@ export default function EpisodeDetailPage() {
           </div>
         </DrawerContent>
       </Drawer>
+
+      <QualityProfileSheet
+        service="sonarr"
+        instanceId={instance}
+        profileId={series.qualityProfileId}
+        profileName={qualityProfileName}
+        open={showQualityProfile}
+        onOpenChange={setShowQualityProfile}
+      />
     </div>
   );
 }

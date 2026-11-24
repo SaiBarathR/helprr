@@ -16,6 +16,7 @@ import type {
   ManualImportItem,
   MovieFileResource,
   QualityProfile,
+  QualityProfileResource,
   QualityDefinition,
   ArrLanguage,
   RootFolder,
@@ -500,6 +501,10 @@ export class RadarrClient {
   // Configuration
   async getQualityProfiles(): Promise<QualityProfile[]> {
     return this.get<QualityProfile[]>('/api/v3/qualityprofile');
+  }
+
+  async getQualityProfile(id: number): Promise<QualityProfileResource> {
+    return this.get<QualityProfileResource>(`/api/v3/qualityprofile/${id}`);
   }
 
   async getRootFolders(): Promise<RootFolder[]> {

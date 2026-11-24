@@ -478,6 +478,48 @@ export interface QualityProfile {
   name: string;
 }
 
+// One quality profile as Sonarr/Radarr (v3) and Lidarr (v1) return it. `items`
+// run least preferred first; an entry with its own `items` is a group, whose id
+// shares the cutoff's id space (groups start at 1000).
+export interface QualityProfileItemResource {
+  id?: number;
+  name?: string;
+  quality?: { id: number; name: string };
+  items?: QualityProfileItemResource[];
+  allowed: boolean;
+}
+
+export interface QualityProfileResource {
+  id: number;
+  name: string;
+  upgradeAllowed?: boolean;
+  cutoff: number;
+  items: QualityProfileItemResource[];
+  minFormatScore?: number;
+  cutoffFormatScore?: number;
+  minUpgradeFormatScore?: number;
+  formatItems?: Array<{ format: number; name?: string; score: number }>;
+  /** Radarr only; Sonarr v4 and Lidarr choose languages with custom formats. */
+  language?: { id: number; name: string };
+}
+
+/** What the quality profile sheet shows: rebuilt from an allow-list, never the raw resource. */
+export interface QualityProfileSummary {
+  id: number;
+  name: string;
+  upgradeAllowed: boolean;
+  /** The cutoff quality or group's name; null when it names nothing in the profile. */
+  cutoff: string | null;
+  /** Allowed qualities, most preferred first. A group lists its allowed members. */
+  qualities: Array<{ name: string; isCutoff: boolean; members: string[] }>;
+  minFormatScore: number | null;
+  cutoffFormatScore: number | null;
+  minUpgradeFormatScore: number | null;
+  language: string | null;
+  /** Every custom format's score in this profile: non-zero ones first, highest first. */
+  formats: Array<{ name: string; score: number }>;
+}
+
 // Root Folders
 export interface RootFolder {
   id: number;
