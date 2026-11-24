@@ -147,6 +147,8 @@ export interface SonarrEpisodeFile {
   mediaInfo?: SonarrEpisodeFileMediaInfo;
   language?: SonarrEpisodeFileLanguage;
   languages?: SonarrEpisodeFileLanguage[];
+  customFormats?: { id: number; name: string }[];
+  customFormatScore?: number;
 }
 
 export interface EpisodeWithFile extends SonarrEpisode {

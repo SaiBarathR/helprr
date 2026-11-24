@@ -164,6 +164,7 @@ async function deleteHandler(
     if ('error' in parsed) return parsed.error;
     const { searchParams } = new URL(request.url);
     const deleteFiles = searchParams.get('deleteFiles') === 'true';
+    const addImportListExclusion = searchParams.get('addImportListExclusion') === 'true';
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getLidarrClient(instanceId);
     const artist = await client.getArtistById(parsed.value).catch(() => null);
@@ -177,8 +178,8 @@ async function deleteHandler(
       targetTitle: artist?.artistName ?? `Artist #${parsed.value}`,
       itemCount: 1,
       filesDeleted: deleteFiles,
-      details: { targetIds: [parsed.value], deleteFiles },
-    }, () => client.deleteArtist(parsed.value, deleteFiles));
+      details: { targetIds: [parsed.value], deleteFiles, addImportListExclusion },
+    }, () => client.deleteArtist(parsed.value, deleteFiles, addImportListExclusion));
     await invalidateTaggedLibrary('lidarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {

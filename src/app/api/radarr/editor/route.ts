@@ -117,8 +117,13 @@ async function deleteHandler(request: NextRequest) {
       targetTitle: `${parsed.ids.length} ${parsed.ids.length === 1 ? 'movie' : 'movies'}`,
       itemCount: parsed.ids.length,
       filesDeleted: parsed.deleteFiles,
-      details: { targetIds: parsed.ids, deleteFiles: parsed.deleteFiles, bulk: true },
-    }, () => client.deleteMoviesBulk(parsed.ids, parsed.deleteFiles));
+      details: {
+        targetIds: parsed.ids,
+        deleteFiles: parsed.deleteFiles,
+        addImportListExclusion: parsed.addImportListExclusion,
+        bulk: true,
+      },
+    }, () => client.deleteMoviesBulk(parsed.ids, parsed.deleteFiles, parsed.addImportListExclusion));
     await invalidateTaggedLibrary('radarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -437,11 +437,16 @@ export default function SeriesPage() {
     [runSearch, selectedSeries],
   );
 
-  const runDelete = useCallback(async (items: SonarrSeriesListItem[], deleteFiles: boolean, leaveSelection = false) => {
+  const runDelete = useCallback(async (
+    items: SonarrSeriesListItem[],
+    deleteFiles: boolean,
+    addImportListExclusion: boolean,
+    leaveSelection = false,
+  ) => {
     const { ok, fail, firstError } = await fanOutItems(items, (instanceId, ids) =>
       fetch(`/api/sonarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, deleteFiles }),
+        body: JSON.stringify({ ids, deleteFiles, addImportListExclusion }),
       }));
     reportBulk('Deleted', ok, fail, { noun: 'series', pluralNoun: 'series', reason: firstError });
     // Discover and Anime drop the deleted copies at once. Which ones failed isn't
@@ -455,7 +460,8 @@ export default function SeriesPage() {
   }, [fanOutItems, queryClient, refetchSeries, exit]);
 
   const handleDelete = useCallback(
-    (deleteFiles: boolean) => runDelete(selectedSeries, deleteFiles, true).then(() => undefined),
+    (deleteFiles: boolean, addImportListExclusion: boolean) =>
+      runDelete(selectedSeries, deleteFiles, addImportListExclusion, true).then(() => undefined),
     [runDelete, selectedSeries],
   );
 
@@ -490,11 +496,11 @@ export default function SeriesPage() {
     return fail === 0;
   }, [fanOutItems, selectedSeries, exit, deselectMany, keyOf]);
 
-  const confirmSingleDelete = useCallback(async (deleteFiles: boolean) => {
+  const confirmSingleDelete = useCallback(async (deleteFiles: boolean, addImportListExclusion: boolean) => {
     if (!deleteTarget || deletingTarget) return;
     setDeletingTarget(true);
     try {
-      if (await runDelete([deleteTarget], deleteFiles)) setDeleteTarget(null);
+      if (await runDelete([deleteTarget], deleteFiles, addImportListExclusion)) setDeleteTarget(null);
     } finally {
       setDeletingTarget(false);
     }
@@ -1110,6 +1116,7 @@ export default function SeriesPage() {
         onOpenChange={(open) => { if (!open && !deletingTarget) setDeleteTarget(null); }}
         title={`Delete “${deleteTarget?.title ?? ''}”?`}
         description={`This removes the series from its connected service.`}
+        showImportListExclusion
         busy={deletingTarget}
         onConfirm={confirmSingleDelete}
       />
@@ -1129,6 +1136,7 @@ export default function SeriesPage() {
           onApplyTags={handleApplyTags}
           onSearch={handleBulkSearch}
           onDelete={handleDelete}
+          importListExclusionOption
           itemNoun="series"
           bulkEdit={{
             service: 'sonarr',

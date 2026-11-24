@@ -137,6 +137,7 @@ export default function ArtistDetailPage() {
   const loading = artistQuery.isLoading;
   const [deleting, setDeleting] = useState(false);
   const [deleteFiles, setDeleteFiles] = useState(false);
+  const [addExclusion, setAddExclusion] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useRouteViewState('overview-expanded', false);
@@ -256,7 +257,7 @@ export default function ArtistDetailPage() {
     if (!artist) return;
     setDeleting(true);
     try {
-      const res = await arrMutationFetch(instance, `/api/lidarr/${artist.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
+      const res = await arrMutationFetch(instance, `/api/lidarr/${artist.id}?deleteFiles=${deleteFiles}&addImportListExclusion=${addExclusion}`, { method: 'DELETE' });
       if (res.ok) {
         invalidateMusic(queryClient);
         queryClient.removeQueries({ queryKey: queryKeys.detail('lidarr', artist.id, instance) });
@@ -752,8 +753,11 @@ export default function ArtistDetailPage() {
       <Drawer
         open={showDelete}
         onOpenChange={(open) => {
-          // Opt in to deleting files each time, as the shared delete dialog does.
-          if (!open) setDeleteFiles(false);
+          // Opt in to deleting files and to the exclusion each time, as the shared delete dialog does.
+          if (!open) {
+            setDeleteFiles(false);
+            setAddExclusion(false);
+          }
           setShowDelete(open);
         }}
       >
@@ -765,7 +769,7 @@ export default function ArtistDetailPage() {
             </DrawerDescription>
           </DrawerHeader>
           <div className="px-4">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
                 checked={deleteFiles}
@@ -773,6 +777,15 @@ export default function ArtistDetailPage() {
                 className="h-4 w-4 accent-destructive"
               />
               Also delete all files from disk
+            </label>
+            <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={addExclusion}
+                onChange={(e) => setAddExclusion(e.target.checked)}
+                className="h-4 w-4 accent-destructive"
+              />
+              Add import-list exclusion
             </label>
           </div>
           <DrawerFooter>

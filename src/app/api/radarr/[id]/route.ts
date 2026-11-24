@@ -169,6 +169,7 @@ async function deleteHandler(
     if ('error' in parsed) return parsed.error;
     const { searchParams } = new URL(request.url);
     const deleteFiles = searchParams.get('deleteFiles') === 'true';
+    const addImportListExclusion = searchParams.get('addImportListExclusion') === 'true';
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getRadarrClient(instanceId);
     const movie = await client.getMovieById(parsed.value).catch(() => null);
@@ -182,8 +183,8 @@ async function deleteHandler(
       targetTitle: movie?.title ?? `Movie #${parsed.value}`,
       itemCount: 1,
       filesDeleted: deleteFiles,
-      details: { targetIds: [parsed.value], deleteFiles },
-    }, () => client.deleteMovie(parsed.value, deleteFiles));
+      details: { targetIds: [parsed.value], deleteFiles, addImportListExclusion },
+    }, () => client.deleteMovie(parsed.value, deleteFiles, addImportListExclusion));
     await invalidateTaggedLibrary('radarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {

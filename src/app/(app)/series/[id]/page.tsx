@@ -14,7 +14,7 @@ import { AniListRemapDrawer } from '@/components/anime/anilist-remap-drawer';
 import { getImageUrl } from '@/components/media/media-card';
 import {
   RefreshCw, Search, ExternalLink,
-  Pencil, Trash2, Tv, Eye, EyeOff, FileEdit, Sparkles, TriangleAlert, FileStack,
+  Pencil, Trash2, Tv, Eye, EyeOff, FileEdit, Sparkles, TriangleAlert, FileStack, History,
 } from 'lucide-react';
 import type { SonarrSeries, SonarrEpisode, DiscoverTvFullDetail } from '@/types';
 import { useQuery } from '@tanstack/react-query';
@@ -40,6 +40,7 @@ import { buildMarkWatchedContextAction } from '@/lib/mark-watched-context-action
 import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
 import { useSeriesEpisodeWatch } from '@/components/jellyfin/use-series-episode-watch';
 import { PlayInHelprrButton } from '@/components/jellyfin/play-in-helprr-button';
+import { Button } from '@/components/ui/button';
 import type { ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { useSeriesAnime } from './_components/use-series-anime';
 import { useSeriesActions } from './_components/use-series-actions';
@@ -267,6 +268,7 @@ export default function SeriesDetailPage() {
     series.images?.find((i) => i.coverType === 'poster')?.url ??
     null;
 
+  const historyHref = `/series/${seriesId}/history${instance ? `?instance=${encodeURIComponent(instance)}` : ''}`;
   const seriesContextGroups: ContextActionGroup[] = [
     {
       id: 'activity',
@@ -285,6 +287,7 @@ export default function SeriesDetailPage() {
         ...(canEditSeries ? [{ id: 'edit', label: 'Edit', icon: <Pencil className="h-4 w-4" />, href: arrEditHref('series', seriesId, instance) }] : []),
         ...(canManageActivity && canManageFiles ? [{ id: 'rename', label: 'Preview Rename', icon: <FileEdit className="h-4 w-4" />, onSelect: () => setShowRenamePreview(true) }] : []),
         ...(canManageFiles ? [{ id: 'files', label: 'Manage Episodes', icon: <FileStack className="h-4 w-4" />, href: arrManageHref('series', seriesId, series.title, instance) }] : []),
+        { id: 'history', label: 'History', icon: <History className="h-4 w-4" />, href: historyHref },
       ],
     },
     {
@@ -325,6 +328,7 @@ export default function SeriesDetailPage() {
             onWatchlist={watchlistEntry !== null}
             open={open}
             onEdit={() => router.push(`/series/${id}/edit${instance ? `?instance=${instance}` : ''}`)}
+            historyHref={historyHref}
             onManageEpisodes={() =>
               router.push(
                 `/series/${id}/manage?title=${encodeURIComponent(series.title)}${instance ? `&instance=${instance}` : ''}`
@@ -366,8 +370,9 @@ export default function SeriesDetailPage() {
 
             {/* Play sits right under the hero, ahead of the facts and overview, like the
                 movie page. Its place is held while the lookup runs when the show has files.
-                With no overview it opens the wide layout's right column (globals.css). */}
-            <div className={`my-4 empty:hidden ${hasMain ? '[grid-area:actions]' : '[grid-area:main]'}`}>
+                With no overview it opens the wide layout's right column (globals.css).
+                History follows it, as Files & information follows the movie's actions. */}
+            <div className={`my-4 flex flex-col gap-6 ${hasMain ? '[grid-area:actions]' : '[grid-area:main]'}`}>
               {/* Straight into Helprr's own player when the show is in Jellyfin. */}
               <PlayInHelprrButton
                 imdbId={series.imdbId}
@@ -377,6 +382,14 @@ export default function SeriesDetailPage() {
                 reserveSpace={(series.statistics?.episodeFileCount ?? 0) > 0}
                 className="h-10 w-full rounded-full"
               />
+              <Button
+                onClick={() => router.push(historyHref)}
+                className="w-full rounded-full h-10"
+                variant="secondary"
+              >
+                <History className="h-4 w-4 mr-2" />
+                History
+              </Button>
             </div>
 
             {isAnimeSeries && (

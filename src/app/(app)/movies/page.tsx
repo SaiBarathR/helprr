@@ -443,11 +443,16 @@ export default function MoviesPage() {
     [runSearch, selectedMovies],
   );
 
-  const runDelete = useCallback(async (items: RadarrMovieListItem[], deleteFiles: boolean, leaveSelection = false) => {
+  const runDelete = useCallback(async (
+    items: RadarrMovieListItem[],
+    deleteFiles: boolean,
+    addImportListExclusion: boolean,
+    leaveSelection = false,
+  ) => {
     const { ok, fail, firstError } = await fanOutItems(items, (instanceId, ids) =>
       fetch(`/api/radarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, deleteFiles }),
+        body: JSON.stringify({ ids, deleteFiles, addImportListExclusion }),
       }));
     reportBulk('Deleted', ok, fail, { noun: 'movie', pluralNoun: 'movies', reason: firstError });
     // Discover and Anime drop the deleted copies at once. Which ones failed isn't
@@ -461,7 +466,8 @@ export default function MoviesPage() {
   }, [fanOutItems, queryClient, refetchMovies, exit]);
 
   const handleDelete = useCallback(
-    (deleteFiles: boolean) => runDelete(selectedMovies, deleteFiles, true).then(() => undefined),
+    (deleteFiles: boolean, addImportListExclusion: boolean) =>
+      runDelete(selectedMovies, deleteFiles, addImportListExclusion, true).then(() => undefined),
     [runDelete, selectedMovies],
   );
 
@@ -499,11 +505,11 @@ export default function MoviesPage() {
     return fail === 0;
   }, [fanOutItems, selectedMovies, exit, deselectMany, keyOf]);
 
-  const confirmSingleDelete = useCallback(async (deleteFiles: boolean) => {
+  const confirmSingleDelete = useCallback(async (deleteFiles: boolean, addImportListExclusion: boolean) => {
     if (!deleteTarget || deletingTarget) return;
     setDeletingTarget(true);
     try {
-      if (await runDelete([deleteTarget], deleteFiles)) setDeleteTarget(null);
+      if (await runDelete([deleteTarget], deleteFiles, addImportListExclusion)) setDeleteTarget(null);
     } finally {
       setDeletingTarget(false);
     }
@@ -1142,6 +1148,7 @@ export default function MoviesPage() {
         onOpenChange={(open) => { if (!open && !deletingTarget) setDeleteTarget(null); }}
         title={`Delete “${deleteTarget?.title ?? ''}”?`}
         description={`This removes the movie from its connected service.`}
+        showImportListExclusion
         busy={deletingTarget}
         onConfirm={confirmSingleDelete}
       />
@@ -1161,6 +1168,7 @@ export default function MoviesPage() {
           onApplyTags={handleApplyTags}
           onSearch={handleBulkSearch}
           onDelete={handleDelete}
+          importListExclusionOption
           itemNoun="movie"
           bulkEdit={{
             service: 'radarr',

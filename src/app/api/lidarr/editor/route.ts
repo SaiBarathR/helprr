@@ -118,8 +118,13 @@ async function deleteHandler(request: NextRequest) {
       targetTitle: `${parsed.ids.length} ${parsed.ids.length === 1 ? 'artist' : 'artists'}`,
       itemCount: parsed.ids.length,
       filesDeleted: parsed.deleteFiles,
-      details: { targetIds: parsed.ids, deleteFiles: parsed.deleteFiles, bulk: true },
-    }, () => client.deleteArtistsBulk(parsed.ids, parsed.deleteFiles));
+      details: {
+        targetIds: parsed.ids,
+        deleteFiles: parsed.deleteFiles,
+        addImportListExclusion: parsed.addImportListExclusion,
+        bulk: true,
+      },
+    }, () => client.deleteArtistsBulk(parsed.ids, parsed.deleteFiles, parsed.addImportListExclusion));
     await invalidateTaggedLibrary('lidarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {

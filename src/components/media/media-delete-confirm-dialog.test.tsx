@@ -8,10 +8,19 @@ let container: HTMLDivElement;
 let root: Root;
 const onConfirm = vi.fn();
 
-const render = (open: boolean) => act(async () => {
-  root.render(<MediaDeleteConfirmDialog open={open} onOpenChange={() => {}} title="Delete 2 movies?" onConfirm={onConfirm} />);
+const render = (open: boolean, showImportListExclusion = false) => act(async () => {
+  root.render(
+    <MediaDeleteConfirmDialog
+      open={open}
+      onOpenChange={() => {}}
+      title="Delete 2 movies?"
+      showImportListExclusion={showImportListExclusion}
+      onConfirm={onConfirm}
+    />,
+  );
 });
-const box = () => document.querySelector<HTMLButtonElement>('[role="checkbox"]')!;
+const boxes = () => [...document.querySelectorAll<HTMLButtonElement>('[role="checkbox"]')];
+const box = () => boxes()[0];
 const confirm = () => [...document.querySelectorAll('button')].find((button) => button.textContent === 'Delete')!;
 
 beforeEach(() => {
@@ -34,12 +43,31 @@ it('asks about deleting files afresh after its parent closed it', async () => {
   await act(async () => { box().click(); });
   expect(box().getAttribute('aria-checked')).toBe('true');
   await act(async () => { confirm().click(); });
-  expect(onConfirm).toHaveBeenLastCalledWith(true);
+  expect(onConfirm).toHaveBeenLastCalledWith(true, false);
 
   await render(false);
   await render(true);
 
   expect(box().getAttribute('aria-checked')).toBe('false');
   await act(async () => { confirm().click(); });
-  expect(onConfirm).toHaveBeenLastCalledWith(false);
+  expect(onConfirm).toHaveBeenLastCalledWith(false, false);
+});
+
+it('offers the import-list exclusion only when asked, unticked, and asks afresh after closing', async () => {
+  await render(true);
+  expect(document.body.textContent).not.toContain('Add import-list exclusion');
+  expect(boxes()).toHaveLength(1);
+
+  await render(false);
+  await render(true, true);
+  expect(document.body.textContent).toContain('Add import-list exclusion');
+  const exclusion = () => boxes()[1];
+  expect(exclusion().getAttribute('aria-checked')).toBe('false');
+  await act(async () => { exclusion().click(); });
+  await act(async () => { confirm().click(); });
+  expect(onConfirm).toHaveBeenLastCalledWith(false, true);
+
+  await render(false, true);
+  await render(true, true);
+  expect(exclusion().getAttribute('aria-checked')).toBe('false');
 });

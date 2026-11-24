@@ -80,6 +80,7 @@ vi.mock('@/lib/api-error', () => ({
 
 import { DELETE as deleteSeries } from '@/app/api/sonarr/[id]/route';
 import { DELETE as deleteSeriesBulk } from '@/app/api/sonarr/editor/route';
+import { DELETE as deleteMovie } from '@/app/api/radarr/[id]/route';
 import { DELETE as deleteMoviesBulk } from '@/app/api/radarr/editor/route';
 import { DELETE as deleteArtist } from '@/app/api/lidarr/[id]/route';
 import { DELETE as deleteAlbum } from '@/app/api/lidarr/album/[albumId]/route';
@@ -149,18 +150,92 @@ describe('destructive route audit wiring', () => {
     expect(mocks.runWithOperationAudit).toHaveBeenCalledTimes(6);
     expect(mocks.runWithOperationAudit.mock.calls.map(([input]) => input)).toEqual([
       expect.objectContaining({ service: 'SONARR', operation: 'DELETE_MEDIA', targetType: 'series', targetId: 12, filesDeleted: true }),
-      expect.objectContaining({ service: 'SONARR', operation: 'DELETE_MEDIA', targetType: 'series', itemCount: 2, filesDeleted: false, details: { targetIds: [12, 13], deleteFiles: false, bulk: true } }),
-      expect.objectContaining({ service: 'RADARR', operation: 'DELETE_MEDIA', targetType: 'movie', itemCount: 2, filesDeleted: false, details: { targetIds: [5, 6], deleteFiles: false, bulk: true } }),
+      expect.objectContaining({ service: 'SONARR', operation: 'DELETE_MEDIA', targetType: 'series', itemCount: 2, filesDeleted: false, details: { targetIds: [12, 13], deleteFiles: false, addImportListExclusion: false, bulk: true } }),
+      expect.objectContaining({ service: 'RADARR', operation: 'DELETE_MEDIA', targetType: 'movie', itemCount: 2, filesDeleted: false, details: { targetIds: [5, 6], deleteFiles: false, addImportListExclusion: false, bulk: true } }),
       expect.objectContaining({ service: 'LIDARR', operation: 'DELETE_MEDIA', targetType: 'artist', targetId: 7, filesDeleted: false }),
       expect.objectContaining({ service: 'LIDARR', operation: 'DELETE_MEDIA', targetType: 'album', targetId: 8, filesDeleted: true }),
-      expect.objectContaining({ service: 'LIDARR', operation: 'DELETE_MEDIA', targetType: 'artist', itemCount: 2, filesDeleted: true, details: { targetIds: [7, 9], deleteFiles: true, bulk: true } }),
+      expect.objectContaining({ service: 'LIDARR', operation: 'DELETE_MEDIA', targetType: 'artist', itemCount: 2, filesDeleted: true, details: { targetIds: [7, 9], deleteFiles: true, addImportListExclusion: false, bulk: true } }),
     ]);
-    expect(mocks.sonarr.deleteSeries).toHaveBeenCalledWith(12, true);
-    expect(mocks.sonarr.deleteSeriesBulk).toHaveBeenCalledWith([12, 13], false);
-    expect(mocks.radarr.deleteMoviesBulk).toHaveBeenCalledWith([5, 6], false);
-    expect(mocks.lidarr.deleteArtist).toHaveBeenCalledWith(7, false);
+    expect(mocks.sonarr.deleteSeries).toHaveBeenCalledWith(12, true, false);
+    expect(mocks.sonarr.deleteSeriesBulk).toHaveBeenCalledWith([12, 13], false, false);
+    expect(mocks.radarr.deleteMoviesBulk).toHaveBeenCalledWith([5, 6], false, false);
+    expect(mocks.lidarr.deleteArtist).toHaveBeenCalledWith(7, false, false);
     expect(mocks.lidarr.deleteAlbum).toHaveBeenCalledWith(8, true);
-    expect(mocks.lidarr.deleteArtistsBulk).toHaveBeenCalledWith([7, 9], true);
+    expect(mocks.lidarr.deleteArtistsBulk).toHaveBeenCalledWith([7, 9], true, false);
+  });
+
+  it('passes an asked-for import-list exclusion to every single and bulk title delete, and audits it', async () => {
+    const responses = [
+      await deleteSeries(
+        request('/api/sonarr/12?instanceId=sonarr-1&deleteFiles=false&addImportListExclusion=true', 'DELETE'),
+        { params: Promise.resolve({ id: '12' }) },
+      ),
+      await deleteMovie(
+        request('/api/radarr/5?instanceId=radarr-1&addImportListExclusion=true', 'DELETE'),
+        { params: Promise.resolve({ id: '5' }) },
+      ),
+      await deleteArtist(
+        request('/api/lidarr/7?instanceId=lidarr-1&addImportListExclusion=true', 'DELETE'),
+        { params: Promise.resolve({ id: '7' }) },
+      ),
+      await deleteSeriesBulk(
+        request('/api/sonarr/editor?instanceId=sonarr-1', 'DELETE', { ids: [12, 13], addImportListExclusion: true }),
+      ),
+      await deleteMoviesBulk(
+        request('/api/radarr/editor?instanceId=radarr-1', 'DELETE', { ids: [5, 6], deleteFiles: true, addImportListExclusion: true }),
+      ),
+      await deleteArtistsBulk(
+        request('/api/lidarr/editor?instanceId=lidarr-1', 'DELETE', { ids: [7, 9], addImportListExclusion: true }),
+      ),
+    ];
+
+    expect(responses.map((response) => response.status)).toEqual([200, 200, 200, 200, 200, 200]);
+    expect(mocks.sonarr.deleteSeries).toHaveBeenCalledWith(12, false, true);
+    expect(mocks.radarr.deleteMovie).toHaveBeenCalledWith(5, false, true);
+    expect(mocks.lidarr.deleteArtist).toHaveBeenCalledWith(7, false, true);
+    expect(mocks.sonarr.deleteSeriesBulk).toHaveBeenCalledWith([12, 13], false, true);
+    expect(mocks.radarr.deleteMoviesBulk).toHaveBeenCalledWith([5, 6], true, true);
+    expect(mocks.lidarr.deleteArtistsBulk).toHaveBeenCalledWith([7, 9], false, true);
+    expect(mocks.runWithOperationAudit.mock.calls.map(([input]) => input.details)).toEqual([
+      { targetIds: [12], deleteFiles: false, addImportListExclusion: true },
+      { targetIds: [5], deleteFiles: false, addImportListExclusion: true },
+      { targetIds: [7], deleteFiles: false, addImportListExclusion: true },
+      { targetIds: [12, 13], deleteFiles: false, addImportListExclusion: true, bulk: true },
+      { targetIds: [5, 6], deleteFiles: true, addImportListExclusion: true, bulk: true },
+      { targetIds: [7, 9], deleteFiles: false, addImportListExclusion: true, bulk: true },
+    ]);
+  });
+
+  it('refuses a bulk delete whose import-list exclusion is not a boolean, before any delete', async () => {
+    const response = await deleteSeriesBulk(
+      request('/api/sonarr/editor?instanceId=sonarr-1', 'DELETE', { ids: [12], addImportListExclusion: 'yes' }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.runWithOperationAudit).not.toHaveBeenCalled();
+    expect(mocks.sonarr.deleteSeriesBulk).not.toHaveBeenCalled();
+  });
+
+  it('keeps the delete capability on the exclusion deletes', async () => {
+    mocks.requireUserCapability.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+    });
+
+    const responses = [
+      await deleteMovie(
+        request('/api/radarr/5?addImportListExclusion=true', 'DELETE'),
+        { params: Promise.resolve({ id: '5' }) },
+      ),
+      await deleteMoviesBulk(
+        request('/api/radarr/editor', 'DELETE', { ids: [5], addImportListExclusion: true }),
+      ),
+    ];
+
+    expect(responses.map((response) => response.status)).toEqual([403, 403]);
+    expect(mocks.requireUserCapability.mock.calls).toEqual([['movies.delete'], ['movies.delete']]);
+    expect(mocks.radarr.deleteMovie).not.toHaveBeenCalled();
+    expect(mocks.radarr.deleteMoviesBulk).not.toHaveBeenCalled();
   });
 
   it('deletes through the audited torrent delete on both endpoints, with the delete-data choice', async () => {

@@ -3,12 +3,10 @@
 import { useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
-import { format, formatDistanceToNow } from 'date-fns';
-import { formatDateTime } from '@/lib/date-format';
-import { Copy, ExternalLink, FileStack, Info } from 'lucide-react';
+import { format } from 'date-fns';
+import { Copy, FileStack, Info } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { NotFoundState } from '@/components/ui/not-found-state';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useCan } from '@/components/permission-provider';
 import {
@@ -20,7 +18,9 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { PageSpinner } from '@/components/ui/page-spinner';
-import type { HistoryItem, RadarrMovie } from '@/types';
+import { ArrHistoryList } from '@/components/media/arr-history-list';
+import { CustomFormatChips } from '@/components/media/custom-format-chips';
+import type { HistoryItem, MovieFileResource, RadarrMovie } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { ApiError, arrMutationFetch } from '@/lib/query-fetch';
@@ -33,38 +33,6 @@ function formatBytes(bytes: number) {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
-
-function eventTypeLabel(eventType: string): string {
-  switch (eventType) {
-    case 'grabbed': return 'GRABBED';
-    case 'downloadFolderImported':
-    case 'movieFileImported':
-    case 'imported': return 'IMPORTED';
-    case 'downloadFailed':
-    case 'failed': return 'DOWNLOAD FAILED';
-    case 'movieFileDeleted':
-    case 'deleted': return 'FILE DELETED';
-    case 'movieFileRenamed':
-    case 'renamed': return 'RENAMED';
-    case 'downloadIgnored':
-    case 'ignored': return 'IGNORED';
-    default: return eventType.toUpperCase();
-  }
-}
-
-function eventTypeBadgeVariant(eventType: string): 'default' | 'secondary' | 'destructive' | 'outline' {
-  switch (eventType) {
-    case 'grabbed': return 'secondary';
-    case 'downloadFolderImported':
-    case 'movieFileImported':
-    case 'imported': return 'default';
-    case 'downloadFailed':
-    case 'failed':
-    case 'movieFileDeleted':
-    case 'deleted': return 'destructive';
-    default: return 'outline';
-  }
 }
 
 function formatBitrate(value?: string | number): string | null {
@@ -117,7 +85,6 @@ export default function MovieFilesPage() {
   const router = useRouter();
   const movieId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
-  const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
   const canManageFiles = useCan('movies.manageFiles');
 
@@ -160,6 +127,18 @@ export default function MovieFilesPage() {
   const history = historyQuery.data ?? [];
   const historyLoading = historyQuery.isLoading;
 
+  // Radarr's movie resource leaves the custom formats and their score off its
+  // embedded file; only the moviefile resource has them.
+  const fileResourceQuery = useQuery({
+    queryKey: ['radarr', 'moviefile', instance ?? 'default', movieId],
+    queryFn: async ({ signal }): Promise<MovieFileResource[]> => {
+      const r = await arrMutationFetch(instance, `/api/radarr/moviefile?movieId=${movieId}`, { signal });
+      return r.ok ? ((await r.json()) as MovieFileResource[]) : [];
+    },
+    enabled: Number.isFinite(movieId) && movieQuery.data?.hasFile === true,
+    select: (d) => (Array.isArray(d) ? d : []),
+  });
+
   if (loading && !movie) {
     return <><PageHeader title="Files & information" /><PageSpinner /></>;
   }
@@ -176,7 +155,11 @@ export default function MovieFilesPage() {
   const movieFile = movie.movieFile;
   const mediaInfo = movieFile?.mediaInfo;
   const qualityName = movieFile?.quality?.quality?.name ?? 'Unknown';
-  const score = movieFile?.customFormatScore ?? 0;
+  const fileResource = movieFile
+    ? (fileResourceQuery.data ?? []).find((file) => file.id === movieFile.id)
+    : undefined;
+  const score = fileResource?.customFormatScore;
+  const customFormatNames = (fileResource?.customFormats ?? []).map((cf) => cf.name).filter(Boolean);
   const fileLanguages = movieFile?.languages?.length
     ? movieFile.languages.map((entry) => entry.name).join(', ')
     : movieFile?.language?.name ?? '';
@@ -216,7 +199,8 @@ export default function MovieFilesPage() {
     ...(movieFile?.releaseGroup ? [{ label: 'Release Group', value: movieFile.releaseGroup }] : []),
     ...(movieFile?.sceneName ? [{ label: 'Scene Name', value: movieFile.sceneName, breakValue: true }] : []),
     ...(movieFile?.edition ? [{ label: 'Edition', value: movieFile.edition }] : []),
-    ...(movieFile ? [{ label: 'Score', value: score >= 0 ? `+${score}` : String(score) }] : []),
+    ...(score !== undefined ? [{ label: 'Score', value: score >= 0 ? `+${score}` : String(score) }] : []),
+    ...(customFormatNames.length > 0 ? [{ label: 'Custom Formats', value: customFormatNames.join(', ') }] : []),
     ...(movieFile?.qualityCutoffNotMet !== undefined
       ? [{ label: 'Quality Cutoff Not Met', value: movieFile.qualityCutoffNotMet ? 'Yes' : 'No' }]
       : []),
@@ -300,6 +284,11 @@ export default function MovieFilesPage() {
                 <p className="text-sm text-muted-foreground mt-0.5">
                   {[qualityName, fileLanguages, formatBytes(movieFile.size)].filter(Boolean).join(' \u00b7 ')}
                 </p>
+                <CustomFormatChips
+                  score={fileResource?.customFormatScore}
+                  formats={fileResource?.customFormats}
+                  className="mt-2"
+                />
               </button>
             </QuickContextMenu>
           ) : (
@@ -311,62 +300,7 @@ export default function MovieFilesPage() {
 
         <section className="space-y-2">
           <h2 className="text-lg font-bold leading-tight">History</h2>
-          {historyLoading ? (
-            <PageSpinner />
-          ) : history.length === 0 ? (
-            <div className="rounded-2xl border px-4 py-6 text-center text-sm text-muted-foreground">
-              No history available
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {history.map((item, index) => {
-                const historyActions: ContextAction[] = [
-                  {
-                    id: 'details',
-                    label: 'View details',
-                    icon: <Info className="h-4 w-4" />,
-                    onSelect: () => setSelectedHistoryItem(item),
-                  },
-                  {
-                    id: 'copy-source-title',
-                    label: 'Copy source title',
-                    icon: <Copy className="h-4 w-4" />,
-                    onSelect: () => void copyText(item.sourceTitle, 'Source title copied'),
-                  },
-                ];
-                return (
-                <QuickContextMenu
-                  key={`${item.id}-${item.date}-${index}`}
-                  label={`Actions for ${item.sourceTitle}`}
-                  actions={historyActions}
-                >
-                  <button
-                    onClick={() => setSelectedHistoryItem(item)}
-                    className="w-full rounded-2xl border bg-card px-4 py-3 text-left active:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <Badge variant={eventTypeBadgeVariant(item.eventType)} className="text-[10px]">
-                        {eventTypeLabel(item.eventType)}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
-                      </span>
-                    </div>
-                    <p className="text-sm mt-2 break-all leading-tight">
-                      {item.sourceTitle}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {[
-                        item.quality?.quality?.name,
-                        item.data?.languages,
-                      ].filter(Boolean).join(' \u00b7 ')}
-                    </p>
-                  </button>
-                </QuickContextMenu>
-                );
-              })}
-            </div>
-          )}
+          <ArrHistoryList items={history} loading={historyLoading} />
         </section>
       </div>
 
@@ -417,98 +351,6 @@ export default function MovieFilesPage() {
         </DrawerContent>
       </Drawer>
 
-      <Drawer open={!!selectedHistoryItem} onOpenChange={(open) => { if (!open) setSelectedHistoryItem(null); }}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>{selectedHistoryItem ? eventTypeLabel(selectedHistoryItem.eventType) : ''}</DrawerTitle>
-            <DrawerDescription>
-              {selectedHistoryItem?.date
-                ? formatDateTime(new Date(selectedHistoryItem.date))
-                : ''}
-            </DrawerDescription>
-          </DrawerHeader>
-          {selectedHistoryItem && (
-            <div className="px-4 pb-4 space-y-0 overflow-y-auto flex-1 min-h-0">
-              <div className="rounded-lg border overflow-hidden divide-y">
-                <div className="px-4 py-2.5">
-                  <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Release Title</span>
-                  <p className="text-sm mt-0.5 break-all leading-tight">
-                    {selectedHistoryItem.sourceTitle}
-                  </p>
-                </div>
-                <div className="flex justify-between items-center gap-4 px-4 py-2.5">
-                  <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Date</span>
-                  <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">
-                    {formatDateTime(new Date(selectedHistoryItem.date))}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center gap-4 px-4 py-2.5">
-                  <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Quality</span>
-                  <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">
-                    {selectedHistoryItem.quality?.quality?.name || 'Unknown'}
-                  </span>
-                </div>
-                {selectedHistoryItem.data?.indexer && (
-                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
-                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Indexer</span>
-                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{selectedHistoryItem.data.indexer}</span>
-                  </div>
-                )}
-                {selectedHistoryItem.data?.downloadClient && (
-                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
-                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Download Client</span>
-                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{selectedHistoryItem.data.downloadClient}</span>
-                  </div>
-                )}
-                {selectedHistoryItem.data?.releaseGroup && (
-                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
-                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Release Group</span>
-                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{selectedHistoryItem.data.releaseGroup}</span>
-                  </div>
-                )}
-                {selectedHistoryItem.data?.nzbInfoUrl && (
-                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
-                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Source</span>
-                    <a
-                      href={selectedHistoryItem.data.nzbInfoUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary flex items-center gap-1"
-                    >
-                      View <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </div>
-                )}
-                {selectedHistoryItem.data?.size && (
-                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
-                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Size</span>
-                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{formatBytes(Number(selectedHistoryItem.data.size))}</span>
-                  </div>
-                )}
-                {selectedHistoryItem.data?.protocol && (
-                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
-                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Protocol</span>
-                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere] capitalize">{selectedHistoryItem.data.protocol}</span>
-                  </div>
-                )}
-                {selectedHistoryItem.data?.message && (
-                  <div className="px-4 py-2.5">
-                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Message</span>
-                    <p className="text-sm mt-0.5 text-muted-foreground">{selectedHistoryItem.data.message}</p>
-                  </div>
-                )}
-              </div>
-              <div className="pt-4">
-                <DrawerClose asChild>
-                  <Button variant="ghost" className="w-full">
-                    Close
-                  </Button>
-                </DrawerClose>
-              </div>
-            </div>
-          )}
-        </DrawerContent>
-      </Drawer>
     </div>
   );
 }

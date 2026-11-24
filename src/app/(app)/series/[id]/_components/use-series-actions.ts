@@ -40,6 +40,7 @@ export function useSeriesActions({
   const [showMonitorEdit, setShowMonitorEdit] = useState(false);
   const [monitorOption, setMonitorOption] = useState('');
   const [deleteFiles, setDeleteFiles] = useState(false);
+  const [addExclusion, setAddExclusion] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   async function handleOpenInJellyfin() {
@@ -208,7 +209,7 @@ export function useSeriesActions({
     if (!series) return;
     setDeleting(true);
     try {
-      const res = await arrMutationFetch(instance, `/api/sonarr/${series.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
+      const res = await arrMutationFetch(instance, `/api/sonarr/${series.id}?deleteFiles=${deleteFiles}&addImportListExclusion=${addExclusion}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       invalidateSeries(queryClient);
       invalidateAfterLibraryRemove(queryClient, 'sonarr', [{ id: series.id, instanceId: instance }]);
@@ -232,6 +233,8 @@ export function useSeriesActions({
     setMonitorOption,
     deleteFiles,
     setDeleteFiles,
+    addExclusion,
+    setAddExclusion,
     deleting,
     openInJellyfin: handleOpenInJellyfin,
     searchAll: handleSearchAll,

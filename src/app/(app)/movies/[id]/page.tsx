@@ -120,6 +120,7 @@ export default function MovieDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [deleteFiles, setDeleteFiles] = useState(false);
+  const [addExclusion, setAddExclusion] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
   const monitorQueue = useRef<Promise<void>>(Promise.resolve());
   const [overviewExpanded, setOverviewExpanded] = useState(false);
@@ -311,7 +312,7 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setDeleting(true);
     try {
-      const res = await arrMutationFetch(instance, `/api/radarr/${movie.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
+      const res = await arrMutationFetch(instance, `/api/radarr/${movie.id}?deleteFiles=${deleteFiles}&addImportListExclusion=${addExclusion}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       invalidateMovies(queryClient);
       invalidateAfterLibraryRemove(queryClient, 'radarr', [{ id: movie.id, instanceId: instance }]);
@@ -1068,8 +1069,11 @@ export default function MovieDetailPage() {
       <Drawer
         open={showDelete}
         onOpenChange={(open) => {
-          // Opt in to deleting files each time, as the shared delete dialog does.
-          if (!open) setDeleteFiles(false);
+          // Opt in to deleting files and to the exclusion each time, as the shared delete dialog does.
+          if (!open) {
+            setDeleteFiles(false);
+            setAddExclusion(false);
+          }
           setShowDelete(open);
         }}
       >
@@ -1082,7 +1086,7 @@ export default function MovieDetailPage() {
             </DrawerDescription>
           </DrawerHeader>
           <div className="px-4">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
                 checked={deleteFiles}
@@ -1091,6 +1095,16 @@ export default function MovieDetailPage() {
                 className="h-4 w-4 accent-destructive"
               />
               Also delete all files from disk
+            </label>
+            <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={addExclusion}
+                onChange={(e) => setAddExclusion(e.target.checked)}
+                disabled={deleting}
+                className="h-4 w-4 accent-destructive"
+              />
+              Add import-list exclusion
             </label>
           </div>
           <DrawerFooter>
