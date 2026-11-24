@@ -122,3 +122,56 @@ describe('SelectTrigger with a phone keyboard open', () => {
     expect(screen.getByRole('listbox')).toBeTruthy();
   });
 });
+
+describe('SelectTrigger value', () => {
+  // jsdom has no layout, so a test says whether the value overflows its box.
+  function stubWidths(scrollWidth: number, clientWidth: number) {
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(scrollWidth);
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(clientWidth);
+  }
+  afterEach(() => vi.restoreAllMocks());
+
+  function renderSelect(trigger: Partial<React.ComponentProps<typeof SelectTrigger>> = {}) {
+    render(
+      <Select value="all">
+        <SelectTrigger aria-label="Monitor New Seasons" className="w-20" {...trigger}><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All new seasons</SelectItem>
+          <SelectItem value="none">None</SelectItem>
+        </SelectContent>
+      </Select>,
+    );
+    return screen.getByRole('combobox', { name: 'Monitor New Seasons' });
+  }
+
+  it('lets the value shrink and end in an ellipsis', () => {
+    const trigger = renderSelect();
+    // Radix drops a className on the value, so the trigger styles it.
+    expect(trigger.className.split(' ')).toEqual(expect.arrayContaining([
+      '*:data-[slot=select-value]:block', '*:data-[slot=select-value]:min-w-0', '*:data-[slot=select-value]:truncate',
+    ]));
+    expect(trigger.className).not.toContain('select-value]:flex');
+  });
+
+  it('shows the full value on hover only when it is cut off', () => {
+    const trigger = renderSelect();
+    expect(trigger.hasAttribute('title')).toBe(false);
+
+    stubWidths(120, 60);
+    fireEvent.pointerEnter(trigger);
+    expect(trigger.title).toBe('All new seasons');
+
+    stubWidths(60, 60);
+    fireEvent.pointerEnter(trigger);
+    expect(trigger.hasAttribute('title')).toBe(false);
+  });
+
+  it("keeps a caller's own title and pointer handler", () => {
+    const onPointerEnter = vi.fn();
+    const trigger = renderSelect({ title: 'Custom', onPointerEnter });
+    stubWidths(120, 60);
+    fireEvent.pointerEnter(trigger);
+    expect(trigger.title).toBe('Custom');
+    expect(onPointerEnter).toHaveBeenCalledOnce();
+  });
+});
