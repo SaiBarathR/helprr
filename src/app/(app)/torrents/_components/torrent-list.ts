@@ -275,6 +275,11 @@ function sameTorrent(a: QBittorrentTorrent, b: QBittorrentTorrent): boolean {
     && a.dl_limit === b.dl_limit
     && a.up_limit === b.up_limit
     && a.tracker_host === b.tracker_host
+    // The table's optional columns.
+    && a.availability === b.availability
+    && a.last_activity === b.last_activity
+    && a.max_ratio === b.max_ratio
+    && a.max_seeding_time === b.max_seeding_time
   );
 }
 

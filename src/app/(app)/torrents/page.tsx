@@ -38,6 +38,7 @@ import {
 import { TorrentRow, selectionAllowed } from './_components/torrent-row';
 import { useTorrentsSummary } from './_components/use-torrents-summary';
 import { useTorrentTable } from './_components/use-torrent-table';
+import { TorrentColumnPicker } from './_components/torrent-column-picker';
 import { TorrentsToolbar, type TorrentFacetGroup } from './_components/torrents-toolbar';
 import { TorrentsBulkBar } from './_components/torrents-bulk-bar';
 import { TorrentDetailDrawer, type TorrentDetailData } from './_components/torrent-detail-drawer';
@@ -97,6 +98,8 @@ export default function TorrentsPage() {
   // 'auto' picks the table from Tailwind's lg breakpoint up.
   const isBelowLg = useIsMobile(1023);
   const isTableView = viewMode === 'table' || (viewMode === 'auto' && !isBelowLg);
+  const tableColumnChoice = useUIStore((s) => s.torrentsTableColumns);
+  const setTableColumnChoice = useUIStore((s) => s.setTorrentsTableColumns);
   const [search, setSearch] = useRouteViewState('search', '');
   // Back from New category, opened in the category drawer: that drawer again,
   // for the same torrents (still selected), with the new category listed.
@@ -559,6 +562,7 @@ export default function TorrentsPage() {
     canManageTorrents,
     canDeleteTorrents,
     canSelect: canSelectTorrents,
+    visibleColumns: tableColumnChoice,
   });
 
   return (
@@ -661,6 +665,12 @@ export default function TorrentsPage() {
             <span className="text-xs text-muted-foreground">
               {filteredTorrents.length} torrent{filteredTorrents.length !== 1 ? 's' : ''}
             </span>
+            {isTableView && (
+              <>
+                <div className="flex-1" />
+                <TorrentColumnPicker columns={tableColumnChoice} onChange={setTableColumnChoice} />
+              </>
+            )}
           </div>
 
           {/* listRef marks the virtualized list origin: its top must coincide

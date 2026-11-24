@@ -56,6 +56,18 @@ describe('qBittorrent location, tag and queue calls', () => {
     expect(requests).toEqual([]);
   });
 
+  it('creates and deletes tags joined with commas, never with an empty list', async () => {
+    await client.createTags(['4k', 'new']);
+    await client.deleteTags(['old']);
+    expect(requests).toEqual([
+      { method: 'POST', path: '/api/v2/torrents/createTags', body: { tags: '4k,new' } },
+      { method: 'POST', path: '/api/v2/torrents/deleteTags', body: { tags: 'old' } },
+    ]);
+    await expect(client.createTags([])).rejects.toThrow();
+    await expect(client.deleteTags([])).rejects.toThrow();
+    expect(requests).toHaveLength(2);
+  });
+
   it('reads the tag list', async () => {
     await expect(client.getTags()).resolves.toEqual(['4k', 'movies']);
   });

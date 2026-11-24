@@ -53,6 +53,7 @@ export function projectTorrentForSummary(torrent: QBittorrentTorrentInfo | QBitt
     up_limit: torrent.up_limit,
     time_active: torrent.time_active,
     seeding_time: torrent.seeding_time,
+    last_activity: torrent.last_activity,
     availability: torrent.availability,
     ratio: torrent.ratio,
     seq_dl: torrent.seq_dl,

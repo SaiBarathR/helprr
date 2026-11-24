@@ -153,6 +153,17 @@ export type TorrentsSortDirectionPreference = 'asc' | 'desc';
 // 'auto' shows the table on wide screens and cards elsewhere.
 const TORRENTS_VIEWS = ['auto', 'card', 'table'] as const;
 export type TorrentsViewPreference = (typeof TORRENTS_VIEWS)[number];
+// The torrents table's columns a user can show or hide (Name always shows).
+export const TORRENTS_TABLE_COLUMNS = [
+  'state', 'progress', 'size', 'dlspeed', 'upspeed', 'eta', 'num_seeds', 'num_leechs', 'ratio',
+  'tags', 'added_on', 'completion_on', 'last_activity', 'tracker_host', 'save_path', 'availability',
+  'downloaded', 'uploaded', 'ratio_limit', 'seeding_time_limit',
+] as const;
+export type TorrentsTableColumn = (typeof TORRENTS_TABLE_COLUMNS)[number];
+// The table's columns before the picker existed.
+export const DEFAULT_TORRENTS_TABLE_COLUMNS: TorrentsTableColumn[] = [
+  'state', 'progress', 'size', 'dlspeed', 'upspeed', 'eta', 'num_seeds', 'num_leechs', 'ratio',
+];
 const ACTIVITY_TABS = ['queue', 'failed', 'missing', 'cutoff'] as const;
 export type ActivityTabPreference = (typeof ACTIVITY_TABS)[number];
 const ACTIVITY_SORTS = ['title', 'progress', 'timeleft', 'size'] as const;
@@ -671,6 +682,8 @@ interface UIState {
   setTorrentsSortDir: (dir: TorrentsSortDirectionPreference) => void;
   torrentsView: TorrentsViewPreference;
   setTorrentsView: (view: TorrentsViewPreference) => void;
+  torrentsTableColumns: TorrentsTableColumn[];
+  setTorrentsTableColumns: (columns: TorrentsTableColumn[]) => void;
   // Activity preferences
   activityTab: ActivityTabPreference;
   setActivityTab: (tab: ActivityTabPreference) => void;
@@ -861,6 +874,7 @@ const PERSISTED_KEYS = [
   'torrentsSortKey',
   'torrentsSortDir',
   'torrentsView',
+  'torrentsTableColumns',
   'activityTab',
   'activitySortBy',
   'activitySortDirection',
@@ -990,6 +1004,7 @@ const PERSISTED_CHOICE_LISTS: Partial<Record<PersistedKey, readonly unknown[]>> 
   seriesFilter: SERIES_FILTERS,
   musicFilter: MUSIC_FILTERS,
   torrentsFilter: TORRENTS_FILTERS,
+  torrentsTableColumns: TORRENTS_TABLE_COLUMNS,
   requestsTypeFilter: ['movie', 'tv'],
 };
 
@@ -1200,6 +1215,8 @@ export const useUIStore = create<UIState>()(
       setTorrentsSortDir: (dir) => set({ torrentsSortDir: dir }),
       torrentsView: 'auto',
       setTorrentsView: (view) => set({ torrentsView: view }),
+      torrentsTableColumns: DEFAULT_TORRENTS_TABLE_COLUMNS,
+      setTorrentsTableColumns: (columns) => set({ torrentsTableColumns: columns }),
       // Activity
       activityTab: 'queue',
       setActivityTab: (tab) => set({ activityTab: tab }),

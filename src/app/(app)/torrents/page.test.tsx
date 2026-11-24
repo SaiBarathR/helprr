@@ -100,7 +100,8 @@ vi.mock('@/components/ui/data-table', () => ({
   ),
 }));
 // A real (unpersisted) zustand store with just the torrents slice.
-vi.mock('@/lib/store', async () => {
+vi.mock('@/lib/store', async (importActual) => {
+  const { DEFAULT_TORRENTS_TABLE_COLUMNS, TORRENTS_TABLE_COLUMNS } = await importActual<typeof import('@/lib/store')>();
   const { create } = await import('zustand');
   const useUIStore = create<Record<string, unknown>>((set) => ({
     hasHydrated: true,
@@ -117,11 +118,13 @@ vi.mock('@/lib/store', async () => {
     torrentsSortDir: 'asc',
     setTorrentsSortDir: (torrentsSortDir: string) => set({ torrentsSortDir }),
     torrentsView: 'auto',
+    torrentsTableColumns: DEFAULT_TORRENTS_TABLE_COLUMNS,
+    setTorrentsTableColumns: (torrentsTableColumns: string[]) => set({ torrentsTableColumns }),
   }));
-  return { useUIStore };
+  return { useUIStore, DEFAULT_TORRENTS_TABLE_COLUMNS, TORRENTS_TABLE_COLUMNS };
 });
 
-import { useUIStore } from '@/lib/store';
+import { DEFAULT_TORRENTS_TABLE_COLUMNS, useUIStore } from '@/lib/store';
 import { resetRouteViewStateForTests } from '@/lib/hooks/use-route-view-state';
 import TorrentsPage from './page';
 import { getSpeedLimitTargets } from './_components/speed-limit-targets';
@@ -157,7 +160,7 @@ beforeEach(() => {
   mocks.action = () => Response.json({ success: true });
   window.sessionStorage.clear();
   resetRouteViewStateForTests();
-  useUIStore.setState({ torrentsFilter: [], torrentsCategoryFilter: [], torrentsTagFilter: [], torrentsTrackerFilter: [], torrentsSortKey: 'name', torrentsSortDir: 'asc', torrentsView: 'auto' });
+  useUIStore.setState({ torrentsFilter: [], torrentsCategoryFilter: [], torrentsTagFilter: [], torrentsTrackerFilter: [], torrentsSortKey: 'name', torrentsSortDir: 'asc', torrentsView: 'auto', torrentsTableColumns: [...DEFAULT_TORRENTS_TABLE_COLUMNS] });
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   vi.stubGlobal('ResizeObserver', ResizeObserverStub);
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
@@ -709,6 +712,38 @@ describe('torrents page (characterization)', () => {
     await waitFor(() => expect(names()).toEqual(['Bravo.Show', 'Alpha.Movie', 'Charlie']));
     await user.click(actionsFor('Charlie').getByRole('button', { name: 'Stop' }));
     expect(posted()).toEqual([{ hash: 'ccc', action: 'stop' }]);
+  });
+
+  it('shows and hides table columns from the picker, and keeps the choice in the store', async () => {
+    mocks.mobile = false;
+    mocks.summary = () => full([
+      { ...ALPHA, tags: 'hevc, private, keep', tracker_host: 'tracker.one.invalid', save_path: '/downloads/movies' },
+      BRAVO,
+      CHARLIE,
+    ]);
+    const { user } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    const picker = within(screen.getByRole('button', { name: 'Columns' }).nextElementSibling as HTMLElement);
+    await user.click(picker.getByRole('menuitemcheckbox', { name: 'Tags' }));
+    await user.click(picker.getByRole('menuitemcheckbox', { name: 'Tracker' }));
+    await user.click(picker.getByRole('menuitemcheckbox', { name: 'Peers' }));
+    expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['', 'Name', 'Status', 'Progress', 'Size', 'DL', 'UL', 'ETA', 'Seeds', 'Ratio', 'Tags', 'Tracker', '']);
+    expect(useUIStore.getState().torrentsTableColumns).toEqual(['state', 'progress', 'size', 'dlspeed', 'upspeed', 'eta', 'num_seeds', 'ratio', 'tags', 'tracker_host']);
+    expect(screen.getByLabelText('Tags: hevc, private, keep').textContent).toBe('hevcprivate+1');
+    expect(screen.getAllByRole('cell').some((cell) => cell.textContent === 'tracker.one.invalid')).toBe(true);
+  });
+
+  it('shows the picker only with the table', async () => {
+    renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    expect(screen.queryByRole('button', { name: 'Columns' })).toBeNull();
+  });
+
+  it('shows a torrent\'s tags on its card', async () => {
+    mocks.summary = () => full([{ ...ALPHA, tags: 'hevc, private' }, BRAVO, CHARLIE]);
+    renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    expect(screen.getByLabelText('Tags: hevc, private').textContent).toBe('hevcprivate');
   });
 
   it('takes in what a later poll changes: a new state, a new torrent, one gone (and its selection)', async () => {

@@ -96,7 +96,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
   anime: ['animeSort', 'animeFilters', 'animeCarouselOrder', 'disabledAnimeCarousels'],
   torrents: [
     'torrentsFilter', 'torrentsCategoryFilter', 'torrentsTagFilter', 'torrentsTrackerFilter',
-    'torrentsSortKey', 'torrentsSortDir', 'torrentsView',
+    'torrentsSortKey', 'torrentsSortDir', 'torrentsView', 'torrentsTableColumns',
   ],
   activity: ['activityTab', 'activitySortBy', 'activitySortDirection', 'activityFilterBy', 'activityInstanceFilter', 'activityShowUnmonitored'],
   requests: ['requestsTab', 'requestsFilter', 'requestsUserFilter', 'requestsTypeFilter', 'requestsSort', 'requestsSortDirection'],
