@@ -80,6 +80,11 @@ function file(fields: Record<string, unknown>) {
   return POST(new NextRequest('http://localhost/api/qbittorrent', { method: 'POST', body: form }));
 }
 
+/** qBittorrent's answer to torrents/info?hashes=a|b once every asked torrent is there. */
+async function listed(...args: unknown[]) {
+  return String(args[4] ?? '').split('|').filter(Boolean).map((hash) => ({ hash, name: `Name ${hash.slice(0, 4)}` }));
+}
+
 const paths = {
   magnet: { post: magnet, add: () => mocks.qbit.addMagnet, optionsArg: 1 },
   file: { post: file, add: () => mocks.qbit.addTorrentFile, optionsArg: 2 },
@@ -91,8 +96,8 @@ beforeEach(() => {
   mocks.qbit.getDefaultSavePath.mockResolvedValue('/downloads');
   mocks.qbit.getCategories.mockResolvedValue({ movies: { name: 'movies', savePath: '/media/movies' } });
   mocks.qbit.addMagnet.mockResolvedValue('Ok.');
-  // The duplicate check finds nothing; the confirmation after the add finds it.
-  mocks.qbit.getTorrents.mockReset().mockResolvedValueOnce([]).mockResolvedValue([{ hash: 'x' }]);
+  // The duplicate check finds nothing; the confirmation after the add finds what it asks for.
+  mocks.qbit.getTorrents.mockReset().mockResolvedValueOnce([]).mockImplementation(listed);
 });
 
 describe.each(['magnet', 'file'] as const)('adding a %s', (path) => {
@@ -102,7 +107,9 @@ describe.each(['magnet', 'file'] as const)('adding a %s', (path) => {
   it('forwards every option, trimmed and deduplicated', async () => {
     const res = await post(ALL_OPTIONS);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ success: true, hash: path === 'magnet' ? MAGNET_HASH : FILE_HASH });
+    const hash = path === 'magnet' ? MAGNET_HASH : FILE_HASH;
+    // The name qBittorrent lists, for the Choose Files step of a link.
+    expect(await res.json()).toEqual({ success: true, hash, name: `Name ${hash.slice(0, 4)}` });
     expect(sentOptions()).toMatchObject(FORWARDED);
   });
 

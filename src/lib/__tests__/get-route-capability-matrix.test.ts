@@ -267,6 +267,10 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/settings/cache',
     'GET /api/settings/disk-thresholds',
   ],
+  'cap:torrents.add': [
+    // The .torrent files this user shared into the app, for the Add page.
+    'GET /api/share/torrents',
+  ],
   'cap:torrents.view': [
     'GET /api/qbittorrent/[hash]/details',
     'GET /api/qbittorrent/[hash]/files',
@@ -585,7 +589,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(292);
+    expect(handlers.size).toBe(293);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

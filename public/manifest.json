@@ -26,7 +26,13 @@
     "params": {
       "title": "title",
       "text": "text",
-      "url": "url"
+      "url": "url",
+      "files": [
+        {
+          "name": "torrent",
+          "accept": ["application/x-bittorrent", ".torrent"]
+        }
+      ]
     }
   },
   "protocol_handlers": [

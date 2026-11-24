@@ -2,10 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
-  requireAuth: vi.fn(),
+  requireUser: vi.fn(),
+  keepSharedTorrents: vi.fn(),
 }));
 
-vi.mock('@/lib/auth', () => ({ requireAuth: mocks.requireAuth }));
+vi.mock('@/lib/auth', () => ({ requireUser: mocks.requireUser }));
+vi.mock('@/lib/share/shared-torrents', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/share/shared-torrents')>()),
+  keepSharedTorrents: mocks.keepSharedTorrents,
+}));
 vi.mock('@/lib/api-logger', () => ({
   withApiLogging: (handler: unknown) => handler,
 }));
@@ -23,9 +28,13 @@ function formRequest(body: string, headers: Record<string, string> = {}): NextRe
   });
 }
 
+// May not add torrents, so a share is read with the text limits.
+const MEMBER = { id: 'u2', role: 'member', template: 'member', permissions: { 'torrents.add': false } };
+const SIGNED_OUT = { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.requireAuth.mockResolvedValue(null);
+  mocks.requireUser.mockResolvedValue({ ok: true, user: MEMBER, session: {} });
 });
 
 describe('Web Share Target request boundaries', () => {
@@ -47,9 +56,7 @@ describe('Web Share Target request boundaries', () => {
   });
 
   it('preserves a bounded valid payload through unauthenticated login', async () => {
-    mocks.requireAuth.mockResolvedValue(
-      NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
-    );
+    mocks.requireUser.mockResolvedValue(SIGNED_OUT);
 
     const response = await POST(formRequest('title=Hello&text=World'));
 
@@ -60,7 +67,7 @@ describe('Web Share Target request boundaries', () => {
     expect(params.get('next')).toBe('/share?title=Hello&text=World');
   });
 
-  it('rejects unsupported JSON without invoking authentication', async () => {
+  it('rejects unsupported JSON', async () => {
     const response = await POST(new NextRequest('http://localhost/api/share', {
       method: 'POST',
       body: '{}',
@@ -68,7 +75,6 @@ describe('Web Share Target request boundaries', () => {
     }));
 
     expect(response.status).toBe(415);
-    expect(mocks.requireAuth).not.toHaveBeenCalled();
   });
 
   it('names no host, whatever the server believes its own URL to be', async () => {
@@ -87,16 +93,23 @@ describe('Web Share Target request boundaries', () => {
   });
 
   it.each([
-    ['declared body', formRequest('title=x', { 'content-length': String(16 * 1024 + 1) })],
+    // Signed in, a share has room for one .torrent file.
+    ['declared body', formRequest('title=x', { 'content-length': String(16 * 1024 + 4 * 1024 * 1024 + 1) })],
     ['actual body', formRequest(`text=${'x'.repeat(16 * 1024)}`, { 'content-length': '1' })],
     ['title field', formRequest(`title=${encodeURIComponent('🧪'.repeat(257))}`)],
     ['text field', formRequest(`text=${encodeURIComponent('🧪'.repeat(513))}`)],
     ['URL field', formRequest(`url=${encodeURIComponent(`https://example.com/${'x'.repeat(2049)}`)}`)],
-  ])('returns 413 for an oversized %s before auth', async (_label, input) => {
+  ])('returns 413 for an oversized %s', async (_label, input) => {
     const response = await POST(input);
 
     expect(response.status).toBe(413);
-    expect(mocks.requireAuth).not.toHaveBeenCalled();
+  });
+
+  it('keeps the text limit for a signed-out share', async () => {
+    mocks.requireUser.mockResolvedValue(SIGNED_OUT);
+    const response = await POST(formRequest('title=x', { 'content-length': String(16 * 1024 + 1) }));
+
+    expect(response.status).toBe(413);
   });
 
   it('caps URL-encoded redirect expansion even when each source field is valid', async () => {
@@ -109,13 +122,10 @@ describe('Web Share Target request boundaries', () => {
     const response = await POST(formRequest(body));
 
     expect(response.status).toBe(413);
-    expect(mocks.requireAuth).not.toHaveBeenCalled();
   });
 
   it('caps the final login redirect after the share query is nested and encoded', async () => {
-    mocks.requireAuth.mockResolvedValue(
-      NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
-    );
+    mocks.requireUser.mockResolvedValue(SIGNED_OUT);
     const body = new URLSearchParams({
       text: 'é'.repeat(1000),
     }).toString();
@@ -123,7 +133,6 @@ describe('Web Share Target request boundaries', () => {
     const response = await POST(formRequest(body));
 
     expect(response.status).toBe(413);
-    expect(mocks.requireAuth).toHaveBeenCalledOnce();
   });
 
   it('returns 400 for malformed multipart form data', async () => {
@@ -134,6 +143,65 @@ describe('Web Share Target request boundaries', () => {
     }));
 
     expect(response.status).toBe(400);
-    expect(mocks.requireAuth).not.toHaveBeenCalled();
+  });
+});
+
+describe('sharing .torrent files', () => {
+  const ADDER = { id: 'u1', role: 'member', template: 'member', permissions: { 'torrents.add': true } };
+  const TORRENT = new TextEncoder().encode('d4:infod4:name1:a12:piece lengthi16384eee');
+
+  function shareFiles(files: Array<{ name: string; bytes: Uint8Array }>, fields: Record<string, string> = {}) {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(fields)) form.append(key, value);
+    for (const file of files) form.append('torrent', new File([file.bytes as BlobPart], file.name));
+    return POST(new NextRequest('http://localhost/api/share', { method: 'POST', body: form }));
+  }
+
+  it('keeps the torrents for the user and opens Add with them', async () => {
+    mocks.requireUser.mockResolvedValue({ ok: true, user: ADDER, session: {} });
+    const response = await shareFiles([
+      { name: 'a.torrent', bytes: TORRENT },
+      { name: 'notes.txt', bytes: new TextEncoder().encode('hello') },
+    ]);
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('/torrents/add?shared=files');
+    expect(mocks.keepSharedTorrents).toHaveBeenCalledWith('u1', [{ name: 'a.torrent', bytes: TORRENT }]);
+  });
+
+  it('reads a torrent larger than the text limit for that user', async () => {
+    mocks.requireUser.mockResolvedValue({ ok: true, user: ADDER, session: {} });
+    const big = new TextEncoder().encode(`d4:infod4:name1:a6:pieces60000:${'x'.repeat(60_000)}ee`);
+    const response = await shareFiles([{ name: 'big.torrent', bytes: big }]);
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('/torrents/add?shared=files');
+  });
+
+  it('gives the usual share flow to a user who may not add torrents', async () => {
+    // Larger than the text limit, as a real .torrent is.
+    const big = new TextEncoder().encode(`d4:infod4:name1:a6:pieces60000:${'x'.repeat(60_000)}ee`);
+    const response = await shareFiles([{ name: 'a.torrent', bytes: big }], { title: 'A file' });
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('/share?title=A+file');
+    expect(mocks.keepSharedTorrents).not.toHaveBeenCalled();
+  });
+
+  it('keeps nothing for a signed-out share and sends it to sign in', async () => {
+    mocks.requireUser.mockResolvedValue(SIGNED_OUT);
+    const response = await shareFiles([{ name: 'a.torrent', bytes: TORRENT }]);
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')!.startsWith('/login?')).toBe(true);
+    expect(mocks.keepSharedTorrents).not.toHaveBeenCalled();
+  });
+
+  it('refuses a torrent past the 4 MB share limit', async () => {
+    mocks.requireUser.mockResolvedValue({ ok: true, user: ADDER, session: {} });
+    const response = await shareFiles([{ name: 'huge.torrent', bytes: new Uint8Array(4 * 1024 * 1024 + 20 * 1024) }]);
+
+    expect(response.status).toBe(413);
+    expect(mocks.keepSharedTorrents).not.toHaveBeenCalled();
   });
 });

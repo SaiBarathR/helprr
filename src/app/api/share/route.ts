@@ -1,13 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { can } from '@/lib/permissions';
 import {
   BoundedBodyError,
   boundedBodyErrorResponse,
   readBoundedFormData,
 } from '@/lib/server/bounded-body';
+import {
+  keepSharedTorrents,
+  MAX_SHARED_TORRENT_BYTES,
+  MAX_SHARED_TORRENT_FILES,
+  type SharedTorrentFile,
+} from '@/lib/share/shared-torrents';
+import { parseTorrentInfoHash } from '@/lib/torrent-metainfo';
 
 const SHARE_BODY_MAX_BYTES = 16 * 1024;
+// The manifest offers Helprr for .torrent files (its `torrent` file field), so
+// a signed-in user's share is read with room for one; only a user who may add
+// torrents has it kept, anyone else gets the text flow. Signed out, the text
+// limit stays.
+const SHARE_WITH_TORRENTS_MAX_BYTES = SHARE_BODY_MAX_BYTES + MAX_SHARED_TORRENT_BYTES;
 const SHARE_TITLE_MAX_CODE_POINTS = 256;
 const SHARE_TEXT_MAX_BYTES = 2_048;
 const SHARE_URL_MAX_BYTES = 2_048;
@@ -50,9 +63,11 @@ function redirectOrPayloadTooLarge(target: string): NextResponse {
  * spec (which insists on POST for the share-target action).
  */
 async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireUser();
   let params: URLSearchParams;
+  let torrents: SharedTorrentFile[];
   try {
-    params = await readSharedParams(request);
+    ({ params, torrents } = await readShared(request, auth.ok, auth.ok && can(auth.user, 'torrents.add')));
   } catch (error) {
     const response = boundedBodyErrorResponse(error);
     if (response) return response;
@@ -67,19 +82,43 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const authError = await requireAuth();
-  if (authError) {
+  if (!auth.ok) {
     // Preserve the shared payload across the login round-trip so the user
     // doesn't lose context: send them to /login?next=/share?...
     const next = `/share?${query}`;
     return redirectOrPayloadTooLarge(`/login?next=${encodeURIComponent(next)}`);
   }
 
+  // .torrent files open Torrents -> Add with them; a magnet or .torrent link
+  // in the text is routed there by the /share page (also after a sign-in).
+  if (torrents.length > 0) {
+    await keepSharedTorrents(auth.user.id, torrents);
+    return redirectOrPayloadTooLarge('/torrents/add?shared=files');
+  }
+
   return redirectOrPayloadTooLarge(`/share?${query}`);
 }
 
-async function readSharedParams(request: NextRequest): Promise<URLSearchParams> {
-  const form = await readBoundedFormData(request, SHARE_BODY_MAX_BYTES);
+/** The shared files that parse as torrents (anything else shared is left to the text flow). */
+function sharedTorrentFiles(form: FormData): Promise<SharedTorrentFile[]> {
+  const files = form.getAll('torrent').filter((entry): entry is File => entry instanceof File).slice(0, MAX_SHARED_TORRENT_FILES);
+  return Promise.all(files.map(async (file) => ({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) })))
+    .then((read) => read.filter(({ bytes }) => {
+      try {
+        parseTorrentInfoHash(bytes);
+        return true;
+      } catch {
+        return false;
+      }
+    }));
+}
+
+async function readShared(
+  request: NextRequest,
+  signedIn: boolean,
+  keepTorrents: boolean,
+): Promise<{ params: URLSearchParams; torrents: SharedTorrentFile[] }> {
+  const form = await readBoundedFormData(request, signedIn ? SHARE_WITH_TORRENTS_MAX_BYTES : SHARE_BODY_MAX_BYTES);
   const params = new URLSearchParams();
   const title = form.get('title');
   const text = form.get('text');
@@ -99,7 +138,7 @@ async function readSharedParams(request: NextRequest): Promise<URLSearchParams> 
   if (typeof text === 'string' && text) params.set('text', text);
   if (typeof url === 'string' && url) params.set('url', url);
 
-  return params;
+  return { params, torrents: keepTorrents ? await sharedTorrentFiles(form) : [] };
 }
 
 export const POST = withApiLogging(postHandler, 'api/share', { logBodies: false });
