@@ -32,8 +32,15 @@ export interface QBittorrentTorrent {
   f_l_piece_prio: boolean;
   force_start: boolean;
   auto_tmm: boolean;
+  /** The limits in force: the torrent's own, or the global one while it uses that (-1: none). */
   max_ratio: number;
+  /** Minutes, like the limits below. */
   max_seeding_time: number;
+  max_inactive_seeding_time?: number;
+  /** What the torrent itself is set to: -2 uses the global limit, -1 is unlimited. Times are minutes. */
+  ratio_limit?: number;
+  seeding_time_limit?: number;
+  inactive_seeding_time_limit?: number;
   private?: boolean;
 }
 
@@ -59,6 +66,15 @@ export interface QBittorrentTransferInfo {
   up_rate_limit: number;
   dht_nodes: number;
   connection_status: string;
+}
+
+/** qBittorrent's all-time totals and free disk space (sync/maindata server_state). */
+export interface QBittorrentServerStats {
+  /** Bytes free where qBittorrent saves; null when qBittorrent can't tell (it reports -1). */
+  freeSpaceOnDisk: number | null;
+  alltimeDownloaded: number | null;
+  alltimeUploaded: number | null;
+  globalRatio: number | null;
 }
 
 export interface QBittorrentSummaryResponse {

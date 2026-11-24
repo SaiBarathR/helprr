@@ -360,7 +360,7 @@ describe('torrents page (characterization)', () => {
 
     await user.click(screen.getByRole('checkbox', { name: 'Select all' }));
     expect(screen.getByText('3')).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: 'Speed Limits' }));
+    await user.click(screen.getByRole('button', { name: 'Speed & Share Limits' }));
     expect(mocks.push).toHaveBeenCalledWith('/torrents/speed-limits');
     await user.click(screen.getByRole('button', { name: 'Clear' }));
     expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
@@ -559,7 +559,7 @@ describe('torrents page (characterization)', () => {
     await waitFor(() => expect(names()).toHaveLength(3));
     await user.click(screen.getByRole('checkbox', { name: 'Select Alpha.Movie' }));
     await user.click(screen.getByRole('checkbox', { name: 'Select Charlie' }));
-    await user.click(screen.getByRole('button', { name: 'Speed Limits' }));
+    await user.click(screen.getByRole('button', { name: 'Speed & Share Limits' }));
     expect(getSpeedLimitTargets()).toEqual([
       { hash: 'aaa', name: 'Alpha.Movie', dl_limit: 0, up_limit: 0 },
       { hash: 'ccc', name: 'Charlie', dl_limit: 0, up_limit: 0 },

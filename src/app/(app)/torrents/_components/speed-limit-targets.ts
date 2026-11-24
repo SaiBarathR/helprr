@@ -3,6 +3,11 @@ export interface SpeedLimitTarget {
   name: string;
   dl_limit: number;
   up_limit: number;
+  // The torrent's own share limits (-2 uses the global one); missing on a
+  // qBittorrent too old to report them.
+  ratio_limit?: number;
+  seeding_time_limit?: number;
+  inactive_seeding_time_limit?: number;
 }
 
 // The list hands its selection to /torrents/speed-limits in memory: a selection

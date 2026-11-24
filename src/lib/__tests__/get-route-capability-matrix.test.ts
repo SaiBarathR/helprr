@@ -274,6 +274,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/qbittorrent/options',
     'GET /api/qbittorrent',
     'GET /api/qbittorrent/summary',
+    'GET /api/qbittorrent/transfer/stats',
     'GET /api/qbittorrent/transfer/limits',
     'GET /api/qbittorrent/transfer',
   ],

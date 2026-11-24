@@ -61,3 +61,39 @@ export function parseTags(value: unknown): string[] | null {
   }
   return [...tags];
 }
+
+// -2 uses qBittorrent's global limit, -1 is no limit.
+const SHARE_LIMIT_SENTINELS = new Set([-2, -1]);
+// qBittorrent shows a ratio of 9999 or more as infinite, and its share-limit
+// dialog stops seeding times at a year.
+const MAX_RATIO_LIMIT = 9998;
+const MAX_SEEDING_MINUTES = 525_600;
+
+export interface ShareLimits {
+  ratioLimit: number;
+  /** Minutes. */
+  seedingTimeLimit: number;
+  /** Minutes. */
+  inactiveSeedingTimeLimit: number;
+}
+
+/**
+ * The three limits for torrents/setShareLimits; null unless every one is valid.
+ * qBittorrent sets all three at once and reads anything it can't parse as 0
+ * (stop seeding at once), so none is filled in or passed through unchecked.
+ */
+export function parseShareLimits(body: Record<string, unknown>): ShareLimits | null {
+  const { ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit } = body;
+  const isLimit = (value: unknown, max: number, integer: boolean): value is number =>
+    typeof value === 'number' &&
+    (SHARE_LIMIT_SENTINELS.has(value) ||
+      (Number.isFinite(value) && value >= 0 && value <= max && (!integer || Number.isInteger(value))));
+  if (
+    !isLimit(ratioLimit, MAX_RATIO_LIMIT, false) ||
+    !isLimit(seedingTimeLimit, MAX_SEEDING_MINUTES, true) ||
+    !isLimit(inactiveSeedingTimeLimit, MAX_SEEDING_MINUTES, true)
+  ) {
+    return null;
+  }
+  return { ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit };
+}
