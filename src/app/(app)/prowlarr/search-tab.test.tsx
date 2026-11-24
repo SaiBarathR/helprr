@@ -186,6 +186,46 @@ describe('SearchTab', () => {
     expect(sent.get('q')).toBe('');
   });
 
+  it('shows a typed id in the normal text colour and marks the placeholder as an example', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Search options' }));
+    const sheet = within(await screen.findByRole('dialog'));
+    await userEvent.click(sheet.getByRole('button', { name: 'TV' }));
+    const tvdb = screen.getByLabelText('TVDB ID') as HTMLInputElement;
+
+    // The label around it is muted; the field must not inherit that.
+    expect(tvdb.className).toContain('text-foreground');
+    expect(tvdb.placeholder).toBe('e.g. 81189');
+    expect((screen.getByLabelText('Season') as HTMLInputElement).placeholder).toMatch(/^e\.g\. /);
+  });
+
+  it('keeps an empty indexer pick empty, so clearing the list never searches every indexer', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Search options' }));
+    const sheet = within(await screen.findByRole('dialog'));
+    await userEvent.click(await sheet.findByRole('button', { name: /YTS/ }));
+    await userEvent.click(sheet.getByRole('button', { name: /Nyaa/ }));
+
+    // Unticking the last one leaves none ticked, not every one.
+    expect(sheet.getByRole('button', { name: /YTS/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(sheet.getByRole('button', { name: /Nyaa/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(sheet.getByText(/None ticked/)).toBeTruthy();
+    await userEvent.click(sheet.getByRole('button', { name: 'Done' }));
+
+    await userEvent.type(screen.getByRole('textbox'), 'bunny{Enter}');
+    expect((screen.getByRole('button', { name: 'Search' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/No indexer is ticked/)).toBeTruthy();
+    expect(searches()).toHaveLength(0);
+
+    // Use all is the way back to every indexer.
+    await userEvent.click(screen.getByRole('button', { name: /^Search options/ }));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Use all' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+    await waitFor(() => expect(searches()).toHaveLength(1));
+    expect(new URL(String(searches()[0][0]), 'http://x').searchParams.get('indexerIds')).toBeNull();
+  });
+
   describe('Send to Sonarr or Radarr', () => {
     const SEND_CAPS = ['torrents.add', 'activity.manage', 'movies.add'];
     async function searchFor(results: unknown[]) {

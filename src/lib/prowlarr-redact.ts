@@ -12,6 +12,9 @@ import type {
  * to their origin, then the usual credential and magnet redaction runs.
  */
 export function redactProwlarrText(text: string): string {
+  // A history record's link can be a whole magnet, its name written with
+  // spaces; nothing in it is for the browser, so none of it is kept.
+  if (/^\s*magnet:\?/i.test(text)) return 'magnet:[REDACTED]';
   return redactUpstreamText(urlsToOrigins(text));
 }
 

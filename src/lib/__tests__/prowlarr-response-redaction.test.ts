@@ -138,6 +138,35 @@ describe('GET /api/prowlarr/history', () => {
   });
 });
 
+describe('GET /api/prowlarr/history, magnet grabs', () => {
+  it('passes on no part of a magnet, whose name has spaces and whose trackers are percent-encoded', async () => {
+    mocks.prowlarr.getHistory.mockResolvedValue({
+      page: 1,
+      pageSize: 50,
+      totalRecords: 1,
+      records: [{
+        id: 9,
+        indexerId: 6,
+        eventType: 'releaseGrabbed',
+        successful: true,
+        date: '2026-11-24T13:46:29Z',
+        data: {
+          url: `magnet:?xt=urn:btih:1658902AEC7B&dn=Big Buck Bunny BDRip 360p&tr=http%3a%2f%2fprivate.example%2f${SECRET}%2fannounce&tr=udp%3a%2f%2fopen.example%3a1337`,
+          grabTitle: 'Big.Buck.Bunny.BDRip.360p',
+        },
+      }],
+    });
+
+    const res = await historyGet(new NextRequest('http://localhost/api/prowlarr/history?page=1&pageSize=50'));
+    const text = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(text).not.toContain(SECRET);
+    expect(text).not.toContain('private.example');
+    expect(JSON.parse(text).records[0].data).toEqual({ url: 'magnet:[REDACTED]', grabTitle: 'Big.Buck.Bunny.BDRip.360p' });
+  });
+});
+
 describe('POST /api/prowlarr/indexers/testall', () => {
   it('passes on only the known result fields, with URLs in failure messages cut to their origin', async () => {
     mocks.prowlarr.testAllIndexers.mockResolvedValue({
