@@ -7,8 +7,10 @@ import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { toast } from 'sonner';
 import {
+  Check,
   ChevronDown,
   ChevronRight,
+  CircleAlert,
   File,
   FileUp,
   Folder,
@@ -23,6 +25,7 @@ import { MANUAL_DOWNLOAD_MUTATION_KEY, ManualDownloadForm, type FallbackDraft, t
 import { FallbackActions, fallbackMutationKey } from '@/components/torrents/fallback-actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -46,12 +49,25 @@ import {
   type FileNode,
 } from '@/lib/torrent-file-tree';
 
+/** One item of a several-at-once add, in the order sent. */
+type AddItemResult =
+  | { index: number; result: 'added'; hash: string; name?: string }
+  | { index: number; result: 'exists'; hash: string }
+  | { index: number; result: 'failed'; error: string };
+
 type ApiResult = {
   success?: boolean;
   error?: string;
   hash?: string;
+  /** The name qBittorrent lists for what was added. */
+  name?: string;
   gone?: boolean;
+  /** Several at once: how each one went. */
+  results?: AddItemResult[];
 };
+
+/** What one add sends: the lines (magnets and links) or the files. */
+type AddInput = { kind: 'magnet'; lines: string[] } | { kind: 'file'; files: File[] };
 
 const NO_CATEGORY = '__none__';
 // "Leave it to qBittorrent": the option is not sent, so its own preference applies.
@@ -71,6 +87,7 @@ const NO_SPEED_LIMIT: SpeedDraft = { value: '', unit: 'MB/s' };
 const MAX_SPEED_LIMIT = 2_147_483_647;
 // What the server takes in one add (qBittorrent itself has no cap).
 const MAX_TAGS = 50;
+const MAX_ITEMS = 20;
 
 /** Bytes per second; 0 when empty, null when it is not a speed qBittorrent takes. */
 function speedLimitBytes({ value, unit }: SpeedDraft): number | null {
@@ -94,6 +111,31 @@ function magnetDisplayName(link: string): string | null {
   const queryStart = link.indexOf('?');
   if (queryStart < 0) return null;
   return new URLSearchParams(link.slice(queryStart + 1)).get('dn');
+}
+
+function linkLines(text: string): string[] {
+  return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+/** How an item is named in the results: never a link's query, which can hold a passkey. */
+function lineLabel(line: string): string {
+  if (/^magnet:/i.test(line)) return magnetDisplayName(line) || 'Magnet link';
+  try {
+    const url = new URL(line);
+    const file = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() ?? '');
+    return file ? `${url.hostname} · ${file}` : url.hostname;
+  } catch {
+    return line.slice(0, 60);
+  }
+}
+
+function sameFile(a: File, b: File): boolean {
+  return a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+}
+
+function fileFromShare({ name, data }: { name: string; data: string }): File {
+  // `File` here is the icon.
+  return new globalThis.File([Uint8Array.from(atob(data), (char) => char.charCodeAt(0))], name, { type: 'application/x-bittorrent' });
 }
 
 /** "Send again" from a linked download prefills its service, instance, title and release name. */
@@ -123,9 +165,13 @@ function AddTorrentPageContent() {
   const searchParams = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [addMode, setAddMode] = useState<'magnet' | 'file'>('magnet');
-  const [magnetLink, setMagnetLink] = useState('');
-  const [torrentFile, setTorrentFile] = useState<File | null>(null);
+  // A share into the Android app opens here with its links, or with its files kept on the server.
+  const [sharedFiles] = useState(() => searchParams.get('shared') === 'files');
+  const [addMode, setAddMode] = useState<'magnet' | 'file'>(sharedFiles ? 'file' : 'magnet');
+  const [linksText, setLinksText] = useState(() => searchParams.get('links') ?? '');
+  const [torrentFiles, setTorrentFiles] = useState<File[]>([]);
+  // How the last several-at-once add went, while some of it is left to fix.
+  const [addResults, setAddResults] = useState<Array<{ label: string; result: AddItemResult }> | null>(null);
   const [savePath, setSavePath] = useState('');
   const [category, setCategory] = useState(NO_CATEGORY);
   const [startTorrent, setStartTorrent] = useState(true);
@@ -143,6 +189,7 @@ function AddTorrentPageContent() {
 
   // Review step: set once the torrent is added stopped and files can be picked.
   const [reviewHash, setReviewHash] = useState<string | null>(null);
+  const [reviewName, setReviewName] = useState<string | null>(null);
 
   // File selection review needs torrents.manage (file priorities + start) AND
   // torrents.delete (Cancel removes the added-stopped torrent). Without both,
@@ -169,6 +216,39 @@ function AddTorrentPageContent() {
   const [destination, setDestination] = useState<'arr' | 'client'>(canLink ? 'arr' : 'client');
   // The advanced fallback: the Sonarr/Radarr choices, kept while the files are chosen.
   const [fallback, setFallback] = useState<FallbackDraft | null>(null);
+
+  const sharedQuery = useQuery({
+    queryKey: ['share', 'torrents'],
+    queryFn: jsonFetcher<{ files: Array<{ name: string; data: string }> }>('/api/share/torrents'),
+    enabled: sharedFiles && canAddTorrents,
+    // Each share replaces the last one on the server: never show an earlier one from the cache.
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const [sharedTaken, setSharedTaken] = useState(false);
+  if (!sharedTaken && sharedQuery.data) {
+    setSharedTaken(true);
+    setTorrentFiles(sharedQuery.data.files.slice(0, MAX_ITEMS).map(fileFromShare));
+  }
+
+  // Shared links can carry a passkey: once in the form, keep them out of the
+  // address bar, the history and the cached page.
+  useEffect(() => {
+    if (!searchParams.has('links')) return;
+    const rest = new URLSearchParams(searchParams);
+    rest.delete('links');
+    router.replace(rest.size > 0 ? `/torrents/add?${rest}` : '/torrents/add');
+  }, [router, searchParams]);
+
+  const lines = useMemo(() => linkLines(linksText), [linksText]);
+  const itemCount = addMode === 'magnet' ? lines.length : torrentFiles.length;
+  // Choose Files works on one torrent; several are added as they are.
+  const several = itemCount > 1;
+  // Sonarr and Radarr take one magnet link or one .torrent file.
+  const arrMagnet = addMode === 'magnet' && lines.length === 1 && /^magnet:/i.test(lines[0]) ? lines[0] : '';
+  const arrFile = addMode === 'file' && torrentFiles.length === 1 ? torrentFiles[0] : null;
+  const arrUnsupported = addMode === 'magnet' ? lines.length > 0 && !arrMagnet : torrentFiles.length > 1;
 
   const categoriesQuery = useQuery({
     queryKey: ['qbittorrent', 'categories'],
@@ -205,23 +285,23 @@ function AddTorrentPageContent() {
 
   const addMutation = useMutation({
     // `draft`: the Sonarr/Radarr choices when the files are picked for them (the advanced fallback).
-    mutationFn: async ({ review, options }: { review: boolean; options: AddTorrentOptions; draft?: FallbackDraft }) => {
+    mutationFn: async ({ review, options, input }: { review: boolean; options: AddTorrentOptions; input: AddInput; draft?: FallbackDraft }) => {
       // With review, add .torrent files stopped so files can be deselected
       // before any data downloads. Magnets can't fetch metadata while stopped,
       // so they start with stopCondition=MetadataReceived: qBittorrent stops
       // them automatically once metadata arrives, before downloading data.
       // Direct add skips review and just honors the "Start torrent" checkbox.
-      const paused = review ? addMode === 'file' : !startTorrent;
+      const paused = review ? input.kind === 'file' : !startTorrent;
       // From what is sent: the Sonarr/Radarr file picker sends no options, so its save path stays.
       const savepath = options.autoTMM === true ? undefined : savePath.trim() || undefined;
 
-      const res = addMode === 'magnet'
+      const res = input.kind === 'magnet'
         ? await fetch('/api/qbittorrent', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               ...options,
-              urls: magnetLink.trim(),
+              urls: input.lines.join('\n'),
               category: selectedCategory,
               savepath,
               paused,
@@ -230,7 +310,7 @@ function AddTorrentPageContent() {
           })
         : await (() => {
             const formData = new FormData();
-            formData.append('file', torrentFile as File);
+            for (const file of input.files) formData.append('file', file);
             if (selectedCategory) formData.append('category', selectedCategory);
             if (savepath) formData.append('savepath', savepath);
             formData.append('paused', String(paused));
@@ -246,16 +326,22 @@ function AddTorrentPageContent() {
       const data = await parseApiResult(res);
       // ApiError carries the status so a 401 reaches the global MutationCache
       // handler (redirect); a 200 with success:false toasts as a normal failure.
-      if (!res.ok || data.error || data.success !== true) {
+      if (!res.ok || data.error || (data.success !== true && !Array.isArray(data.results))) {
         throw new ApiError(res.status, data.error || 'Failed to add torrent');
       }
       return data;
     },
-    onSuccess: (data, { review, draft }) => {
+    onSuccess: (data, { review, draft, input }) => {
+      if (data.results) {
+        showResults(input, data.results);
+        return;
+      }
+      setAddResults(null);
       if (review) {
         if (data.hash) {
           // The files go to Sonarr/Radarr only when this add was for them.
           setFallback(draft ?? null);
+          setReviewName(data.name ?? null);
           setReviewHash(data.hash);
           return;
         }
@@ -270,11 +356,38 @@ function AddTorrentPageContent() {
       router.push('/torrents');
     },
     onError: (err) => {
+      // What is on screen now is what failed; the last list no longer is.
+      setAddResults(null);
       if (err instanceof ApiError && err.status === 401) return;
       toast.error(err instanceof Error ? err.message : 'Failed to add torrent');
     },
   });
   const adding = addMutation.isPending;
+
+  /** All in: say so and go back. Otherwise list how each went and leave only the ones not added to fix or retry. */
+  function showResults(input: AddInput, results: AddItemResult[]) {
+    const added = results.filter((item) => item.result === 'added').length;
+    const existing = results.filter((item) => item.result === 'exists').length;
+    const failedIndexes = new Set(results.filter((item) => item.result === 'failed').map((item) => item.index));
+    if (failedIndexes.size === 0) {
+      const parts = [added > 0 && `${added} torrent${added === 1 ? '' : 's'} added`, existing > 0 && `${existing} already in qBittorrent`].filter(Boolean);
+      toast.success(parts.join(', '));
+      router.push('/torrents');
+      return;
+    }
+    const labels = input.kind === 'magnet' ? input.lines.map(lineLabel) : input.files.map((file) => file.name);
+    setAddResults(results.map((result) => ({ label: labels[result.index] ?? `Item ${result.index + 1}`, result })));
+    if (input.kind === 'magnet') setLinksText(input.lines.filter((_, index) => failedIndexes.has(index)).join('\n'));
+    else setTorrentFiles(input.files.filter((_, index) => failedIndexes.has(index)));
+    toast.error(`${failedIndexes.size} of ${results.length} not added`);
+  }
+
+  function addFiles(picked: File[]) {
+    const next = [...torrentFiles];
+    for (const file of picked) if (!next.some((kept) => sameFile(kept, file))) next.push(file);
+    if (next.length > MAX_ITEMS) toast.error(`Up to ${MAX_ITEMS} files at once`);
+    setTorrentFiles(next.slice(0, MAX_ITEMS));
+  }
 
   /** The options as the server takes them; null after saying what is wrong. */
   function addOptions(): AddTorrentOptions | null {
@@ -298,25 +411,34 @@ function AddTorrentPageContent() {
     };
   }
 
+  function currentInput(): AddInput {
+    return addMode === 'magnet' ? { kind: 'magnet', lines } : { kind: 'file', files: torrentFiles };
+  }
+
   function handleAddTorrent(review: boolean) {
-    if (addMode === 'magnet' && !magnetLink.trim()) {
-      toast.error('Please enter a magnet link');
+    if (addMode === 'magnet' && lines.length === 0) {
+      toast.error('Please enter a magnet link or a .torrent link');
       return;
     }
-    if (addMode === 'file' && !torrentFile) {
+    if (addMode === 'file' && torrentFiles.length === 0) {
       toast.error('Please select a .torrent file');
       return;
     }
+    if (itemCount > MAX_ITEMS) {
+      toast.error(`Up to ${MAX_ITEMS} torrents at once`);
+      return;
+    }
     const options = addOptions();
-    if (options) addMutation.mutate({ review, options });
+    if (options) addMutation.mutate({ review, options, input: currentInput() });
   }
 
   if (reviewHash) {
     // The name is only sent with a qBittorrent-only add, not the Sonarr/Radarr fallback.
+    // A link's name is only known once qBittorrent lists it.
     const displayName = (!fallback && rename.trim()) ||
       (addMode === 'magnet'
-        ? magnetDisplayName(magnetLink)
-        : torrentFile?.name.replace(/\.torrent$/i, '')) || 'New Torrent';
+        ? magnetDisplayName(lines[0] ?? '') || reviewName
+        : torrentFiles[0]?.name.replace(/\.torrent$/i, '')) || 'New Torrent';
     return (
       <ReviewStep
         hash={reviewHash}
@@ -334,7 +456,7 @@ function AddTorrentPageContent() {
 
       <div className="rounded-xl border bg-card p-4 space-y-4">
         <p className="text-sm text-muted-foreground">
-          Add a torrent via magnet link or .torrent file.
+          Add torrents by magnet link, .torrent link or .torrent file, one or several at once.
         </p>
         {prefill && (
           <p className="text-xs text-muted-foreground">
@@ -346,51 +468,99 @@ function AddTorrentPageContent() {
           <Button
             variant={addMode === 'magnet' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setAddMode('magnet')}
+            onClick={() => { setAddMode('magnet'); setAddResults(null); }}
             className="flex-1"
           >
             <LinkIcon className="mr-2 h-4 w-4" />
-            Magnet Link
+            Links
           </Button>
           <Button
             variant={addMode === 'file' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setAddMode('file')}
+            onClick={() => { setAddMode('file'); setAddResults(null); }}
             className="flex-1"
           >
             <FileUp className="mr-2 h-4 w-4" />
-            Torrent File
+            Torrent Files
           </Button>
         </div>
 
+        {addResults && <AddResults items={addResults} onDismiss={() => setAddResults(null)} />}
+
         {addMode === 'magnet' ? (
-          <Input
-            placeholder="magnet:?xt=urn:btih:..."
-            value={magnetLink}
-            onChange={(e) => setMagnetLink(e.target.value)}
-            autoFocus
-          />
+          <div className="space-y-1.5">
+            <Textarea
+              aria-label="Magnet or .torrent links"
+              placeholder={'magnet:?xt=urn:btih:…\nhttps://…/file.torrent'}
+              value={linksText}
+              onChange={(e) => setLinksText(e.target.value)}
+              rows={3}
+              className="min-h-24 break-all"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground">
+              One per line: magnet links, or http(s) links to .torrent files.
+            </p>
+          </div>
         ) : (
-          <>
+          <div className="space-y-2">
             <input
               ref={fileInputRef}
               type="file"
               accept=".torrent"
+              multiple
               className="hidden"
               onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) setTorrentFile(file);
+                addFiles([...(e.target.files ?? [])]);
+                // The same file can be picked again after it is removed.
+                e.target.value = '';
               }}
             />
+            {sharedFiles && sharedQuery.isPending && canAddTorrents && (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Opening the shared files…
+              </p>
+            )}
+            {sharedQuery.isError && (
+              <p className="text-xs text-destructive">
+                {sharedQuery.error instanceof Error ? sharedQuery.error.message : 'The shared files could not be opened'}
+              </p>
+            )}
+            {torrentFiles.length > 0 && (
+              <ul className="divide-y divide-border/50 rounded-lg border" aria-label="Chosen files">
+                {torrentFiles.map((file, index) => (
+                  <li key={`${file.name}-${file.size}-${file.lastModified}-${index}`} className="flex min-h-11 items-center gap-2 pl-3">
+                    <File className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate text-sm">{file.name}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-11 w-11 shrink-0"
+                      aria-label={`Remove ${file.name}`}
+                      disabled={adding}
+                      onClick={() => setTorrentFiles((prev) => prev.filter((_, i) => i !== index))}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
             <Button
               variant="outline"
               className="w-full"
               onClick={() => fileInputRef.current?.click()}
+              disabled={adding}
             >
               <FileUp className="mr-2 h-4 w-4" />
-              {torrentFile ? torrentFile.name : 'Choose .torrent file'}
+              {torrentFiles.length > 0 ? 'Add more .torrent files' : 'Choose .torrent files'}
             </Button>
-          </>
+          </div>
         )}
 
         {canLink && (
@@ -417,12 +587,15 @@ function AddTorrentPageContent() {
         {canLink && (
           <div hidden={destination !== 'arr'}>
             <ManualDownloadForm
-              release={addMode === 'magnet' ? { kind: 'magnet', magnet: magnetLink } : { kind: 'file', file: torrentFile }}
-              suggestedName={addMode === 'magnet' ? magnetDisplayName(magnetLink.trim()) ?? '' : ''}
+              release={addMode === 'magnet' ? { kind: 'magnet', magnet: arrMagnet } : { kind: 'file', file: arrFile }}
+              suggestedName={arrMagnet ? magnetDisplayName(arrMagnet) ?? '' : ''}
               prefill={prefill}
               // Picking files adds the torrent stopped first (the same step as "Choose Files").
-              onChooseFiles={canReview ? (draft) => addMutation.mutate({ review: true, options: {}, draft }) : undefined}
+              onChooseFiles={canReview ? (draft) => addMutation.mutate({ review: true, options: {}, draft, input: currentInput() }) : undefined}
               choosingFiles={adding}
+              sourceHint={arrUnsupported
+                ? 'Sonarr and Radarr take one magnet link or one .torrent file. For a .torrent link or several torrents, choose Add to qBittorrent only.'
+                : undefined}
             />
           </div>
         )}
@@ -593,7 +766,7 @@ function AddTorrentPageContent() {
         </div>
 
         <div className="space-y-2 pt-2">
-          {canReview && (
+          {canReview && !several && (
             <Button
               onClick={() => handleAddTorrent(true)}
               disabled={adding}
@@ -611,7 +784,7 @@ function AddTorrentPageContent() {
           )}
           <div className="flex gap-2">
             <Button
-              variant={canReview ? 'outline' : 'default'}
+              variant={canReview && !several ? 'outline' : 'default'}
               onClick={() => handleAddTorrent(false)}
               disabled={adding}
               className="flex-1"
@@ -621,6 +794,8 @@ function AddTorrentPageContent() {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Adding...
                 </>
+              ) : several ? (
+                `Add ${itemCount} Torrents`
               ) : (
                 'Add Torrent'
               )}
@@ -639,6 +814,43 @@ function AddTorrentPageContent() {
         )}
       </div>
     </div>
+  );
+}
+
+/** How each of a several-at-once add went; the ones not added stay in the form above. */
+function AddResults({ items, onDismiss }: {
+  items: Array<{ label: string; result: AddItemResult }>;
+  onDismiss: () => void;
+}) {
+  const failedCount = items.filter(({ result }) => result.result === 'failed').length;
+  return (
+    <section className="space-y-2 rounded-lg border border-destructive/40 p-3" aria-live="polite">
+      <p className="flex items-center gap-2 text-sm font-medium text-destructive">
+        <CircleAlert className="h-4 w-4 shrink-0" />
+        {failedCount} of {items.length} not added
+      </p>
+      <ul className="space-y-1.5">
+        {items.map(({ label, result }) => (
+          <li key={result.index} className="flex gap-2 text-xs">
+            {result.result === 'failed'
+              ? <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+              : <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-500" />}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium">{label}</span>
+              <span className={`block ${result.result === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>
+                {result.result === 'added' ? 'Added' : result.result === 'exists' ? 'Already in qBittorrent' : result.error}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">The ones not added are left below to fix or try again.</p>
+        <Button type="button" variant="ghost" size="sm" className="touch-target-y shrink-0" onClick={onDismiss}>
+          Dismiss
+        </Button>
+      </div>
+    </section>
   );
 }
 

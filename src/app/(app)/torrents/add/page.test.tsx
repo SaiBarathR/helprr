@@ -4,10 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ caps: new Set<string>(), params: new URLSearchParams(), adds: [] as Array<() => Response> }));
+const mocks = vi.hoisted(() => ({ caps: new Set<string>(), params: new URLSearchParams(), adds: [] as Array<() => Response>, replace: vi.fn() }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => mocks.params }));
 vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap) }));
-vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
+vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn(), replace: mocks.replace }) }));
 vi.mock('@/components/layout/page-header', () => ({ PageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
 vi.mock('@/components/torrents/manual-download-form', async () => {
   const { useState } = await import('react');
@@ -15,13 +15,14 @@ vi.mock('@/components/torrents/manual-download-form', async () => {
   const MANUAL_DOWNLOAD_MUTATION_KEY = ['manual-downloads', 'submit'];
   return {
     MANUAL_DOWNLOAD_MUTATION_KEY,
-    ManualDownloadForm: function Form({ prefill, onChooseFiles }: { prefill: { title: string } | null; onChooseFiles?: (draft: unknown) => void }) {
+    ManualDownloadForm: function Form({ prefill, onChooseFiles, sourceHint }: { prefill: { title: string } | null; onChooseFiles?: (draft: unknown) => void; sourceHint?: string }) {
       const [title, setTitle] = useState('');
       // A send that has not answered yet.
       const send = useMutation({ mutationKey: MANUAL_DOWNLOAD_MUTATION_KEY, mutationFn: () => new Promise(() => {}) });
       return (
         <div>
           Arr form{prefill ? ` for ${prefill.title}` : ''}
+          {sourceHint && <p>{sourceHint}</p>}
           <input aria-label="Arr title" value={title} onChange={(event) => setTitle(event.target.value)} />
           {onChooseFiles && (
             <button type="button" onClick={() => onChooseFiles({ service: 'RADARR', instanceId: 'r1', externalId: 10331, title: 'Night of the Living Dead' })}>Next: choose files</button>
@@ -120,7 +121,7 @@ describe('Add Torrent: where it goes', () => {
     renderPage();
     await userEvent.click(await screen.findByRole('radio', { name: /Add to qBittorrent only/ }));
     // Pasted, as a user would: typing it renders the page once per character, too slow under load.
-    await userEvent.click(screen.getByPlaceholderText('magnet:?xt=urn:btih:...'));
+    await userEvent.click(screen.getByLabelText('Magnet or .torrent links'));
     await userEvent.paste('magnet:?xt=urn:btih:382CC016FF22946008ECDDCB0DDA820F42B0CD5A');
     await userEvent.click(screen.getByRole('button', { name: 'Add Torrent' }));
 
@@ -154,7 +155,7 @@ describe('Add Torrent: where it goes', () => {
       await waitFor(() => expect(mocks.adds).toHaveLength(1));
 
       await user.click(screen.getByRole('radio', { name: /Add to qBittorrent only/ }));
-      await user.click(screen.getByPlaceholderText('magnet:?xt=urn:btih:...'));
+      await user.click(screen.getByLabelText('Magnet or .torrent links'));
       await user.paste('magnet:?xt=urn:btih:382CC016FF22946008ECDDCB0DDA820F42B0CD5A');
       await user.click(screen.getByRole('button', { name: 'Next: Choose Files' }));
       await screen.findByRole('checkbox', { name: 'Select a.mkv' });
@@ -188,7 +189,7 @@ describe('Add Torrent: options for qBittorrent', () => {
   it('sends tags, in-order download and the advanced options with a magnet', async () => {
     mocks.caps = new Set(['torrents.add', 'torrents.bandwidth']);
     renderPage();
-    await userEvent.click(await screen.findByPlaceholderText('magnet:?xt=urn:btih:...'));
+    await userEvent.click(await screen.findByLabelText('Magnet or .torrent links'));
     await userEvent.paste(MAGNET);
     await chooseOptions();
     await userEvent.click(screen.getByRole('button', { name: 'Advanced' }));
@@ -246,7 +247,7 @@ describe('Add Torrent: options for qBittorrent', () => {
   it('sends the options with "Next: Choose Files", stopping the magnet once metadata arrives', async () => {
     mocks.caps = new Set(['torrents.add', 'torrents.manage', 'torrents.delete']);
     renderPage();
-    await userEvent.click(await screen.findByPlaceholderText('magnet:?xt=urn:btih:...'));
+    await userEvent.click(await screen.findByLabelText('Magnet or .torrent links'));
     await userEvent.paste(MAGNET);
     await chooseOptions();
     await userEvent.click(screen.getByRole('button', { name: 'Next: Choose Files' }));
@@ -264,7 +265,7 @@ describe('Add Torrent: options for qBittorrent', () => {
   it('sends none of them when the files are picked for Sonarr/Radarr', async () => {
     mocks.caps = new Set([...LINKER, 'torrents.manage', 'torrents.delete']);
     renderPage();
-    await userEvent.click(await screen.findByPlaceholderText('magnet:?xt=urn:btih:...'));
+    await userEvent.click(await screen.findByLabelText('Magnet or .torrent links'));
     await userEvent.paste(MAGNET);
     await userEvent.click(screen.getByRole('radio', { name: /Add to qBittorrent only/ }));
     await chooseOptions();
@@ -363,5 +364,115 @@ describe('Add Torrent: the empty Save at field names where the torrent goes', ()
     renderPage();
     await pick('Category', /^tv$/);
     expect(hint()).toBe('qBittorrent default');
+  });
+});
+
+describe('Add Torrent: several at once, links, and shares', () => {
+  const M1 = 'magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=First';
+  const M2 = 'magnet:?xt=urn:btih:2222222222222222222222222222222222222222&dn=Second';
+  const LINK = 'https://example.org/files/Third.torrent?passkey=SECRET';
+  let sent: RequestInit[];
+  let answer: () => Response;
+  beforeEach(() => {
+    sent = [];
+    answer = () => json({ success: true, hash: 'abc' });
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/qbittorrent' && init?.method === 'POST') {
+        sent.push(init);
+        return answer();
+      }
+      if (url === '/api/share/torrents') return json({ files: [{ name: 'shared.torrent', data: btoa('d4:infodee') }] });
+      return json({});
+    }));
+  });
+
+  it('sends every line in one add and says how each went, leaving the one not added', async () => {
+    mocks.caps = new Set(['torrents.add', 'torrents.manage', 'torrents.delete']);
+    answer = () => json({
+      results: [
+        { index: 0, result: 'added', hash: '1'.repeat(40) },
+        { index: 1, result: 'exists', hash: '2'.repeat(40) },
+        { index: 2, result: 'failed', error: 'The link answered HTTP 404' },
+      ],
+    });
+    renderPage();
+    await userEvent.click(await screen.findByLabelText('Magnet or .torrent links'));
+    await userEvent.paste(`${M1}\n\n${M2}\n${LINK}`);
+    // Choose Files works on one torrent at a time.
+    expect(screen.queryByRole('button', { name: 'Next: Choose Files' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Add 3 Torrents' }));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(JSON.parse(sent[0].body as string).urls).toBe(`${M1}\n${M2}\n${LINK}`);
+    expect(await screen.findByText('1 of 3 not added')).toBeTruthy();
+    expect(screen.getByText('First')).toBeTruthy();
+    expect(screen.getByText('Added')).toBeTruthy();
+    expect(screen.getByText('Already in qBittorrent')).toBeTruthy();
+    expect(screen.getByText('The link answered HTTP 404')).toBeTruthy();
+    // A link is named by its host and file, never its query.
+    expect(screen.getByText('example.org · Third.torrent')).toBeTruthy();
+    expect(screen.getByText('1 of 3 not added').closest('section')!.textContent).not.toContain('SECRET');
+    expect((screen.getByLabelText('Magnet or .torrent links') as HTMLTextAreaElement).value).toBe(LINK);
+
+    // The retry of what is left fails on its own: the earlier list goes, the error is a toast.
+    answer = () => json({ error: 'The link answered HTTP 404' }, 502);
+    await userEvent.click(screen.getByRole('button', { name: 'Add Torrent' }));
+    await waitFor(() => expect(screen.queryByText('1 of 3 not added')).toBeNull());
+  });
+
+  it('sends several files in one add', async () => {
+    mocks.caps = new Set(['torrents.add']);
+    answer = () => json({ results: [{ index: 0, result: 'added', hash: 'a' }, { index: 1, result: 'added', hash: 'b' }] });
+    const { container } = renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Torrent Files/ }));
+    await userEvent.upload(container.querySelector('input[type="file"]') as HTMLInputElement, [
+      new File(['d4:infodee'], 'a.torrent'),
+      new File(['d4:infod1:xi1eee'], 'b.torrent'),
+    ]);
+    expect(screen.getByRole('button', { name: 'Remove a.torrent' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Add 2 Torrents' }));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect((sent[0].body as FormData).getAll('file').map((file) => (file as File).name)).toEqual(['a.torrent', 'b.torrent']);
+  });
+
+  it('offers Choose Files for one .torrent link, and names the torrent from qBittorrent', async () => {
+    mocks.caps = new Set(['torrents.add', 'torrents.manage', 'torrents.delete']);
+    answer = () => json({ success: true, hash: 'abc', name: 'Night of the Living Dead' });
+    renderPage();
+    await userEvent.click(await screen.findByLabelText('Magnet or .torrent links'));
+    await userEvent.paste(LINK);
+    await userEvent.click(screen.getByRole('button', { name: 'Next: Choose Files' }));
+    expect(await screen.findByText('Choose Files')).toBeTruthy();
+  });
+
+  it('tells Sonarr/Radarr senders that a link or several go to qBittorrent only', async () => {
+    mocks.caps = new Set(LINKER);
+    renderPage();
+    await userEvent.click(await screen.findByLabelText('Magnet or .torrent links'));
+    await userEvent.paste(M1);
+    expect(screen.queryByText(/Sonarr and Radarr take one magnet link/)).toBeNull();
+    await userEvent.paste(`\n${LINK}`);
+    expect(screen.getByText(/Sonarr and Radarr take one magnet link/)).toBeTruthy();
+  });
+
+  it('opens with the links a share brought', async () => {
+    mocks.caps = new Set(['torrents.add']);
+    mocks.params = new URLSearchParams({ links: `${M1}\n${M2}` });
+    renderPage();
+    expect(((await screen.findByLabelText('Magnet or .torrent links')) as HTMLTextAreaElement).value).toBe(`${M1}\n${M2}`);
+    expect(screen.getByRole('button', { name: 'Add 2 Torrents' })).toBeTruthy();
+    // A link can carry a passkey: it leaves the address bar once it is in the form.
+    expect(mocks.replace).toHaveBeenCalledWith('/torrents/add');
+  });
+
+  it('opens with the files a share brought', async () => {
+    mocks.caps = new Set(['torrents.add']);
+    mocks.params = new URLSearchParams({ shared: 'files' });
+    renderPage();
+    expect(await screen.findByText('shared.torrent')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Add Torrent' }));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(((sent[0].body as FormData).get('file') as File).name).toBe('shared.torrent');
   });
 });
