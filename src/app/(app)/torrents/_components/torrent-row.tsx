@@ -3,6 +3,7 @@
 import { memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import {
   DropdownMenu,
@@ -31,10 +32,43 @@ import {
 import type { QBittorrentTorrent } from '@/types';
 import { useCan } from '@/components/permission-provider';
 import { PAUSED_STATES, formatBytes, torrentStateBadge, formatEta, formatSpeed, formatTorrentSize, torrentSizeUnknown } from './torrent-list';
+import { parseTorrentTags } from './torrent-tags';
 
 export function getStateBadge(state: string) {
   const s = torrentStateBadge(state);
   return <Badge variant={s.variant} className="text-[10px] px-1.5 py-0">{s.label}</Badge>;
+}
+
+/**
+ * A torrent's tags as small chips on one line: the first `max`, then "+N" for
+ * the rest. A long tag shrinks to an ellipsis, so the line never wraps (the
+ * card list is virtualized at a fixed row height) or runs off a phone screen.
+ * The chips are hidden from screen readers, which hear the full list instead.
+ * `relative` keeps that sr-only text (absolutely positioned) inside the
+ * table's horizontal scroller: escaping it, a tags cell off to the right
+ * widened the page, and a phone's layout viewport grew to fit.
+ */
+export function TorrentTagChips({ tags, max, className }: { tags: string[]; max: number; className?: string }) {
+  const shown = tags.slice(0, max);
+  const more = tags.length - shown.length;
+  return (
+    <span className={cn('relative flex min-w-0 items-center gap-1', className)} title={tags.join(', ')} data-tag-chips="">
+      <span className="sr-only">Tags: {tags.join(', ')}</span>
+      {shown.map((tag) => (
+        <Badge
+          key={tag}
+          variant="secondary"
+          className="block min-w-[2rem] max-w-[96px] shrink truncate text-center text-[10px] px-1.5 py-0"
+          aria-hidden
+        >
+          {tag}
+        </Badge>
+      ))}
+      {more > 0 && (
+        <Badge variant="secondary" className="shrink-0 text-[10px] px-1.5 py-0" aria-hidden>+{more}</Badge>
+      )}
+    </span>
+  );
 }
 
 // --- Row actions dropdown (shared by card and table rows) ---
@@ -258,6 +292,7 @@ export const TorrentRow = memo(function TorrentRow({
   onRename,
 }: TorrentRowProps) {
   const hasSpeedLimit = torrent.dl_limit > 0 || torrent.up_limit > 0;
+  const tags = parseTorrentTags(torrent.tags);
   const canManageTorrents = useCan('torrents.manage');
   const canDeleteTorrents = useCan('torrents.delete');
   const canSelect = selectionAllowed(canManageTorrents, canDeleteTorrents, useCan('torrents.bandwidth'));
@@ -326,16 +361,26 @@ export const TorrentRow = memo(function TorrentRow({
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+          {/* One line: the list is virtualized at a fixed row height, so the
+              category and tags shrink to an ellipsis rather than wrap. Phones
+              show one tag (and "+N"): with a long state, a size, a category
+              and a speed limit, two did not fit at 320px. */}
+          <div className="flex min-w-0 items-center gap-1.5 mt-1 overflow-hidden">
             {getStateBadge(torrent.state)}
-            <span className="text-[11px] text-muted-foreground">{formatTorrentSize(torrent)}</span>
+            <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">{formatTorrentSize(torrent)}</span>
+            {hasSpeedLimit && (
+              <Gauge className="h-3 w-3 shrink-0 text-yellow-500" />
+            )}
             {torrent.category && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 truncate max-w-[120px]">
+              <Badge variant="outline" className="block min-w-[2rem] shrink truncate text-[10px] px-1.5 py-0 max-w-[120px]">
                 {torrent.category}
               </Badge>
             )}
-            {hasSpeedLimit && (
-              <Gauge className="h-3 w-3 text-yellow-500" />
+            {tags.length > 0 && (
+              <>
+                <TorrentTagChips tags={tags} max={1} className="sm:hidden" />
+                <TorrentTagChips tags={tags} max={2} className="max-sm:hidden" />
+              </>
             )}
           </div>
 
