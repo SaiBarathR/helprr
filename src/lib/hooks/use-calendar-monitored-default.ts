@@ -14,11 +14,13 @@ export interface CalendarMonitoredDefault {
 
 /** The saved default (false until it loads, and when it cannot be read), and whether it is still loading. */
 export function useCalendarMonitoredDefault() {
-  const { data, isPending } = useQuery({
+  const { data, isPending, fetchStatus } = useQuery({
     queryKey: CALENDAR_MONITORED_DEFAULT_KEY,
     queryFn: jsonFetcher<CalendarMonitoredDefault>('/api/me/settings'),
     // The page holds its events back while this loads; don't stall it on retries.
     retry: 1,
   });
-  return { monitoredOnly: data?.calendarMonitoredOnly === true, pending: isPending };
+  // Offline the query pauses instead of failing; the page must not wait on it
+  // then, or the calendar the service worker saved would sit behind a spinner.
+  return { monitoredOnly: data?.calendarMonitoredOnly === true, pending: isPending && fetchStatus !== 'paused' };
 }
