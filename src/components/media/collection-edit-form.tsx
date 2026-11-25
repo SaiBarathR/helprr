@@ -212,11 +212,11 @@ export function CollectionEditForm({
       )}
 
       <div className="flex gap-3">
-        <Button className="flex-1" onClick={save} disabled={!hasChanges || saving}>
+        <Button className="flex-1 pointer-coarse:h-11" onClick={save} disabled={!hasChanges || saving}>
           {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Save
         </Button>
-        <Button variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>
+        <Button variant="outline" className="flex-1 pointer-coarse:h-11" onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
       </div>

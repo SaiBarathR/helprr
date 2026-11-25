@@ -123,7 +123,8 @@ export function LibraryFacetMenuGroups({ groups, onToggle }: {
 /**
  * The saved filters at the top of the filter menu: pick one to apply it (again to
  * clear it), save the current filters, or open the list to rename and delete.
- * Shows only once there is something to pick or save.
+ * Always shown, with Save off until something is picked: a section that appeared on
+ * the first pick moved the menu under the finger.
  */
 export function SavedFiltersMenuSection({ saved, current, onApply, onClear, onOpenDialog }: {
   saved: SavedLibraryFilter[];
@@ -133,7 +134,6 @@ export function SavedFiltersMenuSection({ saved, current, onApply, onClear, onOp
   onOpenDialog: (dialog: 'save' | 'manage') => void;
 }) {
   const canSave = hasLibraryFilterState(current);
-  if (saved.length === 0 && !canSave) return null;
   return (
     <>
       <ResponsiveMenuLabel>Saved filters</ResponsiveMenuLabel>
@@ -149,12 +149,10 @@ export function SavedFiltersMenuSection({ saved, current, onApply, onClear, onOp
           </ResponsiveMenuCheckboxItem>
         );
       })}
-      {canSave && (
-        <ResponsiveMenuActionItem onSelect={() => onOpenDialog('save')}>
-          <Bookmark className="h-4 w-4" />
-          Save current filters…
-        </ResponsiveMenuActionItem>
-      )}
+      <ResponsiveMenuActionItem onSelect={() => onOpenDialog('save')} disabled={!canSave}>
+        <Bookmark className="h-4 w-4" />
+        Save current filters…
+      </ResponsiveMenuActionItem>
       {saved.length > 0 && (
         <ResponsiveMenuActionItem onSelect={() => onOpenDialog('manage')}>
           <Pencil className="h-4 w-4" />
@@ -262,22 +260,38 @@ function ManageFiltersDialog({ open, onClose, saved, updateSaved }: {
     updateSaved((list) => renameSavedLibraryFilter(list, id, draft) ?? list);
     stopEditing();
   };
+  // Undo of a delete lives in the dialog while it is open: a toast's action can't be
+  // tapped there (the modal makes everything outside it inert, so the tap closes the
+  // dialog instead). The row undoes the latest delete; deletes still pending when the
+  // dialog closes move to one toast that undoes them all.
+  const [deleted, setDeleted] = useState<{ filter: SavedLibraryFilter; index: number }[]>([]);
+  const restore = ({ filter, index }: { filter: SavedLibraryFilter; index: number }) => {
+    updateSaved((list) => (list.some((other) => other.id === filter.id)
+      ? list
+      : [...list.slice(0, index), filter, ...list.slice(index)]));
+  };
   const remove = (filter: SavedLibraryFilter) => {
     const index = saved.indexOf(filter);
     updateSaved((list) => list.filter((other) => other.id !== filter.id));
     if (editingId === filter.id) stopEditing();
-    toast(`Deleted “${filter.name}”`, {
-      action: {
-        label: 'Undo',
-        onClick: () => updateSaved((list) => (list.some((other) => other.id === filter.id)
-          ? list
-          : [...list.slice(0, index), filter, ...list.slice(index)])),
-      },
-    });
+    setDeleted((list) => [...list, { filter, index }]);
+  };
+  const latest = deleted.at(-1);
+  const close = () => {
+    stopEditing();
+    if (deleted.length > 0) {
+      const pending = deleted;
+      toast(pending.length === 1 ? `Deleted “${pending[0].filter.name}”` : `Deleted ${pending.length} filters`, {
+        // Newest first, so each index is the one its filter was removed from.
+        action: { label: 'Undo', onClick: () => [...pending].reverse().forEach(restore) },
+      });
+      setDeleted([]);
+    }
+    onClose();
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) { stopEditing(); onClose(); } }}>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }}>
       <DialogContent
         className="sm:max-w-md"
         // The dialog takes Escape before the field sees it: mid-rename it cancels the rename only.
@@ -349,8 +363,16 @@ function ManageFiltersDialog({ open, onClose, saved, updateSaved }: {
             ))}
           </ul>
         )}
+        {latest && (
+          <div role="status" className="-mx-2 flex min-h-11 items-center gap-2 rounded-md bg-muted/50 pl-3">
+            <span className="min-w-0 flex-1 break-words text-sm text-muted-foreground">Deleted “{latest.filter.name}”</span>
+            <Button variant="ghost" className="h-11 shrink-0" onClick={() => { restore(latest); setDeleted((list) => list.slice(0, -1)); }}>
+              Undo
+            </Button>
+          </div>
+        )}
         <DialogFooter>
-          <Button onClick={() => { stopEditing(); onClose(); }}>Done</Button>
+          <Button onClick={close}>Done</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

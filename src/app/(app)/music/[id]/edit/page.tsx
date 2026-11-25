@@ -19,7 +19,7 @@ import { Switch } from '@/components/ui/switch';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { TagSelector } from '@/components/media/tag-selector';
-import { FOLDER_NAME_ERROR_ID, FolderNameRow } from '@/components/media/folder-name-row';
+import { FOLDER_NAME_ERROR_ID, FolderNameRow, WrappingPath } from '@/components/media/folder-name-row';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -227,7 +227,7 @@ export default function ArtistEditPage() {
               {moveFiles
                 ? 'Lidarr moves the artist’s files into this folder.'
                 : 'Only the saved path changes; files stay where they are until you move them.'}
-              <span className="mt-1 block break-all">New path: {movedPath}</span>
+              <span className="mt-1 block break-words">New path: <WrappingPath path={movedPath} /></span>
             </p>
           )}
         </div>

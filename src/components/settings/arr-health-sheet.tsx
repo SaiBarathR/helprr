@@ -151,9 +151,11 @@ export function ArrHealthSheet({
     enabled: admin && target !== null,
   });
   // Kept here, not in the tabs (which unmount when left): runs in progress
-  // ("<instance>:<task>") and the log level.
+  // ("<instance>:<task>") and the log level. The level belongs to the instance it was
+  // picked on, so another instance's Logs open unfiltered, like its tabs open on the first.
   const [running, setRunning] = useState<ReadonlySet<string>>(() => new Set());
-  const [logLevel, setLogLevel] = useState<ArrLogLevel>('warn');
+  const [pickedLevel, setPickedLevel] = useState<{ instanceId: string; level: ArrLogLevel } | null>(null);
+  const logLevel: ArrLogLevel = pickedLevel && pickedLevel.instanceId === target?.instanceId ? pickedLevel.level : 'warn';
   const checks = visibleHealthChecks(query.data);
   const healthText = query.isLoading
     ? 'Checking…'
@@ -217,7 +219,11 @@ export function ArrHealthSheet({
             <ArrTasksPanel instanceId={target.instanceId} running={running} setRunning={setRunning} />
           </TabsContent>
           <TabsContent value="logs" className="min-h-0 overflow-y-auto px-4">
-            <ArrLogsPanel instanceId={target.instanceId} level={logLevel} onLevelChange={setLogLevel} />
+            <ArrLogsPanel
+              instanceId={target.instanceId}
+              level={logLevel}
+              onLevelChange={(level) => setPickedLevel({ instanceId: target.instanceId, level })}
+            />
           </TabsContent>
         </Tabs>
         <DrawerFooter className="mx-auto w-full max-w-md">

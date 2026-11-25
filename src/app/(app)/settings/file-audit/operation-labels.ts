@@ -1,4 +1,5 @@
 import type { FileOperation } from '@prisma/client';
+import { parentPath, sameFolder } from '@/lib/paths';
 
 // Keyed on the Prisma enum so a new operation can't ship without a badge (the
 // type check and operation-labels.test.ts both fail on a missing key).
@@ -44,4 +45,21 @@ export function countLabel(record: { operation: FileOperation; fileCount: number
   if (record.operation === 'MARK_FAILED') return `${count} download${count === 1 ? '' : 's'}`;
   if (record.operation === 'PUSH_RELEASE') return `${count} release${count === 1 ? '' : 's'}`;
   return `${count} file${count === 1 ? '' : 's'}`;
+}
+
+/**
+ * The paths a MOVE_MEDIA row shows. A title's own Edit records its old and new folder
+ * (`fromPath`, `path`): that move shows old → new, badged as a rename when it stays in its
+ * root folder. A bulk root-folder change records only the new root and keeps "→ root".
+ */
+export function moveMediaPaths(
+  record: { operation: FileOperation; details: Record<string, unknown> | null },
+): { label: string; from: string | null; to: string } | null {
+  if (record.operation !== 'MOVE_MEDIA' || !record.details) return null;
+  const { fromPath, path, rootFolderPath } = record.details;
+  if (typeof fromPath === 'string' && typeof path === 'string') {
+    const renamed = !sameFolder(fromPath, path) && sameFolder(parentPath(fromPath), parentPath(path));
+    return { label: renamed ? 'FOLDER RENAME' : OP_LABEL.MOVE_MEDIA, from: fromPath, to: path };
+  }
+  return typeof rootFolderPath === 'string' ? { label: OP_LABEL.MOVE_MEDIA, from: null, to: rootFolderPath } : null;
 }

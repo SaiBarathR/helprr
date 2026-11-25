@@ -16,6 +16,15 @@ export function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
+// Sonarr/Radarr history keep the download protocol as its enum number ("1", "2"); other
+// records already carry the name ("torrent"). 0 is "unknown".
+const DOWNLOAD_PROTOCOLS: Record<string, string> = { '0': 'Unknown', '1': 'Usenet', '2': 'Torrent' };
+
+export function formatDownloadProtocol(protocol: string | number): string {
+  const value = String(protocol).trim();
+  return DOWNLOAD_PROTOCOLS[value] ?? value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function formatCurrency(value: number | null): string | null {
   if (!value || value <= 0) return null;
   return `$${value.toLocaleString()}`;

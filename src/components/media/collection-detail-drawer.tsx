@@ -219,7 +219,8 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
 
   return (
     <Drawer open={open} onOpenChange={(o) => { if (!o) onClose(); }} direction="bottom">
-      <DrawerContent>
+      {/* The Edit form is sized to its fields (a member's may be Tags only); the detail fills the sheet. */}
+      <DrawerContent size={editing ? 'content' : 'full'}>
         {collection && (
           <>
             <DrawerHeader className="text-left pb-2">

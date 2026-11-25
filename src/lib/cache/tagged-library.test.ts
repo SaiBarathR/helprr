@@ -105,3 +105,31 @@ describe('shared fills and invalidation', () => {
     expect(mocks.setCachedJson).not.toHaveBeenCalled();
   });
 });
+
+describe('collections invalidation', () => {
+  it('makes the next collections read miss after a Radarr write', async () => {
+    const { invalidateTaggedLibrary } = await import('./tagged-library');
+    const store = new Map<string, unknown>();
+    mocks.getCachedJson.mockImplementation(async (scope: string, seed: string) => store.get(`${scope}|${seed}`) ?? null);
+    mocks.setCachedJson.mockImplementation(async (scope: string, seed: string, value: unknown) => {
+      store.set(`${scope}|${seed}`, value);
+    });
+    let qualityProfileId = 1;
+    const read = () => getCachedTaggedLibrary({
+      scope: 'radarr-collections',
+      cacheKeySeed: 'col-1',
+      getInstances: async () => [{ connection: { id: 'col-1', label: 'Radarr' }, client: {} }],
+      fetchOne: async () => [{ id: 84, qualityProfileId }],
+    });
+
+    expect((await read()).items[0].qualityProfileId).toBe(1);
+    expect((await read()).cached).toBe(true);
+
+    qualityProfileId = 4;
+    await invalidateTaggedLibrary('radarr', 'col-1');
+
+    const fresh = await read();
+    expect(fresh.cached).toBe(false);
+    expect(fresh.items[0].qualityProfileId).toBe(4);
+  });
+});

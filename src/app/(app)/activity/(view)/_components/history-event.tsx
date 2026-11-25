@@ -20,6 +20,7 @@ import { useAppRouter } from '@/components/layout/navigation-provider';
 import { useCan } from '@/components/permission-provider';
 import { arrInteractiveSearchHref } from '@/lib/arr-edit-href';
 import { arrMutationFetch } from '@/lib/query-fetch';
+import { formatDownloadProtocol } from '@/lib/format';
 import { handleAuthError } from '@/lib/query-client';
 import { MarkFailedButton, canMarkFailed } from '@/components/media/mark-failed-button';
 
@@ -459,7 +460,7 @@ export function HistoryEventDrawer({ item, onClose }: { item: HistoryRecord | nu
                       <InfoRow label="Client" value={item.data.downloadClient} />
                     )}
                     {item.data?.protocol && (
-                      <InfoRow label="Protocol" value={item.data.protocol} />
+                      <InfoRow label="Protocol" value={formatDownloadProtocol(item.data.protocol)} />
                     )}
                     {item.data?.releaseGroup && (
                       <InfoRow label="Release Group" value={item.data.releaseGroup} />

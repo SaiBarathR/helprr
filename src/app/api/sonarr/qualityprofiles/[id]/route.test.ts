@@ -10,6 +10,7 @@ import type { Capability } from '@/lib/capabilities';
 const mocks = vi.hoisted(() => ({
   user: null as null | Record<string, unknown>,
   resolveConnection: vi.fn(),
+  listConnections: vi.fn(),
   getQualityProfile: vi.fn(),
   constructed: [] as string[],
   getCachedJson: vi.fn(),
@@ -25,7 +26,7 @@ vi.mock('@/lib/auth', () => ({
   },
 }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
-vi.mock('@/lib/arr-instances', () => ({ resolveConnection: mocks.resolveConnection }));
+vi.mock('@/lib/arr-instances', () => ({ resolveConnection: mocks.resolveConnection, listConnections: mocks.listConnections }));
 vi.mock('@/lib/service-connection-secrets', () => ({ getConnectionHeaders: () => undefined }));
 vi.mock('@/lib/cache/json-cache', () => ({ getCachedJson: mocks.getCachedJson, setCachedJson: mocks.setCachedJson }));
 function fakeClient(name: string) {
@@ -84,6 +85,8 @@ beforeEach(() => {
   mocks.user = ADMIN;
   mocks.getCachedJson.mockResolvedValue(null);
   mocks.getQualityProfile.mockResolvedValue(RAW);
+  // Each type has one instance, inst-1; 'other-type' is an instance of another type.
+  mocks.listConnections.mockResolvedValue([{ id: 'inst-1' }]);
   mocks.resolveConnection.mockImplementation(async (type: string, instanceId?: string) => {
     // The real resolveConnection refuses an id that is not an instance of `type`.
     if (instanceId === 'other-type') throw new Error(`No ${type} instance found for id "${instanceId}".`);
@@ -135,10 +138,11 @@ describe.each(ROUTES)('GET /api/$label/qualityprofiles/[id]', (route) => {
     expect(mocks.resolveConnection).not.toHaveBeenCalled();
   });
 
-  it('fails closed for an instance of another type, and never calls an app', async () => {
+  it('answers 400 for an instance of another type, and never calls an app', async () => {
     const res = await call(route, '4', '?instanceId=other-type');
-    expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: 'Failed to fetch quality profile' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: `Unknown ${route.label[0].toUpperCase()}${route.label.slice(1)} instance` });
+    expect(mocks.listConnections).toHaveBeenCalledWith(route.type);
     expect(mocks.constructed).toEqual([]);
   });
 

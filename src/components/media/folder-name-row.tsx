@@ -6,6 +6,20 @@ import { Label } from '@/components/ui/label';
 export const FOLDER_NAME_ERROR_ID = 'folder-name-error';
 
 /**
+ * A media path that may wrap after each separator, so in a `break-words` block it breaks
+ * there (or at a space) before it splits a name; only a segment too long for the line splits.
+ */
+export function WrappingPath({ path }: { path: string }) {
+  return (
+    <>
+      {(path.match(/[^/\\]*[/\\]|[^/\\]+$/g) ?? [path]).map((part, index) => (
+        <span key={index}>{part}<wbr /></span>
+      ))}
+    </>
+  );
+}
+
+/**
  * The Edit pages' Folder field: the title's own folder inside the chosen root
  * folder, so the saved path is root folder + this name. The page shows `error`
  * under the section, at FOLDER_NAME_ERROR_ID.

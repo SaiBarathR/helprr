@@ -77,7 +77,7 @@ describe('edit series page', () => {
     await waitFor(() => expect(monitorNewSeasonsSelect().value).toBe('none'));
 
     fireEvent.change(monitorNewSeasonsSelect(), { target: { value: 'all' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0].url).toBe('/api/sonarr/7?instanceId=son-2');
     expect(puts[0].body).toEqual(expect.objectContaining({ id: 7, monitorNewItems: 'all', seriesType: 'standard' }));
@@ -88,7 +88,7 @@ describe('edit series page', () => {
     await screen.findByText('Monitor New Seasons');
     await waitFor(() => expect(monitorNewSeasonsSelect().value).toBe('none'));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0].body).toEqual(expect.objectContaining({ monitorNewItems: 'none' }));
   });
@@ -100,7 +100,7 @@ describe('edit series page', () => {
 
     fireEvent.change(rootFolderSelect(), { target: { value: '/tv2' } });
     expect((screen.getByLabelText('Move Files') as HTMLButtonElement).getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
     const confirm = await screen.findByRole('alertdialog', { name: 'Move files for Show?' });
     expect(confirm.textContent).toContain('into /tv2/Show');
     expect(puts).toHaveLength(0);
@@ -117,7 +117,7 @@ describe('edit series page', () => {
     fireEvent.change(rootFolderSelect(), { target: { value: '/tv2' } });
     fireEvent.click(screen.getByLabelText('Move Files'));
     expect(screen.getByText(/Only the saved path changes/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(puts[0].url).toBe('/api/sonarr/7?instanceId=son-2');
@@ -134,8 +134,10 @@ describe('renaming the folder', () => {
     expect(screen.queryByLabelText('Move Files')).toBeNull();
 
     fireEvent.change(folderField(), { target: { value: 'Show (2020)' } });
-    expect(screen.getByText('New path: /tv/Show (2020)')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    // The path wraps after each separator, so its text spans several elements.
+    expect(screen.getByText((_, element) => element?.tagName === 'SPAN' && element.textContent === 'New path: /tv/Show (2020)')).toBeTruthy();
+    expect(document.querySelectorAll('wbr').length).toBeGreaterThan(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
     const confirm = await screen.findByRole('alertdialog', { name: 'Move files for Show?' });
     fireEvent.click(within(confirm).getByRole('button', { name: 'Move files' }));
     await waitFor(() => expect(puts).toHaveLength(1));
@@ -149,7 +151,7 @@ describe('renaming the folder', () => {
     fireEvent.change(rootFolderSelect(), { target: { value: '/tv2' } });
     fireEvent.change(folderField(), { target: { value: 'Show (2020)' } });
     fireEvent.click(screen.getByLabelText('Move Files'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0].body).toEqual(expect.objectContaining({ path: '/tv2/Show (2020)' }));
   });
@@ -161,7 +163,7 @@ describe('renaming the folder', () => {
     expect(folderField().getAttribute('aria-invalid')).toBe('true');
     expect(document.getElementById(folderField().getAttribute('aria-describedby')!)?.textContent).toBeTruthy();
     expect(screen.queryByLabelText('Move Files')).toBeNull();
-    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Save Changes' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
@@ -170,7 +172,7 @@ describe('leaving the edit page', () => {
     sessionStorage.setItem('helprr:in-app-history', '1');
     renderPage();
     await waitFor(() => expect(rootFolderSelect().value).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
     await waitFor(() => expect(router.back).toHaveBeenCalledTimes(1));
     expect(router.replace).not.toHaveBeenCalled();
   });
@@ -178,7 +180,7 @@ describe('leaving the edit page', () => {
   it('opens the detail page after saving or cancelling when opened directly (no earlier page)', async () => {
     renderPage();
     await waitFor(() => expect(rootFolderSelect().value).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/series/7?instance=son-2'));
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(router.replace).toHaveBeenLastCalledWith('/series/7?instance=son-2');
