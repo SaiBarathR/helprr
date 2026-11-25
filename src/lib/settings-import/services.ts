@@ -53,9 +53,18 @@ export async function applyServiceConnectionInTxn(
     ? (rawLabel || (isArrType(conn.type) ? conn.type : findServiceByType(conn.type)?.label || conn.type))
     : (rawLabel || findServiceByType(conn.type)?.label || conn.type);
 
-  const existing = isMulti
+  let existing = isMulti
     ? await tx.serviceConnection.findFirst({ where: { type: conn.type, label } })
     : await tx.serviceConnection.findFirst({ where: { type: conn.type } });
+  // The one qBittorrent of an older install was named "QBITTORRENT" or
+  // "qBittorrent" depending on its age, so a file's name may not match this
+  // install's: the connection at the same address is the same qBittorrent.
+  // A second row for it would be polled twice and leave every torrent "in two
+  // qBittorrents", which the cleaners skip.
+  if (!existing && conn.type === 'QBITTORRENT') {
+    const sameType = await tx.serviceConnection.findMany({ where: { type: conn.type } });
+    existing = sameType.find((row) => normalizeServiceUrl(row.url) === url) ?? null;
+  }
   // Stored secrets and token state belong to the address they were saved for:
   // a file that moves a connection must bring its own key, as an edit must.
   // (metadata is non-secret configuration and is kept, as the edit route does.)

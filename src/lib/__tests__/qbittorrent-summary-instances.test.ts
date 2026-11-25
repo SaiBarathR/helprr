@@ -53,6 +53,11 @@ describe('the torrents summary on several qBittorrents (QBT-29)', () => {
     expect((await get('')).torrents.map((t: { hash: string }) => t.hash)).toEqual(['a', 'b']);
   });
 
+  it('says which qBittorrent it read, so the page acts on the one it shows', async () => {
+    expect((await get('?view=delta')).instanceId).toBe('q1');
+    expect((await get('?view=delta&instanceId=q2')).instanceId).toBe('q2');
+  });
+
   it("never answers one instance's delta cursor with another's list", async () => {
     const first = await get('?view=delta&instanceId=q1');
     const other = await get(`?view=delta&instanceId=q2&cursor=${first.cursor}`);

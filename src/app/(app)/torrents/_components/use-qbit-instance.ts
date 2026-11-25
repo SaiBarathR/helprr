@@ -49,10 +49,12 @@ export function useQbitInstance() {
   const instances = Array.isArray(data) ? data : undefined;
 
   const known = (id: string) => !instances || instances.some((instance) => instance.id === id);
-  // Before the list loads a choice is used as it is; the route turns down one
-  // that is not a qBittorrent.
-  const requested = fromUrl && known(fromUrl) ? fromUrl : stored;
-  const instanceId = requested && known(requested) ? requested : undefined;
+  // A link's instance is used as named, even one no longer listed: the routes
+  // then refuse it, rather than the page acting on the same hash in another
+  // qBittorrent. A stale saved choice falls back to the default. Before the
+  // list loads a choice is used as it is.
+  const unknownLink = Boolean(fromUrl && !known(fromUrl));
+  const instanceId = fromUrl || (stored && known(stored) ? stored : undefined);
 
   // Taken once per link, so a pick made while the address still names the
   // instance it is leaving is not undone.
@@ -77,11 +79,13 @@ export function useQbitInstance() {
   }, [fromUrl, router, searchParams, setStored]);
 
   const list = instances ?? [];
-  const current = list.find((instance) => instance.id === instanceId)
-    ?? list.find((instance) => instance.isDefault)
-    ?? list[0];
+  const current = unknownLink
+    ? undefined
+    : list.find((instance) => instance.id === instanceId) ?? list.find((instance) => instance.isDefault) ?? list[0];
   return {
     instanceId,
+    /** The address names a qBittorrent that is no longer connected (a push sent before it was removed). */
+    unknownLink,
     instances: list,
     multiInstance: list.length > 1,
     /** The instance shown (the default when none is chosen), once the list has loaded. */

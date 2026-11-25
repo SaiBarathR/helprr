@@ -90,9 +90,13 @@ async function getHandler(request: NextRequest) {
     if (view === 'delta') {
       // A cursor is for one user, filter, version and qBittorrent.
       const scope = JSON.stringify([auth.user.id, client.instanceId ?? '', seed]);
-      return etagJson(request, torrentDeltaHistory.response(scope, searchParams.get('cursor') || undefined, payload), SUMMARY_CACHE_HEADERS);
+      // Which qBittorrent this is, so the page acts on the one it shows even
+      // when it asked for "the default" and the default has changed since.
+      return etagJson(request, { ...torrentDeltaHistory.response(scope, searchParams.get('cursor') || undefined, payload), instanceId: client.instanceId }, SUMMARY_CACHE_HEADERS);
     }
-    return etagJson(request, view === 'counters' ? { ...torrentCounters(payload.torrents), transferInfo: payload.transferInfo, speedLimitsMode: payload.speedLimitsMode } : payload, SUMMARY_CACHE_HEADERS);
+    return etagJson(request, view === 'counters'
+      ? { ...torrentCounters(payload.torrents), transferInfo: payload.transferInfo, speedLimitsMode: payload.speedLimitsMode }
+      : { ...payload, instanceId: client.instanceId }, SUMMARY_CACHE_HEADERS);
   } catch (error) {
     console.error('Failed to fetch qBittorrent summary:', error);
     logApiDuration('/api/qbittorrent/summary', startedAt, { failed: true });

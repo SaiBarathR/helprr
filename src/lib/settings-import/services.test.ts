@@ -30,7 +30,8 @@ let row: ServiceConnection;
 const findFirst = vi.fn(async () => row);
 const update = vi.fn(async ({ data }: { data: Partial<ServiceConnection> }) => Object.assign(row, data));
 const create = vi.fn();
-const tx = { serviceConnection: { findFirst, update, create } } as unknown as Prisma.TransactionClient;
+const findMany = vi.fn(async () => [] as ServiceConnection[]);
+const tx = { serviceConnection: { findFirst, findMany, update, create } } as unknown as Prisma.TransactionClient;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -175,6 +176,15 @@ describe('importing qBittorrent connections', () => {
     row = { ...stored, id: 'qbit-1', type: 'QBITTORRENT', label: 'qBittorrent', url: 'http://seedbox.example.invalid:8080', username: 'admin' };
     await applyServiceConnectionInTxn(tx, qbit({ label: '' }), []);
     expect(findFirst).toHaveBeenCalledWith({ where: { type: 'QBITTORRENT', label: 'qBittorrent' } });
+    expect(create).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'qbit-1' } }));
+  });
+
+  it("updates the qBittorrent at the same address when the file names it differently (an older install's QBITTORRENT)", async () => {
+    findFirst.mockResolvedValueOnce(null as unknown as ServiceConnection);
+    row = { ...stored, id: 'qbit-1', type: 'QBITTORRENT', label: 'qBittorrent', url: 'http://seedbox.example.invalid:8080', username: 'admin' };
+    findMany.mockResolvedValueOnce([row]);
+    await applyServiceConnectionInTxn(tx, qbit({ label: 'QBITTORRENT', url: 'http://seedbox.example.invalid:8080/' }), []);
     expect(create).not.toHaveBeenCalled();
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'qbit-1' } }));
   });

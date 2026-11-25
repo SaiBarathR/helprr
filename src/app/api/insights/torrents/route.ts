@@ -16,10 +16,13 @@ async function getHandler(): Promise<NextResponse> {
   }
 
   try {
-    // Every qBittorrent's torrents, as one: Insights is the whole picture.
+    // Every qBittorrent's torrents, as one: Insights is the whole picture. One
+    // that doesn't answer is left out, unless none answers.
     const instances = await getQBittorrentClients();
     if (instances.length === 0) await getQBittorrentClient(); // throws "not configured"
-    const torrents = (await Promise.all(instances.map(({ client }) => client.getTorrents()))).flat();
+    const settled = await Promise.allSettled(instances.map(({ client }) => client.getTorrents()));
+    if (!settled.some((result) => result.status === 'fulfilled')) throw new Error('No qBittorrent answered');
+    const torrents = settled.flatMap((result) => (result.status === 'fulfilled' ? result.value : []));
 
     let totalUploaded = 0;
     let totalDownloaded = 0;

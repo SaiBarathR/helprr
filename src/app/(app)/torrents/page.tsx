@@ -71,6 +71,25 @@ async function fetchCategories(torrents: QBittorrentTorrent[], instanceId: strin
 
 export default function TorrentsPage() {
   const qbit = useQbitInstance();
+  // A push about a qBittorrent removed since: say so, never show another one's
+  // torrents under its link (the same hash there would be another torrent).
+  if (qbit.unknownLink) {
+    return (
+      <div className="space-y-3 animate-content-in">
+        <PageTitle>Torrents</PageTitle>
+        <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
+          <p>This qBittorrent is no longer connected to Helprr.</p>
+          <div className="mt-3 flex flex-wrap justify-center gap-2">
+            {qbit.instances.map((instance) => (
+              <Button key={instance.id} variant="outline" size="sm" className="min-h-11" onClick={() => qbit.select(instance.id)}>
+                Show {instance.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
   // One qBittorrent at a time. Remounted on a switch, so nothing on screen
   // (the list, a selection, an open drawer, an optimistic change) carries over
   // from one instance to another; an action still on its way keeps the
@@ -79,7 +98,7 @@ export default function TorrentsPage() {
 }
 
 function TorrentsView({ qbit }: { qbit: ReturnType<typeof useQbitInstance> }) {
-  const { instanceId } = qbit;
+  const { instanceId: chosenInstanceId } = qbit;
   const { toolbarRef, toolbarStyle } = useToolbarHeight();
   const router = useRouter();
   const { adjustBadge } = useBadgeActions();
@@ -151,6 +170,7 @@ function TorrentsView({ qbit }: { qbit: ReturnType<typeof useQbitInstance> }) {
 
   const {
     torrents,
+    listInstanceId,
     setTorrents,
     transferInfo,
     speedLimitsMode,
@@ -165,7 +185,10 @@ function TorrentsView({ qbit }: { qbit: ReturnType<typeof useQbitInstance> }) {
     refresh,
     error,
     offline,
-  } = useTorrentsSummary(filter, hasHydrated, instanceId);
+  } = useTorrentsSummary(filter, hasHydrated, chosenInstanceId);
+  // Actions go to the qBittorrent the list was read from: with none chosen,
+  // that is the default the server answered with, even if it changes meanwhile.
+  const instanceId = chosenInstanceId ?? listInstanceId;
 
   const listRef = useRef<HTMLDivElement | null>(null);
 

@@ -283,6 +283,16 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     if (isMultiInstanceType(type) && !label) {
       return NextResponse.json({ error: 'A name is required for this instance' }, { status: 400 });
     }
+    // Two connections to one qBittorrent would be polled twice (every push
+    // sent twice) and put every torrent "in two qBittorrents", which the
+    // cleaners skip: one address is one instance.
+    if (type === 'QBITTORRENT') {
+      const others = await prisma.serviceConnection.findMany({ where: { type, ...(existing && { id: { not: existing.id } }) } });
+      const same = others.find((other) => normalizeServiceUrl(other.url) === normalizeServiceUrl(url));
+      if (same) {
+        return NextResponse.json({ error: `This qBittorrent is already connected as "${same.label}"` }, { status: 409 });
+      }
+    }
 
     // Stored headers this request did not carry were entered for the old
     // address, so a URL change drops them rather than sending them to the new one.

@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
+  findMany: vi.fn(),
   findUnique: vi.fn(),
   update: vi.fn(),
   create: vi.fn(),
@@ -18,7 +19,7 @@ vi.mock('@/lib/auth', () => ({ requireUserCapability: async () => ({ ok: true, u
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (fn: unknown) => fn }));
 vi.mock('@/lib/security-audit', () => ({ recordSecurityEvent: vi.fn(), changedFieldNames: () => [], serviceTargetLabel: (_type: string, label: string) => label }));
 vi.mock('@/lib/db', () => ({
-  prisma: { serviceConnection: { findFirst: mocks.findFirst, findUnique: mocks.findUnique, update: mocks.update, create: mocks.create } },
+  prisma: { serviceConnection: { findFirst: mocks.findFirst, findMany: mocks.findMany, findUnique: mocks.findUnique, update: mocks.update, create: mocks.create } },
 }));
 vi.mock('@/lib/cache/reference-labels', () => ({ invalidateReferenceLabels: vi.fn() }));
 vi.mock('@/lib/arr-instances', () => ({
@@ -41,6 +42,7 @@ beforeEach(() => {
   // Before multi-instance, a qBittorrent save without an id found this one and overwrote it.
   mocks.findFirst.mockResolvedValue(existing);
   mocks.findUnique.mockResolvedValue(existing);
+  mocks.findMany.mockImplementation(async ({ where }: { where: { id?: { not: string } } }) => [existing].filter((row) => row.id !== where.id?.not));
   mocks.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...existing, ...data, id: 'qbit-seedbox', isDefault: false }));
   mocks.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...existing, ...data }));
 });
@@ -59,6 +61,13 @@ describe('POST /api/services for qBittorrent (QBT-29)', () => {
     const res = await save({});
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'A name is required for this instance' });
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses a second connection to a qBittorrent already connected', async () => {
+    const res = await save({ label: 'Again', url: 'http://qbit-main:8080/' });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'This qBittorrent is already connected as "qBittorrent"' });
     expect(mocks.create).not.toHaveBeenCalled();
   });
 

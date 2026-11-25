@@ -65,12 +65,16 @@ describe('useQbitInstance (QBT-29)', () => {
     expect(result.current.current?.id).toBe('q1');
   });
 
-  it("never acts on a link's unknown instance", async () => {
-    mocks.params = new URLSearchParams('instance=sonarr-1');
+  it("never swaps a link's unknown instance for another qBittorrent", async () => {
+    useUIStore.setState({ torrentsInstance: 'q2' });
+    mocks.params = new URLSearchParams('instance=removed-qbit');
     const { result } = render();
-    await waitFor(() => expect(result.current.current?.id).toBe('q1'));
-    expect(result.current.instanceId).toBeUndefined();
-    expect(useUIStore.getState().torrentsInstance).toBe('');
+    await waitFor(() => expect(result.current.instances).toHaveLength(2));
+    // Still the named one, which the routes refuse; the page says it is gone.
+    expect(result.current.instanceId).toBe('removed-qbit');
+    expect(result.current.unknownLink).toBe(true);
+    expect(result.current.current).toBeUndefined();
+    expect(useUIStore.getState().torrentsInstance).toBe('q2');
   });
 
   it("takes a pick over the link's instance: the address then names the pick", async () => {

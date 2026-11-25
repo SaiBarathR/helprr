@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'fs';
+import path from 'path';
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -102,7 +104,14 @@ beforeEach(() => {
 
 describe('qBittorrent routes and instanceId (QBT-29)', () => {
   it('covers every qBittorrent route handler', () => {
-    expect(ROUTES).toHaveLength(28);
+    // Read from the route files, so a new handler must be added here (and checked).
+    const root = path.join(process.cwd(), 'src/app/api/qbittorrent');
+    const handlers = (readdirSync(root, { recursive: true }) as string[])
+      .filter((file) => file.endsWith('route.ts'))
+      // The schedule names no qBittorrent (it applies to all); instances is the list itself.
+      .filter((file) => !file.startsWith('bandwidth-schedule') && !file.startsWith('instances'))
+      .flatMap((file) => [...readFileSync(path.join(root, file), 'utf8').matchAll(/export const (GET|POST|PUT|PATCH|DELETE)\b/g)]);
+    expect(ROUTES).toHaveLength(handlers.length);
   });
 
   it.each(ROUTES)('%s refuses an id that is not a qBittorrent, before asking qBittorrent anything', async (_name, handler, method, path, body) => {

@@ -78,8 +78,8 @@ async function postHandler(
     }
     const auth = await requireUserCapability(requiredCap);
     if (!auth.ok) return auth.response;
-  const instance = await qbittorrentInstanceOf(request);
-  if (!instance.ok) return instance.response;
+    const instance = await qbittorrentInstanceOf(request);
+    if (!instance.ok) return instance.response;
 
     const client = await getQBittorrentClient(instance.instanceId);
 

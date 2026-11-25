@@ -46,7 +46,7 @@ export function useTorrentsSummary(filter: FilterType[], hasHydrated: boolean, i
       if (data.error) throw new Error(data.error);
       signal.throwIfAborted();
       try {
-        const payload = applyTorrentDelta(previous?.payload, data);
+        const payload = { ...applyTorrentDelta(previous?.payload, data), instanceId: data.instanceId };
         deltaSnapshots.current.set(snapshotKey, { cursor: data.cursor, payload });
         // The finite upstream filter set is small; cap defensively as well.
         if (deltaSnapshots.current.size > 16) deltaSnapshots.current.delete(deltaSnapshots.current.keys().next().value!);
@@ -158,6 +158,8 @@ export function useTorrentsSummary(filter: FilterType[], hasHydrated: boolean, i
 
   return {
     torrents,
+    /** The qBittorrent the list came from (the server's default when none was chosen). */
+    listInstanceId: summaryQuery.data?.instanceId,
     setTorrents,
     transferInfo,
     speedLimitsMode,

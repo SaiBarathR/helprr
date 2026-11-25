@@ -81,10 +81,13 @@ async function section<T>(read: () => Promise<T>, state: { failed: boolean }): P
 }
 
 async function readDownloads() {
-  // Every qBittorrent added up, as the downloads badge counts them.
+  // Every qBittorrent that answers added up, as the downloads badge counts
+  // them; it fails only when none answers.
   const instances = await getQBittorrentClients();
   if (instances.length === 0) await getQBittorrentClient(); // throws "not configured"
-  const read = await Promise.all(instances.map(({ client }) => Promise.all([client.getTorrents(), client.getTransferInfo()])));
+  const settled = await Promise.allSettled(instances.map(({ client }) => Promise.all([client.getTorrents(), client.getTransferInfo()])));
+  const read = settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+  if (read.length === 0) throw (settled[0] as PromiseRejectedResult).reason;
   return {
     downloading: read.reduce((sum, [torrents]) => sum + torrentCounters(torrents).downloading, 0),
     downloadSpeed: read.reduce((sum, [, transfer]) => sum + transfer.dl_info_speed, 0),
