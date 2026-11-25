@@ -28,6 +28,7 @@ export function ProwlarrSheet({
   onClose: () => void;
   title: ReactNode;
   description: ReactNode;
+  /** The phone drawer's (vaul's autoFocus); the dialog always focuses its first control. */
   autoFocus?: boolean;
   /** The phone drawer's height (see DrawerContent). */
   size?: 'full' | 'content';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { CheckCheck, Layers, ListOrdered, Loader2, Minus, MoreHorizontal, Plus, Power, PowerOff, Tags, Trash2, X, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -85,6 +85,14 @@ export function IndexerBulkBar({
   // for all of them: Priority, App profile and Tags move into More actions, so
   // Delete stays in view instead of behind a sideways scroll.
   const compact = useIsMobile(639.98);
+  const moreRef = useRef<HTMLDivElement>(null);
+  // A pick from More actions replaces the button that had focus; move focus to
+  // the picker's first control, or a keyboard or VoiceOver user lands on <body>.
+  useEffect(() => {
+    if (compact && open !== null && open !== 'more') {
+      moreRef.current?.querySelector<HTMLElement>('button:not([disabled]), input, [role="checkbox"]')?.focus();
+    }
+  }, [compact, open]);
 
   async function run(key: string, work: () => Promise<boolean>) {
     if (running.current) return false;
@@ -274,7 +282,8 @@ export function IndexerBulkBar({
 
   return (
     <>
-      <FloatingActionBar className="gap-1 p-1.5">
+      {/* Below 360px the gaps close, as on the torrent bar, so a two-digit count still leaves Delete in view. */}
+      <FloatingActionBar className="gap-1 max-[359px]:gap-0 p-1.5">
         <button
           type="button"
           onClick={onCancel}
@@ -286,7 +295,7 @@ export function IndexerBulkBar({
         <span className="shrink-0 px-1 text-sm font-semibold tabular-nums" aria-label={`${plural(count)} selected`}>{count}</span>
         <BarAction icon={CheckCheck} label={allSelected ? 'Clear' : 'All'} onClick={onToggleAll} />
         <div className="mx-0.5 h-6 w-px shrink-0 bg-border" />
-        <div className="flex flex-1 items-center gap-0.5 overflow-x-auto scrollbar-hide">
+        <div className="flex flex-1 items-center gap-0.5 max-[359px]:gap-0 overflow-x-auto scrollbar-hide">
           <BarAction icon={Power} label="Enable" disabled={disabled} busy={busy === 'enable'} onClick={() => void setEnabled(true)} />
           <BarAction icon={PowerOff} label="Disable" disabled={disabled} busy={busy === 'disable'} onClick={() => void setEnabled(false)} />
 
@@ -300,14 +309,13 @@ export function IndexerBulkBar({
                   busy={busy === 'priority' || busy === 'profile' || busy === 'tags'}
                 />
               </PopoverTrigger>
-              <PopoverContent side="top" align="center" className="w-64 p-3">
+              <PopoverContent ref={moreRef} side="top" align="center" className="w-64 p-3">
                 {openPickerBody ?? (
-                  <div role="menu" aria-label="More actions" className="-m-1.5 space-y-0.5">
+                  <div role="group" aria-label="More actions" className="-m-1.5 space-y-0.5">
                     {pickers.map(({ key, icon: Icon, label }) => (
                       <button
                         key={key}
                         type="button"
-                        role="menuitem"
                         onClick={() => openPicker(key)}
                         className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-colors hover:bg-accent"
                       >

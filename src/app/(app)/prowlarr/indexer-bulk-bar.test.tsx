@@ -60,11 +60,12 @@ describe('IndexerBulkBar', () => {
     }
 
     await user.click(bar.getByRole('button', { name: 'More actions' }));
-    const menu = within(await screen.findByRole('menu', { name: 'More actions' }));
-    expect(menu.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Priority', 'App profile', 'Tags']);
+    const menu = within(await screen.findByRole('group', { name: 'More actions' }));
+    expect(menu.getAllByRole('button').map((item) => item.textContent)).toEqual(['Priority', 'App profile', 'Tags']);
 
-    // The pick shows its picker in the same popover, which applies as on the bar.
-    await user.click(menu.getByRole('menuitem', { name: 'Priority' }));
+    // The pick shows its picker in the same popover, focused, and applies as on the bar.
+    await user.click(menu.getByRole('button', { name: 'Priority' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Lower the priority number' }));
     await user.click(screen.getByRole('button', { name: 'Raise the priority number' }));
     await user.click(screen.getByRole('button', { name: 'Set priority' }));
     expect(handleBulkEdit).toHaveBeenCalledWith(indexers, expect.any(Function), { priority: 26 }, expect.anything());
