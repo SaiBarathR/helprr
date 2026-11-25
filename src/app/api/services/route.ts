@@ -274,11 +274,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       username = selectedUserId;
     }
 
+    const otherQbits = type === 'QBITTORRENT'
+      ? await prisma.serviceConnection.findMany({ where: { type, ...(existing && { id: { not: existing.id } }) } })
+      : [];
     // Label: multi-instance types require a user-supplied name; single-instance
-    // types default to the service's display label.
+    // types default to the service's display label. The first qBittorrent may
+    // still come without one, as before qBittorrent became multi-instance
+    // (API clients and the demo seed add it that way).
     const rawLabel = typeof body.label === 'string' ? body.label.trim() : '';
+    const unnamedFallback = type === 'QBITTORRENT' && otherQbits.length === 0 ? (findServiceByType(type)?.label || type) : '';
     const label = isMultiInstanceType(type)
-      ? (rawLabel || existing?.label || '')
+      ? (rawLabel || existing?.label || unnamedFallback)
       : (existing?.label || rawLabel || findServiceByType(type)?.label || type);
     if (isMultiInstanceType(type) && !label) {
       return NextResponse.json({ error: 'A name is required for this instance' }, { status: 400 });
@@ -287,8 +293,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     // sent twice) and put every torrent "in two qBittorrents", which the
     // cleaners skip: one address is one instance.
     if (type === 'QBITTORRENT') {
-      const others = await prisma.serviceConnection.findMany({ where: { type, ...(existing && { id: { not: existing.id } }) } });
-      const same = others.find((other) => normalizeServiceUrl(other.url) === normalizeServiceUrl(url));
+      const same = otherQbits.find((other) => normalizeServiceUrl(other.url) === normalizeServiceUrl(url));
       if (same) {
         return NextResponse.json({ error: `This qBittorrent is already connected as "${same.label}"` }, { status: 409 });
       }

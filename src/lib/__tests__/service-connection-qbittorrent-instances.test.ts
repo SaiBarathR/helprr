@@ -57,7 +57,14 @@ describe('POST /api/services for qBittorrent (QBT-29)', () => {
     expect(mocks.ensureDefault).toHaveBeenCalledWith('QBITTORRENT');
   });
 
-  it('needs a name for a new one', async () => {
+  it('adds the first qBittorrent without a name, as before multi-instance (API clients, demo seed)', async () => {
+    mocks.findMany.mockResolvedValue([]);
+    const res = await save({});
+    expect(res.status).toBe(200);
+    expect(mocks.create).toHaveBeenCalledWith({ data: expect.objectContaining({ type: 'QBITTORRENT', label: 'qBittorrent' }) });
+  });
+
+  it('needs a name for a second one', async () => {
     const res = await save({});
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'A name is required for this instance' });
