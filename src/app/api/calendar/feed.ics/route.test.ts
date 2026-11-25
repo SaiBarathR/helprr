@@ -264,6 +264,21 @@ describe('GET /api/calendar/feed.ics', () => {
     expect(uids(await res.text())).toEqual([]);
   });
 
+  it("asks the instances for unmonitored items too and lets each link's Monitored only switch decide", async () => {
+    let text = await (await get(`?token=${TOKEN}`)).text();
+    expect(mocks.fetchEvents).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.any(String), { includeUnmonitored: true });
+    expect(uids(text)).toContain('sonarr-4k-2@helprr');
+
+    mocks.findUnique.mockResolvedValue({ ...feedRow(), monitoredOnly: true });
+    text = await (await get(`?token=${TOKEN}`)).text();
+    expect(uids(text)).toEqual(['sonarr-hd-1@helprr', 'radarr-hd-3-digital@helprr', 'lidarr-music-4@helprr']);
+  });
+
+  it("keeps the all-items events under their own cache key, apart from the monitored-only ones it used to cache", async () => {
+    await get(`?token=${TOKEN}`);
+    expect(mocks.getCachedJson.mock.calls[0][1]).toMatch(/\|unmonitored$/);
+  });
+
   it('dates a release on its own day, west of UTC too', async () => {
     mocks.timeZone = 'America/New_York';
     try {

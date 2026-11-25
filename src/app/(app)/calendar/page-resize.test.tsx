@@ -92,7 +92,7 @@ beforeEach(() => {
     return this.classList.contains('page-toolbar') ? toolbarHeight : 0;
   });
   useUIStore.setState({
-    calendarView: 'agenda', calendarTypeFilter: 'all', calendarMonitoredOnly: false,
+    calendarView: 'agenda', calendarTypeFilter: 'all',
     calendarInstanceFilter: 'all', calendarShowScheduled: true, calendarShowImages: false,
   });
 });

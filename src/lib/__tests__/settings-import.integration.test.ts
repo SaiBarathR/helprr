@@ -824,6 +824,28 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     expect(await days()).toBe(14);
   });
 
+  it("restores a user's calendar Monitored only default, off for older exports", async () => {
+    const doc = fullDocument();
+    const base = {
+      timeZone: null, upcomingNotifyMode: null, activityDigestMode: null,
+      quietHoursEnabled: false, quietHoursStart: null, quietHoursEnd: null,
+    };
+    const monitoredOnly = async () => (await prisma.userSettings.findUnique({ where: { userId: 'member-1' }, select: { calendarMonitoredOnly: true } }))?.calendarMonitoredOnly;
+    doc.users.accounts[0].settings = { ...base, calendarMonitoredOnly: true } as never;
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    expect(await monitoredOnly()).toBe(true);
+
+    doc.users.accounts[0].settings = { ...base, calendarMonitoredOnly: 'yes' } as never;
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    expect(await monitoredOnly()).toBe(false);
+
+    doc.users.accounts[0].settings = { ...base, calendarMonitoredOnly: true } as never;
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    doc.users.accounts[0].settings = base as never;
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    expect(await monitoredOnly()).toBe(false);
+  });
+
   it("leaves an existing user's taste profile to be rebuilt, since their links may have changed", async () => {
     const built = new Date('2026-10-20T00:00:00.000Z');
     for (const [id, username] of [['member-1', 'member'], ['other-1', 'other']]) {

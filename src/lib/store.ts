@@ -739,11 +739,9 @@ interface UIState {
   insightsDateFrom: string | null;
   insightsDateTo: string | null;
   setInsightsDateRange: (from: string | null, to: string | null) => void;
-  // Calendar preferences
+  // Calendar preferences (where "Monitored only" starts is per account: use-calendar-monitored-default)
   calendarTypeFilter: 'all' | 'episode' | 'movie' | 'album';
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie' | 'album') => void;
-  calendarMonitoredOnly: boolean;
-  setCalendarMonitoredOnly: (v: boolean) => void;
   calendarInstanceFilter: string;
   setCalendarInstanceFilter: (id: string) => void;
   calendarShowScheduled: boolean;
@@ -901,7 +899,6 @@ const PERSISTED_KEYS = [
   'insightsDateFrom',
   'insightsDateTo',
   'calendarTypeFilter',
-  'calendarMonitoredOnly',
   'calendarInstanceFilter',
   'calendarShowScheduled',
   'calendarShowImages',
@@ -1293,8 +1290,6 @@ export const useUIStore = create<UIState>()(
       // Calendar
       calendarTypeFilter: 'all',
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),
-      calendarMonitoredOnly: false,
-      setCalendarMonitoredOnly: (v) => set({ calendarMonitoredOnly: v }),
       calendarInstanceFilter: 'all',
       setCalendarInstanceFilter: (id) => set({ calendarInstanceFilter: id }),
       calendarShowScheduled: true,

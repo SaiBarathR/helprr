@@ -14,7 +14,7 @@ vi.mock('@/lib/app-settings', () => ({ getOrCreateAppSettings: async () => ({ ti
 
 import { GET, PATCH } from '@/app/api/me/settings/route';
 
-const STORED = { quietHoursEnabled: false, quietHoursStart: null, quietHoursEnd: null, timeFormat: null, dateFormat: null, watchingEpisodeDays: 14, timeZone: null };
+const STORED = { quietHoursEnabled: false, quietHoursStart: null, quietHoursEnd: null, timeFormat: null, dateFormat: null, watchingEpisodeDays: 14, calendarMonitoredOnly: false, timeZone: null };
 
 function patch(body: unknown) {
   return PATCH(new NextRequest('http://localhost/api/me/settings', {
@@ -40,6 +40,7 @@ describe('/api/me/settings date and time format', () => {
       timeFormat: 'auto',
       dateFormat: 'auto',
       watchingEpisodeDays: 14,
+      calendarMonitoredOnly: false,
       jellyfinLinked: false,
       timeZone: null,
       serverTimeZone: 'Europe/London',
@@ -79,6 +80,24 @@ describe('/api/me/settings date and time format', () => {
   it('rejects a window that is not offered', async () => {
     for (const watchingEpisodeDays of [5, -1, 14.5, '14', null]) {
       expect((await patch({ watchingEpisodeDays })).status).toBe(400);
+    }
+    expect(mocks.upsert).not.toHaveBeenCalled();
+  });
+
+  it("saves where the Calendar page's Monitored only switch starts, for the signed-in user only", async () => {
+    mocks.upsert.mockResolvedValue({ ...STORED, calendarMonitoredOnly: true });
+    const res = await patch({ calendarMonitoredOnly: true });
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 'user-1' },
+      update: { calendarMonitoredOnly: true },
+      create: { userId: 'user-1', calendarMonitoredOnly: true },
+    }));
+    expect(await res.json()).toMatchObject({ calendarMonitoredOnly: true });
+  });
+
+  it('rejects a calendar default that is not a boolean', async () => {
+    for (const calendarMonitoredOnly of ['true', 1, null]) {
+      expect((await patch({ calendarMonitoredOnly })).status).toBe(400);
     }
     expect(mocks.upsert).not.toHaveBeenCalled();
   });
