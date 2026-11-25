@@ -285,6 +285,8 @@ export async function applyUsersInTxn(
         watchingEpisodeDays: (WATCHING_EPISODE_DAY_OPTIONS as readonly unknown[]).includes(s.watchingEpisodeDays)
           ? (s.watchingEpisodeDays as number)
           : WATCHING_EPISODE_DAYS_DEFAULT,
+        // Older exports have none: show all, as before.
+        calendarMonitoredOnly: s.calendarMonitoredOnly === true,
       };
       await tx.userSettings.upsert({
         where: { userId },

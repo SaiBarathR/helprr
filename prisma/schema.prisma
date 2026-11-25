@@ -539,6 +539,7 @@ model UserSettings {
   setupStepsDone         String[] @default([])       // checklist steps marked done that the server cannot see (install, backup, people)
   lastSeenVersion        String?                     // the release whose "What's new" this user last saw or dismissed; null until their first visit
   watchingEpisodeDays    Int      @default(14)       // "New episode" alerts for series this user played in Jellyfin within this many days; 0 = off
+  calendarMonitoredOnly  Boolean  @default(false)    // where the Calendar page's "Monitored only" switch starts on every device; flipping it there is for that visit only
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 }

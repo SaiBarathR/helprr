@@ -592,7 +592,10 @@ counted after it, so a burst of parallel requests can overshoot it; reading it
 fails closed (503) and refused requests do not extend the window, while counting
 a miss is best-effort. There is no global backstop, so one client cannot lock
 everyone's feeds, provided `TRUSTED_PROXY_HOPS` matches the proxies in front:
-with too few hops every visitor shares the proxy's address and its cap. The token grants only that read; `type`, `instance` and `monitored`
+with too few hops every visitor shares the proxy's address and its cap. The feed asks the *arrs for unmonitored items too, so a link's own
+monitored-only switch decides (links made before that switch worked were set to
+monitored only by migration `20261126120000`, which is what they had served).
+The token grants only that read; `type`, `instance` and `monitored`
 query parameters narrow it the way the Calendar page's filters do and are
 validated. The window is 30 days back to 180 ahead (whole days in that time
 zone); episodes are timed events, movie and album releases all-day. The request

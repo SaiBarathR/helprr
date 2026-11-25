@@ -7,6 +7,8 @@ import { AnimeCarouselSettings } from '@/components/settings/anime-carousel-sett
 import { InstallAppSection } from '@/components/settings/install-app-section';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { CategoryRow } from '@/components/settings/category-row';
+import { CalendarMonitoredDefaultRow } from '@/components/settings/calendar-monitored-default-row';
+import { useCan } from '@/components/permission-provider';
 import { Switch } from '@/components/ui/switch';
 import { useUIStore } from '@/lib/store';
 import { haptic } from '@/lib/haptics';
@@ -93,9 +95,16 @@ function WatchSkinSection() {
 function CalendarBackdropSection() {
   const imageOpacity = useUIStore((s) => s.calendarImageOpacity);
   const setImageOpacity = useUIStore((s) => s.setCalendarImageOpacity);
+  const canViewCalendar = useCan('calendar.view');
 
   return (
-    <GroupedSection title="Calendar" footer="How visible the artwork behind calendar rows is when images are enabled.">
+    <GroupedSection
+      title="Calendar"
+      footer={canViewCalendar
+        ? "Monitored only is where the Calendar's own switch starts on all your devices; flipping that switch changes just that visit. Backdrop opacity is how visible the artwork behind calendar rows is when images are enabled."
+        : 'How visible the artwork behind calendar rows is when images are enabled.'}
+    >
+      {canViewCalendar && <CalendarMonitoredDefaultRow />}
       <div className="grouped-row">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <span className="flex h-8 w-8 items-center justify-center rounded-md shrink-0 bg-sky-500/10 text-sky-400">

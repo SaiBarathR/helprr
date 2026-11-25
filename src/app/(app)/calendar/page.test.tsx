@@ -16,8 +16,12 @@ const calendar = vi.hoisted(() => ({
 }));
 // The configured arr instances (/api/instances), which drive the instance filter.
 const arr = vi.hoisted(() => ({ instances: undefined as undefined | Array<{ id: string; label: string; type: string }> }));
+// The user's own "Monitored only" default (/api/me/settings).
+const monitoredDefault = vi.hoisted(() => ({ value: false, pending: false }));
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: () => ({ data: arr.instances }),
+  useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => (queryKey[0] === 'me-calendar-monitored-default'
+    ? { data: monitoredDefault.pending ? undefined : { calendarMonitoredOnly: monitoredDefault.value }, isPending: monitoredDefault.pending }
+    : { data: arr.instances }),
 }));
 vi.mock('next/navigation', () => ({
   usePathname: () => route.pathname,
@@ -63,7 +67,7 @@ import CalendarPage from './page';
 import { useUIStore } from '@/lib/store';
 import { resetRouteViewStateForTests } from '@/lib/hooks/use-route-view-state';
 import { RouteScrollRestoration } from '@/components/layout/route-scroll-restoration';
-import { clearRouteScrollStateForTests, NAVIGATION_START_EVENT, readRouteScrollState } from '@/lib/route-scroll-state';
+import { clearRouteScrollStateForTests, NAVIGATION_START_EVENT, readRouteScrollState, routeScrollKey, setFreshArrival } from '@/lib/route-scroll-state';
 
 // The phone sheet's drag handling.
 HTMLElement.prototype.setPointerCapture ??= () => {};
@@ -91,6 +95,8 @@ async function settleScroll() {
 
 beforeEach(() => {
   arr.instances = undefined;
+  monitoredDefault.value = false;
+  monitoredDefault.pending = false;
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-10-22T12:00:00'));
   sessionStorage.clear();
@@ -121,7 +127,7 @@ beforeEach(() => {
     if (typeof options === 'object') scrollY = options.top ?? scrollY;
   });
   useUIStore.setState({
-    calendarView: 'month', calendarTypeFilter: 'all', calendarMonitoredOnly: false,
+    calendarView: 'month', calendarTypeFilter: 'all',
     calendarInstanceFilter: 'all', calendarShowScheduled: true, calendarShowImages: false,
   });
 });
@@ -348,12 +354,58 @@ it('keeps the toggles in the ⋯ menu below xl (tablet dropdown) and marks it wh
 
   await user.click(options());
   await user.click(screen.getByRole('menuitemcheckbox', { name: 'Monitored only' }));
-  expect(useUIStore.getState().calendarMonitoredOnly).toBe(true);
   // A toggle leaves the menu open for the next one.
   expect(screen.getByRole('menuitemcheckbox', { name: 'Monitored only' }).getAttribute('aria-checked')).toBe('true');
   expect(screen.getByRole('menuitem', { name: 'Subscribe in Calendar' })).toBeTruthy();
   await user.keyboard('{Escape}');
   expect(options().getAttribute('aria-label')).toBe('Calendar options (filters active)');
+});
+
+const MONITORED_AND_NOT = [
+  { id: 'movie-1', type: 'movie', title: 'Monitored movie', movieId: 1, date: '2026-10-15T00:00:00Z', monitored: true, hasFile: false },
+  { id: 'movie-2', type: 'movie', title: 'Unmonitored movie', movieId: 2, date: '2026-10-15T00:00:00Z', monitored: false, hasFile: false },
+];
+
+it("starts the Monitored only switch at the user's own default, and a flip lasts for that visit only", async () => {
+  calendar.events = MONITORED_AND_NOT;
+  monitoredDefault.value = true;
+  const page = render(<CalendarPage />);
+  expect(screen.getByRole('button', { name: /October 15, 1 release/ })).toBeTruthy();
+
+  const user = userEvent.setup();
+  await user.click(screen.getAllByRole('button', { name: /^Calendar options/ })[0]);
+  await user.click(screen.getByRole('menuitemcheckbox', { name: 'Monitored only' }));
+  await user.keyboard('{Escape}');
+  expect(screen.getByRole('button', { name: /October 15, 2 releases/ })).toBeTruthy();
+  page.unmount();
+
+  // Back (or a reload) keeps the flip...
+  const back = render(<CalendarPage />);
+  expect(screen.getByRole('button', { name: /October 15, 2 releases/ })).toBeTruthy();
+  back.unmount();
+
+  // ...and a fresh visit starts from the user's default again.
+  setFreshArrival(routeScrollKey(window.location));
+  render(<CalendarPage />);
+  expect(screen.getByRole('button', { name: /October 15, 1 release/ })).toBeTruthy();
+});
+
+it("shows every item when the user's default is off", () => {
+  calendar.events = MONITORED_AND_NOT;
+  render(<CalendarPage />);
+  expect(screen.getByRole('button', { name: /October 15, 2 releases/ })).toBeTruthy();
+});
+
+it("holds the events back until the user's default has loaded, so unmonitored ones never flash up", () => {
+  calendar.events = MONITORED_AND_NOT;
+  monitoredDefault.pending = true;
+  const page = render(<CalendarPage />);
+  expect(screen.queryByRole('button', { name: /October 15/ })).toBeNull();
+
+  monitoredDefault.pending = false;
+  monitoredDefault.value = true;
+  page.rerender(<CalendarPage />);
+  expect(screen.getByRole('button', { name: /October 15, 1 release/ })).toBeTruthy();
 });
 
 it('opens Type and the ⋯ options as phone sheets, like the instance filter', async () => {

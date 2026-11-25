@@ -153,7 +153,8 @@ all-day events on the day they come out in your time zone (**Settings → Prefer
 Date & Time**). Albums are left out for anyone without the Music permission.
 
 Each person can have up to 10 links, each with a name and its own filters (type,
-instance, monitored only). A link is shown once, when you make it: **Copy link** gives
+instance, monitored only). A link with **Monitored only** off lists unmonitored items too
+(links made before that switch worked keep monitored only, which is what they always showed). A link is shown once, when you make it: **Copy link** gives
 the `https://` address, and **Open in Calendar app** opens it as `webcal://`. To see a
 link again, make a new one and turn the old one off.
 

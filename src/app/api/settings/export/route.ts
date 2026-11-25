@@ -560,6 +560,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
               timeFormat: u.settings.timeFormat ?? null,
               dateFormat: u.settings.dateFormat ?? null,
               watchingEpisodeDays: u.settings.watchingEpisodeDays,
+              calendarMonitoredOnly: u.settings.calendarMonitoredOnly,
               defaultDesktopLayoutName: u.settings.defaultDesktopLayoutId
                 ? layoutNameById.get(u.settings.defaultDesktopLayoutId) ?? null
                 : null,

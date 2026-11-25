@@ -83,8 +83,10 @@ import { formatDate, formatTime } from '@/lib/date-format';
 import { calendarEventDate, calendarEventDayKey, compareCalendarEvents, isAllDayEvent } from '@/lib/release-day';
 import { CalendarFeedDialog } from '@/components/calendar/calendar-feed-dialog';
 import { useCan } from '@/components/permission-provider';
+import { useCalendarMonitoredDefault } from '@/lib/hooks/use-calendar-monitored-default';
 
 /** The app behind each event type, to tell same-named instances apart. */
+const NO_EVENTS: CalendarEvent[] = [];
 const EVENT_APP = { episode: 'sonarr', movie: 'radarr', album: 'lidarr' } as const;
 
 /** Detail-page link for a calendar event, by media type. Carries the owning
@@ -1382,8 +1384,11 @@ export default function CalendarPage() {
   const savedTypeFilter = useUIStore((s) => s.calendarTypeFilter);
   const typeFilter = savedTypeFilter === 'album' && !canViewMusic ? 'all' : savedTypeFilter;
   const setTypeFilter = useUIStore((s) => s.setCalendarTypeFilter);
-  const monitoredOnly = useUIStore((s) => s.calendarMonitoredOnly);
-  const setMonitoredOnly = useUIStore((s) => s.setCalendarMonitoredOnly);
+  // The switch starts at the user's own default (Settings → Appearance →
+  // Calendar, saved to their account); flipping it here is for this visit only.
+  const { monitoredOnly: monitoredDefault, pending: monitoredDefaultPending } = useCalendarMonitoredDefault();
+  const [monitoredChoice, setMonitoredOnly] = useRouteViewState<boolean | null>('monitoredOnly', null);
+  const monitoredOnly = monitoredChoice ?? monitoredDefault;
   const instanceFilter = useUIStore((s) => s.calendarInstanceFilter);
   const setInstanceFilter = useUIStore((s) => s.setCalendarInstanceFilter);
   const showScheduled = useUIStore((s) => s.calendarShowScheduled);
@@ -1409,7 +1414,8 @@ export default function CalendarPage() {
     setFreshArrival(null);
     setCurrentDate(startOfDay(new Date()));
     setManualSelection(null);
-  }, [setCurrentDate, setManualSelection]);
+    setMonitoredOnly(null);
+  }, [setCurrentDate, setManualSelection, setMonitoredOnly]);
   const autoFocusPendingRef = useRef(true);
   const autoFocusWaitForLoadRef = useRef(true);
   const autoFocusSawLoadingRef = useRef(false);
@@ -1492,12 +1498,16 @@ export default function CalendarPage() {
     }
   }, [calendarView, currentDate]);
 
-  const { events, loading, error, refetch } = useCalendar({
+  const { events: fetchedEvents, loading: eventsLoading, error, refetch } = useCalendar({
     start,
     end,
     type: typeFilter !== 'all' ? typeFilter : undefined,
     includeScheduled: showScheduled,
   });
+  // Held back until the user's default is known, so unmonitored items never
+  // flash up for someone whose calendar starts at monitored only.
+  const loading = eventsLoading || monitoredDefaultPending;
+  const events = monitoredDefaultPending ? NO_EVENTS : fetchedEvents;
   const onAlertSaved = useCallback(() => { void refetch(); }, [refetch]);
 
   // The configured instances drive the instance filter, not the ones in the

@@ -90,10 +90,11 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const start = startDate.toISOString();
     const end = endDate.toISOString();
 
-    const cacheKeySeed = `feed|${start}|${end}|${timeZone}`;
+    // Unmonitored items too, so each link's own "Monitored only" switch decides.
+    const cacheKeySeed = `feed|${start}|${end}|${timeZone}|unmonitored`;
     let events = await getCachedJson<CalendarEvent[]>('calendar', cacheKeySeed);
     if (!events) {
-      const result = await fetchServiceCalendarEvents(start, end, timeZone);
+      const result = await fetchServiceCalendarEvents(start, end, timeZone, { includeUnmonitored: true });
       // Every instance failed: say so, so the calendar app keeps the copy it has
       // instead of replacing it with an empty one.
       if (!result.cacheable) return textResponse('Calendar feed unavailable', 503);

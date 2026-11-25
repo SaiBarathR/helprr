@@ -8,8 +8,9 @@ import { isValidTimeZone } from '@/lib/timezone';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 
 // Genuinely-personal settings for the current user: the push quiet-hours window,
-// the "New episode" window, the date/time display format and their own time
-// zone (null: the server's); the global AppSettings (admin) are served
+// the "New episode" window, the date/time display format, where the Calendar
+// page's "Monitored only" switch starts, and their own time zone (null: the
+// server's); the global AppSettings (admin) are served
 // separately by /api/settings.
 const SELECT = {
   quietHoursEnabled: true,
@@ -18,6 +19,7 @@ const SELECT = {
   timeFormat: true,
   dateFormat: true,
   watchingEpisodeDays: true,
+  calendarMonitoredOnly: true,
   timeZone: true,
 } as const;
 
@@ -31,6 +33,7 @@ type SavedSettings = {
   timeFormat: string | null;
   dateFormat: string | null;
   watchingEpisodeDays: number;
+  calendarMonitoredOnly: boolean;
   timeZone: string | null;
 } | null;
 
@@ -45,6 +48,7 @@ async function toResponse(settings: SavedSettings, jellyfinUserId: string | null
     timeFormat: parseTimeFormat(settings?.timeFormat),
     dateFormat: parseDateFormat(settings?.dateFormat),
     watchingEpisodeDays: settings?.watchingEpisodeDays ?? WATCHING_EPISODE_DAYS_DEFAULT,
+    calendarMonitoredOnly: settings?.calendarMonitoredOnly ?? false,
     jellyfinLinked: Boolean(jellyfinUserId),
     timeZone: settings?.timeZone ?? null,
     serverTimeZone: (await getOrCreateAppSettings()).timeZone,
@@ -88,6 +92,7 @@ async function patchHandler(request: NextRequest): Promise<NextResponse> {
     timeFormat?: string | null;
     dateFormat?: string | null;
     watchingEpisodeDays?: number;
+    calendarMonitoredOnly?: boolean;
     timeZone?: string | null;
   } = {};
 
@@ -126,6 +131,13 @@ async function patchHandler(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: `watchingEpisodeDays must be one of ${WATCHING_EPISODE_DAY_OPTIONS.join(', ')}` }, { status: 400 });
     }
     data.watchingEpisodeDays = body.watchingEpisodeDays as number;
+  }
+
+  if ('calendarMonitoredOnly' in body) {
+    if (typeof body.calendarMonitoredOnly !== 'boolean') {
+      return NextResponse.json({ error: 'calendarMonitoredOnly must be a boolean' }, { status: 400 });
+    }
+    data.calendarMonitoredOnly = body.calendarMonitoredOnly;
   }
 
   // null: "Same as the server". Otherwise an IANA name this server's Intl knows.

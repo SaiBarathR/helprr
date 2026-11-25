@@ -105,7 +105,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
   requests: ['requestsTab', 'requestsFilter', 'requestsUserFilter', 'requestsTypeFilter', 'requestsSort', 'requestsSortDirection'],
   notificationFilters: ['notificationsFilters'],
   calendar: [
-    'calendarView', 'calendarTypeFilter', 'calendarMonitoredOnly',
+    'calendarView', 'calendarTypeFilter',
     'calendarShowImages', 'calendarShowScheduled', 'calendarInstanceFilter',
     'calendarImageOpacity',
   ],
@@ -333,6 +333,8 @@ export interface ExportedUserSettings {
   dateFormat?: string | null;
   // Absent in exports made before "New episode" alerts existed.
   watchingEpisodeDays?: number;
+  // Absent in exports made before it was saved per account (the switch was per device).
+  calendarMonitoredOnly?: boolean;
   // v2: the user's chosen default layouts by name (IDs are install-local).
   // Resolved against their own layouts first, then the global ones.
   defaultDesktopLayoutName?: string | null;
