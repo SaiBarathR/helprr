@@ -1,12 +1,13 @@
 'use client';
 
-import { useRef, useState, type ComponentProps } from 'react';
-import { CheckCheck, Layers, ListOrdered, Loader2, Minus, Plus, Power, PowerOff, Tags, Trash2, X, type LucideIcon } from 'lucide-react';
+import { useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { CheckCheck, Layers, ListOrdered, Loader2, Minus, MoreHorizontal, Plus, Power, PowerOff, Tags, Trash2, X, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import type { ProwlarrAppProfile, ProwlarrIndexerSummary } from '@/lib/prowlarr-client';
 import { cn } from '@/lib/utils';
 import type { Tag } from '@/types/arr';
@@ -40,6 +41,8 @@ function BarAction({ icon: Icon, label, busy, destructive, className, ...props }
   );
 }
 
+type Picker = 'priority' | 'profile' | 'tags';
+
 const plural = (count: number) => (count === 1 ? '1 indexer' : `${count} indexers`);
 
 /**
@@ -67,7 +70,8 @@ export function IndexerBulkBar({
   actions: IndexerActions;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
-  const [open, setOpen] = useState<'priority' | 'profile' | 'tags' | null>(null);
+  // 'more': the phone's More list, which then shows the picker chosen from it.
+  const [open, setOpen] = useState<Picker | 'more' | null>(null);
   const [priority, setPriority] = useState(DEFAULT_PRIORITY);
   const [profileId, setProfileId] = useState<number | null>(null);
   const [tagMode, setTagMode] = useState<'add' | 'remove'>('add');
@@ -77,6 +81,10 @@ export function IndexerBulkBar({
   const running = useRef(false);
   const count = selected.length;
   const disabled = count === 0 || busy !== null;
+  // Below sm the buttons lose their names, and a 320 px phone still has no room
+  // for all of them: Priority, App profile and Tags move into More actions, so
+  // Delete stays in view instead of behind a sideways scroll.
+  const compact = useIsMobile(639.98);
 
   async function run(key: string, work: () => Promise<boolean>) {
     if (running.current) return false;
@@ -90,7 +98,7 @@ export function IndexerBulkBar({
     }
   }
 
-  function openPicker(picker: 'priority' | 'profile' | 'tags') {
+  function openPicker(picker: Picker) {
     // Start from the selection's own value when they all share it.
     if (picker === 'priority') {
       const shared = selected.every((indexer) => indexer.priority === selected[0]?.priority);
@@ -158,6 +166,112 @@ export function IndexerBulkBar({
   const names = selected.map((indexer) => indexer.name);
   const listed = names.length > 6 ? `${names.slice(0, 5).join(', ')} and ${names.length - 5} more` : names.join(', ');
 
+  const priorityPicker = (
+    <>
+      <p className="text-sm font-medium">Priority for {plural(count)}</p>
+      <p className="mt-0.5 text-xs text-muted-foreground">Prowlarr prefers lower numbers.</p>
+      <div className="mt-3 flex items-center justify-center gap-2">
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-11 w-11"
+          aria-label="Lower the priority number"
+          disabled={priority <= MIN_PRIORITY}
+          onClick={() => setPriority((value) => Math.max(MIN_PRIORITY, value - 1))}
+        >
+          <Minus className="h-4 w-4" />
+        </Button>
+        <span className="w-10 text-center text-lg font-semibold tabular-nums" aria-live="polite">{priority}</span>
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-11 w-11"
+          aria-label="Raise the priority number"
+          disabled={priority >= MAX_PRIORITY}
+          onClick={() => setPriority((value) => Math.min(MAX_PRIORITY, value + 1))}
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
+      <Button className="mt-3 h-11 w-full" onClick={() => void applyPriority()}>Set priority</Button>
+    </>
+  );
+
+  const profilePicker = (
+    <>
+      <p className="text-sm font-medium">App profile for {plural(count)}</p>
+      <div role="radiogroup" aria-label="App profile" className="mt-2 max-h-52 space-y-0.5 overflow-y-auto">
+        {profiles.map((profile) => (
+          <button
+            key={profile.id}
+            type="button"
+            role="radio"
+            aria-checked={profileId === profile.id}
+            onClick={() => setProfileId(profile.id)}
+            className={cn(
+              'flex min-h-11 w-full items-center rounded-md px-3 text-left text-sm transition-colors hover:bg-accent',
+              profileId === profile.id && 'bg-primary/15 font-medium text-primary',
+            )}
+          >
+            <span className="min-w-0 truncate">{profile.name}</span>
+          </button>
+        ))}
+      </div>
+      <Button className="mt-3 h-11 w-full" disabled={profileId === null} onClick={() => void applyProfile()}>
+        Set app profile
+      </Button>
+    </>
+  );
+
+  const tagsPicker = (
+    <>
+      <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-0.5">
+        {(['add', 'remove'] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => setTagMode(mode)}
+            aria-pressed={tagMode === mode}
+            className={cn(
+              'min-h-9 rounded-md px-2 text-xs font-medium transition-colors',
+              tagMode === mode ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {mode === 'add' ? 'Add tags' : 'Remove tags'}
+          </button>
+        ))}
+      </div>
+      {tags.length === 0 ? (
+        <p className="py-4 text-center text-xs text-muted-foreground">No tags in Prowlarr yet.</p>
+      ) : (
+        <div className="mt-2 max-h-52 space-y-0.5 overflow-y-auto">
+          {tags.map((tag) => (
+            <label key={tag.id} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-3 text-sm hover:bg-accent">
+              <Checkbox
+                checked={pickedTags.includes(tag.id)}
+                onCheckedChange={() => setPickedTags((prev) => (
+                  prev.includes(tag.id) ? prev.filter((id) => id !== tag.id) : [...prev, tag.id]
+                ))}
+              />
+              <span className="min-w-0 truncate">{tag.label}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      <Button className="mt-3 h-11 w-full" disabled={pickedTags.length === 0} onClick={() => void applyTags()}>
+        {tagMode === 'add' ? 'Add' : 'Remove'}
+      </Button>
+    </>
+  );
+
+  // With one profile there is nothing to choose.
+  const pickers: { key: Picker; icon: LucideIcon; label: string; body: ReactNode }[] = [
+    { key: 'priority', icon: ListOrdered, label: 'Priority', body: priorityPicker },
+    ...(profiles.length > 1 ? [{ key: 'profile' as const, icon: Layers, label: 'App profile', body: profilePicker }] : []),
+    { key: 'tags', icon: Tags, label: 'Tags', body: tagsPicker },
+  ];
+  const openPickerBody = pickers.find((picker) => picker.key === open)?.body;
+
   return (
     <>
       <FloatingActionBar className="gap-1 p-1.5">
@@ -176,115 +290,43 @@ export function IndexerBulkBar({
           <BarAction icon={Power} label="Enable" disabled={disabled} busy={busy === 'enable'} onClick={() => void setEnabled(true)} />
           <BarAction icon={PowerOff} label="Disable" disabled={disabled} busy={busy === 'disable'} onClick={() => void setEnabled(false)} />
 
-          <Popover open={open === 'priority'} onOpenChange={(next) => (next ? openPicker('priority') : setOpen(null))}>
-            <PopoverTrigger asChild>
-              <BarAction icon={ListOrdered} label="Priority" disabled={disabled} busy={busy === 'priority'} />
-            </PopoverTrigger>
-            <PopoverContent side="top" align="center" className="w-64 p-3">
-              <p className="text-sm font-medium">Priority for {plural(count)}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Prowlarr prefers lower numbers.</p>
-              <div className="mt-3 flex items-center justify-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-11 w-11"
-                  aria-label="Lower the priority number"
-                  disabled={priority <= MIN_PRIORITY}
-                  onClick={() => setPriority((value) => Math.max(MIN_PRIORITY, value - 1))}
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-                <span className="w-10 text-center text-lg font-semibold tabular-nums" aria-live="polite">{priority}</span>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-11 w-11"
-                  aria-label="Raise the priority number"
-                  disabled={priority >= MAX_PRIORITY}
-                  onClick={() => setPriority((value) => Math.min(MAX_PRIORITY, value + 1))}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              <Button className="mt-3 h-11 w-full" onClick={() => void applyPriority()}>Set priority</Button>
-            </PopoverContent>
-          </Popover>
-
-          {/* With one profile there is nothing to choose. */}
-          {profiles.length > 1 && (
-            <Popover open={open === 'profile'} onOpenChange={(next) => (next ? openPicker('profile') : setOpen(null))}>
+          {compact ? (
+            <Popover open={open !== null} onOpenChange={(next) => setOpen(next ? 'more' : null)}>
               <PopoverTrigger asChild>
-                <BarAction icon={Layers} label="App profile" disabled={disabled} busy={busy === 'profile'} />
+                <BarAction
+                  icon={MoreHorizontal}
+                  label="More actions"
+                  disabled={disabled}
+                  busy={busy === 'priority' || busy === 'profile' || busy === 'tags'}
+                />
               </PopoverTrigger>
               <PopoverContent side="top" align="center" className="w-64 p-3">
-                <p className="text-sm font-medium">App profile for {plural(count)}</p>
-                <div role="radiogroup" aria-label="App profile" className="mt-2 max-h-52 space-y-0.5 overflow-y-auto">
-                  {profiles.map((profile) => (
-                    <button
-                      key={profile.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={profileId === profile.id}
-                      onClick={() => setProfileId(profile.id)}
-                      className={cn(
-                        'flex min-h-11 w-full items-center rounded-md px-3 text-left text-sm transition-colors hover:bg-accent',
-                        profileId === profile.id && 'bg-primary/15 font-medium text-primary',
-                      )}
-                    >
-                      <span className="min-w-0 truncate">{profile.name}</span>
-                    </button>
-                  ))}
-                </div>
-                <Button className="mt-3 h-11 w-full" disabled={profileId === null} onClick={() => void applyProfile()}>
-                  Set app profile
-                </Button>
+                {openPickerBody ?? (
+                  <div role="menu" aria-label="More actions" className="-m-1.5 space-y-0.5">
+                    {pickers.map(({ key, icon: Icon, label }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => openPicker(key)}
+                        className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-colors hover:bg-accent"
+                      >
+                        <Icon className="h-4 w-4" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </PopoverContent>
             </Popover>
-          )}
-
-          <Popover open={open === 'tags'} onOpenChange={(next) => (next ? openPicker('tags') : setOpen(null))}>
-            <PopoverTrigger asChild>
-              <BarAction icon={Tags} label="Tags" disabled={disabled} busy={busy === 'tags'} />
-            </PopoverTrigger>
-            <PopoverContent side="top" align="center" className="w-64 p-3">
-              <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-0.5">
-                {(['add', 'remove'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setTagMode(mode)}
-                    aria-pressed={tagMode === mode}
-                    className={cn(
-                      'min-h-9 rounded-md px-2 text-xs font-medium transition-colors',
-                      tagMode === mode ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    {mode === 'add' ? 'Add tags' : 'Remove tags'}
-                  </button>
-                ))}
-              </div>
-              {tags.length === 0 ? (
-                <p className="py-4 text-center text-xs text-muted-foreground">No tags in Prowlarr yet.</p>
-              ) : (
-                <div className="mt-2 max-h-52 space-y-0.5 overflow-y-auto">
-                  {tags.map((tag) => (
-                    <label key={tag.id} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-3 text-sm hover:bg-accent">
-                      <Checkbox
-                        checked={pickedTags.includes(tag.id)}
-                        onCheckedChange={() => setPickedTags((prev) => (
-                          prev.includes(tag.id) ? prev.filter((id) => id !== tag.id) : [...prev, tag.id]
-                        ))}
-                      />
-                      <span className="min-w-0 truncate">{tag.label}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-              <Button className="mt-3 h-11 w-full" disabled={pickedTags.length === 0} onClick={() => void applyTags()}>
-                {tagMode === 'add' ? 'Add' : 'Remove'}
-              </Button>
-            </PopoverContent>
-          </Popover>
+          ) : pickers.map(({ key, icon, label, body }) => (
+            <Popover key={key} open={open === key} onOpenChange={(next) => (next ? openPicker(key) : setOpen(null))}>
+              <PopoverTrigger asChild>
+                <BarAction icon={icon} label={label} disabled={disabled} busy={busy === key} />
+              </PopoverTrigger>
+              <PopoverContent side="top" align="center" className="w-64 p-3">{body}</PopoverContent>
+            </Popover>
+          ))}
 
           <BarAction
             icon={Trash2}

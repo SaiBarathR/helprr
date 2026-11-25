@@ -1,10 +1,10 @@
 'use client';
 
 import { Fragment } from 'react';
-import { CheckCircle, Loader2, MoreHorizontal, RefreshCw, Search, SlidersHorizontal } from 'lucide-react';
+import { CheckCircle, Loader2, MoreHorizontal, RefreshCw, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/media/search-input';
-import { FilterDot, filterButtonLabel, multiSelectFilters, searchFilter, type ActiveFilter } from '@/components/ui/active-filter-bar';
+import { multiSelectFilters, searchFilter, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import {
   ResponsiveMenu,
   ResponsiveMenuActionItem,
@@ -20,6 +20,7 @@ import {
   type ProwlarrIndexerView,
 } from '@/lib/prowlarr-indexer-view';
 import type { Tag } from '@/types/arr';
+import { FilterButton } from './filter-button';
 import { INDEXER_SORT_OPTIONS, choicesOf, privacyLabel, protocolLabel } from './indexer-list';
 
 const STATE_OPTIONS: { value: ProwlarrIndexerState; label: string }[] = [
@@ -124,24 +125,13 @@ export function IndexerToolbar({
         />
       </div>
 
-      {/* Phones: the icons keep their size, 44px apart centre to centre, so
-          each one's 44px tap area (touch-target) is its own, as on Activity. */}
-      <div className="flex shrink-0 items-center gap-4 pl-1 md:gap-2 md:pl-0">
+      {/* 44px buttons with no gap between them on phones, as on Movies and Series. */}
+      <div className="flex shrink-0 items-center md:gap-2">
       <ResponsiveMenu
         title="Filter and sort"
         align="end"
         contentClassName="w-56 max-h-[min(32rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto"
-        trigger={(
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative touch-target h-7 w-7 md:h-11 md:w-11"
-            aria-label={filterButtonLabel('Filter and sort', menuFilters.length > 0)}
-          >
-            <SlidersHorizontal className="h-4 w-4" />
-            <FilterDot active={menuFilters.length > 0} />
-          </Button>
-        )}
+        trigger={<FilterButton label="Filter and sort" active={menuFilters.length > 0} />}
       >
         <ResponsiveMenuLabel>Status</ResponsiveMenuLabel>
         {STATE_OPTIONS.map((option) => (
@@ -237,7 +227,7 @@ export function IndexerToolbar({
               actions
               align="end"
               trigger={(
-                <Button variant="ghost" size="icon" className="relative touch-target touch-target-center h-7 w-7" aria-label="Indexer actions">
+                <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Indexer actions">
                   {/* The sheet closes on a pick, so the spinner shows here. */}
                   {syncing || testingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
                 </Button>

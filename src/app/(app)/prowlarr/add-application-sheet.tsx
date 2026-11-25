@@ -8,18 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { PROWLARR_SYNC_LEVELS, type UnsyncedConnection } from '@/lib/prowlarr-applications';
 import type { ProwlarrSyncLevel } from '@/lib/prowlarr-client';
 import { SYNC_LEVELS } from './application-sheet';
+import { ProwlarrSheet, ProwlarrSheetBody, ProwlarrSheetFooter } from './prowlarr-sheet';
 
 interface Suggestion {
   implementation: string;
@@ -47,26 +40,23 @@ export function AddApplicationSheet({ connection, onClose }: {
   });
 
   return (
-    <Drawer open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DrawerContent>
-        <DrawerHeader>
-          <DrawerTitle className="text-base leading-snug [overflow-wrap:anywhere]">
-            Add {connection?.label ?? 'app'} to Prowlarr
-          </DrawerTitle>
-          <DrawerDescription>
-            Helprr sends {connection?.label ?? 'the app'}’s address and API key to Prowlarr itself; the key never comes to this page.
-          </DrawerDescription>
-        </DrawerHeader>
-        {connection && (suggestionQuery.data ? (
-          // Keyed so a second connection starts from its own guesses.
-          <AddApplicationForm key={connection.id} connection={connection} suggestion={suggestionQuery.data} onDone={onClose} />
-        ) : (
-          <div className="flex flex-1 min-h-0 items-center justify-center px-4 pb-8 text-sm text-muted-foreground">
-            {suggestionQuery.isError ? 'Could not reach Prowlarr.' : <Loader2 className="h-6 w-6 animate-spin" />}
-          </div>
-        ))}
-      </DrawerContent>
-    </Drawer>
+    <ProwlarrSheet
+      open={open}
+      onClose={onClose}
+      size="content"
+      scrollTogether
+      title={`Add ${connection?.label ?? 'app'} to Prowlarr`}
+      description={`Helprr sends ${connection?.label ?? 'the app'}’s address and API key to Prowlarr itself; the key never comes to this page.`}
+    >
+      {connection && (suggestionQuery.data ? (
+        // Keyed so a second connection starts from its own guesses.
+        <AddApplicationForm key={connection.id} connection={connection} suggestion={suggestionQuery.data} onDone={onClose} />
+      ) : (
+        <ProwlarrSheetBody className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+          {suggestionQuery.isError ? 'Could not reach Prowlarr.' : <Loader2 className="h-6 w-6 animate-spin" />}
+        </ProwlarrSheetBody>
+      ))}
+    </ProwlarrSheet>
   );
 }
 
@@ -116,7 +106,7 @@ function AddApplicationForm({ connection, suggestion, onDone }: {
 
   return (
     <>
-      <div className="px-4 pb-4 flex-1 min-h-0 overflow-y-auto space-y-4">
+      <ProwlarrSheetBody className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="prowlarr-app-name">Name in Prowlarr</Label>
           <Input id="prowlarr-app-name" value={name} maxLength={100} onChange={(event) => setName(event.target.value)} />
@@ -184,8 +174,8 @@ function AddApplicationForm({ connection, suggestion, onDone }: {
             {result.message}
           </p>
         )}
-      </div>
-      <DrawerFooter className="border-t">
+      </ProwlarrSheetBody>
+      <ProwlarrSheetFooter>
         <div className="grid grid-cols-2 gap-2 w-full">
           <Button variant="outline" disabled={!ready || busy !== null} onClick={() => void submit(true)} className="gap-1.5">
             {busy === 'test' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
@@ -196,7 +186,7 @@ function AddApplicationForm({ connection, suggestion, onDone }: {
             Add
           </Button>
         </div>
-      </DrawerFooter>
+      </ProwlarrSheetFooter>
     </>
   );
 }
