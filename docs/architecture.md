@@ -29,7 +29,9 @@ The `ServiceType` enum currently covers:
 
 All integrations are optional. Sonarr, Radarr, Lidarr and qBittorrent are
 multi-instance; the selected `instanceId` is part of the functional and
-authorization context.
+authorization context. Every other type has one connection: `POST /api/services`
+without an `id` adds it, and answers 409 once it exists, so an edit names the
+connection by `id` (a no-id POST used to replace it silently).
 
 ## Source Layout and Request Flow
 

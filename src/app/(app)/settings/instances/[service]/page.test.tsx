@@ -84,7 +84,8 @@ describe('the Jellyfin connection', () => {
     await userEvent.type(screen.getByLabelText('Authenticator or recovery code'), '123456');
     await userEvent.click(save);
     await waitFor(() => expect(sent).toHaveLength(1));
-    expect(sent[0]).toMatchObject({ url: 'http://new.lan:8096', currentPassword: 'my password', code: '123456' });
+    // Named by its id, as the server refuses a second Jellyfin without one.
+    expect(sent[0]).toMatchObject({ id: 'jf-1', url: 'http://new.lan:8096', currentPassword: 'my password', code: '123456' });
   });
 
   it('shows a member the address and key read-only, saying it is for an admin', async () => {

@@ -175,7 +175,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     // Resolve the target row:
     //  - id present        → edit that exact instance
     //  - multi-instance type (arrs, qBittorrent), no id → CREATE a new instance
-    //  - any other type, no id → upsert the single instance of that type
+    //  - any other type, no id → create its only connection; refused once it
+    //    exists. This used to replace it, and a script adding "another"
+    //    Prowlarr overwrote the real one's address and key. Every edit sends the id.
     const existing = idValue
       ? await prisma.serviceConnection.findUnique({ where: { id: idValue } })
       : isMultiInstanceType(type)
@@ -184,6 +186,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
     if (idValue && (!existing || existing.type !== type)) {
       return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
+    }
+    if (!idValue && existing) {
+      const name = findServiceByType(type)?.label || type;
+      return NextResponse.json({ error: `A ${name} connection already exists; edit it instead` }, { status: 409 });
     }
 
     // "Sign in with Jellyfin" trusts whichever server this points at, so adding

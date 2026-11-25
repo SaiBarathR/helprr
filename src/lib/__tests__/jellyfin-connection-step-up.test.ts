@@ -71,7 +71,8 @@ const member = { ok: true, user: { id: 'member-1', username: 'kid', role: 'membe
 const save = (body: Record<string, unknown>) =>
   saveConnection(new NextRequest('http://helprr.test/api/services', {
     method: 'POST',
-    body: JSON.stringify({ type: 'JELLYFIN', ...body }),
+    // An edit names the connection, as the Settings form does; `id: undefined` adds one.
+    body: JSON.stringify({ type: 'JELLYFIN', id: 'jf-1', ...body }),
   }));
 
 function expectNothingSaved() {
@@ -86,6 +87,7 @@ beforeEach(() => {
   mocks.stepUp.mockResolvedValue(null);
   mocks.jfUser.mockResolvedValue({ Id: 'jf-admin', Name: 'admin' });
   mocks.findFirst.mockResolvedValue(stored);
+  mocks.findUnique.mockResolvedValue(stored);
   mocks.tx.serviceConnection.update.mockImplementation(async ({ data }) => ({ ...stored, ...data }));
   mocks.tx.serviceConnection.create.mockImplementation(async ({ data }) => ({ ...stored, id: 'jf-new', ...data }));
   mocks.tx.session.findMany.mockResolvedValue([{ userId: 'u1' }, { userId: 'u2' }]);
@@ -109,7 +111,7 @@ describe('a member with settings.instances', () => {
 
   it('cannot add Jellyfin', async () => {
     mocks.findFirst.mockResolvedValue(null);
-    expect((await save({ url: OLD_URL, apiKey: 'a-key' })).status).toBe(403);
+    expect((await save({ id: undefined, url: OLD_URL, apiKey: 'a-key' })).status).toBe(403);
     expectNothingSaved();
   });
 
@@ -158,6 +160,7 @@ describe('a member with settings.instances', () => {
 
   it('re-saving with the stored external URL leaves it unwritten', async () => {
     mocks.findFirst.mockResolvedValue({ ...stored, externalUrl: 'https://jf.example.com' });
+    mocks.findUnique.mockResolvedValue({ ...stored, externalUrl: 'https://jf.example.com' });
     const res = await save({ url: OLD_URL, apiKey: maskApiKey(STORED_KEY), externalUrl: 'https://jf.example.com/' });
     expect(res.status).toBe(200);
     const { data } = mocks.tx.serviceConnection.update.mock.calls[0][0];
@@ -216,7 +219,7 @@ describe('an admin', () => {
 
   it('adding Jellyfin: confirmed, and accounts still linked from before sign in again', async () => {
     mocks.findFirst.mockResolvedValue(null);
-    const res = await save({ url: 'http://new.lan:8096', apiKey: 'new-key' });
+    const res = await save({ id: undefined, url: 'http://new.lan:8096', apiKey: 'new-key' });
     expect(res.status).toBe(200);
     expect(mocks.stepUp).toHaveBeenCalledTimes(1);
     expect(mocks.tx.serviceConnection.create).toHaveBeenCalled();
