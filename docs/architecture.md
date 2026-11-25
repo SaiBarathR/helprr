@@ -1152,7 +1152,12 @@ session and come back in full. The state lives on `globalThis`, one per
 qBittorrent instance (and replaced when that connection's address or password
 changes), since the routes and the poll started from instrumentation can load
 separate copies of the module; Helprr runs one Node process (`node server.js`),
-so it is not in Redis. It holds magnets, tracker URLs and server_state's public IP as qBittorrent
+so it is not in Redis. The client (and its sign-in) is also one per instance and
+setting (`qbittorrentClientFor`, `src/lib/service-helpers.ts`), shared by the
+routes, the pollers and the reachability probe: a client per probe signed in on
+every poll cycle. It signs in again only on a 403 or a changed connection, so a
+password changed inside qBittorrent shows as unreachable once qBittorrent ends
+that session. It holds magnets, tracker URLs and server_state's public IP as qBittorrent
 sends them and never leaves the server so: rows go out through
 `projectTorrentForSummary`, figures through `normalizeTransferInfo` and
 `serverStatsFrom`, and the trackers map isn't kept. Only that module calls the

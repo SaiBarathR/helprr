@@ -22,8 +22,8 @@ beforeEach(() => {
   mocks.caps = new Set(['torrents.manage']);
   posts = [];
   setOrganizeTargets([
-    { hash: 'aaa', name: 'Alpha.Movie', save_path: '/data/movies', tags: '4k, movies' },
-    { hash: 'bbb', name: 'Bravo.Show', save_path: '/data/tv', tags: 'movies' },
+    { hash: 'aaa', name: 'Alpha.Movie', save_path: '/data/movies', tags: '4k, movies', priority: 1 },
+    { hash: 'bbb', name: 'Bravo.Show', save_path: '/data/tv', tags: 'movies', priority: 0 },
   ]);
   vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
     if (init?.method !== 'POST') return Response.json({ tags: ['4k', 'movies', 'old'], queueingEnabled: true });
@@ -69,6 +69,17 @@ describe('location, tags and queue for the selected torrents', () => {
       { hash: 'aaa|bbb', action: 'bottomPrio' },
       { hash: 'aaa|bbb', action: 'setLocation', location: '/data/archive' },
     ]);
+  });
+
+  it('turns the queue moves off when none of the torrents is queued', async () => {
+    setOrganizeTargets([
+      { hash: 'aaa', name: 'Alpha.Movie', save_path: '/data/movies', tags: '', priority: 0 },
+      { hash: 'bbb', name: 'Bravo.Show', save_path: '/data/tv', tags: '', priority: 0 },
+    ]);
+    renderPage();
+
+    await waitFor(() => expect(document.body.textContent).toContain('None of these torrents is in qBittorrent\'s queue.'));
+    expect((screen.getByRole('button', { name: 'Move to the bottom of the queue' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('says so after a reload, when the selection is gone', () => {

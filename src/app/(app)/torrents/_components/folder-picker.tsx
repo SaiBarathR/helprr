@@ -84,7 +84,8 @@ export function FolderPickerButton({
       </Button>
       {isMobile ? (
         <Drawer open={open} onOpenChange={setOpen}>
-          <DrawerContent>{browser('drawer')}</DrawerContent>
+          {/* Only as tall as the folders it lists (two download folders left most of a full sheet empty). */}
+          <DrawerContent size="content">{browser('drawer')}</DrawerContent>
         </Drawer>
       ) : (
         <Dialog open={open} onOpenChange={setOpen}>
@@ -146,6 +147,12 @@ function FolderBrowser({
             {start} can&apos;t be listed here, so this starts from the {top.toLowerCase()}.
           </p>
         )}
+        {/* Above the list: below 500 rows, nobody scrolled far enough to read it. */}
+        {listing?.truncated && (
+          <p className="mb-3 text-xs text-muted-foreground">
+            Showing the first {listing.folders.length} of {listing.total} folders. Type the path to reach the others.
+          </p>
+        )}
         <div className="rounded-lg border divide-y">
           {path !== null && (
             <button
@@ -188,11 +195,6 @@ function FolderBrowser({
             ))
           )}
         </div>
-        {listing?.truncated && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Showing the first {listing.folders.length} of {listing.total} folders. Type the path to reach the others.
-          </p>
-        )}
       </div>
       <Footer>
         <Button type="button" className={drawer ? 'h-11' : undefined} disabled={!listing?.path} onClick={() => listing?.path && onPick(listing.path)}>

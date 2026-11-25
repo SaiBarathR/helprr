@@ -207,6 +207,17 @@ describe('torrent settings page', () => {
     }
   });
 
+  it('turns the queue moves off for a finished torrent, which qBittorrent does not queue', async () => {
+    // A seeding torrent answered "Moved to the bottom of the queue" while qBittorrent ignored the move.
+    torrents = [{ ...TORRENT, priority: 0, progress: 1, state: 'stalledUP' }];
+    await renderPage();
+    await waitFor(() => expect(document.body.textContent).toContain('This torrent isn\'t in qBittorrent\'s queue.'));
+    expect(document.body.textContent).toContain('Not queued');
+    for (const label of ['Move to the top of the queue', 'Move up the queue', 'Move down the queue', 'Move to the bottom of the queue']) {
+      expect(button(label).disabled).toBe(true);
+    }
+  });
+
   it('shows the share limits and saves all three together', async () => {
     // qBittorrent's answer to the re-read that follows a save.
     postResponse = async () => {

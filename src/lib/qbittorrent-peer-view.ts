@@ -82,8 +82,35 @@ const byName = (a: string | undefined, b: string | undefined) =>
   // Unknown names last.
   a && b ? a.localeCompare(b) : a ? -1 : b ? 1 : 0;
 
-/** Numbers biggest first, names A to Z; the key breaks ties so rows don't swap places between polls. */
-export function sortPeers(peers: Record<string, Partial<PeerView>>, sort: PeerSort): Array<[string, Partial<PeerView>]> {
+/** A speed in half-octave steps (about 40% each); 0 is below every step. */
+function speedStep(bytesPerSecond: number | undefined): number {
+  return bytesPerSecond && bytesPerSecond > 0 ? Math.floor(Math.log2(bytesPerSecond) * 2) : -1;
+}
+
+/**
+ * Numbers biggest first, names A to Z; the key breaks ties so rows don't swap places between polls.
+ * `previous`, the keys as last shown under the same speed sort, keeps that
+ * order: a peer moves up only past one at least about twice as slow (two
+ * steps). Rates swing that much from one poll to the next, and sorted exactly,
+ * a busy torrent's rows reshuffled every few seconds. New peers start at the
+ * end and rise the same way.
+ */
+export function sortPeers(
+  peers: Record<string, Partial<PeerView>>,
+  sort: PeerSort,
+  previous?: readonly string[],
+): Array<[string, Partial<PeerView>]> {
+  if (previous && (sort === 'dl_speed' || sort === 'up_speed')) {
+    const kept = previous.filter((key) => Object.hasOwn(peers, key));
+    const keptSet = new Set(kept);
+    const joined = sortPeers(Object.fromEntries(Object.entries(peers).filter(([key]) => !keptSet.has(key))), sort).map(([key]) => key);
+    const keys = [...kept, ...joined];
+    const step = (key: string) => speedStep(peers[key][sort]);
+    for (let i = 1; i < keys.length; i++) {
+      for (let j = i; j > 0 && step(keys[j]) - step(keys[j - 1]) >= 2; j--) [keys[j - 1], keys[j]] = [keys[j], keys[j - 1]];
+    }
+    return keys.map((key) => [key, peers[key]]);
+  }
   return Object.entries(peers).sort(([keyA, a], [keyB, b]) => {
     const order = sort === 'client' || sort === 'country'
       ? byName(a[sort], b[sort])

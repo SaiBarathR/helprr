@@ -59,7 +59,13 @@ export async function getLidarrClients(): Promise<Array<{ connection: ServiceCon
   return conns.map((connection) => ({ connection, client: new LidarrClient(connection.url, connection.apiKey, getConnectionHeaders(connection)) }));
 }
 
-function qbittorrentClientFor(connection: ServiceConnection): QBittorrentClient {
+/**
+ * The one client for this qBittorrent and its settings: it holds the session
+ * cookie, so every caller (routes, pollers, the reachability probe) shares one
+ * sign-in per instance. A new client signs in again; per poll cycle that filled
+ * qBittorrent's log with "WebAPI login success" every few seconds.
+ */
+export function qbittorrentClientFor(connection: ServiceConnection): QBittorrentClient {
   const username = connection.username || 'admin';
   const customHeaders = getConnectionHeaders(connection);
   const configKey = `${connection.url}|${connection.apiKey}|${username}|${customHeaders ? stableStringify(customHeaders) : ''}`;

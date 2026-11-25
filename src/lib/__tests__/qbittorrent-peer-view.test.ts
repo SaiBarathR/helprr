@@ -27,6 +27,22 @@ describe('sortPeers', () => {
     expect(sortPeers(peers, 'dl_speed').map(([key]) => key)).toEqual(['k2', 'k1', 'k3']);
   });
 
+  it('keeps the order shown while rates swing between polls, and moves a peer that is twice as fast', () => {
+    const keys = (rows: Array<[string, unknown]>) => rows.map(([key]) => key);
+    // First poll: sorted exactly.
+    const first = keys(sortPeers({ k1: { dl_speed: 10_800 }, k2: { dl_speed: 8_900 }, k3: { dl_speed: 68_000 }, k4: { dl_speed: 0 } }, 'dl_speed'));
+    expect(first).toEqual(['k3', 'k1', 'k2', 'k4']);
+    // 8.9 and 10.8 KB/s swapped places on each refresh; within a factor of two they keep their places.
+    const later = { k1: { dl_speed: 9_100 }, k2: { dl_speed: 10_900 }, k3: { dl_speed: 71_000 }, k4: { dl_speed: 0 }, k5: { dl_speed: 5_000 } };
+    expect(keys(sortPeers(later, 'dl_speed'))).toEqual(['k3', 'k2', 'k1', 'k5', 'k4']);
+    const second = keys(sortPeers(later, 'dl_speed', first));
+    // A new peer starts at the end and rises past the much slower one; a gone one drops out.
+    expect(second).toEqual(['k3', 'k1', 'k2', 'k5', 'k4']);
+    expect(keys(sortPeers({ k1: { dl_speed: 9_000 }, k2: { dl_speed: 30_000 }, k3: { dl_speed: 70_000 } }, 'dl_speed', second))).toEqual(['k3', 'k2', 'k1']);
+    // Other sorts are always exact.
+    expect(keys(sortPeers({ k1: { progress: 0.2 }, k2: { progress: 0.3 } }, 'progress', ['k1', 'k2']))).toEqual(['k2', 'k1']);
+  });
+
   it('sorts names A to Z with unknown ones last', () => {
     expect(sortPeers(peers, 'client').map(([key]) => key)).toEqual(['k3', 'k1', 'k2']);
   });
