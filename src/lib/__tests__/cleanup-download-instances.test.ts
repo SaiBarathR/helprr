@@ -44,6 +44,7 @@ vi.mock('@/lib/service-helpers', () => ({
 }));
 
 import { runDownloadCleanerCycle } from '@/lib/cleanup/download-cleaner';
+import { duplicateHashWarning } from '@/lib/cleanup/torrent-sources';
 
 const owner = { id: 'user-1', username: 'owner' };
 const config = { enabled: true, intervalMinutes: 60, ignoredDownloads: [], autoRemoveImportedEnabled: false, autoRemoveImportedCategories: [], autoRemoveImportedDeleteFiles: false, autoRemoveImportedPrivacyType: 'public', autoRunMode: 'disabled' };
@@ -69,7 +70,7 @@ describe('download cleaner on several qBittorrents (QBT-29)', () => {
     const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'manual', actor: owner });
 
     expect(result.decisions.map((d) => [d.torrent.hash, d.torrent.qbitInstanceId])).toEqual([['only-q1', 'q1'], ['only-q2', 'q2']]);
-    expect(result.warnings).toContain('1 torrent is in more than one qBittorrent and was skipped');
+    expect(result.warnings).toContain('"BOTH" is in more than one qBittorrent and was skipped');
     expect(mocks.clients.q1.deleteTorrent.mock.calls.map(([hash]) => hash)).toEqual(['only-q1']);
     expect(mocks.clients.q2.deleteTorrent.mock.calls.map(([hash]) => hash)).toEqual(['only-q2']);
     expect(mocks.getQBittorrentClient.mock.calls.every(([id]) => id === 'q1' || id === 'q2')).toBe(true);
@@ -90,5 +91,13 @@ describe('download cleaner on several qBittorrents (QBT-29)', () => {
     expect(result.decisions).toEqual([]);
     expect(result.warnings).toEqual(['qBittorrent torrent listing failed — nothing was evaluated']);
     expect(mocks.clients.q1.deleteTorrent).not.toHaveBeenCalled();
+  });
+});
+
+describe('duplicateHashWarning', () => {
+  it('names the torrents left out, the first few of many', () => {
+    expect(duplicateHashWarning([])).toBeNull();
+    expect(duplicateHashWarning(['A', 'B'])).toBe('2 torrents are in more than one qBittorrent and were skipped: "A", "B"');
+    expect(duplicateHashWarning(['A', 'B', 'C', 'D', 'E'])).toBe('5 torrents are in more than one qBittorrent and were skipped: "A", "B", "C" and 2 more');
   });
 });

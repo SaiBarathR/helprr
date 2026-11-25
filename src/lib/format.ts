@@ -17,11 +17,14 @@ export function formatBytes(bytes: number): string {
 }
 
 // Sonarr/Radarr history keep the download protocol as its enum number ("1", "2"); other
-// records already carry the name ("torrent"). 0 is "unknown".
+// records already carry the name ("torrent"). 0 is "unknown". Lidarr names its
+// protocols by class, plugins included ("TorrentDownloadProtocol",
+// "LucidaDownloadProtocol"): the suffix goes.
 const DOWNLOAD_PROTOCOLS: Record<string, string> = { '0': 'Unknown', '1': 'Usenet', '2': 'Torrent' };
 
 export function formatDownloadProtocol(protocol: string | number): string {
-  const value = String(protocol).trim();
+  const raw = String(protocol).trim();
+  const value = raw.replace(/DownloadProtocol$/, '') || raw;
   return DOWNLOAD_PROTOCOLS[value] ?? value.charAt(0).toUpperCase() + value.slice(1);
 }
 

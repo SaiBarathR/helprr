@@ -21,7 +21,7 @@ export default function RenameTorrentPage() {
   const { hash } = useParams<{ hash: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { instanceId } = useQbitInstance();
+  const { instanceId, subtitle: qbitLabel } = useQbitInstance();
   const canManage = useCan('torrents.manage');
   const torrentQuery = useTorrent(hash);
   const torrent = torrentQuery.data;
@@ -57,7 +57,7 @@ export default function RenameTorrentPage() {
   if (!canManage) {
     return (
       <>
-        <PageHeader title="Rename Torrent" />
+        <PageHeader title="Rename Torrent" subtitle={qbitLabel} />
         <p className="py-16 text-center text-sm text-muted-foreground">
           You don&apos;t have permission to rename torrents.
         </p>
@@ -66,13 +66,13 @@ export default function RenameTorrentPage() {
   }
 
   if (torrentQuery.isLoading) {
-    return <><PageHeader title="Rename Torrent" /><PageSpinner /></>;
+    return <><PageHeader title="Rename Torrent" subtitle={qbitLabel} /><PageSpinner /></>;
   }
 
   if (!torrent) {
     return (
       <>
-        <PageHeader title="Rename Torrent" />
+        <PageHeader title="Rename Torrent" subtitle={qbitLabel} />
         {torrentQuery.isError ? (
           <ErrorState
             message="Failed to load the torrent."
@@ -90,7 +90,7 @@ export default function RenameTorrentPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title="Rename Torrent" />
+      <PageHeader title="Rename Torrent" subtitle={qbitLabel} />
 
       <form className="mt-3 pb-8" onSubmit={handleSubmit}>
         <GroupedSection title="Name">

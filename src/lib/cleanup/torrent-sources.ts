@@ -10,8 +10,8 @@ export type CleanupTorrentSource =
     torrents: CleanupTorrent[];
     /** Every hash listed (lower-case), the left-out ones too: their strikes are not orphans. */
     listedHashes: string[];
-    /** How many hashes were left out for being in more than one qBittorrent. */
-    duplicateHashes: number;
+    /** The names of the torrents left out for being in more than one qBittorrent, one per hash. */
+    duplicateNames: string[];
     clients: Map<string, QBittorrentClient>;
   }
   | { ok: false; reason: 'unavailable' | 'listing' };
@@ -41,18 +41,20 @@ export async function listCleanupTorrents(): Promise<CleanupTorrentSource> {
   }
 
   const instancesByHash = new Map<string, Set<string>>();
+  const nameByHash = new Map<string, string>();
   for (const torrent of lists.flat()) {
     const hash = torrent.hash.toLowerCase();
     const seen = instancesByHash.get(hash) ?? new Set<string>();
     seen.add(torrent.qbitInstanceId);
     instancesByHash.set(hash, seen);
+    if (!nameByHash.has(hash)) nameByHash.set(hash, torrent.name || hash);
   }
   const duplicated = new Set([...instancesByHash].filter(([, seen]) => seen.size > 1).map(([hash]) => hash));
   return {
     ok: true,
     torrents: lists.flat().filter((torrent) => !duplicated.has(torrent.hash.toLowerCase())),
     listedHashes: [...instancesByHash.keys()],
-    duplicateHashes: duplicated.size,
+    duplicateNames: [...duplicated].map((hash) => nameByHash.get(hash) ?? hash),
     clients: new Map(instances.map(({ connection, client }) => [connection.id, client])),
   };
 }
@@ -71,9 +73,15 @@ export async function fetchCleanupTrackerDomains(
   return merged;
 }
 
-/** The warning a cycle gives for the torrents left out by listCleanupTorrents. */
-export function duplicateHashWarning(count: number): string | null {
-  return count > 0
-    ? `${count} torrent${count === 1 ? ' is' : 's are'} in more than one qBittorrent and ${count === 1 ? 'was' : 'were'} skipped`
-    : null;
+// Enough names to find them in qBittorrent; a warning stays one line or two.
+const MAX_NAMED_DUPLICATES = 3;
+
+/** The warning a cycle gives for the torrents left out by listCleanupTorrents, naming them. */
+export function duplicateHashWarning(names: string[]): string | null {
+  const count = names.length;
+  if (count === 0) return null;
+  if (count === 1) return `"${names[0]}" is in more than one qBittorrent and was skipped`;
+  const shown = names.slice(0, MAX_NAMED_DUPLICATES).map((name) => `"${name}"`).join(', ');
+  const more = count > MAX_NAMED_DUPLICATES ? ` and ${count - MAX_NAMED_DUPLICATES} more` : '';
+  return `${count} torrents are in more than one qBittorrent and were skipped: ${shown}${more}`;
 }

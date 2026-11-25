@@ -492,18 +492,49 @@ async function getHandler(request: NextRequest) {
 async function postHandler(request: NextRequest) {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
-  const instance = await qbittorrentInstanceOf(request);
-  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
-    const client = await getQBittorrentClient(instance.instanceId);
     const contentType = request.headers.get('content-type') || '';
+    const isForm = contentType.includes('multipart/form-data');
 
-    if (contentType.includes('multipart/form-data')) {
+    let body: Record<string, unknown> = {};
+    if (!isForm) {
+      let rawBody: unknown;
+      try {
+        rawBody = await request.json();
+      } catch (error) {
+        if (error instanceof SyntaxError) {
+          logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet', invalidJson: true });
+          return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+        }
+        throw error;
+      }
+      if (!rawBody || typeof rawBody !== 'object') {
+        logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet', invalidBody: true });
+        return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+      }
+      body = rawBody as Record<string, unknown>;
+    }
+
+    // Permission before the instance, as in every other qBittorrent route:
+    // someone who may not do this learns nothing about which qBittorrents exist.
+    if (isForm || body.action === undefined) {
       if (!can(auth.user, 'torrents.add')) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
+    } else {
+      const requiredCap = actionCapability(body.action);
+      if (!requiredCap) return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+      if (!can(auth.user, requiredCap)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
+    const instance = await qbittorrentInstanceOf(request);
+    if (!instance.ok) return instance.response;
+    const client = await getQBittorrentClient(instance.instanceId);
+
+    if (isForm) {
       let formData: FormData;
       try {
         formData = await readBoundedFormData(request, MAX_ADD_FORM_BYTES);
@@ -576,23 +607,6 @@ async function postHandler(request: NextRequest) {
       return addResponse(outcomes);
     }
 
-    let rawBody: unknown;
-    try {
-      rawBody = await request.json();
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet', invalidJson: true });
-        return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-      }
-      throw error;
-    }
-
-    if (!rawBody || typeof rawBody !== 'object') {
-      logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet', invalidBody: true });
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-    }
-
-    const body = rawBody as Record<string, unknown>;
     if (body.action !== undefined) {
       const actionResponse = await runTorrentAction(client, body, auth.user);
       if (actionResponse) {
@@ -603,10 +617,6 @@ async function postHandler(request: NextRequest) {
       await bumpQbitCacheVersion(client.instanceId);
       logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'action', action: body.action });
       return NextResponse.json({ success: true });
-    }
-
-    if (!can(auth.user, 'torrents.add')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const urls = body.urls;

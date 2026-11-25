@@ -95,7 +95,13 @@ async function pollInstance(
       stalledAfterMs: stalledAfterMins * 60_000,
       firstRun,
     });
-    nextEntries.push({ hash: torrent.hash, progress: torrent.progress, name: torrent.name, ...problems.marks });
+    // A check (a recheck, or qBittorrent's own on start) reports its own
+    // progress, so a finished torrent reads below 100% until it ends: keep
+    // what was known, or its end would read as the download completing again.
+    // A check that finds data missing leaves it downloading, below 100%.
+    const checking = torrent.state.startsWith('checking');
+    const progress = checking && prev ? prev.progress : torrent.progress;
+    nextEntries.push({ hash: torrent.hash, progress, name: torrent.name, ...problems.marks });
     if (!prev && !firstRun) {
       collector.add({
         eventType: 'torrentAdded',

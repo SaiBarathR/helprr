@@ -19,7 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useCan, useMe } from '@/components/permission-provider';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { ApiError, withInstanceQuery } from '@/lib/query-fetch';
-import { qbitInstanceKey, useQbitInstance } from '../../_components/use-qbit-instance';
+import { qbitInstanceKey, torrentPageSubtitle, useQbitInstance } from '../../_components/use-qbit-instance';
 import {
   PEER_SORTS,
   countryFlag,
@@ -50,7 +50,7 @@ export default function TorrentPeersPage() {
   // Only an admin is sent addresses and may ban (a ban is global); UX only, the server decides.
   const isAdmin = useMe()?.role === 'admin';
   const queryClient = useQueryClient();
-  const { instanceId } = useQbitInstance();
+  const { instanceId, subtitle: qbitLabel } = useQbitInstance();
   const peersKey = useMemo(() => ['qbittorrent', hash, 'peers', qbitInstanceKey(instanceId)] as const, [hash, instanceId]);
 
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
@@ -176,7 +176,7 @@ export default function TorrentPeersPage() {
       )}
     </>
   );
-  const header = <PageHeader title={title} subtitle={torrentName} backHref="/torrents" rightContent={toolbar} />;
+  const header = <PageHeader title={title} subtitle={torrentPageSubtitle(qbitLabel, torrentName)} backHref="/torrents" rightContent={toolbar} />;
 
   if (peersQuery.isLoading) return <>{header}<PageSpinner /></>;
 

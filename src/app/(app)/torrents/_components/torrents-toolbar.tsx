@@ -95,6 +95,24 @@ export function TorrentsToolbar({
             </button>
           )}
         >
+          {/* First: it changes everything below (each has its own torrents, categories and tags). */}
+          {qbit.multiInstance && (
+            <>
+              <ResponsiveMenuLabel>qBittorrent</ResponsiveMenuLabel>
+              {/* One at a time: each has its own torrents, categories and speed mode. */}
+              {qbit.instances.map((instance) => (
+                <ResponsiveMenuCheckboxItem
+                  key={instance.id}
+                  checked={qbit.current?.id === instance.id}
+                  onCheckedChange={() => { if (qbit.current?.id !== instance.id) qbit.select(instance.id); }}
+                >
+                  <span className="min-w-0 truncate">{instance.label}</span>
+                </ResponsiveMenuCheckboxItem>
+              ))}
+              <ResponsiveMenuSeparator />
+              <ResponsiveMenuLabel>Status</ResponsiveMenuLabel>
+            </>
+          )}
           <ResponsiveMenuCheckboxItem
             checked={filter.length === 0}
             onCheckedChange={() => setFilter([])}
@@ -114,22 +132,6 @@ export function TorrentsToolbar({
               {opt.label}
             </ResponsiveMenuCheckboxItem>
           ))}
-          {qbit.multiInstance && (
-            <>
-              <ResponsiveMenuSeparator />
-              <ResponsiveMenuLabel>qBittorrent</ResponsiveMenuLabel>
-              {/* One at a time: each has its own torrents, categories and speed mode. */}
-              {qbit.instances.map((instance) => (
-                <ResponsiveMenuCheckboxItem
-                  key={instance.id}
-                  checked={qbit.current?.id === instance.id}
-                  onCheckedChange={() => { if (qbit.current?.id !== instance.id) qbit.select(instance.id); }}
-                >
-                  <span className="min-w-0 truncate">{instance.label}</span>
-                </ResponsiveMenuCheckboxItem>
-              ))}
-            </>
-          )}
           {facetGroups.map((group) => group.options.length > 0 && (
             <Fragment key={group.key}>
               <ResponsiveMenuSeparator />

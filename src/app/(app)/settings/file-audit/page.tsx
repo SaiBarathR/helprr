@@ -19,6 +19,8 @@ interface AuditRecord {
   username: string;
   service: 'SONARR' | 'RADARR' | 'LIDARR' | 'QBITTORRENT';
   instanceId: string | null;
+  /** Which qBittorrent, when there are several. */
+  instanceLabel?: string | null;
   operation: FileOperation;
   mediaType: string;
   mediaId: number | null;
@@ -111,7 +113,7 @@ function OperationsList() {
                     <Badge variant={OP_VARIANT[r.operation]} className="text-[10px]">{move?.label ?? OP_LABEL[r.operation]}</Badge>
                     {!r.success && <Badge variant="destructive" className="text-[10px]">Failed</Badge>}
                     <span className="text-xs text-muted-foreground">
-                      {serviceLabel(r.service)}
+                      {serviceLabel(r.service)}{r.instanceLabel ? ` · ${r.instanceLabel}` : ''}
                     </span>
                   </div>
                   <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(r.createdAt)}</span>

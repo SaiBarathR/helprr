@@ -1,5 +1,6 @@
 import { getQBittorrentClient, getQBittorrentClients } from '@/lib/service-helpers';
 import { matchLocalQuery } from '@/lib/search/providers/local-module';
+import { torrentStateBadge } from '@/lib/qbittorrent-summary';
 import type { ProviderHandler } from '@/lib/search/providers/types';
 import type { SearchProviderResult } from '@/lib/search/types';
 
@@ -23,7 +24,7 @@ export const searchTorrents: ProviderHandler = async ({ query, limit }) => {
     // The same torrent can be in two qBittorrents.
     id: `torrent:${connection.id}:${t.hash}`,
     title: t.name,
-    subtitle: [many ? connection.label : null, t.category, t.state, `${Math.round(t.progress * 100)}%`].filter(Boolean).join(' · '),
+    subtitle: [many ? connection.label : null, t.category, torrentStateBadge(t.state).label, `${Math.round(t.progress * 100)}%`].filter(Boolean).join(' · '),
     year: null,
     poster: null,
     route: `/torrents?instance=${encodeURIComponent(connection.id)}`,

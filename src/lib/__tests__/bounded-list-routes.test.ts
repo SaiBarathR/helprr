@@ -32,6 +32,7 @@ vi.mock('@/lib/db', () => ({
   prisma: {
     notificationHistory: { findMany: mocks.findMany, count: mocks.count },
     fileOperationAudit: { findMany: mocks.auditFindMany, count: mocks.auditCount },
+    serviceConnection: { findMany: vi.fn(async () => []) },
   },
 }));
 vi.mock('@/lib/service-helpers', () => ({
