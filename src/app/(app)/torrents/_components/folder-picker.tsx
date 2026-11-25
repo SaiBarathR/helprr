@@ -10,6 +10,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import type { FolderListing } from '@/app/api/qbittorrent/folders/route';
+import { qbitInstanceKey, useQbitInstance } from './use-qbit-instance';
 
 /** The save-path field the picker fills, which decides who may list and where (see the folders route). */
 export type FolderPurpose = 'add' | 'location' | 'category';
@@ -108,10 +109,12 @@ function FolderBrowser({
   const [path, setPath] = useState<string | null>(start);
   // The typed folder could not be listed (outside, or not made yet): start from the top instead.
   const [startRefused, setStartRefused] = useState(false);
+  // The chosen qBittorrent's folders: each saves where its own host sees.
+  const { instanceId } = useQbitInstance();
 
   const query = useQuery({
-    queryKey: ['qbittorrent', 'folders', purpose, path ?? ''],
-    queryFn: jsonFetcher<FolderListing>(folderListUrl(purpose, path)),
+    queryKey: ['qbittorrent', 'folders', purpose, path ?? '', qbitInstanceKey(instanceId)],
+    queryFn: jsonFetcher<FolderListing>(folderListUrl(purpose, path), instanceId),
     staleTime: 15_000,
     retry: false,
   });

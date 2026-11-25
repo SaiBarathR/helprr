@@ -145,19 +145,31 @@ export function serverStatsFrom(serverState: Row | null): QBittorrentServerStats
 
 // On globalThis, not in module scope: the routes and the background poll
 // (started from instrumentation) can load separate copies of this module, and
-// they should share one rid. Kept for the current connection only: Helprr has
-// one qBittorrent, and a changed URL or password makes a new client.
-const shared = globalThis as typeof globalThis & { __helprrQbitSync?: QBittorrentSync | null };
+// they should share one rid. One per qBittorrent instance (client.instanceId),
+// so two qBittorrents never merge into one list; a changed URL or password
+// makes a new client, and so a new state for that instance.
+const shared = globalThis as typeof globalThis & { __helprrQbitSyncs?: Map<string, QBittorrentSync> };
 
-/** The merged state for this client's connection (connectionKey), made on first use. */
+function syncs(): Map<string, QBittorrentSync> {
+  return (shared.__helprrQbitSyncs ??= new Map());
+}
+
+/** The merged state for this client's instance and connection (connectionKey), made on first use. */
 export function qbittorrentSyncFor(client: QBittorrentClient): QBittorrentSync {
-  const current = shared.__helprrQbitSync;
+  const key = client.instanceId ?? '';
+  const current = syncs().get(key);
   if (current && (current.client === client || (!!client.connectionKey && current.client.connectionKey === client.connectionKey))) return current;
   const sync = new QBittorrentSync(client);
-  shared.__helprrQbitSync = sync;
+  syncs().set(key, sync);
   return sync;
 }
 
+/** Let go of the state of instances that are no longer connected (it holds their whole torrent list). */
+export function forgetQBittorrentSyncsExcept(instanceIds: Iterable<string>) {
+  const keep = new Set(instanceIds);
+  for (const key of syncs().keys()) if (!keep.has(key)) syncs().delete(key);
+}
+
 export function resetQBittorrentSyncForTests() {
-  shared.__helprrQbitSync = null;
+  syncs().clear();
 }

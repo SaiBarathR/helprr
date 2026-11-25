@@ -11,10 +11,12 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { useMe } from '@/components/permission-provider';
 import { defaultCategoryFolder, editCategoryHref, NEW_CATEGORY_HREF } from '../_components/category-links';
 import { useCategoryDetails } from '../_components/use-categories';
+import { useQbitInstance } from '../_components/use-qbit-instance';
 
 export default function TorrentCategoriesPage() {
   const isAdmin = useMe()?.role === 'admin';
   const detailsQuery = useCategoryDetails();
+  const { subtitle } = useQbitInstance();
   const details = detailsQuery.data;
   const categories = useMemo(
     () => Object.values(details?.categories ?? {}).sort((a, b) => a.name.localeCompare(b.name)),
@@ -23,7 +25,7 @@ export default function TorrentCategoriesPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title="Categories" className="*:readable-column" backHref="/torrents/settings" />
+      <PageHeader title="Categories" subtitle={subtitle} className="*:readable-column" backHref="/torrents/settings" />
 
       <div className="mt-3 pb-8 readable-column">
         {detailsQuery.isLoading ? (

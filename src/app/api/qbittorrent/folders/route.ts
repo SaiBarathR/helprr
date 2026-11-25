@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAxiosError } from 'axios';
 import type { Capability } from '@/lib/capabilities';
 import { getQBittorrentClient } from '@/lib/service-helpers';
+import { qbittorrentInstanceOf } from '@/lib/server/qbittorrent-instance';
 import { requireAdmin, requireAuth, requireUserCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
@@ -63,10 +64,12 @@ async function getHandler(request: NextRequest) {
   const capability = FOLDER_PURPOSES[purpose];
   const auth = capability ? await requireUserCapability(capability) : await requireAdmin();
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     const roots = absoluteRoots(purpose === 'category' ? [await client.getDefaultSavePath()] : await getDownloadRoots(client));
 
     const requested = request.nextUrl.searchParams.get('path');

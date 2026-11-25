@@ -419,9 +419,10 @@ describe('jobs that cannot load what they work on', () => {
     const internal = stubCycle(service);
     real(internal, service, 'pollQBittorrent');
     const services = await import('@/lib/service-helpers');
-    const lookup = vi.spyOn(services, 'getQBittorrentClient');
+    const lookup = vi.spyOn(services, 'getQBittorrentClients');
 
-    lookup.mockRejectedValue(new ConfigurationError('qBittorrent is not configured.'));
+    // None set up is an empty list, not a failure.
+    lookup.mockResolvedValue([]);
     await internal.poll();
     expect(sourceHealth(service, 'pollQBittorrent')).toEqual(expect.objectContaining({ lastSuccessAt: expect.any(String), lastError: null }));
 
@@ -434,17 +435,17 @@ describe('jobs that cannot load what they work on', () => {
   it('counts a bandwidth release it could not carry out as failed', async () => {
     const service = new PollingService();
     const internal = stubCycle(service);
-    internal.appliedBandwidth = { ruleId: 'r1', downloadKbps: 100, uploadKbps: 50 };
+    internal.appliedBandwidth = new Map([['q1', { ruleId: 'r1', downloadKbps: 100, uploadKbps: 50 }]]);
     internal.applyBandwidthSchedule = vi.fn(async () => {
       await (internal.releaseAppliedBandwidth as (context: string) => Promise<void>).call(service, 'test');
     });
     const services = await import('@/lib/service-helpers');
-    vi.spyOn(services, 'getQBittorrentClient').mockRejectedValue(new Error('database unavailable'));
+    vi.spyOn(services, 'getQBittorrentClients').mockRejectedValue(new Error('database unavailable'));
 
     await internal.poll();
 
     expect(sourceHealth(service, 'applyBandwidthSchedule')).toEqual(expect.objectContaining({ lastError: 'database unavailable' }));
-    expect(internal.appliedBandwidth).not.toBeNull();
+    expect((internal.appliedBandwidth as Map<string, unknown>).size).toBe(1);
   });
 
   it('counts a Jellyfin connection without its user as failed, but not Jellyfin that is not set up', async () => {
@@ -576,7 +577,7 @@ describe('bandwidth schedule', () => {
   it.each([0, 1] as const)('sets and then releases only the regular limits (alternative mode %s)', async (mode) => {
     const qbit = fakeQbit(mode);
     const services = await import('@/lib/service-helpers');
-    vi.spyOn(services, 'getQBittorrentClient').mockResolvedValue(qbit as never);
+    vi.spyOn(services, 'getQBittorrentClients').mockResolvedValue([{ connection: { id: 'q1' }, client: qbit }] as never);
     const internal = new PollingService() as unknown as InternalPollingService;
     const apply = (internal.applyBandwidthSchedule as (context: unknown) => Promise<void>).bind(internal);
 
@@ -586,8 +587,36 @@ describe('bandwidth schedule', () => {
     // The rule is gone: back to unlimited, the alternative limits untouched.
     await apply(context([]));
     expect(qbit.prefs).toEqual({ dl_limit: 0, up_limit: 0, alt_dl_limit: 51_200, alt_up_limit: 20_480 });
-    expect(internal.appliedBandwidth).toBeNull();
+    expect((internal.appliedBandwidth as Map<string, unknown>).size).toBe(0);
     expect(qbit.setGlobalDownloadLimit).not.toHaveBeenCalled();
     expect(qbit.setGlobalUploadLimit).not.toHaveBeenCalled();
+  });
+
+  it('limits every qBittorrent, retries only the one that refused, and releases each', async () => {
+    const first = fakeQbit(0);
+    const second = fakeQbit(0);
+    second.setSpeedLimits.mockRejectedValueOnce(new Error('qBittorrent did not answer'));
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getQBittorrentClients').mockResolvedValue([
+      { connection: { id: 'q1' }, client: first },
+      { connection: { id: 'q2' }, client: second },
+    ] as never);
+    const internal = new PollingService() as unknown as InternalPollingService;
+    const apply = (internal.applyBandwidthSchedule as (context: unknown) => Promise<void>).bind(internal);
+
+    await apply(context([rule]));
+    expect(first.prefs.dl_limit).toBe(300 * 1024);
+    expect(second.prefs.dl_limit).toBe(1_048_576);
+    expect([...(internal.appliedBandwidth as Map<string, unknown>).keys()]).toEqual(['q1']);
+
+    // Next cycle: only the one that refused is sent the limit again.
+    await apply(context([rule]));
+    expect(first.setSpeedLimits).toHaveBeenCalledTimes(1);
+    expect(second.prefs.dl_limit).toBe(300 * 1024);
+
+    await apply(context([]));
+    expect(first.prefs.dl_limit).toBe(0);
+    expect(second.prefs.dl_limit).toBe(0);
+    expect((internal.appliedBandwidth as Map<string, unknown>).size).toBe(0);
   });
 });

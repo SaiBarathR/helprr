@@ -1,40 +1,73 @@
-// qBittorrent: torrents added, completed and removed since the last poll, ones
-// that errored or stalled too long; the downloads badge.
+// qBittorrent, every instance: torrents added, completed and removed since
+// the last poll, ones that errored or stalled too long; the downloads badge.
+import type { ServiceConnection } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { getQBittorrentClient } from '@/lib/service-helpers';
-import { ConfigurationError } from '@/lib/config-error';
-import { getDefaultConnection } from '@/lib/arr-instances';
+import { getQBittorrentClients } from '@/lib/service-helpers';
+import type { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { logger } from '@/lib/logger';
 import { noteJobFailure } from '@/lib/polling-job-report';
 import { writeBadgeSlice } from '@/lib/cache/badge-counts';
 import { PollNotificationCollector, type NotificationEventInput, type PollNotificationContext } from '@/lib/notification-grouping';
 import { qbittorrentSyncFor } from '@/lib/qbittorrent-sync';
 import { DEFAULT_TORRENT_STALLED_ALERT_MINS, formatStalledFor } from '@/lib/torrent-stalled-alert';
-import { getPollingState, notifyAndLog, wantedNotices, type CycleContext } from './shared';
+import { getPollingState, instanceTitle, notifyAndLog, wantedNotices, type CycleContext } from './shared';
 import { torrentProblems, type TorrentProblemMarks } from './torrent-problems';
 
 type TorrentEntry = { hash: string; progress: number; name: string } & TorrentProblemMarks;
 
 export async function pollQBittorrent(context: CycleContext) {
-  let client;
+  let instances;
   try {
-    client = await getQBittorrentClient();
+    instances = await getQBittorrentClients();
   } catch (error) {
-    if (!(error instanceof ConfigurationError)) noteJobFailure(error);
-    logger.debug('Skipping qBittorrent poll because client is unavailable', { error }, { scope: 'polling' });
+    noteJobFailure(error);
+    logger.debug('Skipping qBittorrent poll because clients are unavailable', { error }, { scope: 'polling' });
     return;
   }
-
-  const connection = await getDefaultConnection('QBITTORRENT');
-  if (!connection) return;
-
-  const { state, firstRun } = await getPollingState(connection.id);
+  if (instances.length === 0) return;
 
   const settings = await context.getSettings();
+  // Each instance keeps its own state and pushes; one that fails is skipped
+  // this cycle and leaves the others alone. The badge counts every instance
+  // that answered.
+  const counts = await Promise.all(instances.map(async ({ connection, client }) => {
+    try {
+      return await pollInstance(connection, client, instances.length, settings);
+    } catch (error) {
+      noteJobFailure(error);
+      logger.warn('qBittorrent poll failed', { instanceId: connection.id, error }, { scope: 'polling' });
+      return null;
+    }
+  }));
+  const answered = counts.filter((count): count is { total: number; attention: number } => count !== null);
+  // None answered: keep the last badge rather than show nothing in flight.
+  if (answered.length === 0) return;
+  await writeBadgeSlice('downloads', 'qbittorrent', {
+    total: answered.reduce((sum, count) => sum + count.total, 0),
+    attention: answered.reduce((sum, count) => sum + count.attention, 0),
+  });
+}
+
+/** One qBittorrent's poll; its downloads badge counts. */
+async function pollInstance(
+  connection: ServiceConnection,
+  client: QBittorrentClient,
+  instanceCount: number,
+  settings: Awaited<ReturnType<CycleContext['getSettings']>>,
+): Promise<{ total: number; attention: number }> {
+  const { state, firstRun } = await getPollingState(connection.id);
+
   const groupingEnabled = settings.notificationGroupingEnabled;
   const stalledAfterMins = settings.torrentStalledAlertMins ?? DEFAULT_TORRENT_STALLED_ALERT_MINS;
   const now = Date.now();
   const collector = new PollNotificationCollector();
+  // Every push names its qBittorrent, so its link opens that instance's
+  // Torrents and a group never mixes two instances.
+  const instanceId = connection.id;
+  const instanceLabel = connection.label;
+  const instanceQuery = `instance=${encodeURIComponent(instanceId)}`;
+  const listUrl = `/torrents?${instanceQuery}`;
+  const title = (base: string) => instanceTitle(base, instanceLabel, instanceCount);
 
   // The torrents page's merged sync/maindata state: a read shortly after the
   // page's reuses it, and any read is only what changed since the last one.
@@ -45,6 +78,7 @@ export async function pollQBittorrent(context: CycleContext) {
   const prevEntries = (state.lastQueueIds as TorrentEntry[]) || [];
   const prevMap = new Map(prevEntries.map((e) => [e.hash, e]));
   logger.debug('qBittorrent torrents polled', {
+    instanceId,
     torrentCount: torrents.length,
     previousTorrentCount: prevEntries.length,
     newTorrentCount: torrents.filter((torrent) => !prevMap.has(torrent.hash)).length,
@@ -65,52 +99,52 @@ export async function pollQBittorrent(context: CycleContext) {
     if (!prev && !firstRun) {
       collector.add({
         eventType: 'torrentAdded',
-        title: 'Torrent Added',
+        title: title('Torrent Added'),
         body: torrent.name,
-        metadata: { source: 'qbittorrent', hash: torrent.hash, redirect: '/torrents' },
-        url: '/torrents',
-      }, { service: 'qbittorrent', reason: 'torrent-added', hash: torrent.hash });
+        metadata: { source: 'qbittorrent', instanceId, instanceLabel, hash: torrent.hash, redirect: listUrl },
+        url: listUrl,
+      }, { service: 'qbittorrent', instanceId, reason: 'torrent-added', hash: torrent.hash });
     }
 
     // Detect completed (progress went from <1 to 1)
     if (torrent.progress >= 1 && prev && prev.progress < 1) {
       collector.add({
         eventType: 'torrentCompleted',
-        title: 'Download Complete',
+        title: title('Download Complete'),
         body: torrent.name,
-        metadata: { source: 'qbittorrent', hash: torrent.hash, redirect: '/torrents' },
-        url: '/torrents',
-      }, { service: 'qbittorrent', reason: 'torrent-completed', hash: torrent.hash });
+        metadata: { source: 'qbittorrent', instanceId, instanceLabel, hash: torrent.hash, redirect: listUrl },
+        url: listUrl,
+      }, { service: 'qbittorrent', instanceId, reason: 'torrent-completed', hash: torrent.hash });
     }
 
     // Opens the torrent's own page: for an error or missing files its
     // location, for a stall its trackers (what they answer is why).
     if (problems.errored) {
       const missing = torrent.state === 'missingFiles';
-      const url = `/torrents/${encodeURIComponent(torrent.hash)}/settings`;
+      const url = `/torrents/${encodeURIComponent(torrent.hash)}/settings?${instanceQuery}`;
       problemNotices.push({
         event: {
           eventType: 'torrentErrored',
-          title: missing ? 'Torrent Files Missing' : 'Torrent Errored',
+          title: title(missing ? 'Torrent Files Missing' : 'Torrent Errored'),
           body: torrent.name,
-          metadata: { source: 'qbittorrent', hash: torrent.hash, state: torrent.state, redirect: url },
+          metadata: { source: 'qbittorrent', instanceId, instanceLabel, hash: torrent.hash, state: torrent.state, redirect: url },
           url,
         },
-        context: { service: 'qbittorrent', reason: missing ? 'torrent-missing-files' : 'torrent-errored', hash: torrent.hash },
+        context: { service: 'qbittorrent', instanceId, reason: missing ? 'torrent-missing-files' : 'torrent-errored', hash: torrent.hash },
       });
     }
     if (problems.stalled) {
       const what = torrent.state === 'stalledDL' ? 'No data' : 'No metadata';
-      const url = `/torrents/${encodeURIComponent(torrent.hash)}/trackers?name=${encodeURIComponent(torrent.name)}`;
+      const url = `/torrents/${encodeURIComponent(torrent.hash)}/trackers?name=${encodeURIComponent(torrent.name)}&${instanceQuery}`;
       problemNotices.push({
         event: {
           eventType: 'torrentStalled',
-          title: 'Torrent Stalled',
+          title: title('Torrent Stalled'),
           body: `${torrent.name} · ${what} for ${formatStalledFor(stalledAfterMins)}`,
-          metadata: { source: 'qbittorrent', hash: torrent.hash, state: torrent.state, redirect: url },
+          metadata: { source: 'qbittorrent', instanceId, instanceLabel, hash: torrent.hash, state: torrent.state, redirect: url },
           url,
         },
-        context: { service: 'qbittorrent', reason: 'torrent-stalled', hash: torrent.hash },
+        context: { service: 'qbittorrent', instanceId, reason: 'torrent-stalled', hash: torrent.hash },
       });
     }
   }
@@ -123,23 +157,13 @@ export async function pollQBittorrent(context: CycleContext) {
     if (!currentMap.has(prev.hash)) {
       collector.add({
         eventType: 'torrentDeleted',
-        title: 'Torrent Removed',
+        title: title('Torrent Removed'),
         body: prev.name,
-        metadata: { source: 'qbittorrent', hash: prev.hash, redirect: '/torrents' },
-        url: '/torrents',
-      }, { service: 'qbittorrent', reason: 'torrent-deleted', hash: prev.hash });
+        metadata: { source: 'qbittorrent', instanceId, instanceLabel, hash: prev.hash, redirect: listUrl },
+        url: listUrl,
+      }, { service: 'qbittorrent', instanceId, reason: 'torrent-deleted', hash: prev.hash });
     }
   }
-
-  // Nav badge: total = downloads still in flight (progress < 1); attention =
-  // the in-flight subset that's stalled or errored (so attention <= total).
-  const inFlightTorrents = torrents.filter((t) => t.progress < 1);
-  await writeBadgeSlice('downloads', 'qbittorrent', {
-    total: inFlightTorrents.length,
-    attention: inFlightTorrents.filter(
-      (t) => t.state === 'error' || t.state === 'missingFiles' || t.state === 'stalledDL',
-    ).length,
-  });
 
   await collector.flush({ enabled: groupingEnabled, notify: notifyAndLog });
 
@@ -151,6 +175,17 @@ export async function pollQBittorrent(context: CycleContext) {
     },
   });
   logger.debug('qBittorrent polling state updated', {
+    instanceId,
     torrentCount: torrents.length,
   }, { scope: 'polling' });
+
+  // Nav badge: total = downloads still in flight (progress < 1); attention =
+  // the in-flight subset that's stalled or errored (so attention <= total).
+  const inFlightTorrents = torrents.filter((t) => t.progress < 1);
+  return {
+    total: inFlightTorrents.length,
+    attention: inFlightTorrents.filter(
+      (t) => t.state === 'error' || t.state === 'missingFiles' || t.state === 'stalledDL',
+    ).length,
+  };
 }

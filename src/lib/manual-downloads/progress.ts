@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import { getQBittorrentClient } from '@/lib/service-helpers';
+import { getQBittorrentClients } from '@/lib/service-helpers';
 import type { SerializedManualDownload } from './serialize';
 
 const PROGRESS_TIMEOUT_MS = 2_000;
@@ -32,7 +32,7 @@ async function chosenSizes(downloads: SerializedManualDownload[]): Promise<Map<s
 
 /**
  * One filtered torrent read per existing list/detail refresh; history needs no upstream read.
- * Best effort from Helprr's own qBittorrent: an Arr using another client simply shows no figure.
+ * Best effort from Helprr's own qBittorrents: an Arr using another client simply shows no figure.
  */
 export async function withDownloadProgress(downloads: SerializedManualDownload[]) {
   const active = downloads.filter((download) => ['QUEUED', 'DOWNLOADING'].includes(download.status));
@@ -42,8 +42,10 @@ export async function withDownloadProgress(downloads: SerializedManualDownload[]
       const hashes = [...new Set(active.map((download) => download.infoHash.toLowerCase()))].join('|');
       // Progress is a nicety: a slow qBittorrent must not hold up the workflow list.
       let timer: ReturnType<typeof setTimeout> | undefined;
+      // Each qBittorrent: an arr may send to any of them. One that doesn't answer shows no figure.
       const torrents = await Promise.race([
-        getQBittorrentClient().then((client) => client.getTorrents(undefined, undefined, undefined, undefined, hashes)),
+        getQBittorrentClients().then((instances) => Promise.all(instances.map(({ client }) =>
+          client.getTorrents(undefined, undefined, undefined, undefined, hashes).catch(() => [])))).then((lists) => lists.flat()),
         new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('progress timeout')), PROGRESS_TIMEOUT_MS); }),
       ]).finally(() => clearTimeout(timer));
       for (const torrent of torrents) {

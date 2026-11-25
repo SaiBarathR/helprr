@@ -56,8 +56,8 @@ function metaString(md: Record<string, unknown> | undefined, key: string): strin
   return typeof v === 'string' ? v : undefined;
 }
 
-// Same service instance + same event type in one cycle → one group. qBittorrent
-// events carry no instanceId, so all torrentAdded in a cycle share one key.
+// Same service instance + same event type in one cycle → one group (qBittorrent
+// events carry their instance too, so two qBittorrents never share a group).
 // Events for different recipients (upcoming films sent per time zone) never
 // share a group: the grouped push goes to its entries' recipients.
 function deriveGroupKey(event: NotificationEventInput): string {
@@ -115,9 +115,9 @@ function instancePrefix(event: NotificationEventInput): string {
 }
 
 // Stable, always-valid destination when the group has no single shared media parent.
-function tabRedirect(source: string | undefined, eventType: string): string {
+function tabRedirect(source: string | undefined, eventType: string, instanceId?: string): string {
   if (eventType === 'upcomingPremiere') return '/calendar';
-  if (source === 'qbittorrent') return '/torrents';
+  if (source === 'qbittorrent') return instanceId ? `/torrents?instance=${encodeURIComponent(instanceId)}` : '/torrents';
   if (eventType === 'grabbed') return `/activity?tab=queue&source=${source}`;
   if (eventType === 'downloadFailed' || eventType === 'importFailed') return `/activity?tab=failed&source=${source}`;
   if (eventType === 'imported' || eventType === 'upgraded') return '/activity/history';
@@ -172,7 +172,7 @@ function buildGroupedNotification(group: Entry[]): {
   // Failures always open the Needs import tab, where they are listed with what
   // to do next, even when every item shares one series or movie.
   const isFailure = eventType === 'downloadFailed' || eventType === 'importFailed';
-  const redirect = (isFailure ? null : sharedParentHref(group)) ?? tabRedirect(source, eventType);
+  const redirect = (isFailure ? null : sharedParentHref(group)) ?? tabRedirect(source, eventType, metaString(first.metadata, 'instanceId'));
 
   const items: GroupedItem[] = group.slice(0, ITEM_CAP).map((e) => {
     const md = e.event.metadata ?? {};

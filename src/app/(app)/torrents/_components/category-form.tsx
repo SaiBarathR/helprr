@@ -17,6 +17,7 @@ import type { ArrCategoryUse } from '@/lib/qbittorrent-category-usage';
 import { defaultCategoryFolder } from './category-links';
 import { FolderPickerButton } from './folder-picker';
 import { sendCategoryChange, useCategoryDetails } from './use-categories';
+import { useQbitInstance } from './use-qbit-instance';
 
 type ArrWarning = { uses: ArrCategoryUse[]; unchecked: string[] };
 /** A refused save, shown under the field it is about (or above the buttons). */
@@ -39,9 +40,10 @@ function relocationNote(relocate: boolean | null): string {
 }
 
 function Message({ title, children }: { title: string; children: React.ReactNode }) {
+  const { subtitle } = useQbitInstance();
   return (
     <>
-      <PageHeader title={title} className="*:readable-column" backHref="/torrents/categories" />
+      <PageHeader title={title} subtitle={subtitle} className="*:readable-column" backHref="/torrents/categories" />
       {children}
     </>
   );
@@ -53,6 +55,7 @@ export function CategoryForm({ editName }: { editName?: string }) {
   const queryClient = useQueryClient();
   const isAdmin = useMe()?.role === 'admin';
   const detailsQuery = useCategoryDetails();
+  const { instanceId, subtitle } = useQbitInstance();
   const details = detailsQuery.data;
   const editing = editName !== undefined;
   const existing = editing && details && Object.hasOwn(details.categories, editName) ? details.categories[editName] : null;
@@ -124,7 +127,7 @@ export function CategoryForm({ editName }: { editName?: string }) {
     if (!canSave) return;
     setSaving(true);
     setSaveError(null);
-    const result = await sendCategoryChange(editing ? 'PATCH' : 'POST', { name: categoryName, savePath: path });
+    const result = await sendCategoryChange(editing ? 'PATCH' : 'POST', { name: categoryName, savePath: path }, instanceId);
     setSaving(false);
     if (!result.ok) {
       setSaveError({ message: result.error, field: result.field });
@@ -135,7 +138,7 @@ export function CategoryForm({ editName }: { editName?: string }) {
 
   const remove = async () => {
     setRemoving(true);
-    const result = await sendCategoryChange('DELETE', { categories: [editName], confirm: arrWarning !== null });
+    const result = await sendCategoryChange('DELETE', { categories: [editName], confirm: arrWarning !== null }, instanceId);
     setRemoving(false);
     if (!result.ok) {
       // The first refusal for an arr's category turns this dialog into the warning; its button then confirms.
@@ -153,7 +156,7 @@ export function CategoryForm({ editName }: { editName?: string }) {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title={title} className="*:readable-column" backHref="/torrents/categories" />
+      <PageHeader title={title} subtitle={subtitle} className="*:readable-column" backHref="/torrents/categories" />
 
       <form className="mt-3 pb-8 readable-column" onSubmit={handleSubmit}>
         <GroupedSection

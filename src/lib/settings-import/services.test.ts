@@ -5,6 +5,7 @@ import type { ExportedServiceConnection } from '@/lib/settings-export';
 vi.mock('@/lib/db', () => ({ prisma: {} }));
 vi.mock('@/lib/arr-instances', () => ({
   isArrType: (type: string) => ['SONARR', 'RADARR', 'LIDARR'].includes(type),
+  isMultiInstanceType: (type: string) => ['SONARR', 'RADARR', 'LIDARR', 'QBITTORRENT'].includes(type),
 }));
 
 import { applyServiceConnectionInTxn } from './services';
@@ -152,5 +153,29 @@ describe('a Jellyfin address change, for the sign-out of Jellyfin-linked account
     row = { ...jellyfin };
     await applyServiceConnectionInTxn(tx, entry('http://new.lan:8096', null), [], changes);
     expect(changes.jellyfinAddress).toBe(false);
+  });
+});
+
+// QBT-29: qBittorrent can have several connections, matched like the arrs' by name.
+describe('importing qBittorrent connections', () => {
+  const qbit = (extra: Partial<ExportedServiceConnection> = {}): ExportedServiceConnection => ({
+    type: 'QBITTORRENT', label: 'Seedbox', isDefault: false, url: 'http://seedbox.example.invalid:8080',
+    apiKey: 'qbit-password', username: 'admin', externalUrl: null, accessToken: null, refreshToken: null, customHeaders: null,
+    ...extra,
+  });
+
+  it('finds an existing one by type and name, so a second qBittorrent is added rather than overwriting the first', async () => {
+    findFirst.mockResolvedValueOnce(null as unknown as ServiceConnection);
+    expect(await applyServiceConnectionInTxn(tx, qbit(), [])).toBe('QBITTORRENT');
+    expect(findFirst).toHaveBeenCalledWith({ where: { type: 'QBITTORRENT', label: 'Seedbox' } });
+    expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ type: 'QBITTORRENT', label: 'Seedbox', isDefault: false }) });
+  });
+
+  it('matches an older export without a name to the connection that was named qBittorrent', async () => {
+    row = { ...stored, id: 'qbit-1', type: 'QBITTORRENT', label: 'qBittorrent', url: 'http://seedbox.example.invalid:8080', username: 'admin' };
+    await applyServiceConnectionInTxn(tx, qbit({ label: '' }), []);
+    expect(findFirst).toHaveBeenCalledWith({ where: { type: 'QBITTORRENT', label: 'qBittorrent' } });
+    expect(create).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'qbit-1' } }));
   });
 });

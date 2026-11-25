@@ -172,8 +172,15 @@ export class QBittorrentClient {
   private torrentControlMode: 'unknown' | 'startStop' | 'pauseResume' = 'unknown';
   /** One per connection setting, hashed so the password isn't in it (src/lib/qbittorrent-sync.ts). */
   readonly connectionKey: string;
+  /**
+   * The ServiceConnection this client is for (unset for a connection being
+   * tested). Helprr can have several qBittorrents: what is kept per instance
+   * (sync state, cache version) is kept under this id.
+   */
+  readonly instanceId: string | undefined;
 
-  constructor(url: string, password: string, username: string = 'admin', customHeaders?: Record<string, string>) {
+  constructor(url: string, password: string, username: string = 'admin', customHeaders?: Record<string, string>, instanceId?: string) {
+    this.instanceId = instanceId;
     this.baseUrl = url.replace(/\/+$/, '');
     this.username = username;
     this.password = password;

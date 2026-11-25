@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { resolveConnection } from '@/lib/arr-instances';
 import { fetchAllQueueRecords } from '@/lib/activity-queue';
 import { noteJobFailure, noteJobSkipped } from '@/lib/polling-job-report';
-import { getQBittorrentClient } from '@/lib/service-helpers';
+import { getQBittorrentClients } from '@/lib/service-helpers';
 import type { RadarrClient } from '@/lib/radarr-client';
 import type { SonarrClient } from '@/lib/sonarr-client';
 import type { HistoryItem, QBittorrentTorrent, QueueItem } from '@/types';
@@ -304,12 +304,18 @@ export async function reconcileManualDownloads(): Promise<void> {
     byInstance.set(download.instanceId, [...(byInstance.get(download.instanceId) ?? []), download]);
   }
 
-  // Fallback downloads live in Helprr's qBittorrent: one look for all of them.
+  // Fallback downloads live in one of Helprr's qBittorrents: one look at each
+  // for all of them. Any that does not answer leaves them all unread this
+  // time, so a torrent it holds is not taken for gone.
   const fallbackHashes = active.filter((download) => download.mode === 'QBIT_REVIEWED').map((download) => download.infoHash.toLowerCase());
   let torrents: QBittorrentTorrent[] | null = null;
   if (fallbackHashes.length > 0) {
     try {
-      torrents = await (await getQBittorrentClient()).getTorrents(undefined, undefined, undefined, undefined, fallbackHashes.join('|'));
+      const instances = await getQBittorrentClients();
+      if (instances.length > 0) {
+        torrents = (await Promise.all(instances.map(({ client }) =>
+          client.getTorrents(undefined, undefined, undefined, undefined, fallbackHashes.join('|'))))).flat();
+      }
     } catch (error) {
       noteJobFailure(error);
     }

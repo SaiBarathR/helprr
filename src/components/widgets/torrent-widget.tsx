@@ -24,7 +24,8 @@ interface TorrentData {
 }
 
 async function fetchTorrentData(signal?: AbortSignal): Promise<TorrentData> {
-  const res = await fetchOrOffline('/api/qbittorrent/summary?view=counters', { signal });
+  // Every qBittorrent added up, as the downloads badge counts them.
+  const res = await fetchOrOffline('/api/qbittorrent/summary?view=counters&instanceId=all', { signal });
   if (!res.ok) throw new Error('Failed to fetch');
   const data: Pick<QBittorrentSummaryResponse, 'transferInfo'> & Pick<TorrentData, 'total' | 'downloading' | 'seeding' | 'paused'> = await res.json();
   const ti = data.transferInfo;

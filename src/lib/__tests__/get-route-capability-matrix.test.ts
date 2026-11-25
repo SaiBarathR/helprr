@@ -292,6 +292,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   ],
   'cap:torrents.view': [
     'GET /api/qbittorrent/[hash]/details',
+    // The qBittorrents the Torrents pages switch between (id, name, default).
+    'GET /api/qbittorrent/instances',
     'GET /api/qbittorrent/[hash]/files',
     'GET /api/qbittorrent/[hash]/peers',
     'GET /api/qbittorrent/categories',
@@ -621,7 +623,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(313);
+    expect(handlers.size).toBe(314);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

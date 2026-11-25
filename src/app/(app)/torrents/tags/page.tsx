@@ -12,7 +12,8 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { useCan } from '@/components/permission-provider';
-import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
+import { qbitInstanceKey, useQbitInstance } from '../_components/use-qbit-instance';
 import { handleAuthError } from '@/lib/query-client';
 import { newTagProblem } from '../_components/torrent-tags';
 
@@ -27,10 +28,10 @@ const TAGS_KEY = ['qbittorrent', 'tags'] as const;
 const torrentCount = (count: number) => `${count} torrent${count === 1 ? '' : 's'}`;
 
 /** Create (POST) or delete (DELETE); the error to show, or null when it worked. */
-async function sendTagChange(method: 'POST' | 'DELETE', body: Record<string, unknown>): Promise<string | null> {
+async function sendTagChange(method: 'POST' | 'DELETE', body: Record<string, unknown>, instanceId: string | undefined): Promise<string | null> {
   let res: Response;
   try {
-    res = await fetch(TAGS_URL, {
+    res = await fetch(withInstanceQuery(TAGS_URL, instanceId), {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -51,9 +52,10 @@ async function sendTagChange(method: 'POST' | 'DELETE', body: Record<string, unk
 export default function TorrentTagsPage() {
   const queryClient = useQueryClient();
   const canManage = useCan('torrents.manage');
+  const { instanceId, subtitle } = useQbitInstance();
   const tagsQuery = useQuery({
-    queryKey: TAGS_KEY,
-    queryFn: jsonFetcher<{ tags: TagUsage[] }>(TAGS_URL),
+    queryKey: [...TAGS_KEY, qbitInstanceKey(instanceId)],
+    queryFn: jsonFetcher<{ tags: TagUsage[] }>(TAGS_URL, instanceId),
     staleTime: 0,
   });
   const tags = useMemo(
@@ -84,7 +86,7 @@ export default function TorrentTagsPage() {
       return;
     }
     setCreating(true);
-    const error = await sendTagChange('POST', { name: tag });
+    const error = await sendTagChange('POST', { name: tag }, instanceId);
     setCreating(false);
     if (error) {
       setCreateError(error);
@@ -98,7 +100,7 @@ export default function TorrentTagsPage() {
   const remove = async () => {
     if (!confirmDelete) return;
     setDeleting(true);
-    const error = await sendTagChange('DELETE', { tags: [confirmDelete.name] });
+    const error = await sendTagChange('DELETE', { tags: [confirmDelete.name] }, instanceId);
     setDeleting(false);
     setConfirmOpen(false);
     if (error) {
@@ -111,7 +113,7 @@ export default function TorrentTagsPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title="Tags" className="*:readable-column" backHref="/torrents/settings" />
+      <PageHeader title="Tags" subtitle={subtitle} className="*:readable-column" backHref="/torrents/settings" />
 
       <div className="mt-3 pb-8 readable-column">
         {tagsQuery.isLoading ? (

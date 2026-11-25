@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getQBittorrentClient } from '@/lib/service-helpers';
+import { getQBittorrentClient, getQBittorrentClients } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import type { InsightsTorrentsResponse } from '@/types/insights';
@@ -16,8 +16,10 @@ async function getHandler(): Promise<NextResponse> {
   }
 
   try {
-    const client = await getQBittorrentClient();
-    const torrents = await client.getTorrents();
+    // Every qBittorrent's torrents, as one: Insights is the whole picture.
+    const instances = await getQBittorrentClients();
+    if (instances.length === 0) await getQBittorrentClient(); // throws "not configured"
+    const torrents = (await Promise.all(instances.map(({ client }) => client.getTorrents()))).flat();
 
     let totalUploaded = 0;
     let totalDownloaded = 0;

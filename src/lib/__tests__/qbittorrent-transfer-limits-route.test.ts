@@ -20,7 +20,7 @@ import { GET, POST } from '@/app/api/qbittorrent/transfer/limits/route';
 
 const ADMIN = { id: 'u1', role: 'admin', template: 'admin', permissions: {} };
 const FORBIDDEN = { ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-const get = GET as unknown as () => Promise<Response>;
+const get = () => (GET as unknown as (request: NextRequest) => Promise<Response>)(new NextRequest('http://localhost/api/qbittorrent/transfer/limits'));
 const post = (body: unknown) =>
   (POST as unknown as (request: NextRequest) => Promise<Response>)(new NextRequest('http://localhost/api/qbittorrent/transfer/limits', {
     method: 'POST',

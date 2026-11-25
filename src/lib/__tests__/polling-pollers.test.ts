@@ -99,6 +99,14 @@ vi.mock('@/lib/service-helpers', () => {
     getRadarrClients: clients('radarr', () => mocks.radarr),
     getLidarrClients: clients('lidarr', () => mocks.lidarr),
     getQBittorrentClient: clients('qbit', () => mocks.qbit),
+    // The poll lists every qBittorrent: none set up is an empty list.
+    getQBittorrentClients: vi.fn(async () => {
+      const failure = mocks.failClients.qbit;
+      if (failure?.name === 'ConfigurationError') return [];
+      if (failure) throw failure;
+      const connection = mocks.connections.QBITTORRENT;
+      return mocks.qbit && connection ? [{ connection: { label: 'qBittorrent', ...connection }, client: mocks.qbit }] : [];
+    }),
     getJellyfinClient: clients('jellyfin', () => mocks.jellyfin),
     getSeerrClient: clients('seerr', () => mocks.seerr),
     getJellyfinUserContext: vi.fn(async (user: { jellyfinUserId: string }) => ({

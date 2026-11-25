@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   caps: new Set<string>(),
   toast: { success: vi.fn(), error: vi.fn() },
 }));
-vi.mock('next/navigation', () => ({ useParams: () => ({ hash: 'abc' }) }));
+vi.mock('next/navigation', () => ({ useParams: () => ({ hash: 'abc' }), useSearchParams: () => new URLSearchParams() }));
 vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap), useMe: () => null }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ back: vi.fn(), push: vi.fn() }) }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));

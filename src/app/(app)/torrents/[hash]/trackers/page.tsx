@@ -16,7 +16,8 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { Textarea } from '@/components/ui/textarea';
 import { useCan, useMe } from '@/components/permission-provider';
-import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
+import { qbitInstanceKey, useQbitInstance } from '../../_components/use-qbit-instance';
 import type { TorrentTracker } from '@/lib/qbittorrent-client';
 import { trackerCount, trackerStatusLabel } from '../../_components/torrent-trackers';
 
@@ -34,8 +35,8 @@ type TrackerChange =
   | ({ action: 'remove' } & TrackerRef);
 
 /** The tracker list after the change, as this user may see it; null when the server could not read it back. */
-async function postTrackerChange(hash: string, change: TrackerChange): Promise<TorrentTracker[] | null> {
-  const res = await fetch(`/api/qbittorrent/${hash}/trackers`, {
+async function postTrackerChange(hash: string, instanceId: string | undefined, change: TrackerChange): Promise<TorrentTracker[] | null> {
+  const res = await fetch(withInstanceQuery(`/api/qbittorrent/${hash}/trackers`, instanceId), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(change),
@@ -60,7 +61,8 @@ export default function TorrentTrackersPage() {
   // Only an admin is sent full URLs (anyone else gets each tracker's host); UX only, the server decides.
   const fullUrls = useMe()?.role === 'admin';
   const queryClient = useQueryClient();
-  const trackersKey = ['qbittorrent', hash, 'trackers'] as const;
+  const { instanceId } = useQbitInstance();
+  const trackersKey = ['qbittorrent', hash, 'trackers', qbitInstanceKey(instanceId)] as const;
 
   // A private torrent's trackers are an admin's to change; the route decides, and a
   // torrent qBittorrent doesn't call public counts as private. Read with the list.
@@ -68,7 +70,7 @@ export default function TorrentTrackersPage() {
   const trackersQuery = useQuery({
     queryKey: trackersKey,
     queryFn: async ({ signal }) => {
-      const details = await jsonFetcher<{ trackers: TorrentTracker[]; private?: boolean | null }>(`/api/qbittorrent/${hash}/details`)({ signal });
+      const details = await jsonFetcher<{ trackers: TorrentTracker[]; private?: boolean | null }>(`/api/qbittorrent/${hash}/details`, instanceId)({ signal });
       setIsPrivate(details.private ?? null);
       return details.trackers ?? [];
     },
@@ -83,7 +85,7 @@ export default function TorrentTrackersPage() {
   const [addValue, setAddValue] = useState('');
 
   const { mutateAsync, isPending } = useMutation({
-    mutationFn: (change: TrackerChange) => postTrackerChange(hash, change),
+    mutationFn: (change: TrackerChange) => postTrackerChange(hash, instanceId, change),
   });
 
   /** Posts one change and shows its result; false once the failure has been toasted. */

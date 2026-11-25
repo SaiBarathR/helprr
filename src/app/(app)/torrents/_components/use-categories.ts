@@ -1,10 +1,11 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import type { QBittorrentCategory, SavePathPreferences } from '@/lib/qbittorrent-client';
 import type { ArrCategoryUse } from '@/lib/qbittorrent-category-usage';
+import { qbitInstanceKey, useQbitInstance } from './use-qbit-instance';
 
 /** With qBittorrent's save-path settings (subcategory mode: "a/b" is a child of "a", removed with it). */
 export interface CategoryDetails extends SavePathPreferences {
@@ -17,10 +18,12 @@ export interface CategoryDetails extends SavePathPreferences {
 export const CATEGORY_DETAILS_KEY = ['qbittorrent', 'categories', 'details'] as const;
 const CATEGORIES_URL = '/api/qbittorrent/categories';
 
+/** The chosen qBittorrent's categories and save-path settings. */
 export function useCategoryDetails() {
+  const { instanceId } = useQbitInstance();
   return useQuery({
-    queryKey: CATEGORY_DETAILS_KEY,
-    queryFn: jsonFetcher<CategoryDetails>(`${CATEGORIES_URL}?details=1`),
+    queryKey: [...CATEGORY_DETAILS_KEY, qbitInstanceKey(instanceId)],
+    queryFn: jsonFetcher<CategoryDetails>(`${CATEGORIES_URL}?details=1`, instanceId),
     staleTime: 0,
   });
 }
@@ -41,10 +44,11 @@ export type CategoryChangeResult =
 export async function sendCategoryChange(
   method: 'POST' | 'PATCH' | 'DELETE',
   body: Record<string, unknown>,
+  instanceId: string | undefined,
 ): Promise<CategoryChangeResult> {
   let res: Response;
   try {
-    res = await fetch(CATEGORIES_URL, {
+    res = await fetch(withInstanceQuery(CATEGORIES_URL, instanceId), {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

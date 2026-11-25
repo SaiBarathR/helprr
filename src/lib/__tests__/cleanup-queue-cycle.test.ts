@@ -19,7 +19,9 @@ vi.mock('@/lib/db', () => ({ prisma: {
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }));
 vi.mock('@/lib/notification-service', () => ({ notifyEvent: vi.fn() }));
 vi.mock('@/lib/service-helpers', () => ({
-  getQBittorrentClient: mocks.getQBittorrentClient, getSonarrClients: mocks.getSonarrClients,
+  getQBittorrentClient: mocks.getQBittorrentClient,
+  // One qBittorrent, the default: the cleaners list every instance.
+  getQBittorrentClients: async () => [{ connection: { id: 'q1', label: 'qBittorrent' }, client: await mocks.getQBittorrentClient() }], getSonarrClients: mocks.getSonarrClients,
   getRadarrClients: mocks.getRadarrClients, getSonarrClient: mocks.getSonarrClient,
   getRadarrClient: mocks.getRadarrClient,
   getLidarrClients: vi.fn().mockResolvedValue([]), getLidarrClient: vi.fn(),

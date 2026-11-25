@@ -1,6 +1,6 @@
 import type { ServiceConnection, User } from '@prisma/client';
 import type { Tagged } from '@/lib/discover';
-import type { RadarrMovie, SonarrSeries } from '@/types';
+import type { QBittorrentTorrent, RadarrMovie, SonarrSeries } from '@/types';
 import { prisma } from '@/lib/db';
 import { readJellyfinToken } from '@/lib/jellyfin-token';
 import { ConfigurationError } from '@/lib/config-error';
@@ -9,6 +9,7 @@ import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
 import { LidarrClient } from '@/lib/lidarr-client';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
+import { forgetQBittorrentSyncsExcept } from '@/lib/qbittorrent-sync';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
@@ -16,8 +17,7 @@ import { SeerrClient } from '@/lib/seerr-client';
 import { resolveConnection, listConnections } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 
-let cachedQBittorrentClient: QBittorrentClient | null = null;
-let cachedQBittorrentConfigKey: string | null = null;
+const cachedQBittorrentClients = new Map<string, { configKey: string; client: QBittorrentClient }>();
 
 export function buildJellyfinConnectionFingerprint(connection: ServiceConnection): string {
   return sha256Hex(stableStringify({
@@ -59,34 +59,73 @@ export async function getLidarrClients(): Promise<Array<{ connection: ServiceCon
   return conns.map((connection) => ({ connection, client: new LidarrClient(connection.url, connection.apiKey, getConnectionHeaders(connection)) }));
 }
 
-/**
- * Create a QBittorrentClient from the QBITTORRENT service connection. qBittorrent
- * is single-instance, so findFirst returns the one configured connection.
- *
- * @returns A QBittorrentClient configured with the connection's URL, API key, and username (username defaults to `'admin'` if not set).
- * @throws Error if no QBITTORRENT service connection is configured.
- */
-export async function getQBittorrentClient(): Promise<QBittorrentClient> {
-  const connection = await prisma.serviceConnection.findFirst({
-    where: { type: 'QBITTORRENT' },
-  });
-
-  if (!connection) {
-    throw new ConfigurationError(
-      'qBittorrent is not configured. Please add a qBittorrent connection in Settings.'
-    );
-  }
-
+function qbittorrentClientFor(connection: ServiceConnection): QBittorrentClient {
   const username = connection.username || 'admin';
   const customHeaders = getConnectionHeaders(connection);
   const configKey = `${connection.url}|${connection.apiKey}|${username}|${customHeaders ? stableStringify(customHeaders) : ''}`;
+  const cached = cachedQBittorrentClients.get(connection.id);
+  if (cached && cached.configKey === configKey) return cached.client;
+  // One client per instance and setting: it holds that qBittorrent's session cookie.
+  const client = new QBittorrentClient(connection.url, connection.apiKey, username, customHeaders, connection.id);
+  cachedQBittorrentClients.set(connection.id, { configKey, client });
+  return client;
+}
 
-  if (!cachedQBittorrentClient || cachedQBittorrentConfigKey !== configKey) {
-    cachedQBittorrentClient = new QBittorrentClient(connection.url, connection.apiKey, username, customHeaders);
-    cachedQBittorrentConfigKey = configKey;
+/**
+ * A client for the qBittorrent `instanceId` names, or the default one when it
+ * names none. Like the arrs: an id that is not a qBittorrent connection throws
+ * rather than falling back to the default (routes check it first, see
+ * src/lib/server/qbittorrent-instance.ts).
+ *
+ * @throws ConfigurationError when no qBittorrent is configured.
+ */
+export async function getQBittorrentClient(instanceId?: string): Promise<QBittorrentClient> {
+  const connection = await resolveConnection('QBITTORRENT', instanceId).catch((error: unknown) => {
+    // The wording the settings UI and older callers know.
+    if (!instanceId && error instanceof ConfigurationError) {
+      throw new ConfigurationError('qBittorrent is not configured. Please add a qBittorrent connection in Settings.');
+    }
+    throw error;
+  });
+  return qbittorrentClientFor(connection);
+}
+
+/** Every qBittorrent, default first, with a ready client (for fan-out: polling, cleanup, totals). */
+export async function getQBittorrentClients(): Promise<Array<{ connection: ServiceConnection; client: QBittorrentClient }>> {
+  const connections = await listConnections('QBITTORRENT');
+  // A removed instance's client (its session) and merged list are let go.
+  const live = new Set(connections.map((connection) => connection.id));
+  for (const id of cachedQBittorrentClients.keys()) if (!live.has(id)) cachedQBittorrentClients.delete(id);
+  forgetQBittorrentSyncsExcept(live);
+  return connections.map((connection) => ({ connection, client: qbittorrentClientFor(connection) }));
+}
+
+/**
+ * The qBittorrents that list `hash`, default first, for work that knows a
+ * torrent but not which qBittorrent holds it (a release an arr sent to its own
+ * download client, a manual download). `failed` counts the instances that did
+ * not answer, so a caller about to change the torrent can tell "only here"
+ * from "not known elsewhere".
+ */
+export async function findQBittorrentsWithTorrent(hash: string): Promise<{
+  found: Array<{ connection: ServiceConnection; client: QBittorrentClient; torrent: QBittorrentTorrent }>;
+  failed: number;
+}> {
+  const instances = await getQBittorrentClients();
+  if (instances.length === 0) {
+    throw new ConfigurationError('qBittorrent is not configured. Please add a qBittorrent connection in Settings.');
   }
-
-  return cachedQBittorrentClient;
+  let failed = 0;
+  const found = (await Promise.all(instances.map(async ({ connection, client }) => {
+    try {
+      const [torrent] = await client.getTorrents(undefined, undefined, undefined, undefined, hash.toLowerCase());
+      return torrent ? [{ connection, client, torrent }] : [];
+    } catch {
+      failed += 1;
+      return [];
+    }
+  }))).flat();
+  return { found, failed };
 }
 
 /**

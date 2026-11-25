@@ -3,6 +3,7 @@ import { requireAdmin } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { getQBittorrentClient } from '@/lib/service-helpers';
+import { qbittorrentInstanceOf } from '@/lib/server/qbittorrent-instance';
 import { QBIT_LOG_LEVELS, type QbitLogLevel } from '@/lib/qbittorrent-log';
 import { toQbitLogPage } from '@/lib/server/qbittorrent-log';
 
@@ -15,6 +16,8 @@ const LEVELS: ReadonlySet<string> = new Set(QBIT_LOG_LEVELS);
 async function getHandler(request: NextRequest) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const params = request.nextUrl.searchParams;
 
   const levelsParam = params.get('levels');
@@ -29,7 +32,7 @@ async function getHandler(request: NextRequest) {
   }
 
   try {
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     const wanted = (level: QbitLogLevel) => levels.includes(level);
     const raw = await client.getMainLog({
       normal: wanted('normal'),

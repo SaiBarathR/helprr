@@ -3,14 +3,13 @@ import axios from 'axios';
 import { prisma } from '@/lib/db';
 import { resolveConnection } from '@/lib/arr-instances';
 import { deleteTorrentsConfirmed, runWithOperationAudit, snapshotTorrentDeleteTargets, type AuditActor } from '@/lib/file-audit';
-import { getQBittorrentClient } from '@/lib/service-helpers';
 import { bumpQueueCacheVersion, fetchAllQueueRecords } from '@/lib/activity-queue';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import type { RadarrClient } from '@/lib/radarr-client';
 import type { SonarrClient } from '@/lib/sonarr-client';
 import { arrClientFor, SENDING_STATUSES, TERMINAL_STATUSES } from './preflight';
 import { titleInUse } from './title-use';
-import { claimFallback, releaseClaim, type FallbackClaim } from './fallback';
+import { claimFallback, fallbackTorrentHome, releaseClaim, type FallbackClaim } from './fallback';
 import { redactUpstreamText } from './redact';
 
 /**
@@ -83,14 +82,20 @@ async function cancelSteps(download: ManualDownload, options: CancelOptions, act
   if (download.mode === 'QBIT_REVIEWED') {
     // The torrent is Helprr's own in qBittorrent; Arr's queue never had it.
     if (options.removeFromClient) {
-      const qbit = await getQBittorrentClient();
       const hash = download.infoHash.toLowerCase();
-      const present = (await qbit.getTorrents(undefined, undefined, undefined, undefined, hash)).length > 0;
-      if (present) {
+      // The one qBittorrent that holds it (src/lib/manual-downloads/fallback.ts).
+      const home = await fallbackTorrentHome(download.infoHash, true);
+      if (!home.ok && home.reason === 'ambiguous') {
+        throw new ManualDownloadCancelError('This torrent is in more than one qBittorrent, so nothing was removed. Remove it in qBittorrent, then cancel without removing it.');
+      }
+      if (!home.ok && home.reason === 'unreachable') throw new Error('qBittorrent did not answer');
+      if (home.ok) {
+        const qbit = home.client;
         const snapshot = await snapshotTorrentDeleteTargets(qbit, hash);
         await runWithOperationAudit({
           user: actor,
           service: 'QBITTORRENT',
+          instanceId: home.connection.id,
           operation: 'DELETE_TORRENT',
           targetType: 'torrent',
           targetTitle: snapshot.targetTitle,

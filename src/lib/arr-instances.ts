@@ -9,6 +9,14 @@ export function isArrType(type: ServiceType): type is ArrServiceType {
   return type === 'SONARR' || type === 'RADARR' || type === 'LIDARR';
 }
 
+/**
+ * Types that can have several connections, each with its own name and one
+ * default: the arrs and qBittorrent. Every other type is one connection.
+ */
+export function isMultiInstanceType(type: ServiceType): boolean {
+  return isArrType(type) || type === 'QBITTORRENT';
+}
+
 // Hot-path memo: connection rows are read on nearly every API request but only
 // change via the settings CRUD routes, which call clearConnectionMemo(). The
 // short TTL bounds staleness for any edit path that misses the clear.

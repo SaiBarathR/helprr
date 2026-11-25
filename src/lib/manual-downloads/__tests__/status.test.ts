@@ -10,7 +10,11 @@ const mocks = vi.hoisted(() => ({
   settle: vi.fn(async () => true),
   proof: vi.fn(async () => ({ proved: false, fileIds: [] as number[], missing: 1 })),
 }));
-vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: async () => ({ getTorrents: mocks.torrents }) }));
+vi.mock('@/lib/service-helpers', () => ({
+  // One qBittorrent, the default, as Helprr had before there could be several.
+  getQBittorrentClients: async () => [{ connection: { id: 'q1', label: 'qBittorrent' }, client: { getTorrents: mocks.torrents } }],
+}));
+
 vi.mock('../fallback', () => ({
   settleDownloaded: mocks.settle,
   fallbackImportProof: mocks.proof,

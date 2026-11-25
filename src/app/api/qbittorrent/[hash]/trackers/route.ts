@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAxiosError } from 'axios';
 import { getQBittorrentClient } from '@/lib/service-helpers';
+import { qbittorrentInstanceOf } from '@/lib/server/qbittorrent-instance';
 import { requireUserCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
@@ -28,6 +29,8 @@ async function postHandler(
 ) {
   const auth = await requireUserCapability('torrents.manage');
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
   let action: unknown;
 
@@ -52,7 +55,7 @@ async function postHandler(
     action = input.action;
 
     const fullUrls = seesTrackerUrls(auth.user);
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     let count: number;
 
     // A private torrent's trackers are the owner's tracker account: a third-party
@@ -102,7 +105,7 @@ async function postHandler(
     }
 
     // Let the list's next refetch see the change.
-    await bumpQbitCacheVersion();
+    await bumpQbitCacheVersion(client.instanceId);
     // The change is made; without a fresh list the page reads the details again.
     const after = await client.getTorrentTrackers(hash, request.signal).catch(() => null);
     logApiDuration('/api/qbittorrent/[hash]/trackers', startedAt, { method: 'POST', action, trackerCount: count });

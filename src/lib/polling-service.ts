@@ -1,6 +1,5 @@
 import { prisma } from '@/lib/db';
-import { getSonarrClients, getRadarrClients, getLidarrClients, getQBittorrentClient } from '@/lib/service-helpers';
-import { ConfigurationError } from '@/lib/config-error';
+import { getSonarrClients, getRadarrClients, getLidarrClients, getQBittorrentClients } from '@/lib/service-helpers';
 import { getAggregatedDiskSpace, diskId } from '@/lib/disk-space';
 import { initVapid } from '@/lib/notification-service';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
@@ -186,14 +185,14 @@ export class PollingService {
   private nextUpdateCheckAt = 0;
   // Epoch ms the next Sonarr/Radarr/Lidarr/Prowlarr update check is due.
   private nextArrUpdateCheckAt = 0;
-  // Tracks the bandwidth-schedule rule (and limits) we last pushed to
-  // qBittorrent so we only re-send on actual changes. Process-restart loses
-  // this — the next cycle will re-apply once (idempotent).
-  private appliedBandwidth: {
+  // Tracks the bandwidth-schedule rule (and limits) we last pushed to each
+  // qBittorrent (by instance id) so we only re-send on actual changes.
+  // Process-restart loses this — the next cycle will re-apply once (idempotent).
+  private appliedBandwidth = new Map<string, {
     ruleId: string;
     downloadKbps: number;
     uploadKbps: number;
-  } | null = null;
+  }>();
   // Nightly anime auto-map run. The whole run lives in this one in-memory
   // object so status can report real progress; a restart drops it on purpose —
   // the scheduled gate re-triggers (lastRunAt was never stamped) and the
@@ -942,36 +941,46 @@ export class PollingService {
   // deletes all rules. When we never applied one, it's a no-op, preserving the
   // strict-additive promise of leaving the user's manual limits alone. Tracking
   // is held until the restore succeeds so a transient qBit outage retries next
-  // poll rather than silently dropping the release.
+  // poll rather than silently dropping the release. Per qBittorrent: each is
+  // restored on its own, and one that is no longer connected is let go.
   private async releaseAppliedBandwidth(context: string): Promise<void> {
-    const previous = this.appliedBandwidth;
-    if (!previous) return;
+    if (this.appliedBandwidth.size === 0) return;
 
-    let client;
+    let instances;
     try {
-      client = await getQBittorrentClient();
+      instances = await getQBittorrentClients();
     } catch (error) {
-      if (!(error instanceof ConfigurationError)) noteJobFailure(error);
+      noteJobFailure(error);
       logger.debug('Bandwidth schedule: release deferred, qBittorrent unavailable; will retry', { context, error }, { scope: 'polling' });
       return;
     }
+    const clients = new Map(instances.map(({ connection, client }) => [connection.id, client]));
 
-    try {
-      // The regular limits only, whatever mode qBittorrent is in: the
-      // alternative limits are the user's own.
-      await client.setSpeedLimits({ dl_limit: 0, up_limit: 0 });
-      logger.info('Bandwidth schedule: restored unlimited', {
-        context,
-        previousRuleId: previous.ruleId,
-      }, { scope: 'polling' });
-      this.appliedBandwidth = null;
-    } catch (error) {
-      noteJobFailure(error);
-      logger.warn('Failed to restore bandwidth', {
-        context,
-        previousRuleId: previous.ruleId,
-        error,
-      }, { scope: 'polling' });
+    for (const [instanceId, previous] of [...this.appliedBandwidth]) {
+      const client = clients.get(instanceId);
+      if (!client) {
+        this.appliedBandwidth.delete(instanceId);
+        continue;
+      }
+      try {
+        // The regular limits only, whatever mode qBittorrent is in: the
+        // alternative limits are the user's own.
+        await client.setSpeedLimits({ dl_limit: 0, up_limit: 0 });
+        logger.info('Bandwidth schedule: restored unlimited', {
+          context,
+          instanceId,
+          previousRuleId: previous.ruleId,
+        }, { scope: 'polling' });
+        this.appliedBandwidth.delete(instanceId);
+      } catch (error) {
+        noteJobFailure(error);
+        logger.warn('Failed to restore bandwidth', {
+          context,
+          instanceId,
+          previousRuleId: previous.ruleId,
+          error,
+        }, { scope: 'polling' });
+      }
     }
   }
 
@@ -1003,42 +1012,48 @@ export class PollingService {
       uploadKbps: active.uploadLimitKbps,
     };
 
-    if (
-      this.appliedBandwidth &&
-      this.appliedBandwidth.ruleId === intent.ruleId &&
-      this.appliedBandwidth.downloadKbps === intent.downloadKbps &&
-      this.appliedBandwidth.uploadKbps === intent.uploadKbps
-    ) {
-      return;
-    }
-
-    let client;
+    let instances;
     try {
-      client = await getQBittorrentClient();
+      instances = await getQBittorrentClients();
     } catch (error) {
-      if (!(error instanceof ConfigurationError)) noteJobFailure(error);
+      noteJobFailure(error);
       logger.debug('Skipping bandwidth schedule because qBittorrent is unavailable', { error }, { scope: 'polling' });
       return;
     }
+    // The schedule is for the whole link, so it applies to every qBittorrent.
+    const live = new Set(instances.map(({ connection }) => connection.id));
+    for (const instanceId of this.appliedBandwidth.keys()) if (!live.has(instanceId)) this.appliedBandwidth.delete(instanceId);
 
     // qBittorrent's limits are bytes/sec; UI/DB use KB/s.
     const downloadBytes = intent.downloadKbps * 1024;
     const uploadBytes = intent.uploadKbps * 1024;
 
-    try {
-      // A rule sets the regular limits only. transfer/setDownloadLimit would
-      // write the alternative ones while alternative speed mode is on.
-      await client.setSpeedLimits({ dl_limit: downloadBytes, up_limit: uploadBytes });
-      this.appliedBandwidth = intent;
-      logger.info('Bandwidth schedule applied', {
-        ruleId: intent.ruleId,
-        ruleName: active.name,
-        downloadKbps: intent.downloadKbps,
-        uploadKbps: intent.uploadKbps,
-      }, { scope: 'polling' });
-    } catch (error) {
-      noteJobFailure(error);
-      logger.warn('Failed to apply bandwidth schedule', { ruleId: intent.ruleId, error }, { scope: 'polling' });
+    for (const { connection, client } of instances) {
+      const applied = this.appliedBandwidth.get(connection.id);
+      if (
+        applied &&
+        applied.ruleId === intent.ruleId &&
+        applied.downloadKbps === intent.downloadKbps &&
+        applied.uploadKbps === intent.uploadKbps
+      ) {
+        continue;
+      }
+      try {
+        // A rule sets the regular limits only. transfer/setDownloadLimit would
+        // write the alternative ones while alternative speed mode is on.
+        await client.setSpeedLimits({ dl_limit: downloadBytes, up_limit: uploadBytes });
+        this.appliedBandwidth.set(connection.id, intent);
+        logger.info('Bandwidth schedule applied', {
+          instanceId: connection.id,
+          ruleId: intent.ruleId,
+          ruleName: active.name,
+          downloadKbps: intent.downloadKbps,
+          uploadKbps: intent.uploadKbps,
+        }, { scope: 'polling' });
+      } catch (error) {
+        noteJobFailure(error);
+        logger.warn('Failed to apply bandwidth schedule', { instanceId: connection.id, ruleId: intent.ruleId, error }, { scope: 'polling' });
+      }
     }
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
+import { qbittorrentInstanceOf } from '@/lib/server/qbittorrent-instance';
 import { requireUserCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
@@ -24,13 +25,15 @@ function parseLimit(value: unknown): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= MAX_LIMIT ? value : null;
 }
 
-async function getHandler() {
+async function getHandler(request: NextRequest) {
   const auth = await requireUserCapability('torrents.view');
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     const [limits, speedLimitsMode] = await Promise.all([
       client.getSpeedLimits(),
       client.getSpeedLimitsMode(),
@@ -57,6 +60,8 @@ async function getHandler() {
 async function postHandler(request: NextRequest) {
   const auth = await requireUserCapability('torrents.bandwidth');
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   let body: { action?: unknown; limit?: unknown };
@@ -80,7 +85,7 @@ async function postHandler(request: NextRequest) {
   }
 
   try {
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     if (update) {
       await client.setSpeedLimits(update);
     } else {
@@ -88,7 +93,7 @@ async function postHandler(request: NextRequest) {
     }
 
     // Bust the summary cache so the client's reconcile refetch sees the new mode/limits.
-    await bumpQbitCacheVersion();
+    await bumpQbitCacheVersion(client.instanceId);
     logApiDuration('/api/qbittorrent/transfer/limits', startedAt, { method: 'POST', action });
     return NextResponse.json({ success: true });
   } catch (error) {

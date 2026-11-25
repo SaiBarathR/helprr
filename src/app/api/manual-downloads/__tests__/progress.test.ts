@@ -5,7 +5,11 @@ const mocks = vi.hoisted(() => ({ findMany: vi.fn(), findUnique: vi.fn(), torren
 vi.mock('@/lib/auth', () => ({ requireUserAllCapabilities: async () => ({ ok: true }) }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
 vi.mock('@/lib/db', () => ({ prisma: { manualDownload: { findMany: mocks.findMany, findUnique: mocks.findUnique }, manualDownloadFile: { groupBy: mocks.groupBy } } }));
-vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: async () => ({ getTorrents: mocks.torrents }) }));
+vi.mock('@/lib/service-helpers', () => ({
+  // One qBittorrent, the default, as Helprr had before there could be several.
+  getQBittorrentClients: async () => [{ connection: { id: 'q1', label: 'qBittorrent' }, client: { getTorrents: mocks.torrents } }],
+}));
+
 vi.mock('@/lib/manual-downloads/send', () => ({ sendManualDownload: vi.fn(), ManualDownloadRefusedError: class extends Error {} }));
 
 import { GET as list } from '../route';

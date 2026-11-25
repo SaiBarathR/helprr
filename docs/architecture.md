@@ -27,8 +27,9 @@ The `ServiceType` enum currently covers:
 | AniList | Anime/manga discovery, schedules, tracking, and mappings |
 | Seerr | Request creation, approval, state, users, and quotas |
 
-All integrations are optional. Sonarr, Radarr, and Lidarr are multi-instance;
-the selected `instanceId` is part of the functional and authorization context.
+All integrations are optional. Sonarr, Radarr, Lidarr and qBittorrent are
+multi-instance; the selected `instanceId` is part of the functional and
+authorization context.
 
 ## Source Layout and Request Flow
 
@@ -1147,16 +1148,46 @@ rid 0; a `full_update` (a new session, a restarted qBittorrent) replaces
 everything. The client keeps any `SID` qBittorrent sets, not only the sign-in's:
 with "bypass authentication" a restarted qBittorrent answers a stale cookie with a
 new session instead of a 403, and without it every read would start another
-session and come back in full. The state lives on `globalThis` for the current connection, since
-the routes and the poll started from instrumentation can load separate copies
-of the module; Helprr runs one Node process (`node server.js`), so it is not in
-Redis. It holds magnets, tracker URLs and server_state's public IP as qBittorrent
+session and come back in full. The state lives on `globalThis`, one per
+qBittorrent instance (and replaced when that connection's address or password
+changes), since the routes and the poll started from instrumentation can load
+separate copies of the module; Helprr runs one Node process (`node server.js`),
+so it is not in Redis. It holds magnets, tracker URLs and server_state's public IP as qBittorrent
 sends them and never leaves the server so: rows go out through
 `projectTorrentForSummary`, figures through `normalizeTransferInfo` and
 `serverStatsFrom`, and the trackers map isn't kept. Only that module calls the
 client's `getMaindata`. The browser contract (full, `view=delta` with a server-owned cursor,
 `view=counters`, ETags) is unchanged; the summary takes only the `filter` the page
 sends and applies the page's own `matchesTorrentFilter`.
+
+Helprr can have several qBittorrents (QBT-29), stored as `ServiceConnection` rows
+of type `QBITTORRENT` with a name and one default, as the arrs are; an existing
+single connection is simply the default instance, with no data migration. Every
+`/api/qbittorrent/*` route takes `?instanceId=`, checked by
+`qbittorrentInstanceParam` (`src/lib/server/qbittorrent-instance.ts`) before any
+upstream call: an id that is not a qBittorrent connection is a 400, never the
+default; no id is the default instance. `getQBittorrentClient(instanceId)` keeps
+one client (one Web UI session) per instance and setting, and the client carries
+its `instanceId`, under which the sync state, the cache version
+(`helprr:cache:qbit:ver:<id>`) and the summary and peer delta scopes are kept, so
+no list, cursor or version crosses instances. The Torrents pages show one
+instance at a time: `useQbitInstance` reads a link's `?instance=` (adopted as the
+choice), then the persisted choice (`torrentsInstance`), else the default, and the
+list is remounted per instance so no selection or optimistic change carries over.
+The poll reads each instance into its own `PollingState`, names and links each push
+to its instance (`?instance=`), groups per instance, and sums the downloads badge;
+the dashboard widget (`summary?view=counters&instanceId=all`), the status API,
+Insights, global search and the cleanup scope options cover every instance. The
+bandwidth schedule applies to every instance and tracks what it applied per
+instance. The cleaners list every instance (`src/lib/cleanup/torrent-sources.ts`):
+each torrent carries its `qbitInstanceId` into the decision, the preview binding,
+the revalidation, the delete and its audit row; one instance that cannot list
+stops the cycle (its strikes would look orphaned), and a hash two instances list
+is skipped. A manual download's torrent is found by hash
+(`fallbackTorrentHome`); two instances listing it, or (before a change) one not
+answering, refuses rather than guessing. Settings export writes every connection;
+import matches qBittorrent by type and name like the arrs, a nameless older export
+matching the connection named "qBittorrent".
 
 Queueing and the global seeding limits (QBT-25, `/api/qbittorrent/queue-seeding`)
 are the only other preferences Helprr writes. `src/lib/qbittorrent-queue-seeding.ts`

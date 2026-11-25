@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { QBittorrentTorrent, QueueItem } from '@/types';
-import type { DownloadDecision, LinkedArr, QueueDecision, SeedingRuleShape } from '@/lib/cleanup/types';
+import type { QueueItem } from '@/types';
+import type { CleanupTorrent, DownloadDecision, LinkedArr, QueueDecision, SeedingRuleShape } from '@/lib/cleanup/types';
 
 const mocks = vi.hoisted(() => ({
   getQBittorrentClient: vi.fn(),
@@ -24,6 +24,8 @@ vi.mock('@/lib/logger', () => ({
 vi.mock('@/lib/notification-service', () => ({ notifyEvent: vi.fn() }));
 vi.mock('@/lib/service-helpers', () => ({
   getQBittorrentClient: mocks.getQBittorrentClient,
+  // One qBittorrent, the default: the cleaners list every instance.
+  getQBittorrentClients: async () => [{ connection: { id: 'q1', label: 'qBittorrent' }, client: await mocks.getQBittorrentClient() }],
   getSonarrClient: mocks.getSonarrClient,
   getRadarrClient: mocks.getRadarrClient,
   getSonarrClients: vi.fn(),
@@ -41,16 +43,17 @@ const manual = (previewId: string) => ({ triggeredBy: 'manual' as const, actor: 
 const auto = { triggeredBy: 'auto' as const, actor: { id: null, username: 'system:cleanup-scheduler' } };
 const auditRows = () => mocks.auditCreate.mock.calls.map(([arg]) => arg.data);
 
-function torrent(overrides: Partial<QBittorrentTorrent> = {}): QBittorrentTorrent {
+function torrent(overrides: Partial<CleanupTorrent> = {}): CleanupTorrent {
   return {
     hash: 'ABC123',
+    qbitInstanceId: 'q1',
     name: 'Example torrent',
     size: 1024,
     progress: 1,
     ratio: 2,
     private: false,
     ...overrides,
-  } as QBittorrentTorrent;
+  } as CleanupTorrent;
 }
 
 function queueLink(instanceId: string, id: number, source: LinkedArr['source'] = 'sonarr'): LinkedArr {
@@ -187,7 +190,7 @@ describe('cleanup result reconciliation', () => {
 
     expect(outcome).toMatchObject({ kind: 'failure', status: 'failed' });
     expect(auditRows()).toEqual([expect.objectContaining({
-      userId: null, username: 'system:cleanup-scheduler', service: 'QBITTORRENT', instanceId: null,
+      userId: null, username: 'system:cleanup-scheduler', service: 'QBITTORRENT', instanceId: 'q1',
       operation: 'DELETE_TORRENT', mediaType: 'torrent', filesDeleted: true, success: false,
       errorMessage: 'qBittorrent still reports the torrent after deletion',
       details: expect.objectContaining({ triggeredBy: 'auto', previewId: null, hash: 'abc123', deleteFiles: true, after: 'present', callError: null }),

@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/service-helpers', () => ({
   getQBittorrentClient: mocks.getQBittorrentClient,
+  // One qBittorrent, the default: the downloads section adds up every instance.
+  getQBittorrentClients: async () => [{ connection: { id: 'q1' }, client: await mocks.getQBittorrentClient() }],
   getJellyfinClient: mocks.getJellyfinClient,
   getRadarrClients: mocks.getRadarrClients,
   getSonarrClients: mocks.getSonarrClients,

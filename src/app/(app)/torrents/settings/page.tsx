@@ -10,7 +10,7 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { ErrorState } from '@/components/ui/error-state';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ApiError, backoffRefetchInterval, jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, backoffRefetchInterval, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { formatBytes } from '@/lib/format';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
@@ -19,6 +19,7 @@ import { useCan, useMe } from '@/components/permission-provider';
 import type { QBittorrentServerStats, QBittorrentTransferInfo } from '@/types';
 import { SpeedLimitInput, formatSpeedLimit } from '../_components/speed-limit-input';
 import { QueueSeedingSections } from '../_components/queue-seeding-sections';
+import { qbitInstanceKey, useQbitInstance } from '../_components/use-qbit-instance';
 
 interface TransferLimits {
   downloadLimit: number;
@@ -34,8 +35,8 @@ type LimitField = 'downloadLimit' | 'uploadLimit' | 'altDownloadLimit' | 'altUpl
 const LIMITS_URL = '/api/qbittorrent/transfer/limits';
 const LIMITS_KEY = ['qbittorrent', 'transfer', 'limits'] as const;
 
-async function postTransferLimits(body: Record<string, unknown>): Promise<void> {
-  const res = await fetch(LIMITS_URL, {
+async function postTransferLimits({ url, body }: { url: string; body: Record<string, unknown> }): Promise<void> {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -55,6 +56,10 @@ function StatRow({ label, value }: { label: string; value: string }) {
 
 export default function QBittorrentSettingsPage() {
   const queryClient = useQueryClient();
+  // Every figure and setting here is the chosen qBittorrent's.
+  const { instanceId, subtitle } = useQbitInstance();
+  const limitsUrl = withInstanceQuery(LIMITS_URL, instanceId);
+  const limitsKey = [...LIMITS_KEY, qbitInstanceKey(instanceId)] as const;
   const canBandwidth = useCan('torrents.bandwidth');
   const isAdmin = useMe()?.role === 'admin';
   const canManageTorrents = useCan('torrents.manage');
@@ -71,16 +76,16 @@ export default function QBittorrentSettingsPage() {
   }, []);
 
   const limitsQuery = useQuery({
-    queryKey: LIMITS_KEY,
-    queryFn: jsonFetcher<TransferLimits>(LIMITS_URL),
+    queryKey: limitsKey,
+    queryFn: jsonFetcher<TransferLimits>(limitsUrl),
     // The bandwidth scheduler changes these on its own; read fresh on each visit.
     staleTime: 0,
   });
   const limits = limitsQuery.data;
 
   const transferQuery = useQuery({
-    queryKey: ['qbittorrent', 'transfer'],
-    queryFn: jsonFetcher<QBittorrentTransferInfo>('/api/qbittorrent/transfer'),
+    queryKey: ['qbittorrent', 'transfer', qbitInstanceKey(instanceId)],
+    queryFn: jsonFetcher<QBittorrentTransferInfo>('/api/qbittorrent/transfer', instanceId),
     staleTime: 0,
     refetchInterval: backoffRefetchInterval(refreshIntervalMs),
     refetchIntervalInBackground: false,
@@ -90,8 +95,8 @@ export default function QBittorrentSettingsPage() {
   // From the server's merged sync/maindata state (shared with the torrent list);
   // free space and all-time totals change slowly, so this polls less often than transfer.
   const statsQuery = useQuery({
-    queryKey: ['qbittorrent', 'transfer', 'stats'],
-    queryFn: jsonFetcher<QBittorrentServerStats>('/api/qbittorrent/transfer/stats'),
+    queryKey: ['qbittorrent', 'transfer', 'stats', qbitInstanceKey(instanceId)],
+    queryFn: jsonFetcher<QBittorrentServerStats>('/api/qbittorrent/transfer/stats', instanceId),
     staleTime: 0,
     refetchInterval: backoffRefetchInterval(Math.max(refreshIntervalMs, 30_000)),
     refetchIntervalInBackground: false,
@@ -100,13 +105,14 @@ export default function QBittorrentSettingsPage() {
   const statValue = (value: number | null | undefined, format: (value: number) => string) =>
     stats ? (value == null ? 'Unknown' : format(value)) : statsQuery.isError ? 'Unavailable' : '…';
 
-  const { mutateAsync: postLimits } = useMutation({ mutationFn: postTransferLimits });
+  const { mutateAsync: postLimitsTo } = useMutation({ mutationFn: postTransferLimits });
+  const postLimits = (body: Record<string, unknown>) => postLimitsTo({ url: limitsUrl, body });
 
   const saveLimit = (action: LimitAction, field: LimitField) =>
     async (limit: number) => {
       // A rejection is toasted by SpeedLimitInput.
       await postLimits({ action, limit });
-      queryClient.setQueryData<TransferLimits>(LIMITS_KEY, (old) => (old ? { ...old, [field]: limit } : old));
+      queryClient.setQueryData<TransferLimits>(limitsKey, (old) => (old ? { ...old, [field]: limit } : old));
     };
 
   // Bumped per toggle, so only the latest toggle's confirmation writes.
@@ -124,7 +130,7 @@ export default function QBittorrentSettingsPage() {
       await new Promise((resolve) => setTimeout(resolve, 400));
       if (toggle !== speedModeToggle.current) return;
       try {
-        fresh = await jsonFetcher<TransferLimits>(LIMITS_URL)();
+        fresh = await jsonFetcher<TransferLimits>(limitsUrl)();
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
           handleAuthError(error);
@@ -135,16 +141,16 @@ export default function QBittorrentSettingsPage() {
     }
     if (!fresh || toggle !== speedModeToggle.current) return;
     const { speedLimitsMode } = fresh;
-    queryClient.setQueryData<TransferLimits>(LIMITS_KEY, (old) => (old ? { ...old, speedLimitsMode } : fresh));
+    queryClient.setQueryData<TransferLimits>(limitsKey, (old) => (old ? { ...old, speedLimitsMode } : fresh));
   };
 
   const speedModeMutation = useMutation({
-    mutationFn: () => postTransferLimits({ action: 'toggleSpeedLimitsMode' }),
+    mutationFn: () => postLimits({ action: 'toggleSpeedLimitsMode' }),
     onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: LIMITS_KEY });
-      const previous = queryClient.getQueryData<TransferLimits>(LIMITS_KEY);
+      await queryClient.cancelQueries({ queryKey: limitsKey });
+      const previous = queryClient.getQueryData<TransferLimits>(limitsKey);
       const mode = previous?.speedLimitsMode === 1 ? 0 : 1;
-      queryClient.setQueryData<TransferLimits>(LIMITS_KEY, (old) => (old ? { ...old, speedLimitsMode: mode } : old));
+      queryClient.setQueryData<TransferLimits>(limitsKey, (old) => (old ? { ...old, speedLimitsMode: mode } : old));
       return { previous, mode, toggle: ++speedModeToggle.current };
     },
     onSuccess: (_data, _vars, context) => {
@@ -155,7 +161,7 @@ export default function QBittorrentSettingsPage() {
       // Restore only the mode: a limit saved meanwhile must survive the rollback.
       if (context?.previous) {
         const { speedLimitsMode } = context.previous;
-        queryClient.setQueryData<TransferLimits>(LIMITS_KEY, (old) => (old ? { ...old, speedLimitsMode } : old));
+        queryClient.setQueryData<TransferLimits>(limitsKey, (old) => (old ? { ...old, speedLimitsMode } : old));
       }
       // 401 is handled globally (redirect to /login); only toast other failures.
       if (err instanceof ApiError && err.status === 401) return;
@@ -166,7 +172,7 @@ export default function QBittorrentSettingsPage() {
   return (
     <div className="animate-content-in">
       {/* The bar spans the page; its back button and title line up with the settings column. */}
-      <PageHeader title="qBittorrent Settings" className="*:readable-column" />
+      <PageHeader title="qBittorrent Settings" subtitle={subtitle} className="*:readable-column" />
 
       <div className="mt-3 pb-8 readable-column">
         <GroupedSection title="View" footer="Automatic shows the table on wide screens and cards on phones.">

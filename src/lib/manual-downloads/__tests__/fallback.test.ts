@@ -75,7 +75,22 @@ vi.mock('@/lib/db', () => {
   };
 });
 vi.mock('@/lib/arr-instances', () => ({ resolveConnection: vi.fn(async () => ({ id: 'i1', label: 'radarr-4k' })) }));
-vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: async () => mocks.qbit }));
+vi.mock('@/lib/service-helpers', () => {
+  // One qBittorrent, the default, as Helprr had before there could be several.
+  const connection = { id: 'q1', label: 'qBittorrent', url: 'http://192.168.1.5:8080' };
+  return {
+    getQBittorrentClients: async () => [{ connection, client: mocks.qbit }],
+    findQBittorrentsWithTorrent: async (hash: string) => {
+      try {
+        const getTorrents = mocks.qbit.getTorrents as unknown as (...args: unknown[]) => Promise<unknown[]>;
+        const [torrent] = await getTorrents(undefined, undefined, undefined, undefined, hash.toLowerCase());
+        return { found: torrent ? [{ connection, client: mocks.qbit, torrent }] : [], failed: 0 };
+      } catch {
+        return { found: [], failed: 1 };
+      }
+    },
+  };
+});
 vi.mock('@/lib/cache/tagged-library', () => ({ invalidateTaggedLibrary: vi.fn(async () => {}) }));
 vi.mock('@/lib/file-audit', () => ({
   systemAuditActor: (label: string) => ({ id: null, username: `system:${label}` }),

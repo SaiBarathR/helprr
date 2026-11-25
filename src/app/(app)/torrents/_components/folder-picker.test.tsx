@@ -6,6 +6,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ mobile: true }));
+// One qBittorrent, the default (use-qbit-instance.test.ts covers choosing one).
+vi.mock('@/app/(app)/torrents/_components/use-qbit-instance', () => ({
+  qbitInstanceKey: (id: string | undefined) => id ?? 'default',
+  useQbitInstance: () => ({ instanceId: undefined, instances: [], multiInstance: false, current: undefined, subtitle: undefined, select: () => {} }),
+}));
 vi.mock('@/hooks/use-is-mobile', () => ({ useIsMobile: () => mocks.mobile }));
 // The sheet and the dialog, reduced to what they hold and which one it is.
 vi.mock('@/components/ui/drawer', () => {

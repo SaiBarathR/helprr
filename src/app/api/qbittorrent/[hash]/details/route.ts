@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
+import { qbittorrentInstanceOf } from '@/lib/server/qbittorrent-instance';
 import { requireUserCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
@@ -25,6 +26,8 @@ async function getHandler(
 ) {
   const auth = await requireUserCapability('torrents.view');
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
@@ -32,7 +35,7 @@ async function getHandler(
     if (!SINGLE_TORRENT_HASH.test(hash)) {
       return NextResponse.json({ error: 'Invalid torrent hash' }, { status: 400 });
     }
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
 
     const [properties, files, trackers, listed] = await Promise.all([
       client.getTorrentProperties(hash, request.signal),

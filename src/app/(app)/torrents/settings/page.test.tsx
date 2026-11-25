@@ -12,6 +12,11 @@ const mocks = vi.hoisted(() => ({
   handleAuthError: vi.fn(),
   me: null as null | { role: string },
 }));
+// One qBittorrent, the default (use-qbit-instance.test.ts covers choosing one).
+vi.mock('@/app/(app)/torrents/_components/use-qbit-instance', () => ({
+  qbitInstanceKey: (id: string | undefined) => id ?? 'default',
+  useQbitInstance: () => ({ instanceId: undefined, instances: [], multiInstance: false, current: undefined, subtitle: undefined, select: () => {} }),
+}));
 vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap), useMe: () => mocks.me }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ back: vi.fn(), push: vi.fn() }) }));
 vi.mock('@/lib/client-refresh-settings', () => ({ getRefreshIntervalMs: vi.fn().mockResolvedValue(60_000) }));
@@ -363,12 +368,12 @@ describe('qBittorrent settings page', () => {
       mocks.me = { role: 'admin' };
       await renderPage();
       await waitFor(() => expect(queueSwitch()).not.toBeNull());
-      queryClient.setQueryData(['qbittorrent', 'options'], { tags: [], queueingEnabled: true });
+      queryClient.setQueryData(['qbittorrent', 'options', 'default'], { tags: [], queueingEnabled: true });
       await act(async () => queueSwitch()!.click());
       await waitFor(() => expect(queuePatches).toEqual([{ queueing_enabled: false }]));
       await waitFor(() => expect(queueSwitch()!.getAttribute('aria-checked')).toBe('false'));
       expect(rowText('Max Active Downloads')).toBeUndefined();
-      expect(queryClient.getQueryState(['qbittorrent', 'options'])?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(['qbittorrent', 'options', 'default'])?.isInvalidated).toBe(true);
     });
 
     it('saves a count for an admin', async () => {

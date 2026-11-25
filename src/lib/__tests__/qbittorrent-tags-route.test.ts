@@ -48,7 +48,7 @@ beforeEach(() => {
 
 describe('who may see and change tags', () => {
   it('lists for torrents.view and changes for torrents.manage', async () => {
-    await GET();
+    await GET(new NextRequest('http://localhost/api/qbittorrent/tags'));
     expect(mocks.requireUserCapability).toHaveBeenLastCalledWith('torrents.view');
     await create({ name: 'new' });
     expect(mocks.requireUserCapability).toHaveBeenLastCalledWith('torrents.manage');
@@ -57,7 +57,7 @@ describe('who may see and change tags', () => {
   });
 
   it.each([
-    ['GET', () => GET()],
+    ['GET', () => GET(new NextRequest('http://localhost/api/qbittorrent/tags'))],
     ['POST', () => create({ name: 'new' })],
     ['DELETE', () => remove({ tags: ['seed'] })],
   ])('%s is refused without the capability and never reaches qBittorrent', async (_method, call) => {
@@ -72,7 +72,7 @@ describe('who may see and change tags', () => {
 
 describe('GET', () => {
   it('lists every tag with its torrent count and nothing else about the torrents', async () => {
-    const res = await GET();
+    const res = await GET(new NextRequest('http://localhost/api/qbittorrent/tags'));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({

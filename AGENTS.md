@@ -59,7 +59,7 @@ desktop is fully supported.
 - API routes are the authoritative security boundary. Every mutating route must
   enforce authentication, role/capability, ownership, and target-instance rules;
   hidden UI controls are not authorization.
-- Sonarr/Radarr/Lidarr are multi-instance. Preserve and validate `instanceId`
+- Sonarr/Radarr/Lidarr and qBittorrent are multi-instance. Preserve and validate `instanceId`
   from page state through the API route and selected service client.
 - Permissions fail closed. Server auth reloads the current `Session` and `User`,
   so revocation, disablement, role changes, and capability changes apply on the

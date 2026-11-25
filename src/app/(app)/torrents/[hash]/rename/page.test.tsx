@@ -11,7 +11,12 @@ const mocks = vi.hoisted(() => ({
   router: { back: vi.fn(), push: vi.fn() },
   toast: { success: vi.fn(), error: vi.fn() },
 }));
-vi.mock('next/navigation', () => ({ useParams: () => ({ hash: 'abc' }) }));
+// One qBittorrent, the default (use-qbit-instance.test.ts covers choosing one).
+vi.mock('@/app/(app)/torrents/_components/use-qbit-instance', () => ({
+  qbitInstanceKey: (id: string | undefined) => id ?? 'default',
+  useQbitInstance: () => ({ instanceId: undefined, instances: [], multiInstance: false, current: undefined, subtitle: undefined, select: () => {} }),
+}));
+vi.mock('next/navigation', () => ({ useParams: () => ({ hash: 'abc' }), useSearchParams: () => new URLSearchParams() }));
 vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap), useMe: () => null }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => mocks.router }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
@@ -19,7 +24,7 @@ import RenameTorrentPage from './page';
 
 const TORRENT = { hash: 'abc', name: 'Old.Name.2160p-GRP' };
 const OTHER = { hash: 'def', name: 'Other.Release' };
-const SUMMARY_KEY = ['torrents', 'summary', '__all__'];
+const SUMMARY_KEY = ['torrents', 'summary', 'default', '__all__'];
 
 let root: Root;
 let queryClient: QueryClient;

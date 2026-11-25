@@ -10,15 +10,18 @@ const mocks = vi.hoisted(() => ({
 // The poll reads sync/maindata (src/lib/qbittorrent-sync.ts); a new client each
 // poll means a new merged state, so every read is a full update of the list.
 vi.mock('@/lib/service-helpers', () => ({
-  getQBittorrentClient: vi.fn(async () => ({
-    getMaindata: async () => ({
-      rid: 1,
-      full_update: true,
-      torrents: Object.fromEntries((await mocks.getTorrents() as Array<{ hash: string }>).map(({ hash, ...fields }) => [hash, fields])),
-    }),
-  })),
+  getQBittorrentClients: vi.fn(async () => [{
+    connection: { id: 'q1', label: 'qBittorrent' },
+    client: {
+      instanceId: 'q1',
+      getMaindata: async () => ({
+        rid: 1,
+        full_update: true,
+        torrents: Object.fromEntries((await mocks.getTorrents() as Array<{ hash: string }>).map(({ hash, ...fields }) => [hash, fields])),
+      }),
+    },
+  }]),
 }));
-vi.mock('@/lib/arr-instances', () => ({ getDefaultConnection: vi.fn(async () => ({ id: 'q1' })) }));
 vi.mock('@/lib/cache/badge-counts', () => ({ writeBadgeSlice: vi.fn() }));
 vi.mock('@/lib/polling-job-report', () => ({ noteJobFailure: vi.fn() }));
 vi.mock('@/lib/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
@@ -35,6 +38,7 @@ vi.mock('./shared', () => ({
   notifyAndLog: mocks.notifyAndLog,
   // Someone takes every event unless a test says otherwise.
   wantedNotices: vi.fn(async (notices: Array<{ event: { eventType: string } }>) => notices.filter((n) => !mocks.unwanted.has(n.event.eventType))),
+  instanceTitle: (base: string, label: string, count: number) => (count > 1 ? `${label} · ${base}` : base),
 }));
 
 import { pollQBittorrent } from './poll-qbittorrent';
@@ -70,7 +74,7 @@ describe('pollQBittorrent: errored, missing files and stalled torrents (QBT-12)'
 
     const entered = await poll(minutes(1), [{ hash: 'a', state: 'error' }]);
     expect(entered).toEqual([expect.objectContaining({
-      eventType: 'torrentErrored', title: 'Torrent Errored', body: 'A', url: '/torrents/a/settings',
+      eventType: 'torrentErrored', title: 'Torrent Errored', body: 'A', url: '/torrents/a/settings?instance=q1',
     })]);
 
     expect(await poll(minutes(2), [{ hash: 'a', state: 'error' }])).toEqual([]);
@@ -106,7 +110,7 @@ describe('pollQBittorrent: errored, missing files and stalled torrents (QBT-12)'
 
     const due = await poll(minutes(30), [{ hash: 's', state: 'stalledDL' }]);
     expect(due).toEqual([expect.objectContaining({
-      eventType: 'torrentStalled', title: 'Torrent Stalled', body: 'S · No data for 30 min', url: '/torrents/s/trackers?name=S',
+      eventType: 'torrentStalled', title: 'Torrent Stalled', body: 'S · No data for 30 min', url: '/torrents/s/trackers?name=S&instance=q1',
     })]);
     expect(await poll(minutes(90), [{ hash: 's', state: 'stalledDL' }])).toEqual([]);
 

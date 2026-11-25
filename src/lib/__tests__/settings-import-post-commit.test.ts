@@ -42,6 +42,7 @@ vi.mock('@/lib/scheduled-alerts/resolver', () => ({
 vi.mock('@/lib/scheduled-alerts/delivery', () => ({ upsertOccurrencesForAlert: vi.fn() }));
 vi.mock('@/lib/arr-instances', () => ({
   isArrType: (type: string) => ['SONARR', 'RADARR', 'LIDARR'].includes(type),
+  isMultiInstanceType: (type: string) => ['SONARR', 'RADARR', 'LIDARR', 'QBITTORRENT'].includes(type),
   ensureDefaultForType: mocks.ensureDefaultForType,
   clearConnectionMemo: vi.fn(),
 }));

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { User } from '@prisma/client';
 import type { AddTorrentOptions, QBittorrentClient } from '@/lib/qbittorrent-client';
 import { getQBittorrentClient } from '@/lib/service-helpers';
+import { qbittorrentInstanceOf } from '@/lib/server/qbittorrent-instance';
 import { requireUser, requireUserCapability } from '@/lib/auth';
 import type { Capability } from '@/lib/capabilities';
 import { can } from '@/lib/permissions';
@@ -111,7 +112,7 @@ async function runTorrentAction(
       const outcome = await deleteTorrentsAudited(client, user, hash, booleanOr(body.deleteFiles, false));
       if (outcome !== 'deleted') {
         // The list may have changed (or a delete may have gone through): let the next read see it.
-        await bumpQbitCacheVersion();
+        await bumpQbitCacheVersion(client.instanceId);
         const { status, ...refusal } = TORRENT_DELETE_REFUSALS[outcome];
         return NextResponse.json(refusal, { status });
       }
@@ -420,7 +421,7 @@ async function addTorrents(
   // Fail-soft: the adds happened, and the next poll catches up anyway.
   if (sent.length > 0) {
     try {
-      await bumpQbitCacheVersion();
+      await bumpQbitCacheVersion(client.instanceId);
     } catch {
       // Ignored as above.
     }
@@ -456,10 +457,12 @@ function addResponse(outcomes: AddOutcome[]): NextResponse {
 async function getHandler(request: NextRequest) {
   const auth = await requireUserCapability('torrents.view');
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     const { searchParams } = new URL(request.url);
     const filter = searchParams.get('filter') || undefined;
     const category = searchParams.get('category') || undefined;
@@ -489,10 +492,12 @@ async function getHandler(request: NextRequest) {
 async function postHandler(request: NextRequest) {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     const contentType = request.headers.get('content-type') || '';
 
     if (contentType.includes('multipart/form-data')) {
@@ -595,7 +600,7 @@ async function postHandler(request: NextRequest) {
         return actionResponse;
       }
       // Bust the summary cache so the client's reconcile refetch sees post-action state.
-      await bumpQbitCacheVersion();
+      await bumpQbitCacheVersion(client.instanceId);
       logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'action', action: body.action });
       return NextResponse.json({ success: true });
     }

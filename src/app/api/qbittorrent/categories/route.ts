@@ -3,6 +3,7 @@ import { isAxiosError } from 'axios';
 import type { User } from '@prisma/client';
 import type { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { getQBittorrentClient } from '@/lib/service-helpers';
+import { qbittorrentInstanceOf } from '@/lib/server/qbittorrent-instance';
 import { requireAdmin, requireUserCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
@@ -19,10 +20,12 @@ const MAX_REMOVE = 50;
 async function getHandler(request: NextRequest) {
   const auth = await requireUserCapability('torrents.view');
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     // details=1 is the Categories screen and the add page: what an empty save
     // path means, whether "/" makes a subcategory, and where a torrent saves.
     if (request.nextUrl.searchParams.get('details') === '1') {
@@ -96,6 +99,8 @@ function logChange(user: User, message: string, details: Record<string, unknown>
 async function postHandler(request: NextRequest) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
@@ -103,7 +108,7 @@ async function postHandler(request: NextRequest) {
     if (!json.ok || !json.body || typeof json.body !== 'object') return badRequest('Malformed JSON');
     const body = json.body as Record<string, unknown>;
 
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     const [categories, subcategories] = await Promise.all([client.getCategories(), client.isSubcategoriesEnabled()]);
     const parsed = parseNewCategoryName(body.name, subcategories);
     if (!parsed.ok) return badRequest(parsed.error, 'name');
@@ -114,7 +119,7 @@ async function postHandler(request: NextRequest) {
     if (!savePath.ok) return savePath.response;
 
     await client.createCategory(parsed.name, savePath.savePath);
-    await bumpQbitCacheVersion();
+    await bumpQbitCacheVersion(client.instanceId);
     logChange(auth.user, 'qBittorrent category created', { category: parsed.name, savePath: savePath.savePath });
     logApiDuration(ROUTE, startedAt, { method: 'POST' });
     return NextResponse.json({ success: true, name: parsed.name });
@@ -127,6 +132,8 @@ async function postHandler(request: NextRequest) {
 async function patchHandler(request: NextRequest) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
@@ -138,7 +145,7 @@ async function patchHandler(request: NextRequest) {
     if (typeof body.name !== 'string' || typeof body.savePath !== 'string') return badRequest('Send the name and the save path');
     const name = body.name;
 
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     const [categories, subcategories] = await Promise.all([client.getCategories(), client.isSubcategoriesEnabled()]);
     const existing = Object.hasOwn(categories, name) ? categories[name] : null;
     if (!existing) return NextResponse.json({ error: 'That category is no longer in qBittorrent' }, { status: 404 });
@@ -150,7 +157,7 @@ async function patchHandler(request: NextRequest) {
     }
 
     await client.editCategory(name, savePath.savePath, existing.download_path);
-    await bumpQbitCacheVersion();
+    await bumpQbitCacheVersion(client.instanceId);
     logChange(auth.user, 'qBittorrent category edited', {
       category: name,
       savePath: savePath.savePath,
@@ -167,6 +174,8 @@ async function patchHandler(request: NextRequest) {
 async function deleteHandler(request: NextRequest) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
@@ -182,7 +191,7 @@ async function deleteHandler(request: NextRequest) {
       return badRequest(`Choose 1 to ${MAX_REMOVE} categories`);
     }
 
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     const [categories, subcategories] = await Promise.all([client.getCategories(), client.isSubcategoriesEnabled()]);
     const missing = names.filter((name) => !Object.hasOwn(categories, name));
     if (missing.length > 0) {
@@ -208,7 +217,7 @@ async function deleteHandler(request: NextRequest) {
     }
 
     await client.removeCategories(names);
-    await bumpQbitCacheVersion();
+    await bumpQbitCacheVersion(client.instanceId);
     logChange(auth.user, 'qBittorrent categories removed', {
       categories: names,
       subcategories,
