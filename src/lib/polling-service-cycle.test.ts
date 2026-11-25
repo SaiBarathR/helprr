@@ -695,7 +695,7 @@ describe('bandwidth schedule', () => {
     // A new process: it must not take the rule's values for the user's.
     const after = await serviceWith(qbit);
     await after.apply(context([{ ...whicheverRule, downloadLimitKbps: 200 }]));
-    expect(qbit.getSpeedLimits).toHaveBeenCalledTimes(1);
+    expect(savedAlt.store.get('q1')).toEqual({ savedAlt: { alt_dl_limit: 51_200, alt_up_limit: 20_480 }, wroteGlobal: false });
     expect(qbit.prefs.alt_dl_limit).toBe(200 * 1024);
 
     await after.apply(context([]));
@@ -724,6 +724,39 @@ describe('bandwidth schedule', () => {
     savedAlt.failLoad = false;
     await apply(context([whicheverRule]));
     expect(qbit.prefs.alt_dl_limit).toBe(300 * 1024);
+  });
+
+  it('keeps the saved copy when qBittorrent took a write whose answer was lost', async () => {
+    const qbit = fakeQbit(1);
+    const { apply } = await serviceWith(qbit);
+    qbit.setSpeedLimits.mockImplementationOnce(async (limits) => {
+      Object.assign(qbit.prefs, limits);
+      throw new Error('timeout of 30000ms exceeded');
+    });
+
+    await apply(context([whicheverRule]));
+    await apply(context([whicheverRule]));
+    expect(savedAlt.store.get('q1')).toEqual({ savedAlt: { alt_dl_limit: 51_200, alt_up_limit: 20_480 }, wroteGlobal: false });
+
+    await apply(context([]));
+    expect(qbit.prefs).toEqual(USER_PREFS);
+  });
+
+  it('takes alternative limits the user sets while a rule holds them as theirs', async () => {
+    const qbit = fakeQbit(1);
+    const { apply } = await serviceWith(qbit);
+    await apply(context([whicheverRule]));
+
+    // Changed in qBittorrent (or on Torrents) during the rule.
+    qbit.prefs.alt_dl_limit = 80 * 1024;
+    qbit.prefs.alt_up_limit = 40 * 1024;
+    await apply(context([whicheverRule]));
+    // The rule applies again, and the new values are the ones kept.
+    expect(qbit.prefs.alt_dl_limit).toBe(300 * 1024);
+    expect(savedAlt.store.get('q1')).toEqual({ savedAlt: { alt_dl_limit: 80 * 1024, alt_up_limit: 40 * 1024 }, wroteGlobal: false });
+
+    await apply(context([]));
+    expect(qbit.prefs).toEqual({ ...USER_PREFS, alt_dl_limit: 80 * 1024, alt_up_limit: 40 * 1024 });
   });
 
   it('leaves the alternative limits alone when it cannot save a copy first', async () => {

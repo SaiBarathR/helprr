@@ -42,7 +42,8 @@ which limits it changes:
   on, the alternative ones. Helprr keeps a copy of your own alternative limits and puts
   them back when the rule ends or the alternative limits are switched off.
 
-When a rule ends, the regular limits go back to unlimited.
+When a rule ends, the limits it set go back: the regular ones to unlimited, the
+alternative ones to yours (new values you set while the rule held them count as yours).
 
 ## Adding links and exporting .torrent files
 

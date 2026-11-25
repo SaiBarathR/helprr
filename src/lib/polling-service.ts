@@ -1085,25 +1085,33 @@ export class PollingService {
         // A "global limits" rule never reads the mode: it sets the regular
         // limits, which wait while alternative speed mode is on.
         const limits = active.target === 'active' && (await client.getSpeedLimitsMode()) === 1 ? 'alt' : 'global';
-        if (
-          applied &&
-          applied.ruleId === active.id &&
+        const unchanged = applied?.ruleId === active.id &&
           applied.limits === limits &&
           applied.downloadKbps === active.downloadLimitKbps &&
-          applied.uploadKbps === active.uploadLimitKbps
-        ) {
-          continue;
-        }
+          applied.uploadKbps === active.uploadLimitKbps;
+        if (unchanged && limits === 'global') continue;
 
         if (limits === 'alt') {
-          // The user's own alternative limits, saved once (and in Redis before
-          // they are replaced) so they can be put back when the rule ends.
+          // The user's own alternative limits, saved (in Redis, before they are
+          // replaced) so they can be put back when the rule ends. Read every
+          // cycle while held: values other than the rule's mean the user set
+          // new ones (here or in qBittorrent), which are theirs from now on.
+          // Never after a restart (ruleId null): those are a rule's values.
           const wroteGlobal = applied?.wroteGlobal ?? false;
           let savedAlt = applied?.savedAlt ?? null;
-          if (!savedAlt) {
-            const current = await client.getSpeedLimits();
+          const current = await client.getSpeedLimits();
+          const changedByUser = applied?.limits === 'alt' && applied.ruleId !== null && (
+            current.alt_dl_limit !== applied.downloadKbps * 1024 || current.alt_up_limit !== applied.uploadKbps * 1024
+          );
+          if (unchanged && !changedByUser) continue;
+          if (!savedAlt || changedByUser) {
             savedAlt = { alt_dl_limit: current.alt_dl_limit, alt_up_limit: current.alt_up_limit };
             await saveAltLimits(instanceId, { savedAlt, wroteGlobal });
+            // Held before the write: if qBittorrent takes it but the answer is
+            // lost, the next cycle must not save the rule's values as the user's.
+            this.appliedBandwidth.set(instanceId, {
+              ruleId: null, downloadKbps: 0, uploadKbps: 0, limits, wroteGlobal, savedAlt,
+            });
           }
           await client.setSpeedLimits({ alt_dl_limit: downloadBytes, alt_up_limit: uploadBytes });
           this.appliedBandwidth.set(instanceId, {

@@ -1190,8 +1190,9 @@ while alternative speed mode is on; `active` reads `transfer/speedLimitsMode`
 each cycle and writes `alt_dl_limit`/`alt_up_limit` while that mode is on, the
 regular ones otherwise. Before the first write to the alternative limits it keeps
 the user's own in Redis (`helprr:qbt:bandwidth-saved-alt`, a field per instance,
-no expiry, outside the purgeable cache keys) and writes nothing if that fails; they
-are put back when the rule ends, the mode goes back to normal, or the next rule
+no expiry, outside the purgeable cache keys) and writes nothing if that fails. While
+held they are read every cycle, and values other than the rule's (the user changed
+them) become the saved copy and the rule is written again. They are put back when the rule ends, the mode goes back to normal, or the next rule
 sets the global limits. A restarted process reads that hash before writing or
 releasing anything, so it never takes a rule's values for the user's. The cleaners list every instance (`src/lib/cleanup/torrent-sources.ts`):
 each torrent carries its `qbitInstanceId` into the decision, the preview binding,

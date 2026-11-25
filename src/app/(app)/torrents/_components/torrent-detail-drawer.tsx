@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -85,6 +86,7 @@ export function TorrentDetailDrawer({
 }) {
   // The .torrent carries the full tracker URLs, which only an admin sees.
   const canExport = useMe()?.role === 'admin';
+  const [exporting, setExporting] = useState(false);
   const trackers = detailData ? realTrackers(detailData.trackers) : [];
   return (
     <Drawer
@@ -279,9 +281,13 @@ export function TorrentDetailDrawer({
                         variant="outline"
                         size="sm"
                         className="col-span-2 text-xs"
-                        onClick={() => void exportTorrent(detailHash, instanceId)}
+                        disabled={exporting}
+                        onClick={() => {
+                          setExporting(true);
+                          void exportTorrent(detailHash, instanceId).finally(() => setExporting(false));
+                        }}
                       >
-                        <Download className="mr-2 h-3.5 w-3.5" />
+                        {exporting ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-2 h-3.5 w-3.5" />}
                         Export .torrent
                       </Button>
                     )}
