@@ -618,6 +618,14 @@ Torrents settings page read and write the four keys as preferences, through an
 allow-list, since `setPreferences` also takes the Web UI password and the program run
 on completion.
 
+### qBittorrent torrent export (2026-11-25)
+
+Live on a disposable qBittorrent `5.1.4`. `GET torrents/export?hash=` answers `200`
+with `application/x-bittorrent` and an `attachment` named after the hash; the file is
+the torrent as qBittorrent keeps it (the announce URL with its passkey included, not
+byte for byte the file that was added). A magnet still without metadata answers `409`
+"Unable to export torrent file. Error: Missing metadata", and an unknown hash `404`.
+
 ### qBittorrent queueing, seeding limits and log (2026-11-25)
 
 Live on a disposable qBittorrent `5.1.4`. `app/preferences` has `queueing_enabled`,

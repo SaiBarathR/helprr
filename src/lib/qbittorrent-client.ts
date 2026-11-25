@@ -253,13 +253,19 @@ export class QBittorrentClient {
     }
   }
 
-  private async get<T>(endpoint: string, params?: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+  private async get<T>(
+    endpoint: string,
+    params?: Record<string, unknown>,
+    signal?: AbortSignal,
+    raw?: { responseType: 'arraybuffer'; maxContentLength: number },
+  ): Promise<T> {
     signal?.throwIfAborted();
     await this.ensureAuthenticated();
     try {
       const response = await this.client.get<T>(endpoint, {
         params,
         signal,
+        ...raw,
         headers: { Cookie: this.cookie! },
       });
       return response.data;
@@ -270,6 +276,7 @@ export class QBittorrentClient {
         const response = await this.client.get<T>(endpoint, {
           params,
         signal,
+          ...raw,
           headers: { Cookie: this.cookie! },
         });
         return response.data;
@@ -343,6 +350,19 @@ export class QBittorrentClient {
 
   async getTorrentTrackers(hash: string, signal?: AbortSignal): Promise<TorrentTracker[]> {
     return this.get<TorrentTracker[]>('/api/v2/torrents/trackers', { hash }, signal);
+  }
+
+  /**
+   * The torrent's .torrent file as qBittorrent would save it (torrents/export,
+   * 4.5+), trackers and their passkeys included. qBittorrent answers 404 for a
+   * hash it doesn't have and 409 while a magnet has no metadata yet.
+   */
+  async exportTorrent(hash: string, maxBytes: number, signal?: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
+    const data = await this.get<ArrayBuffer>('/api/v2/torrents/export', { hash }, signal, {
+      responseType: 'arraybuffer',
+      maxContentLength: maxBytes,
+    });
+    return new Uint8Array(data);
   }
 
   /**

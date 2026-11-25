@@ -1,5 +1,5 @@
 import type { BandwidthRule, BandwidthSchedule } from './types';
-import { MAX_KBPS } from './types';
+import { BANDWIDTH_TARGETS, MAX_KBPS, type BandwidthTarget } from './types';
 
 function isFiniteInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value);
@@ -30,6 +30,12 @@ function parseDaysOfWeek(raw: unknown): number[] | null {
   return result.sort((a, b) => a - b);
 }
 
+// Missing (a rule saved before the choice existed) is the old behaviour.
+function parseTarget(value: unknown): BandwidthTarget | null {
+  if (value === undefined) return 'global';
+  return BANDWIDTH_TARGETS.find((target) => target === value) ?? null;
+}
+
 function parseRule(raw: unknown): BandwidthRule | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -44,6 +50,7 @@ function parseRule(raw: unknown): BandwidthRule | null {
   const endMinute = clampMinute(r.endMinute);
   const downloadLimitKbps = clampKbps(r.downloadLimitKbps);
   const uploadLimitKbps = clampKbps(r.uploadLimitKbps);
+  const target = parseTarget(r.target);
 
   if (
     !id ||
@@ -54,7 +61,8 @@ function parseRule(raw: unknown): BandwidthRule | null {
     endHour === null ||
     endMinute === null ||
     downloadLimitKbps === null ||
-    uploadLimitKbps === null
+    uploadLimitKbps === null ||
+    target === null
   ) {
     return null;
   }
@@ -70,6 +78,7 @@ function parseRule(raw: unknown): BandwidthRule | null {
     endMinute,
     downloadLimitKbps,
     uploadLimitKbps,
+    target,
   };
 }
 

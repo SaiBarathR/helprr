@@ -133,6 +133,7 @@ describe('migration readiness', () => {
     expect(names).toContain('20261124120000_upgraded_notification_event');
     expect(names).toContain('20261124140000_health_restored_preferences');
     expect(names).toContain('20261125120000_torrent_stalled_alert');
-    expect(names).toHaveLength(50);
+    expect(names).toContain('20261126120000_calendar_monitored_defaults');
+    expect(names).toHaveLength(51);
   });
 });

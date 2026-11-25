@@ -8,6 +8,7 @@ import { AniListRateLimitError } from '@/lib/anilist-client';
 import { toZonedDate, getLocalDateKey } from '@/lib/timezone';
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
+import { forgetAltLimits, loadSavedAltLimits, saveAltLimits, type SavedAltLimits } from '@/lib/bandwidth-scheduler/saved-alt';
 import { logger, redact } from '@/lib/logger';
 import { jobReports, noteJobFailure, noteJobSkipped, type JobReport } from '@/lib/polling-job-report';
 import { arrInstanceBackoff, createPollingCycleContext, InstanceBackoff } from '@/lib/polling-cycle';
@@ -52,6 +53,20 @@ const TASTE_PROFILE_MAX_REBUILDS_PER_SWEEP = 5;
 
 function localDateOnly(input: Date, timeZone: string): Date {
   return new Date(`${getLocalDateKey(input, timeZone)}T00:00:00.000Z`);
+}
+
+/** What the bandwidth schedule wrote to one qBittorrent. */
+interface AppliedBandwidth {
+  /** null: known only from the saved copy after a restart, so the next cycle writes again. */
+  ruleId: string | null;
+  downloadKbps: number;
+  uploadKbps: number;
+  /** Which limits hold the rule's values now. */
+  limits: 'global' | 'alt';
+  /** Whether the regular limits were written, so the release sets them back to unlimited. */
+  wroteGlobal: boolean;
+  /** The user's alternative limits from before a rule replaced them; set while `limits` is 'alt'. */
+  savedAlt: SavedAltLimits | null;
 }
 
 type AnimeAutoMapRun = {
@@ -186,13 +201,11 @@ export class PollingService {
   // Epoch ms the next Sonarr/Radarr/Lidarr/Prowlarr update check is due.
   private nextArrUpdateCheckAt = 0;
   // Tracks the bandwidth-schedule rule (and limits) we last pushed to each
-  // qBittorrent (by instance id) so we only re-send on actual changes.
-  // Process-restart loses this — the next cycle will re-apply once (idempotent).
-  private appliedBandwidth = new Map<string, {
-    ruleId: string;
-    downloadKbps: number;
-    uploadKbps: number;
-  }>();
+  // qBittorrent (by instance id) so we only re-send on actual changes, and
+  // what to put back. Process-restart loses this but for the saved alternative
+  // limits (kept in Redis): the next cycle will re-apply once (idempotent).
+  private appliedBandwidth = new Map<string, AppliedBandwidth>();
+  private savedAltLoaded = false;
   // Nightly anime auto-map run. The whole run lives in this one in-memory
   // object so status can report real progress; a restart drops it on purpose —
   // the scheduled gate re-triggers (lastRunAt was never stamped) and the
@@ -936,13 +949,15 @@ export class PollingService {
     return checkDatabaseBackupPoller(context);
   }
 
-  // Restore qBit to unlimited (0) if — and only if — we previously applied a
-  // limit. This lifts the throttle when a rule's window ends or when the user
-  // deletes all rules. When we never applied one, it's a no-op, preserving the
-  // strict-additive promise of leaving the user's manual limits alone. Tracking
-  // is held until the restore succeeds so a transient qBit outage retries next
-  // poll rather than silently dropping the release. Per qBittorrent: each is
-  // restored on its own, and one that is no longer connected is let go.
+  // Put back what the schedule changed, if — and only if — it changed
+  // something: the regular limits go back to unlimited (0), and alternative
+  // limits a rule replaced go back to the user's own. This lifts the throttle
+  // when a rule's window ends or when the user deletes all rules. When we never
+  // applied one, it's a no-op, preserving the strict-additive promise of leaving
+  // the user's manual limits alone. Tracking is held until the restore succeeds
+  // so a transient qBit outage retries next poll rather than silently dropping
+  // the release. Per qBittorrent: each is restored on its own, and one that is
+  // no longer connected is let go.
   private async releaseAppliedBandwidth(context: string): Promise<void> {
     if (this.appliedBandwidth.size === 0) return;
 
@@ -959,19 +974,22 @@ export class PollingService {
     for (const [instanceId, previous] of [...this.appliedBandwidth]) {
       const client = clients.get(instanceId);
       if (!client) {
-        this.appliedBandwidth.delete(instanceId);
+        await this.forgetAppliedBandwidth(instanceId);
         continue;
       }
       try {
-        // The regular limits only, whatever mode qBittorrent is in: the
-        // alternative limits are the user's own.
-        await client.setSpeedLimits({ dl_limit: 0, up_limit: 0 });
-        logger.info('Bandwidth schedule: restored unlimited', {
+        // Only what the rule wrote: the user's alternative limits stay theirs.
+        await client.setSpeedLimits({
+          ...(previous.wroteGlobal ? { dl_limit: 0, up_limit: 0 } : {}),
+          ...previous.savedAlt,
+        });
+        logger.info('Bandwidth schedule: restored', {
           context,
           instanceId,
           previousRuleId: previous.ruleId,
+          restoredAlternative: previous.savedAlt !== null,
         }, { scope: 'polling' });
-        this.appliedBandwidth.delete(instanceId);
+        await this.forgetAppliedBandwidth(instanceId);
       } catch (error) {
         noteJobFailure(error);
         logger.warn('Failed to restore bandwidth', {
@@ -984,7 +1002,45 @@ export class PollingService {
     }
   }
 
+  private async forgetAppliedBandwidth(instanceId: string): Promise<void> {
+    const previous = this.appliedBandwidth.get(instanceId);
+    this.appliedBandwidth.delete(instanceId);
+    if (!previous?.savedAlt) return;
+    try {
+      await forgetAltLimits(instanceId);
+    } catch (error) {
+      // The limits are back already. A stale copy would only be written back
+      // over the same values after a restart, unless the user changed them since.
+      logger.warn('Bandwidth schedule: could not drop the saved alternative limits', { instanceId, error }, { scope: 'polling' });
+    }
+  }
+
+  // After a restart, the alternative limits a rule still holds are known only
+  // from the copy kept in Redis. Until it has been read, nothing is written or
+  // released: a rule would otherwise save its own values as the user's.
+  private async loadSavedAltBandwidth(): Promise<boolean> {
+    if (this.savedAltLoaded) return true;
+    let saved;
+    try {
+      saved = await loadSavedAltLimits();
+    } catch (error) {
+      noteJobFailure(error);
+      logger.warn('Bandwidth schedule: deferred, could not read the saved alternative limits', { error }, { scope: 'polling' });
+      return false;
+    }
+    for (const [instanceId, { savedAlt, wroteGlobal }] of saved) {
+      if (this.appliedBandwidth.has(instanceId)) continue;
+      // No rule: the next cycle writes the active rule again, or restores.
+      this.appliedBandwidth.set(instanceId, {
+        ruleId: null, downloadKbps: 0, uploadKbps: 0, limits: 'alt', wroteGlobal, savedAlt,
+      });
+    }
+    this.savedAltLoaded = true;
+    return true;
+  }
+
   private async applyBandwidthSchedule(context: CycleContext): Promise<void> {
+    if (!(await this.loadSavedAltBandwidth())) return;
     const settings = await context.getSettings();
     const schedule = parseBandwidthSchedule(settings.qbtBandwidthSchedule);
     if (schedule.rules.length === 0) {
@@ -1006,12 +1062,6 @@ export class PollingService {
       return;
     }
 
-    const intent = {
-      ruleId: active.id,
-      downloadKbps: active.downloadLimitKbps,
-      uploadKbps: active.uploadLimitKbps,
-    };
-
     let instances;
     try {
       instances = await getQBittorrentClients();
@@ -1022,37 +1072,85 @@ export class PollingService {
     }
     // The schedule is for the whole link, so it applies to every qBittorrent.
     const live = new Set(instances.map(({ connection }) => connection.id));
-    for (const instanceId of this.appliedBandwidth.keys()) if (!live.has(instanceId)) this.appliedBandwidth.delete(instanceId);
+    for (const instanceId of [...this.appliedBandwidth.keys()]) if (!live.has(instanceId)) await this.forgetAppliedBandwidth(instanceId);
 
     // qBittorrent's limits are bytes/sec; UI/DB use KB/s.
-    const downloadBytes = intent.downloadKbps * 1024;
-    const uploadBytes = intent.uploadKbps * 1024;
+    const downloadBytes = active.downloadLimitKbps * 1024;
+    const uploadBytes = active.uploadLimitKbps * 1024;
 
     for (const { connection, client } of instances) {
-      const applied = this.appliedBandwidth.get(connection.id);
-      if (
-        applied &&
-        applied.ruleId === intent.ruleId &&
-        applied.downloadKbps === intent.downloadKbps &&
-        applied.uploadKbps === intent.uploadKbps
-      ) {
-        continue;
-      }
+      const instanceId = connection.id;
+      const applied = this.appliedBandwidth.get(instanceId);
       try {
-        // A rule sets the regular limits only. transfer/setDownloadLimit would
-        // write the alternative ones while alternative speed mode is on.
-        await client.setSpeedLimits({ dl_limit: downloadBytes, up_limit: uploadBytes });
-        this.appliedBandwidth.set(connection.id, intent);
+        // A "global limits" rule never reads the mode: it sets the regular
+        // limits, which wait while alternative speed mode is on.
+        const limits = active.target === 'active' && (await client.getSpeedLimitsMode()) === 1 ? 'alt' : 'global';
+        const unchanged = applied?.ruleId === active.id &&
+          applied.limits === limits &&
+          applied.downloadKbps === active.downloadLimitKbps &&
+          applied.uploadKbps === active.uploadLimitKbps;
+        if (unchanged && limits === 'global') continue;
+
+        if (limits === 'alt') {
+          // The user's own alternative limits, saved (in Redis, before they are
+          // replaced) so they can be put back when the rule ends. Read every
+          // cycle while held: values other than the rule's mean the user set
+          // new ones (here or in qBittorrent), which are theirs from now on.
+          // Never after a restart (ruleId null): those are a rule's values.
+          const wroteGlobal = applied?.wroteGlobal ?? false;
+          let savedAlt = applied?.savedAlt ?? null;
+          const current = await client.getSpeedLimits();
+          const changedByUser = applied?.limits === 'alt' && applied.ruleId !== null && (
+            current.alt_dl_limit !== applied.downloadKbps * 1024 || current.alt_up_limit !== applied.uploadKbps * 1024
+          );
+          if (unchanged && !changedByUser) continue;
+          if (!savedAlt || changedByUser) {
+            savedAlt = { alt_dl_limit: current.alt_dl_limit, alt_up_limit: current.alt_up_limit };
+            await saveAltLimits(instanceId, { savedAlt, wroteGlobal });
+            // Held before the write: if qBittorrent takes it but the answer is
+            // lost, the next cycle must not save the rule's values as the user's.
+            this.appliedBandwidth.set(instanceId, {
+              ruleId: null, downloadKbps: 0, uploadKbps: 0, limits, wroteGlobal, savedAlt,
+            });
+          }
+          await client.setSpeedLimits({ alt_dl_limit: downloadBytes, alt_up_limit: uploadBytes });
+          this.appliedBandwidth.set(instanceId, {
+            ruleId: active.id,
+            downloadKbps: active.downloadLimitKbps,
+            uploadKbps: active.uploadLimitKbps,
+            limits,
+            wroteGlobal,
+            savedAlt,
+          });
+        } else {
+          // The regular limits, through preferences: transfer/setDownloadLimit
+          // would write the alternative ones while alternative speed mode is on.
+          // Alternative limits an earlier rule (or the other mode) held go back
+          // in the same write: this rule doesn't set them.
+          await client.setSpeedLimits({ dl_limit: downloadBytes, up_limit: uploadBytes, ...applied?.savedAlt });
+          this.appliedBandwidth.set(instanceId, {
+            ruleId: active.id,
+            downloadKbps: active.downloadLimitKbps,
+            uploadKbps: active.uploadLimitKbps,
+            limits,
+            wroteGlobal: true,
+            savedAlt: null,
+          });
+          if (applied?.savedAlt) await forgetAltLimits(instanceId).catch((error: unknown) => {
+            logger.warn('Bandwidth schedule: could not drop the saved alternative limits', { instanceId, error }, { scope: 'polling' });
+          });
+        }
         logger.info('Bandwidth schedule applied', {
-          instanceId: connection.id,
-          ruleId: intent.ruleId,
+          instanceId,
+          ruleId: active.id,
           ruleName: active.name,
-          downloadKbps: intent.downloadKbps,
-          uploadKbps: intent.uploadKbps,
+          limits,
+          downloadKbps: active.downloadLimitKbps,
+          uploadKbps: active.uploadLimitKbps,
         }, { scope: 'polling' });
       } catch (error) {
         noteJobFailure(error);
-        logger.warn('Failed to apply bandwidth schedule', { instanceId: connection.id, ruleId: intent.ruleId, error }, { scope: 'polling' });
+        logger.warn('Failed to apply bandwidth schedule', { instanceId, ruleId: active.id, error }, { scope: 'polling' });
       }
     }
   }
