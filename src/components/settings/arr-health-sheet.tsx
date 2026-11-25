@@ -191,7 +191,9 @@ export function ArrHealthSheet({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent>
+      {/* Backups asks for a password: with the keyboard up the header, tabs and
+          Done scroll with it, as in the other sheets holding a form. */}
+      <DrawerContent scrollTogether>
         <DrawerHeader>
           <DrawerTitle>{title}</DrawerTitle>
           <DrawerDescription

@@ -194,7 +194,7 @@ const POWER_COPY: Record<ArrPowerAction, {
   },
   shutdown: {
     label: 'Shut down',
-    detail: (app) => `Stops ${app}. Helprr can't start it again.`,
+    detail: (app) => `Stops ${app}. Helprr can't start it again; its container or service manager may.`,
     title: (app) => `Shut down ${app}?`,
     // Some Docker images and service managers start the app again by themselves;
     // Helprr can't tell, so it says what it knows.

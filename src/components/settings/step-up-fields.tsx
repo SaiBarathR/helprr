@@ -86,7 +86,16 @@ export function useStepUp(myTwoStep?: boolean) {
   };
 }
 
-export function StepUpFields({ stepUp, reason }: { stepUp: ReturnType<typeof useStepUp>; reason: string }) {
+export function StepUpFields({
+  stepUp,
+  reason,
+  inputClassName,
+}: {
+  stepUp: ReturnType<typeof useStepUp>;
+  reason: string;
+  /** For a form whose other fields are 44 px on touch. */
+  inputClassName?: string;
+}) {
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">
@@ -94,6 +103,7 @@ export function StepUpFields({ stepUp, reason }: { stepUp: ReturnType<typeof use
       </p>
       <Input
         type="password"
+        className={inputClassName}
         aria-label="Your current password"
         placeholder="Your current password"
         autoComplete="current-password"
@@ -103,6 +113,7 @@ export function StepUpFields({ stepUp, reason }: { stepUp: ReturnType<typeof use
       {stepUp.needsCode && (
         <Input
           type="text"
+          className={inputClassName}
           aria-label="Authenticator or recovery code"
           placeholder="Code or recovery code"
           autoComplete="one-time-code"

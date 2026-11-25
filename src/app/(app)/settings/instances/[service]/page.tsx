@@ -537,10 +537,9 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     }
 
     const body: Record<string, unknown> = { type, url: trimmedUrl, apiKey: trimmedKey };
-    if (isMultiInstance) {
-      body.label = label.trim();
-      if (editingConnId) body.id = editingConnId;
-    }
+    if (isMultiInstance) body.label = label.trim();
+    // A single-instance type too: the server refuses a second one without it.
+    if (editingConnId) body.id = editingConnId;
     if (isQbt) body.username = trimmedUser || 'admin';
     else if (isJellyfin && jellyfinValidated) body.username = trimmedUser || jellyfinValidated.userId;
     if (canEditHeaders) {

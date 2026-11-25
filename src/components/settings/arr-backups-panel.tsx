@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Archive, Download, Loader2, MoreVertical, RotateCcw, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
@@ -197,6 +197,26 @@ const STEP_COPY = {
   upload: { title: 'Restore from this file?', action: 'Restore', phrase: BACKUP_RESTORE_PHRASE },
 } as const;
 
+/**
+ * The nearest box around `el` that scrolls now: the sheet's tab, or the whole
+ * sheet while it scrolls as one above the keyboard (DrawerContent scrollTogether).
+ */
+function scrollingBox(el: HTMLElement): HTMLElement | null {
+  for (let box = el.parentElement; box; box = box.parentElement) {
+    const overflow = getComputedStyle(box).overflowY;
+    if ((overflow === 'auto' || overflow === 'scroll') && box.scrollHeight > box.clientHeight) return box;
+  }
+  return null;
+}
+
+/** Scrolls `box` as little as it takes to show `top`–`bottom` (viewport y), or `top` when both don't fit. */
+function showInBox(box: HTMLElement, top: number, bottom: number) {
+  const viewTop = box.getBoundingClientRect().top + box.clientTop;
+  const viewBottom = viewTop + box.clientHeight;
+  if (top < viewTop || bottom - top > box.clientHeight) box.scrollTop += top - viewTop;
+  else if (bottom > viewBottom) box.scrollTop += bottom - viewBottom;
+}
+
 /** What a step does, in the words the admin confirms. */
 function consequence(step: Step, appName: string): string {
   switch (step.kind) {
@@ -234,6 +254,46 @@ function BackupStep({
   const typedOk = copy.phrase === null || typed.trim().toUpperCase() === copy.phrase;
   const destructive = step.kind !== 'download';
   const canSubmit = !busy && typedOk && stepUp.ready;
+  const formRef = useRef<HTMLFormElement>(null);
+  const actionsRef = useRef<HTMLDivElement>(null);
+
+  // The step replaces the list in the same scrolling tab, so one picked from a
+  // row lower down opened scrolled past its own heading (320 px).
+  useLayoutEffect(() => {
+    const form = formRef.current;
+    const box = form && scrollingBox(form);
+    if (form && box) showInBox(box, form.getBoundingClientRect().top, form.getBoundingClientRect().top);
+  }, []);
+
+  // A refused password adds its message above the buttons, pushing them down:
+  // with the keyboard up the message ended above the visible part and the
+  // buttons half under Done, so nothing seemed to happen. Show both.
+  useEffect(() => {
+    if (!stepUp.error) return;
+    const reveal = () => {
+      const message = formRef.current?.querySelector('[role="alert"]');
+      const actions = actionsRef.current;
+      const box = message && actions && scrollingBox(actions);
+      if (message && actions && box) showInBox(box, message.getBoundingClientRect().top, actions.getBoundingClientRect().bottom);
+    };
+    reveal();
+    // Sending locks the field, which closes the keyboard: the sheet then
+    // stops scrolling as one, and its tab is back where it was. Once more
+    // after that, two frames on, when the sheet has been placed again.
+    const viewport = window.visualViewport;
+    let frame = 0;
+    const again = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => { frame = requestAnimationFrame(reveal); });
+    };
+    viewport?.addEventListener('resize', again);
+    const stop = window.setTimeout(() => viewport?.removeEventListener('resize', again), 1000);
+    return () => {
+      window.clearTimeout(stop);
+      viewport?.removeEventListener('resize', again);
+      cancelAnimationFrame(frame);
+    };
+  }, [stepUp.error]);
 
   async function submit() {
     setBusy(true);
@@ -292,6 +352,7 @@ function BackupStep({
 
   return (
     <form
+      ref={formRef}
       className="mb-2 space-y-4 px-1"
       onSubmit={(e) => {
         e.preventDefault();
@@ -341,9 +402,10 @@ function BackupStep({
         <StepUpFields
           stepUp={stepUp}
           reason={step.kind === 'download' ? 'The file holds every password it keeps.' : 'This changes the app itself.'}
+          inputClassName="pointer-coarse:h-11"
         />
       </fieldset>
-      <div className="flex gap-2">
+      <div ref={actionsRef} className="flex gap-2">
         <Button type="button" variant="outline" className="flex-1 pointer-coarse:h-11" disabled={busy} onClick={onDone}>
           Cancel
         </Button>
