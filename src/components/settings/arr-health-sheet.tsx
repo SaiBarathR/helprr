@@ -17,10 +17,12 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   ArrLogsPanel,
+  ArrPowerSection,
   ArrTasksPanel,
   arrSystemStatusQuery,
   type SystemService,
 } from '@/components/settings/arr-system-panels';
+import { ArrBackupsPanel } from '@/components/settings/arr-backups-panel';
 import type { ArrLogLevel, ArrSystemStatus } from '@/lib/arr-system';
 import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
@@ -124,8 +126,9 @@ const APP_NAME: Record<SystemService, string> = { sonarr: 'Sonarr', radarr: 'Rad
 /**
  * One Sonarr, Radarr or Lidarr instance's health checks, as its own System →
  * Status lists them, errors first. Opened from its Service status row or a
- * health push. An admin also gets its version and its System → Tasks and
- * Logs (Prowlarr opens there too, without health, which its own page shows).
+ * health push. An admin also gets its version, its System → Tasks (with
+ * restart and shut down), Logs and Backup (Prowlarr opens there too, without
+ * health, which its own page shows).
  */
 export function ArrHealthSheet({
   target,
@@ -154,6 +157,7 @@ export function ArrHealthSheet({
   // ("<instance>:<task>") and the log level. The level belongs to the instance it was
   // picked on, so another instance's Logs open unfiltered, like its tabs open on the first.
   const [running, setRunning] = useState<ReadonlySet<string>>(() => new Set());
+  const runs = { running, setRunning };
   const [pickedLevel, setPickedLevel] = useState<{ instanceId: string; level: ArrLogLevel } | null>(null);
   const logLevel: ArrLogLevel = pickedLevel && pickedLevel.instanceId === target?.instanceId ? pickedLevel.level : 'warn';
   const checks = visibleHealthChecks(query.data);
@@ -207,6 +211,7 @@ export function ArrHealthSheet({
               {healthService && <TabsTrigger value="health">Health</TabsTrigger>}
               <TabsTrigger value="tasks">Tasks</TabsTrigger>
               <TabsTrigger value="logs">Logs</TabsTrigger>
+              <TabsTrigger value="backups">Backups</TabsTrigger>
             </TabsList>
           </div>
           {healthService && (
@@ -216,7 +221,8 @@ export function ArrHealthSheet({
             </TabsContent>
           )}
           <TabsContent value="tasks" className="min-h-0 overflow-y-auto px-4">
-            <ArrTasksPanel instanceId={target.instanceId} running={running} setRunning={setRunning} />
+            <ArrTasksPanel instanceId={target.instanceId} runs={runs} />
+            <ArrPowerSection instanceId={target.instanceId} appName={APP_NAME[target.service]} />
           </TabsContent>
           <TabsContent value="logs" className="min-h-0 overflow-y-auto px-4">
             <ArrLogsPanel
@@ -224,6 +230,9 @@ export function ArrHealthSheet({
               level={logLevel}
               onLevelChange={(level) => setPickedLevel({ instanceId: target.instanceId, level })}
             />
+          </TabsContent>
+          <TabsContent value="backups" className="min-h-0 overflow-y-auto px-4">
+            <ArrBackupsPanel instanceId={target.instanceId} appName={APP_NAME[target.service]} runs={runs} />
           </TabsContent>
         </Tabs>
         <DrawerFooter className="mx-auto w-full max-w-md">

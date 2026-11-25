@@ -1,6 +1,7 @@
 // Settings → Service status, for admins: each Sonarr, Radarr, Lidarr and
-// Prowlarr instance's version, scheduled tasks and recent warnings, as its own
-// System pages show them. Shared by the routes and the sheet; no server imports.
+// Prowlarr instance's version, scheduled tasks, recent warnings and backups,
+// and restarting or shutting it down, as its own System pages offer them.
+// Shared by the routes and the sheet; no server imports.
 
 export type SystemServiceType = 'SONARR' | 'RADARR' | 'LIDARR' | 'PROWLARR';
 
@@ -116,3 +117,34 @@ export interface ArrLogPage {
 }
 
 export const ARR_LOG_PAGE_SIZE = 50;
+
+/** Restart or shut down, as the app's System → Status offers them. */
+export type ArrPowerAction = 'restart' | 'shutdown';
+
+export function isArrPowerAction(value: unknown): value is ArrPowerAction {
+  return value === 'restart' || value === 'shutdown';
+}
+
+/** One backup as the app's System → Backup lists it, without its path. */
+export interface ArrBackup {
+  /** The app's own id for it (a hash of its type and name). */
+  id: number;
+  name: string;
+  type: 'scheduled' | 'manual' | 'update';
+  size: number;
+  time: string;
+}
+
+/**
+ * What an admin types to restore or delete a backup, checked again by the
+ * route. Fixed words, not the backup's name, so they are easy to type on a phone.
+ */
+export const BACKUP_RESTORE_PHRASE = 'RESTORE';
+export const BACKUP_DELETE_PHRASE = 'DELETE';
+
+/**
+ * The largest backup file Helprr takes to restore. Helprr's request proxy
+ * keeps at most 10 MiB of a request body and silently drops the rest, so a
+ * larger file would arrive cut short; the form fields take the few bytes left.
+ */
+export const BACKUP_UPLOAD_MAX_BYTES = 10 * 1024 * 1024 - 64 * 1024;

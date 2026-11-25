@@ -59,7 +59,7 @@ export const queryKeys = {
   settings: () => ['settings'] as const,
   adminUpdate: () => ['admin', 'update-check'] as const,
   /** Admin-only System pages of one Sonarr/Radarr/Lidarr/Prowlarr instance: version, tasks, logs (by level). */
-  arrSystem: (kind: 'status' | 'tasks' | 'logs', instanceId: string, level?: string) =>
+  arrSystem: (kind: 'status' | 'tasks' | 'logs' | 'backups', instanceId: string, level?: string) =>
     (level ? ['admin', 'arr-system', kind, instanceId, level] : ['admin', 'arr-system', kind, instanceId]) as readonly string[],
   notifications: () => ['notifications'] as const,
   notificationSubscriptions: () => ['notifications', 'subscriptions'] as const,

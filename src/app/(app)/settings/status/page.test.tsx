@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   statuses: [] as unknown[],
   systemUrls: [] as string[],
   posts: [] as Array<{ url: string; body: unknown }>,
+  sent: [] as Array<{ url: string; method: string; body: unknown }>,
+  refusePassword: false,
 }));
 vi.mock('@/components/permission-provider', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/components/permission-provider')>()),
@@ -53,6 +55,8 @@ beforeEach(() => {
   mocks.statuses = statuses;
   mocks.systemUrls = [];
   mocks.posts = [];
+  mocks.sent = [];
+  mocks.refusePassword = false;
   // vaul captures the pointer on a press inside the sheet; jsdom has no pointer capture.
   Element.prototype.setPointerCapture ??= () => {};
   Element.prototype.releasePointerCapture ??= () => {};
@@ -85,9 +89,27 @@ function logEntry(id: number) {
   return { id, time: '2026-11-24T13:47:56.000Z', level: id === 1 ? 'error' : 'warn', logger: 'Torznab', message: `Entry ${id}`, exception: '' };
 }
 
+const BACKUPS = [
+  { id: 222, name: 'sonarr_backup_v4.0.20.3014_2026.11.25_10.49.27.zip', type: 'manual', size: 16008, time: '2026-11-25T10:49:27.000Z' },
+  { id: 111, name: 'sonarr_backup_v4.0.20.3014_2026.11.20_03.00.00.zip', type: 'scheduled', size: 725817, time: '2026-11-20T03:00:00.000Z' },
+];
+
 function systemResponse(url: string, init?: RequestInit): Response {
   mocks.systemUrls.push(url);
   const instance = new URL(url, 'http://x').searchParams.get('instanceId') ?? '';
+  if (url.startsWith('/api/admin/arr-system/backups/upload')) {
+    const form = init?.body as FormData;
+    mocks.sent.push({ url, method: init?.method ?? 'GET', body: Object.fromEntries([...form.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : `file:${(v as File).name}`])) });
+    return new Response(JSON.stringify({ ok: true, restarted: false }));
+  }
+  if (url.startsWith('/api/admin/arr-system/power') || /\/backups\/\d+/.test(url)) {
+    mocks.sent.push({ url, method: init?.method ?? 'GET', body: JSON.parse(String(init?.body)) });
+    if (mocks.refusePassword) {
+      return new Response(JSON.stringify({ error: 'Current password is incorrect', field: 'currentPassword' }), { status: 403 });
+    }
+    return new Response(JSON.stringify({ ok: true }));
+  }
+  if (url.startsWith('/api/admin/arr-system/backups')) return new Response(JSON.stringify(BACKUPS));
   if (url.startsWith('/api/admin/arr-system/status')) return new Response(JSON.stringify(SYSTEM[instance] ?? {}));
   if (url.startsWith('/api/admin/arr-system/tasks/')) {
     return new Response(JSON.stringify({ id: 9, name: 'CheckHealth', status: 'completed' }));
@@ -255,8 +277,86 @@ describe('Service status, for admins: versions, tasks and logs', () => {
     const sheet = await screen.findByRole('dialog');
     expect(within(sheet).getByText('Sonarr · Anime health')).toBeTruthy();
     expect(within(sheet).queryByRole('tab')).toBeNull();
+    expect(within(sheet).queryByRole('button', { name: /Restart|Shut down/ })).toBeNull();
     expect(screen.queryByText(/update available/)).toBeNull();
     expect(screen.queryByRole('button', { name: /Prowlarr/ })).toBeNull();
     expect(mocks.systemUrls).toEqual([]);
+  });
+});
+
+describe('Service status, for admins: restart, shut down and backups', () => {
+  async function openSheet() {
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Anime.*2 health issues/ }));
+    return screen.findByRole('dialog');
+  }
+
+  it('shuts down only after the confirmation, which says it cannot be undone from Helprr', async () => {
+    const sheet = await openSheet();
+    await userEvent.click(within(sheet).getByRole('tab', { name: 'Tasks' }));
+    await userEvent.click(await within(sheet).findByRole('button', { name: 'Shut down Sonarr' }));
+    const confirm = await screen.findByRole('alertdialog');
+    expect(within(confirm).getByText(/can't be undone from Helprr/)).toBeTruthy();
+    expect(mocks.sent).toEqual([]);
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+    expect(mocks.sent).toEqual([]);
+
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Restart Sonarr' }));
+    await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Restart' }));
+    await waitFor(() => expect(mocks.sent).toEqual([
+      { url: '/api/admin/arr-system/power?instanceId=son-2', method: 'POST', body: { action: 'restart' } },
+    ]));
+  });
+
+  it('deletes a backup only with the typed word and the password, and shows a wrong password under it', async () => {
+    const sheet = await openSheet();
+    await userEvent.click(within(sheet).getByRole('tab', { name: 'Backups' }));
+    expect(await within(sheet).findByText('Manual backup')).toBeTruthy();
+    expect(within(sheet).getByText('Scheduled backup')).toBeTruthy();
+    await userEvent.click(within(sheet).getAllByRole('button', { name: /^Actions for the manual backup/ })[0]);
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+
+    const submit = within(sheet).getByRole('button', { name: 'Delete' }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    await userEvent.type(within(sheet).getByPlaceholderText('DELETE'), 'delete');
+    expect(submit.disabled).toBe(true);
+    await userEvent.type(within(sheet).getByLabelText('Your current password'), 'pw');
+    expect(submit.disabled).toBe(false);
+
+    mocks.refusePassword = true;
+    await userEvent.click(submit);
+    expect(await within(sheet).findByRole('alert')).toHaveProperty('textContent', 'Current password is incorrect');
+    expect(mocks.sent).toEqual([
+      { url: '/api/admin/arr-system/backups/222?instanceId=son-2', method: 'DELETE', body: { currentPassword: 'pw', confirm: 'DELETE' } },
+    ]);
+
+    mocks.refusePassword = false;
+    await userEvent.type(within(sheet).getByLabelText('Your current password'), '2');
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Delete' }));
+    // Back to the list once it is done.
+    expect(await within(sheet).findByText('Back up now')).toBeTruthy();
+    expect(mocks.sent).toHaveLength(2);
+  });
+
+  it('restores from a picked zip with the word and password, and turns away other files in the browser', async () => {
+    const sheet = await openSheet();
+    await userEvent.click(within(sheet).getByRole('tab', { name: 'Backups' }));
+    await within(sheet).findByText('Manual backup');
+    const input = within(sheet).getByLabelText('Backup file to restore') as HTMLInputElement;
+    await userEvent.upload(input, new File(['hello'], 'notes.txt', { type: 'text/plain' }), { applyAccept: false });
+    expect(within(sheet).queryByText('Restore from this file?')).toBeNull();
+
+    await userEvent.upload(input, new File(['PK'], 'sonarr_backup.zip', { type: 'application/zip' }));
+    expect(await within(sheet).findByText('Restore from this file?')).toBeTruthy();
+    await userEvent.type(within(sheet).getByPlaceholderText('RESTORE'), 'RESTORE');
+    await userEvent.type(within(sheet).getByLabelText('Your current password'), 'pw');
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Restore' }));
+    await waitFor(() => expect(mocks.sent).toEqual([{
+      url: '/api/admin/arr-system/backups/upload?instanceId=son-2',
+      method: 'POST',
+      // No code field without two-step sign-in.
+      body: { confirm: 'RESTORE', currentPassword: 'pw', file: 'file:sonarr_backup.zip' },
+    }]));
+    expect(await within(sheet).findByText('Back up now')).toBeTruthy();
   });
 });

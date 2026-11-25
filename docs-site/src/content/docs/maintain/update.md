@@ -104,6 +104,15 @@ update the app the way you installed it. Tap the app's row for its **Tasks** (ea
 scheduled task's interval and last and next run, with **Run** for the ones that can't
 install an update or delete files or history) and **Logs** (its recent warnings and
 errors, with addresses cut to their host and keys, passwords and magnet links removed).
+The **Tasks** tab ends with **Restart** and **Shut down**, each after a confirmation.
+Helprr can't start an app it shut down: start it where it runs (some Docker images and
+service managers start it again by themselves). The **Backups** tab lists the app's own
+backups, with **Back up**, **Download**, **Restore**, **Delete** and **Restore from a
+file** (a zip of up to 9.9 MB from the app's System → Backup; restore a bigger one in the
+app). A backup holds the app's API key and every password it keeps, so downloading,
+restoring and deleting ask for your Helprr password (and a code if two-step sign-in is
+on), and restoring and deleting also ask you to type a word. A restore replaces
+everything changed in the app since the backup and restarts it.
 
 After an update, everyone sees a **What's new** card once, the first time they open
 Helprr, with the notes for each release since the version they last saw. Closing it

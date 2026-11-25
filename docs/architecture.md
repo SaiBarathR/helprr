@@ -188,6 +188,28 @@ rebuilt from id, time, level, logger, message and exception, each redacted
 (URLs to origins, credentials, magnets, the instance's key, bare 32-hex words)
 and then cut short. The version check never installs anything, and no push
 announces an app update.
+The sheet's Tasks tab ends with Restart and Shut down
+(`/api/admin/arr-system/power`, each after a confirmation), and its Backups tab
+lists the app's backups (`/backups`, rebuilt from id, name, type, size and time;
+never the app's path). Download, Restore and Delete (`/backups/[id]/download`,
+`/backups/[id]/restore`, `DELETE /backups/[id]`) and Restore from a file
+(`/backups/upload`) take the admin's password and, with two-step sign-in on, a
+code (`confirmAdminStepUp`); restore and delete also take a typed word, checked
+again by the route. The backup is looked up by id in a fresh list, and its file
+path is rebuilt from the checked type and name. A download streams through
+with `no-store` and no logged body (the zip holds the app's API key and every
+password it keeps). An uploaded file is refused above
+`BACKUP_UPLOAD_MAX_BYTES`: the request proxy keeps only 10 MiB of a body and
+silently drops the rest, so the route also requires a `Content-Length` within
+that. It must be a zip holding this app's own database (another app's backup
+would swap in that app's `config.xml`), and goes to the app from memory. A
+restore restarts the app, as the app's own page does. Each step is a
+`SERVICE_UPDATED` security-audit row naming the step and the backup. A restore
+or delete the app took but never answered (a timeout, a proxy cutting the
+connection) may still have happened, so it is recorded as sent with no answer
+and the admin is told so (504); one that never reached the app is not
+recorded. Restart and shutdown take no password, so the power route accepts
+JSON only (a cross-site form can't send it without a preflight).
 One upstream failure must not cancel every other source. Sonarr, Radarr, and
 Lidarr instances share two polling slots per cycle; an instance that fails twice
 in a row is skipped (without taking a slot) for 30 seconds, doubling to 5

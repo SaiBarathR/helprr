@@ -660,6 +660,27 @@ calls its update check `ApplicationCheckUpdate`; Sonarr, Lidarr and Prowlarr
 messages and exceptions reach 28 KB. `POST /command {name}` with `CheckHealth` was run
 once on the dummy Sonarr and completed.
 
+### Restart, shut down and backups (2026-11-25)
+
+Live on disposable `lscr.io/linuxserver` containers only: Sonarr `4.0.20.3014`, Radarr
+`7.0.3.10918`, Lidarr `3.1.6.5079` and Prowlarr `3.1.0.5799`; the backup list alone was
+also read on the dummy Sonarr and Radarr. `POST /api/{v3,v1}/system/restart` and
+`/system/shutdown` answer before the app stops. In the linuxserver images s6 starts
+the app again after a shutdown, so there it acts as a restart. `GET /system/backup`
+lists `id` (a positive 31-bit hash of type and name), `name`, `path`
+(`/backup/<type>/<name>`, without the URL base), `type` (`scheduled`, `manual`,
+`update`), `size` and `time`. The file is served at that path under the URL base and
+takes the `X-Api-Key` header; it is a zip of `config.xml`, `<app>.db` and `INFO`.
+`POST /command {name: Backup}` makes a `manual` backup. `DELETE /system/backup/{id}`
+deletes one. `POST /system/backup/restore/{id}` and multipart `POST
+/system/backup/restore/upload` (any field name; the app checks only the extension:
+`.zip`, `.db` or `.xml`) answer `{restartRequired: true}`: `config.xml` is moved into
+place at once and the database on the next start. A zip with neither file fails, but
+one with only `config.xml` (another app's backup) is still taken: a Radarr backup sent
+to the disposable Sonarr put Radarr's port in its `config.xml`. That is why Helprr
+checks for the app's own database first. Restores of a listed backup and of an
+uploaded one were checked by a tag added after the backup being gone after the restart.
+
 ### qBittorrent folders and file renames (2026-11-25)
 
 Live on a disposable qBittorrent `5.1.4` (Web API `2.11.4`).
