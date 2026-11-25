@@ -1184,7 +1184,16 @@ to its instance (`?instance=`), groups per instance, and sums the downloads badg
 the dashboard widget (`summary?view=counters&instanceId=all`), the status API,
 Insights, global search and the cleanup scope options cover every instance. The
 bandwidth schedule applies to every instance and tracks what it applied per
-instance. The cleaners list every instance (`src/lib/cleanup/torrent-sources.ts`):
+instance. Each rule's `target` says which limits it sets: `global` (the default
+for rules saved before the choice) writes `dl_limit`/`up_limit` only, so it waits
+while alternative speed mode is on; `active` reads `transfer/speedLimitsMode`
+each cycle and writes `alt_dl_limit`/`alt_up_limit` while that mode is on, the
+regular ones otherwise. Before the first write to the alternative limits it keeps
+the user's own in Redis (`helprr:qbt:bandwidth-saved-alt`, a field per instance,
+no expiry, outside the purgeable cache keys) and writes nothing if that fails; they
+are put back when the rule ends, the mode goes back to normal, or the next rule
+sets the global limits. A restarted process reads that hash before writing or
+releasing anything, so it never takes a rule's values for the user's. The cleaners list every instance (`src/lib/cleanup/torrent-sources.ts`):
 each torrent carries its `qbitInstanceId` into the decision, the preview binding,
 the revalidation, the delete and its audit row; one instance that cannot list
 stops the cycle (its strikes would look orphaned), and a hash two instances list
@@ -1268,6 +1277,15 @@ private tracker can put a passkey link: an admin gets them as written, anyone el
 with the tracker-message cleaning above plus links written without a scheme cut to
 their host (`torrentTextForViewer`), and the drawer shows both as plain text.
 
+Export (`GET /api/qbittorrent/[hash]/export?instanceId=`) hands an admin the
+torrent's `.torrent` from qBittorrent's `torrents/export`, with the full announce
+URLs a passkey is in, so no one else may: `requireAdmin`, before the instance is
+checked. The body must parse as a torrent (25 MB at most) and goes out as
+`application/x-bittorrent` with `Cache-Control: private, no-store` (the service
+worker leaves `/api` reads to the network), named after the torrent as qBittorrent
+lists it, made safe to save (`src/lib/torrent-export-name.ts`), in both `filename`
+and `filename*`. qBittorrent's 409 (no metadata yet) becomes a 409 that says so.
+
 A peer's IP address is personal data, and qBittorrent's `sync/torrentPeers` keys
 every peer by `ip:port`. The peers route (`GET /api/qbittorrent/[hash]/peers?cursor=`,
 `torrents.view`) rebuilds each peer from an allow-list (`src/lib/qbittorrent-peers.ts`):
@@ -1300,12 +1318,14 @@ is fetched by Helprr, not handed to qBittorrent's `urls=`: qBittorrent answers
 "Ok." and drops a failed download quietly, so only a fetched file gives the info
 hash that lets the route say "already there", confirm the add and offer Choose
 Files. The fetch (`src/lib/torrent-link-fetch.ts`, on `src/lib/outbound-url.ts`)
-reaches public addresses only, for every user (no LAN, loopback, link-local,
-metadata or reserved address, checked on the name and on every resolved address
-at connect time), http and https only, no proxy and no credentials, at most three
-redirects each checked again (a redirect to a magnet is that magnet; to any other
-scheme it fails), a 15-second deadline and a 10 MB cap; the bytes then go to
-qBittorrent as a file. Every line is checked before anything is fetched or added.
+follows the notification channels' address rules, `{ allowPrivate: role === 'admin' }`:
+an admin may reach LAN, loopback and Tailscale addresses (a Prowlarr or Jackett at
+home), anyone else public addresses only, and nobody a link-local, metadata or
+reserved address; checked on the name and on every resolved address at connect
+time. http and https only, no proxy and no credentials, at most three redirects
+each checked again under the same user's rules (a redirect to a magnet is that
+magnet; to any other scheme it fails), a 15-second deadline and a 10 MB cap; the
+bytes then go to qBittorrent as a file. Every line is checked before anything is fetched or added.
 One item answers as a single add always has (200 with its hash, 409, or the error);
 several answer 200 with a result per non-blank line or file, in order (`added`,
 `exists`, or `failed` with a fixed phrase), and never repeat a link. Request bodies

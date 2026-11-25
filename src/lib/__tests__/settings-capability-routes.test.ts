@@ -35,7 +35,7 @@ vi.mock('@/lib/cache/admin', () => ({ disableCachingAndPurgeCaches: mocks.purge 
 vi.mock('@/lib/cache/state', () => ({ setCachedAnilistTtlSettings: vi.fn(), setCachedCacheImagesEnabled: vi.fn() }));
 vi.mock('@/lib/logger', () => ({ configureLogger: vi.fn() }));
 vi.mock('@/lib/api-logger', () => ({ configureApiLogging: vi.fn(), withApiLogging: (handler: unknown) => handler }));
-vi.mock('@/lib/timezone', () => ({ getEnvTimeZone: () => 'UTC', isValidTimeZone: () => true, setAppTimeZone: vi.fn() }));
+vi.mock('@/lib/timezone', () => ({ getEnvTimeZone: () => 'UTC', isValidTimeZone: () => true, setAppTimeZone: vi.fn(), toZonedDate: (date: Date) => date }));
 vi.mock('@/lib/security-audit', () => ({ recordSettingsUpdated: mocks.audit }));
 vi.mock('@/lib/app-settings', () => ({
   getOrCreateAppSettings: vi.fn(async () => ({ qbtBandwidthSchedule: { rules: [] }, timeZone: 'UTC' })),
@@ -184,6 +184,30 @@ describe('the bandwidth schedule for Settings → Downloads', () => {
     expect((await getSchedule()).status).toBe(200);
     expect((await putSchedule(schedule())).status).toBe(200);
     expect(mocks.audit).toHaveBeenCalledWith(expect.anything(), mocks.user, 'Bandwidth schedule', ['qbtBandwidthSchedule']);
+  });
+
+  const rule = {
+    id: 'r1', name: 'Night', enabled: true, daysOfWeek: [0, 6], startHour: 22, startMinute: 0,
+    endHour: 6, endMinute: 0, downloadLimitKbps: 300, uploadLimitKbps: 100,
+  };
+  const save = (rules: unknown[]) => putSchedule(new NextRequest('http://localhost/api/qbittorrent/bandwidth-schedule', {
+    method: 'PUT',
+    body: JSON.stringify({ rules }),
+  }));
+
+  it('keeps which limits each rule sets, and a rule without the choice on the global limits', async () => {
+    mocks.user = member('settings.downloads');
+    const res = await save([{ ...rule, target: 'active' }, { ...rule, id: 'r2' }]);
+    expect(res.status).toBe(200);
+    expect((await res.json()).schedule.rules.map((r: { target: string }) => r.target)).toEqual(['active', 'global']);
+    expect(mocks.upsert.mock.calls[0][0].update.qbtBandwidthSchedule.rules.map((r: { target: string }) => r.target))
+      .toEqual(['active', 'global']);
+  });
+
+  it.each(['alternative', '', null, 1])('refuses a rule that sets %j', async (target) => {
+    mocks.user = member('settings.downloads');
+    expect((await save([{ ...rule, target }])).status).toBe(400);
+    expect(mocks.upsert).not.toHaveBeenCalled();
   });
 
   it('refuses without it, and for a neighbouring settings page', async () => {

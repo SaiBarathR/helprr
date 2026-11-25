@@ -15,7 +15,8 @@ import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { Switch } from '@/components/ui/switch';
 import { TimePicker } from '@/components/ui/time-picker';
 import { Badge } from '@/components/ui/badge';
-import type { BandwidthRule } from '@/lib/bandwidth-scheduler/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { BandwidthRule, BandwidthTarget } from '@/lib/bandwidth-scheduler/types';
 import { MAX_KBPS } from '@/lib/bandwidth-scheduler/types';
 
 interface ScheduleResponse {
@@ -26,6 +27,15 @@ interface ScheduleResponse {
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+const TARGET_OPTIONS: Array<{ value: BandwidthTarget; label: string; hint: string }> = [
+  { value: 'global', label: 'Global limits', hint: 'Waits while alternative speed limits are on.' },
+  {
+    value: 'active',
+    label: 'Whichever mode is active',
+    hint: 'Sets the alternative limits while they are on, then puts yours back.',
+  },
+];
 
 // crypto.randomUUID() only exists in secure contexts. On a plain-http install
 // it would throw and Add rule would do nothing; the id only has to be unique.
@@ -47,6 +57,7 @@ function newRule(): BandwidthRule {
     endMinute: 0,
     downloadLimitKbps: 5000,
     uploadLimitKbps: 1000,
+    target: 'global',
   };
 }
 
@@ -183,8 +194,9 @@ export default function DownloadsSettingsPage() {
         <p className="text-sm text-muted-foreground mt-1">
           Time-of-day bandwidth rules applied to qBittorrent. Times are in your configured
           timezone <span className="font-mono">({timeZone})</span>. Rules are evaluated top-to-bottom — the
-          first matching rule wins. Rules set the global limits; while qBittorrent&apos;s alternative speed
-          limits are on, those apply instead.
+          first matching rule wins. Each rule sets either the global limits, which wait while
+          qBittorrent&apos;s alternative speed limits are on, or the limits of whichever mode is active; your own
+          alternative limits come back when the rule ends.
         </p>
       </div>
 
@@ -412,6 +424,27 @@ function RuleCard({ rule, isActive, onChange, onRemove }: RuleCardProps) {
           <div className="text-[11px] text-muted-foreground/80">
             {formatKbps(rule.uploadLimitKbps)} · 0 = unlimited
           </div>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="tracked-caps text-[10px] text-muted-foreground">
+          Sets
+        </Label>
+        <Select value={rule.target} onValueChange={(v) => onChange({ target: v as BandwidthTarget })}>
+          <SelectTrigger className="h-9 w-full" aria-label="Which limits the rule sets">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TARGET_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="text-[11px] text-muted-foreground/80">
+          {TARGET_OPTIONS.find((o) => o.value === rule.target)?.hint}
         </div>
       </div>
 

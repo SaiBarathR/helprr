@@ -10,8 +10,12 @@ vi.mock('@/components/ui/drawer', () => {
   const Pass = ({ children }: { children?: ReactNode }) => <>{children}</>;
   return { Drawer: Pass, DrawerContent: Pass, DrawerHeader: Pass, DrawerTitle: Pass };
 });
-const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), loading: vi.fn(() => 't1'), dismiss: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
+const me = vi.hoisted(() => ({ role: 'member' as 'admin' | 'member' }));
+vi.mock('@/components/permission-provider', () => ({ useMe: () => ({ role: me.role }) }));
+const saveFile = vi.hoisted(() => vi.fn(async () => 'saved'));
+vi.mock('@/lib/save-file', () => ({ saveFile }));
 
 import { TorrentDetailDrawer, type TorrentDetailData } from '../torrent-detail-drawer';
 
@@ -39,13 +43,18 @@ function renderDrawer(over: Partial<TorrentDetailData> = {}, push = vi.fn()) {
       detailTorrent={null}
       canBandwidthTorrents={false}
       canManageTorrents={false}
+      instanceId="q2"
       router={{ push }}
     />,
   );
   return push;
 }
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
+  me.role = 'member';
+});
 
 describe('TorrentDetailDrawer: torrent info', () => {
   it('shows the hash, private flag, pieces, creator, creation date, comment, last seen complete and next reannounce', () => {
@@ -87,5 +96,38 @@ describe('TorrentDetailDrawer: torrent info', () => {
     const push = renderDrawer();
     await userEvent.click(screen.getByRole('button', { name: 'View Peers' }));
     expect(push).toHaveBeenCalledWith(`/torrents/${HASH}/peers?name=ubuntu-24.04.iso`);
+  });
+});
+
+describe('TorrentDetailDrawer: Export .torrent', () => {
+  it('is not offered to a member', () => {
+    renderDrawer();
+    expect(screen.queryByRole('button', { name: 'Export .torrent' })).toBeNull();
+  });
+
+  it("downloads an admin's export from the torrent's own qBittorrent, named as the server says", async () => {
+    me.role = 'admin';
+    const fetch = vi.fn(async () => new Response(new Uint8Array([0x64, 0x65]), {
+      status: 200,
+      headers: {
+        'content-type': 'application/x-bittorrent',
+        'content-disposition': `attachment; filename="ubuntu_.torrent"; filename*=UTF-8''ubuntu%E2%80%9324.torrent`,
+      },
+    }));
+    vi.stubGlobal('fetch', fetch);
+    renderDrawer();
+    await userEvent.click(screen.getByRole('button', { name: 'Export .torrent' }));
+    await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
+    expect(fetch).toHaveBeenCalledWith(`/api/qbittorrent/${HASH}/export?instanceId=q2`, { cache: 'no-store' });
+    expect((saveFile.mock.calls[0] as unknown[])[1]).toBe('ubuntu–24.torrent');
+  });
+
+  it("says why when there's no file yet", async () => {
+    me.role = 'admin';
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'qBittorrent has no .torrent file for it until its metadata has downloaded' }, { status: 409 })));
+    renderDrawer();
+    await userEvent.click(screen.getByRole('button', { name: 'Export .torrent' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('qBittorrent has no .torrent file for it until its metadata has downloaded', { id: 't1' }));
+    expect(saveFile).not.toHaveBeenCalled();
   });
 });

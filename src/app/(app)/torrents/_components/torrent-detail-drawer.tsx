@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { Copy, FolderOpen, Hash, Loader2, Pencil, SlidersHorizontal, Users } from 'lucide-react';
+import { Copy, Download, FolderOpen, Hash, Loader2, Pencil, SlidersHorizontal, Users } from 'lucide-react';
 import type { QBittorrentTorrent } from '@/types';
 import type { TorrentFile, TorrentTracker } from '@/lib/qbittorrent-client';
 import { formatSpeedLimit } from './speed-limit-input';
@@ -12,6 +12,10 @@ import { formatShareLimit } from './share-limits-section';
 import { realTrackers, trackerCount, trackerStatusLabel } from './torrent-trackers';
 import { formatBytes, formatEta, formatSeedingTime, formatSpeed, torrentSizeUnknown } from './torrent-list';
 import { formatDateTime } from '@/lib/date-format';
+import { useMe } from '@/components/permission-provider';
+import { withInstanceQuery } from '@/lib/query-fetch';
+import { saveFile } from '@/lib/save-file';
+import { filenameFromDisposition } from '@/lib/torrent-export-name';
 
 export interface TorrentDetailData {
   properties: Record<string, unknown>;
@@ -34,6 +38,24 @@ async function copyText(text: string, what: string) {
   }
 }
 
+/** Downloads the torrent's .torrent file (admins only, on the server too). */
+async function exportTorrent(hash: string, instanceId: string | undefined) {
+  const toastId = toast.loading('Exporting .torrent…');
+  try {
+    const res = await fetch(withInstanceQuery(`/api/qbittorrent/${hash}/export`, instanceId), { cache: 'no-store' });
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+      toast.error(payload?.error || 'Failed to export the torrent', { id: toastId });
+      return;
+    }
+    const filename = filenameFromDisposition(res.headers.get('content-disposition'), `${hash}.torrent`);
+    toast.dismiss(toastId);
+    await saveFile(await res.blob(), filename);
+  } catch {
+    toast.error('Failed to export the torrent', { id: toastId });
+  }
+}
+
 /** One torrent's details: transfer, session, settings (read-only), timing, network, torrent info, magnet, files and trackers (read-only). */
 export function TorrentDetailDrawer({
   detailHash,
@@ -45,6 +67,7 @@ export function TorrentDetailDrawer({
   detailTorrent,
   canBandwidthTorrents,
   canManageTorrents,
+  instanceId,
   router,
 }: {
   detailHash: string | null;
@@ -56,8 +79,12 @@ export function TorrentDetailDrawer({
   detailTorrent: QBittorrentTorrent | null | undefined;
   canBandwidthTorrents: boolean;
   canManageTorrents: boolean;
+  /** The qBittorrent the torrent is in (undefined: the default one). */
+  instanceId: string | undefined;
   router: { push: (href: string) => void };
 }) {
+  // The .torrent carries the full tracker URLs, which only an admin sees.
+  const canExport = useMe()?.role === 'admin';
   const trackers = detailData ? realTrackers(detailData.trackers) : [];
   return (
     <Drawer
@@ -247,6 +274,17 @@ export function TorrentDetailDrawer({
                       <Hash className="mr-2 h-3.5 w-3.5" />
                       Copy Hash
                     </Button>
+                    {canExport && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="col-span-2 text-xs"
+                        onClick={() => void exportTorrent(detailHash, instanceId)}
+                      >
+                        <Download className="mr-2 h-3.5 w-3.5" />
+                        Export .torrent
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

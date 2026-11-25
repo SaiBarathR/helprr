@@ -759,6 +759,7 @@ function TorrentsView({ qbit }: { qbit: ReturnType<typeof useQbitInstance> }) {
         detailTorrent={detailTorrent}
         canBandwidthTorrents={canBandwidthTorrents}
         canManageTorrents={canManageTorrents}
+        instanceId={instanceId}
         router={router}
       />
 
