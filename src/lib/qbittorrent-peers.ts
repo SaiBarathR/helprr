@@ -70,12 +70,16 @@ function notAPeer(ip: string, family: number): string | null {
     if (first === 0) return UNSPECIFIED;
     return first >= 224 ? MULTICAST : null;
   }
-  const lower = ip.toLowerCase();
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
-  if (mapped) return notAPeer(mapped[1], 4);
-  if (lower === '::1') return LOOPBACK;
-  if (lower === '::') return UNSPECIFIED;
-  return lower.startsWith('ff') ? MULTICAST : null;
+  // The shortest form, so 0:0:0:0:0:0:0:1 is ::1 and ::ffff:127.0.0.1 is ::ffff:7f00:1.
+  const short = new URL(`http://[${ip}]`).hostname.slice(1, -1);
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(short);
+  if (mapped) {
+    const [high, low] = [parseInt(mapped[1], 16), parseInt(mapped[2], 16)];
+    return notAPeer(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`, 4);
+  }
+  if (short === '::1') return LOOPBACK;
+  if (short === '::') return UNSPECIFIED;
+  return short.startsWith('ff') ? MULTICAST : null;
 }
 const LOOPBACK = 'a loopback address is qBittorrent’s own computer, not a peer';
 const UNSPECIFIED = 'an unspecified address is not a peer’s';

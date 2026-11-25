@@ -220,6 +220,11 @@ describe('POST /api/qbittorrent/[hash]/peers (add)', () => {
     ['127.0.0.1:5948', 'Can’t add 127.0.0.1:5948: a loopback address is qBittorrent’s own computer, not a peer.'],
     ['[::1]:22', 'Can’t add [::1]:22: a loopback address is qBittorrent’s own computer, not a peer.'],
     ['[::ffff:127.0.0.1]:22', 'Can’t add [::ffff:127.0.0.1]:22: a loopback address is qBittorrent’s own computer, not a peer.'],
+    // Longer and hex spellings of the same addresses got through before.
+    ['[0:0:0:0:0:0:0:1]:22', 'Can’t add [0:0:0:0:0:0:0:1]:22: a loopback address is qBittorrent’s own computer, not a peer.'],
+    ['[::FFFF:7f00:1]:22', 'Can’t add [::FFFF:7f00:1]:22: a loopback address is qBittorrent’s own computer, not a peer.'],
+    ['[0::]:6881', 'Can’t add [0::]:6881: an unspecified address is not a peer’s.'],
+    ['[::ffff:e001:101]:6881', 'Can’t add [::ffff:e001:101]:6881: a multicast or broadcast address is not one peer’s.'],
     ['0.0.0.0:6881', 'Can’t add 0.0.0.0:6881: an unspecified address is not a peer’s.'],
     ['239.1.1.1:6881', 'Can’t add 239.1.1.1:6881: a multicast or broadcast address is not one peer’s.'],
     ['host.example:6881', 'Not an IP:port: host.example:6881. Write IPv6 as [address]:port.'],

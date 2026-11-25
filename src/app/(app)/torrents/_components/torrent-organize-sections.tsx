@@ -273,7 +273,8 @@ export function TorrentQueueSection({
   const queueingOff = options.data?.queueingEnabled === false;
   // qBittorrent queues only unfinished torrents and ignores a move of any other,
   // which still answered "Moved to the bottom of the queue".
-  const noneQueued = !queueingOff && positions.length > 0 && positions.every((position) => position <= 0);
+  // Only once queueing is known to be on: with it off every position is 0 too.
+  const noneQueued = options.data?.queueingEnabled === true && positions.length > 0 && positions.every((position) => position <= 0);
   const position = positions.length === 1 ? positions[0] : undefined;
 
   const move = async ({ move: action, done }: (typeof QUEUE_MOVES)[number]) => {

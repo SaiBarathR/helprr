@@ -57,8 +57,8 @@ export function TorrentTagChips({ tags, max, className, yieldFirst = false }: { 
     <span
       className={cn(
         'relative flex min-w-0 items-center gap-1',
-        // A small chip is 2rem; "+N" and the gap about 1.75rem more.
-        yieldFirst && (more > 0 ? 'shrink-[100] min-w-[3.75rem]' : 'shrink-[100] min-w-8'),
+        // A small chip is 2rem; a second chip or "+N" and the gap about 2.25rem more.
+        yieldFirst && (shown.length > 1 || more > 0 ? 'shrink-[100] min-w-[4.25rem]' : 'shrink-[100] min-w-8'),
         className,
       )}
       title={tags.join(', ')}
