@@ -449,7 +449,7 @@ function TorrentsView({ qbit }: { qbit: ReturnType<typeof useQbitInstance> }) {
   const openOrganize = useCallback(() => {
     setOrganizeTargets(torrents
       .filter((t) => selectedTorrents.has(t.hash))
-      .map(({ hash, name, save_path, tags }) => ({ hash, name, save_path, tags })));
+      .map(({ hash, name, save_path, tags, priority }) => ({ hash, name, save_path, tags, priority })));
     router.push('/torrents/organize');
   }, [router, selectedTorrents, torrents]);
 

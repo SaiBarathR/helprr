@@ -129,7 +129,17 @@ export default function TorrentPeersPage() {
   const privateLocked = canManage && !isAdmin && state?.private !== false;
   const canAdd = canManage && !privateLocked;
   const title = canManage ? 'Manage Peers' : 'Peers';
-  const rows = useMemo(() => (state ? sortPeers(state.peers, sort) : []), [state, sort]);
+  // The order as last shown, so a poll keeps it rather than re-sorting (sortPeers).
+  // Picking a sort, even the one already chosen, sorts afresh.
+  const [shown, setShown] = useState<{ peers: PeersState['peers']; sort: PeerSort; keys: string[] } | null>(null);
+  if (state && (shown?.peers !== state.peers || shown.sort !== sort)) {
+    const previous = shown?.sort === sort ? shown.keys : undefined;
+    setShown({ peers: state.peers, sort, keys: sortPeers(state.peers, sort, previous).map(([key]) => key) });
+  }
+  const rows = useMemo(
+    () => (state && shown?.peers === state.peers ? shown.keys.map((key): [string, Partial<PeerView>] => [key, state.peers[key]]) : []),
+    [state, shown],
+  );
 
   const toolbar = (
     <>
@@ -149,7 +159,7 @@ export default function TorrentPeersPage() {
         )}
       >
         {PEER_SORTS.map((option) => (
-          <ResponsiveMenuCheckboxItem key={option.key} checked={sort === option.key} onCheckedChange={() => setSort(option.key)}>
+          <ResponsiveMenuCheckboxItem key={option.key} checked={sort === option.key} onCheckedChange={() => { setSort(option.key); setShown(null); }}>
             {option.label}
           </ResponsiveMenuCheckboxItem>
         ))}

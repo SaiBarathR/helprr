@@ -71,7 +71,7 @@ export default function OrganizeTorrentsPage() {
             )
           }
         />
-        <TorrentQueueSection hash={hash} />
+        <TorrentQueueSection hash={hash} positions={targets.map((t) => t.priority)} />
 
         <GroupedSection title={count === 1 ? 'Torrent' : 'Torrents'}>
           {targets.slice(0, SHOWN_NAMES).map((target) => (

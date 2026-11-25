@@ -61,29 +61,40 @@ export const MAX_ADDED_PEERS = 50;
 const MAX_PEER_LENGTH = 64;
 const PORT = /^[1-9]\d{0,4}$/;
 
-// No peer can be at these: unspecified, loopback (qBittorrent's own host), multicast and broadcast.
-function notAPeer(ip: string, family: number): boolean {
+// No peer can be at these: unspecified, loopback (qBittorrent's own host),
+// multicast and broadcast. Why, for the message; null for an address a peer can have.
+function notAPeer(ip: string, family: number): string | null {
   if (family === 4) {
     const first = Number(ip.split('.')[0]);
-    return first === 0 || first === 127 || first >= 224;
+    if (first === 127) return LOOPBACK;
+    if (first === 0) return UNSPECIFIED;
+    return first >= 224 ? MULTICAST : null;
   }
   const lower = ip.toLowerCase();
   const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
   if (mapped) return notAPeer(mapped[1], 4);
-  return lower === '::' || lower === '::1' || lower.startsWith('ff');
+  if (lower === '::1') return LOOPBACK;
+  if (lower === '::') return UNSPECIFIED;
+  return lower.startsWith('ff') ? MULTICAST : null;
 }
+const LOOPBACK = 'a loopback address is qBittorrent’s own computer, not a peer';
+const UNSPECIFIED = 'an unspecified address is not a peer’s';
+const MULTICAST = 'a multicast or broadcast address is not one peer’s';
 
-/** One `ip:port` or `[ipv6]:port` in the form qBittorrent parses; null when it is not one. */
-export function parsePeerAddress(text: string): string | null {
+type PeerAddress = { ok: true; peer: string } | { ok: false; reason?: string };
+
+/** One `ip:port` or `[ipv6]:port` in the form qBittorrent parses, or why not (no reason: not one). */
+function checkPeerAddress(text: string): PeerAddress {
   const match = /^\[([^\]]+)\]:(\d+)$/.exec(text) ?? /^([^:[\]]+):(\d+)$/.exec(text);
-  if (!match) return null;
+  if (!match) return { ok: false };
   const [, ip, port] = match;
-  if (!PORT.test(port) || Number(port) > 65535) return null;
+  if (!PORT.test(port) || Number(port) > 65535) return { ok: false };
   const family = isIP(ip);
   // An IPv6 address only in brackets, as qBittorrent splits on the last `]:`; no zone (`%eth0`).
-  if (text.startsWith('[') ? family !== 6 || ip.includes('%') : family !== 4) return null;
-  if (notAPeer(ip, family)) return null;
-  return family === 6 ? `[${ip.toLowerCase()}]:${port}` : `${ip}:${port}`;
+  if (text.startsWith('[') ? family !== 6 || ip.includes('%') : family !== 4) return { ok: false };
+  const reason = notAPeer(ip, family);
+  if (reason) return { ok: false, reason };
+  return { ok: true, peer: family === 6 ? `[${ip.toLowerCase()}]:${port}` : `${ip}:${port}` };
 }
 
 export type ParsedPeers = { ok: true; peers: string[] } | { ok: false; error: string };
@@ -98,12 +109,14 @@ export function parsePeerAddresses(input: unknown): ParsedPeers {
   if (lines.length > MAX_ADDED_PEERS) return { ok: false, error: `Add at most ${MAX_ADDED_PEERS} peers at a time` };
   const peers: string[] = [];
   for (const line of lines) {
-    const peer = typeof line === 'string' && line.length <= MAX_PEER_LENGTH ? parsePeerAddress(line) : null;
-    if (!peer) {
+    const checked: PeerAddress = typeof line === 'string' && line.length <= MAX_PEER_LENGTH ? checkPeerAddress(line) : { ok: false };
+    if (!checked.ok) {
       const shown = typeof line === 'string' ? line.slice(0, MAX_PEER_LENGTH) : 'an entry';
+      // A well-formed address no peer can have says so; "Not an IP:port" read as a typo.
+      if (checked.reason) return { ok: false, error: `Can’t add ${shown}: ${checked.reason}.` };
       return { ok: false, error: `Not an IP:port: ${shown}. Write IPv6 as [address]:port.` };
     }
-    if (!peers.includes(peer)) peers.push(peer);
+    if (!peers.includes(checked.peer)) peers.push(checked.peer);
   }
   return { ok: true, peers };
 }

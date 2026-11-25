@@ -513,7 +513,7 @@ describe('torrents page (characterization)', () => {
     await user.click(screen.getByRole('button', { name: 'Location, Tags & Queue' }));
 
     expect(mocks.push).toHaveBeenCalledWith('/torrents/organize');
-    expect(getOrganizeTargets()).toEqual([{ hash: 'bbb', name: 'Bravo.Show', save_path: '/data', tags: '' }]);
+    expect(getOrganizeTargets()).toEqual([{ hash: 'bbb', name: 'Bravo.Show', save_path: '/data', tags: '', priority: 0 }]);
   });
 
   it('offers location, tags and queue only to those who may manage torrents', async () => {
@@ -732,6 +732,25 @@ describe('torrents page (characterization)', () => {
     const chips = screen.getByText('Tags: hevc, private, keep').parentElement!;
     expect([...chips.querySelectorAll('[aria-hidden]')].map((chip) => chip.textContent)).toEqual(['hevc', 'private', '+1']);
     expect(screen.getAllByRole('cell').some((cell) => cell.textContent === 'tracker.one.invalid')).toBe(true);
+  });
+
+  it('names share limits in the table as the drawer does', async () => {
+    mocks.mobile = false;
+    mocks.summary = () => full([
+      // On the global limits, which are none; the table said "None" where the drawer says "Global (Unlimited)".
+      { ...ALPHA, ratio_limit: -2, max_ratio: -1, seeding_time_limit: -2, max_seeding_time: -1 },
+      { ...BRAVO, ratio_limit: 2, max_ratio: 2, seeding_time_limit: -1, max_seeding_time: -1 },
+      { ...CHARLIE, ratio_limit: -2, max_ratio: 1.5, seeding_time_limit: -2, max_seeding_time: 1500 },
+    ]);
+    const { user } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    const picker = within(screen.getByRole('button', { name: 'Columns' }).nextElementSibling as HTMLElement);
+    await user.click(picker.getByRole('menuitemcheckbox', { name: 'Ratio limit' }));
+    await user.click(picker.getByRole('menuitemcheckbox', { name: 'Seeding limit' }));
+    const limits = (name: string) => [...screen.getByRole('button', { name }).closest('tr')!.querySelectorAll('td')].slice(-3, -1).map((cell) => cell.textContent);
+    expect(limits('Alpha.Movie')).toEqual(['Global (Unlimited)', 'Global (Unlimited)']);
+    expect(limits('Bravo.Show')).toEqual(['2', 'Unlimited']);
+    expect(limits('Charlie')).toEqual(['Global (1.5)', 'Global (1 d 1 h)']);
   });
 
   it('shows the picker only with the table', async () => {

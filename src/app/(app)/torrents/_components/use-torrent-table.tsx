@@ -10,9 +10,10 @@ import type { QBittorrentTorrent } from '@/types';
 import { formatDateTime } from '@/lib/date-format';
 import { formatDistanceToNowShort } from '@/lib/format';
 import type { TorrentsTableColumn } from '@/lib/store';
-import { formatBytes, formatEta, formatSeedingTime, formatSpeed, formatTorrentSize } from './torrent-list';
+import { formatBytes, formatEta, formatSpeed, formatTorrentSize } from './torrent-list';
 import { TorrentRowActions, TorrentTagChips, getStateBadge, torrentContextActionGroups } from './torrent-row';
 import { parseTorrentTags } from './torrent-tags';
+import { formatShareLimit } from './share-limits-section';
 
 const dash = <span className="text-xs text-muted-foreground">&mdash;</span>;
 
@@ -23,10 +24,14 @@ function dateCell(seconds: number | undefined) {
   return <span className="text-xs text-muted-foreground whitespace-nowrap truncate" title={text}>{text}</span>;
 }
 
-/** A limit in force: -1 is none. */
-function limitCell(value: number | undefined, format: (value: number) => string) {
-  if (value === undefined || value === null) return dash;
-  return <span className="text-xs text-muted-foreground">{value < 0 ? 'None' : format(value)}</span>;
+/**
+ * A torrent's limit as its drawer and settings name it ("Global (Unlimited)",
+ * "2"): its own setting, with the limit in force while it uses the global one.
+ */
+function limitCell(kind: 'ratio' | 'time', own: number | undefined, effective: number | undefined) {
+  if (own === undefined && effective === undefined) return dash;
+  const text = formatShareLimit(kind, own ?? -2, effective);
+  return <span className="block truncate text-xs text-muted-foreground" title={text}>{text}</span>;
 }
 
 /** The picker's names for the columns a user can show or hide, in table order. */
@@ -254,10 +259,14 @@ export function useTorrentTable({
     {
       id: 'last_activity',
       label: 'Last activity',
-      width: 112,
+      width: 148,
+      // "less than a minute ago" is wider than most: cut it rather than run into the next column.
       cell: (t) => (t.last_activity && t.last_activity > 0
         ? (
-          <span className="text-xs text-muted-foreground whitespace-nowrap">
+          <span
+            className="block truncate text-xs text-muted-foreground whitespace-nowrap"
+            title={formatDateTime(t.last_activity * 1000, { dateStyle: 'medium', timeStyle: 'short' })}
+          >
             {formatDistanceToNowShort(new Date(t.last_activity * 1000).toISOString(), '—')}
           </span>
         )
@@ -311,17 +320,16 @@ export function useTorrentTable({
     {
       id: 'ratio_limit',
       label: 'Ratio limit',
-      width: 88,
+      width: 140,
       align: 'right',
-      // The limit in force (the torrent's own or the global one), as qBittorrent's own column.
-      cell: (t) => limitCell(t.max_ratio, (ratio) => ratio.toFixed(2)),
+      cell: (t) => limitCell('ratio', t.ratio_limit, t.max_ratio),
     },
     {
       id: 'seeding_time_limit',
       label: 'Seeding limit',
-      width: 96,
+      width: 140,
       align: 'right',
-      cell: (t) => limitCell(t.max_seeding_time, (minutes) => formatSeedingTime(minutes * 60)),
+      cell: (t) => limitCell('time', t.seeding_time_limit, t.max_seeding_time),
     },
     {
       id: 'actions',

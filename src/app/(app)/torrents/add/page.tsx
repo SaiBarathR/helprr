@@ -174,7 +174,8 @@ function AddTorrentPageContent() {
   const [torrentFiles, setTorrentFiles] = useState<File[]>([]);
   // How the last several-at-once add went, while some of it is left to fix.
   const [addResults, setAddResults] = useState<Array<{ label: string; result: AddItemResult }> | null>(null);
-  const [savePath, setSavePath] = useState('');
+  // null until the user types or picks one: Save at then follows the category (categoryFolder).
+  const [savePath, setSavePath] = useState<string | null>(null);
   const [category, setCategory] = useState(NO_CATEGORY);
   const [startTorrent, setStartTorrent] = useState(true);
   const [tags, setTags] = useState<string[]>([]);
@@ -274,6 +275,14 @@ function AddTorrentPageContent() {
   const emptySavePathFolder = categoryDetails
     ? addSaveFolder(categoryDetails, selectedCategory, autoTmm === QBIT_DEFAULT ? undefined : autoPicksFolder)
     : null;
+  // Like qBittorrent's own add dialog: in manual mode a category fills Save at
+  // with its folder, until the user edits the field. Left empty, the torrent
+  // went to the default save path, not the category's folder.
+  const manualMode = autoTmm === 'off' || (autoTmm === QBIT_DEFAULT && categoryDetails?.autoTmmByDefault === false);
+  const categoryFolder = manualMode && selectedCategory && categoryDetails
+    ? addSaveFolder(categoryDetails, selectedCategory, true)
+    : null;
+  const shownSavePath = savePath ?? categoryFolder ?? '';
 
   const tagOptions = useTorrentOptions();
   const tagSuggestions = (tagOptions.data?.tags ?? [])
@@ -299,7 +308,7 @@ function AddTorrentPageContent() {
       // Direct add skips review and just honors the "Start torrent" checkbox.
       const paused = review ? input.kind === 'file' : !startTorrent;
       // From what is sent: the Sonarr/Radarr file picker sends no options, so its save path stays.
-      const savepath = options.autoTMM === true ? undefined : savePath.trim() || undefined;
+      const savepath = options.autoTMM === true ? undefined : shownSavePath.trim() || undefined;
 
       const res = input.kind === 'magnet'
         ? await fetch(withInstanceQuery('/api/qbittorrent', instanceId), {
@@ -645,11 +654,11 @@ function AddTorrentPageContent() {
               <Input
                 id="save-path"
                 placeholder={emptySavePathFolder ?? (autoPicksFolder ? 'Set by the category' : 'qBittorrent default')}
-                value={autoPicksFolder ? '' : savePath}
+                value={autoPicksFolder ? '' : shownSavePath}
                 onChange={(e) => setSavePath(e.target.value)}
                 disabled={autoPicksFolder}
               />
-              <FolderPickerButton purpose="add" value={savePath} onPick={setSavePath} disabled={autoPicksFolder} />
+              <FolderPickerButton purpose="add" value={shownSavePath} onPick={setSavePath} disabled={autoPicksFolder} />
             </div>
           </div>
 
@@ -861,8 +870,19 @@ function AddResults({ items, onDismiss }: {
   onDismiss: () => void;
 }) {
   const failedCount = items.filter(({ result }) => result.result === 'failed').length;
+  const ref = useRef<HTMLElement>(null);
+  // It appears at the top of the form while a phone is still scrolled down at
+  // the Add button, where only the toast said anything had failed. The scroll
+  // margin clears the sticky page toolbar (about 3.5rem) below the inset.
+  useEffect(() => {
+    ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [items]);
   return (
-    <section className="space-y-2 rounded-lg border border-destructive/40 p-3" aria-live="polite">
+    <section
+      ref={ref}
+      className="space-y-2 rounded-lg border border-destructive/40 p-3 scroll-mt-[calc(var(--header-height,0px)+4.25rem)]"
+      aria-live="polite"
+    >
       <p className="flex items-center gap-2 text-sm font-medium text-destructive">
         <CircleAlert className="h-4 w-4 shrink-0" />
         {failedCount} of {items.length} not added

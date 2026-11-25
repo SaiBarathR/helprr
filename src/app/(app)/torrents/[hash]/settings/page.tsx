@@ -187,7 +187,7 @@ export default function TorrentSettingsPage() {
             />
             <TorrentQueueSection
               hash={hash}
-              position={torrent.priority}
+              positions={[torrent.priority]}
               onMoved={() => void torrentQuery.refetch()}
             />
           </>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, ChevronUp, Loader2, Plus, X } from 'lucide-react';
 import { GroupedSection } from '@/components/settings/grouped-section';
@@ -29,6 +29,14 @@ export function TorrentLocationSection({
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
   const [saving, setSaving] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
+
+  const pick = (path: string) => {
+    setValue(path);
+    // The sheet covered the page while picking: bring Move back into view,
+    // above the floating bottom nav (the row's scroll margin), once it closes.
+    setTimeout(() => actionsRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 350);
+  };
 
   const save = async (event: FormEvent) => {
     // A form, so the keyboard's return key saves too.
@@ -63,17 +71,17 @@ export function TorrentLocationSection({
               spellCheck={false}
               autoFocus
             />
-            <FolderPickerButton purpose="location" value={value} onPick={setValue} disabled={saving} />
+            <FolderPickerButton purpose="location" value={value} onPick={pick} disabled={saving} />
           </div>
           <p className="text-xs text-muted-foreground">
             qBittorrent moves the files there and turns off Auto Torrent Management. The folder must be inside one of
             its download folders.
           </p>
-          <div className="flex gap-2">
-            <Button type="submit" size="sm" className="flex-1" disabled={saving}>
+          <div ref={actionsRef} className="flex gap-2 scroll-mb-[calc(var(--footer-height)+1rem)]">
+            <Button type="submit" size="sm" className="flex-1 pointer-coarse:h-11" disabled={saving}>
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Move'}
             </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={saving}>
+            <Button type="button" size="sm" variant="ghost" className="pointer-coarse:h-11" onClick={() => setEditing(false)} disabled={saving}>
               Cancel
             </Button>
           </div>
@@ -251,18 +259,22 @@ const QUEUE_MOVES: { move: QueueMove; label: string; done: string; Icon: typeof 
 /** Moves the torrents in qBittorrent's queue; only possible while its queueing is on. */
 export function TorrentQueueSection({
   hash,
-  position,
+  positions,
   onMoved,
 }: {
   hash: string;
-  /** One torrent's queue position (qBittorrent's `priority`; 0 when it is not queued). */
-  position?: number;
+  /** Each torrent's queue position (qBittorrent's `priority`; 0 when it is not queued). */
+  positions: number[];
   onMoved?: () => void;
 }) {
   const runAction = useTorrentAction();
   const options = useTorrentOptions();
   const [pending, setPending] = useState(false);
   const queueingOff = options.data?.queueingEnabled === false;
+  // qBittorrent queues only unfinished torrents and ignores a move of any other,
+  // which still answered "Moved to the bottom of the queue".
+  const noneQueued = !queueingOff && positions.length > 0 && positions.every((position) => position <= 0);
+  const position = positions.length === 1 ? positions[0] : undefined;
 
   const move = async ({ move: action, done }: (typeof QUEUE_MOVES)[number]) => {
     setPending(true);
@@ -293,7 +305,7 @@ export function TorrentQueueSection({
               variant="outline"
               className="px-2"
               aria-label={entry.done.replace('Moved', 'Move')}
-              disabled={queueingOff || pending}
+              disabled={queueingOff || noneQueued || pending}
               onClick={() => void move(entry)}
             >
               <entry.Icon className="h-4 w-4" />
@@ -306,6 +318,14 @@ export function TorrentQueueSection({
         <div className="grouped-row">
           <span className="text-xs text-muted-foreground">
             Queueing is off in qBittorrent. Turn on Torrent Queueing in its BitTorrent options to order torrents.
+          </span>
+        </div>
+      )}
+      {noneQueued && (
+        <div className="grouped-row">
+          <span className="text-xs text-muted-foreground">
+            {positions.length === 1 ? "This torrent isn't" : 'None of these torrents is'} in qBittorrent&apos;s queue.
+            It queues only torrents that are still downloading.
           </span>
         </div>
       )}

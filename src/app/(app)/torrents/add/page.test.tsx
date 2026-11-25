@@ -320,19 +320,53 @@ describe('Add Torrent: the empty Save at field names where the torrent goes', ()
   }
   const hint = () => (screen.getByLabelText('Save at') as HTMLInputElement).placeholder;
 
-  it("is the default save path with a category under manual management, not the category's folder", async () => {
+  const field = () => screen.getByLabelText('Save at') as HTMLInputElement;
+
+  it("fills in the category's folder under manual management, as qBittorrent's own add dialog does", async () => {
+    // Left empty, the torrent went to the default save path, not the category's folder.
     serve(false, false);
     renderPage();
     await waitFor(() => expect(hint()).toBe('/downloads'));
     await pick('Category', /^tv$/);
-    expect(hint()).toBe('/downloads');
+    expect(field().value).toBe('/downloads/tv');
+    await pick('Category', /^None$/);
+    expect(field().value).toBe('');
 
+    await pick('Category', /^tv$/);
     await userEvent.click(screen.getByRole('button', { name: 'Advanced' }));
     await pick('Automatic management', /^Off$/);
-    expect(hint()).toBe('/downloads');
+    expect(field().value).toBe('/downloads/tv');
     await pick('Automatic management', /^On/);
+    expect(field().value).toBe('');
     expect(hint()).toBe('/downloads/tv');
-    expect((screen.getByLabelText('Save at') as HTMLInputElement).disabled).toBe(true);
+    expect(field().disabled).toBe(true);
+  });
+
+  it('stops following the category once the user edits the folder, and sends what is shown', async () => {
+    serve(false, false);
+    const sent: RequestInit[] = [];
+    const served = vi.mocked(fetch).getMockImplementation()!;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/qbittorrent' && init?.method === 'POST') {
+        sent.push(init);
+        return json({ success: true, hash: 'abc' });
+      }
+      return served(url, init);
+    }));
+    renderPage();
+    await waitFor(() => expect(hint()).toBe('/downloads'));
+    await userEvent.click(screen.getByLabelText('Magnet or .torrent links'));
+    await userEvent.paste('magnet:?xt=urn:btih:382CC016FF22946008ECDDCB0DDA820F42B0CD5A');
+    await pick('Category', /^tv$/);
+    await userEvent.type(field(), '/new');
+    expect(field().value).toBe('/downloads/tv/new');
+    await pick('Category', /^None$/);
+    expect(field().value).toBe('/downloads/tv/new');
+    await pick('Category', /^tv$/);
+    await userEvent.click(screen.getByRole('button', { name: 'Add Torrent' }));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(JSON.parse(sent[0].body as string)).toMatchObject({ category: 'tv', savepath: '/downloads/tv/new' });
   });
 
   it("is the category's folder when qBittorrent uses category paths in manual mode, or manages automatically by default", async () => {

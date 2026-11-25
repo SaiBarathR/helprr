@@ -3,6 +3,8 @@ export interface OrganizeTarget {
   name: string;
   save_path: string;
   tags: string;
+  /** Queue position: 0 when it is not queued (finished). */
+  priority: number;
 }
 
 // The list hands its selection to /torrents/organize in memory, like the bulk

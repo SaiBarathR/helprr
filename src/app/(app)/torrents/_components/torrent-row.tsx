@@ -47,12 +47,23 @@ export function getStateBadge(state: string) {
  * `relative` keeps that sr-only text (absolutely positioned) inside the
  * table's horizontal scroller: escaping it, a tags cell off to the right
  * widened the page, and a phone's layout viewport grew to fit.
+ * `yieldFirst`: in a crowded line the chips shrink before their neighbours,
+ * down to one small chip and "+N".
  */
-export function TorrentTagChips({ tags, max, className }: { tags: string[]; max: number; className?: string }) {
+export function TorrentTagChips({ tags, max, className, yieldFirst = false }: { tags: string[]; max: number; className?: string; yieldFirst?: boolean }) {
   const shown = tags.slice(0, max);
   const more = tags.length - shown.length;
   return (
-    <span className={cn('relative flex min-w-0 items-center gap-1', className)} title={tags.join(', ')} data-tag-chips="">
+    <span
+      className={cn(
+        'relative flex min-w-0 items-center gap-1',
+        // A small chip is 2rem; "+N" and the gap about 1.75rem more.
+        yieldFirst && (more > 0 ? 'shrink-[100] min-w-[3.75rem]' : 'shrink-[100] min-w-8'),
+        className,
+      )}
+      title={tags.join(', ')}
+      data-tag-chips=""
+    >
       <span className="sr-only">Tags: {tags.join(', ')}</span>
       {shown.map((tag) => (
         <Badge
@@ -364,7 +375,9 @@ export const TorrentRow = memo(function TorrentRow({
           {/* One line: the list is virtualized at a fixed row height, so the
               category and tags shrink to an ellipsis rather than wrap. Phones
               show one tag (and "+N"): with a long state, a size, a category
-              and a speed limit, two did not fit at 320px. */}
+              and a speed limit, two did not fit at 320px. The tags give way
+              first (yieldFirst), so the category keeps its name and the two
+              never read as the same cut-off text. */}
           <div className="flex min-w-0 items-center gap-1.5 mt-1 overflow-hidden">
             {getStateBadge(torrent.state)}
             <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">{formatTorrentSize(torrent)}</span>
@@ -378,8 +391,8 @@ export const TorrentRow = memo(function TorrentRow({
             )}
             {tags.length > 0 && (
               <>
-                <TorrentTagChips tags={tags} max={1} className="sm:hidden" />
-                <TorrentTagChips tags={tags} max={2} className="max-sm:hidden" />
+                <TorrentTagChips tags={tags} max={1} yieldFirst className="sm:hidden" />
+                <TorrentTagChips tags={tags} max={2} yieldFirst className="max-sm:hidden" />
               </>
             )}
           </div>

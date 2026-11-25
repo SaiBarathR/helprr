@@ -3,7 +3,7 @@ import { ConfigurationError } from '@/lib/config-error';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
 import { LidarrClient } from '@/lib/lidarr-client';
-import { QBittorrentClient } from '@/lib/qbittorrent-client';
+import { qbittorrentClientFor } from '@/lib/service-helpers';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
@@ -55,8 +55,8 @@ async function checkConnection(connection: ServiceConnection): Promise<void> {
     case 'QBITTORRENT': {
       const baseUrl = connection.url?.replace(/\/+$/, '');
       if (!baseUrl) throw new ConfigurationError('qBittorrent URL is not configured');
-      const client = new QBittorrentClient(baseUrl, connection.apiKey, connection.username || 'admin', getConnectionHeaders(connection));
-      await client.getVersion();
+      // The instance's shared client (its session), not a new one per probe.
+      await qbittorrentClientFor(connection).getVersion();
       return;
     }
     case 'PROWLARR': {

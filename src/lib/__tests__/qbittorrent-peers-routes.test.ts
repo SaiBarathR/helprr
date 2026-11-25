@@ -215,6 +215,20 @@ describe('POST /api/qbittorrent/[hash]/peers (add)', () => {
     expect(res.status).toBe(400);
     expect(mocks.client.addPeers).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['127.0.0.1:5948', 'Can’t add 127.0.0.1:5948: a loopback address is qBittorrent’s own computer, not a peer.'],
+    ['[::1]:22', 'Can’t add [::1]:22: a loopback address is qBittorrent’s own computer, not a peer.'],
+    ['[::ffff:127.0.0.1]:22', 'Can’t add [::ffff:127.0.0.1]:22: a loopback address is qBittorrent’s own computer, not a peer.'],
+    ['0.0.0.0:6881', 'Can’t add 0.0.0.0:6881: an unspecified address is not a peer’s.'],
+    ['239.1.1.1:6881', 'Can’t add 239.1.1.1:6881: a multicast or broadcast address is not one peer’s.'],
+    ['host.example:6881', 'Not an IP:port: host.example:6881. Write IPv6 as [address]:port.'],
+  ])('says why %s is refused', async (peer, error) => {
+    // A loopback peer was refused as "Not an IP:port", which it is.
+    const res = await post({ peers: [peer] });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error });
+  });
 });
 
 describe('POST /api/qbittorrent/[hash]/peers/ban', () => {
