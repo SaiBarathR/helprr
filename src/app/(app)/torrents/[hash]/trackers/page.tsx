@@ -17,7 +17,7 @@ import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { Textarea } from '@/components/ui/textarea';
 import { useCan, useMe } from '@/components/permission-provider';
 import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
-import { qbitInstanceKey, useQbitInstance } from '../../_components/use-qbit-instance';
+import { qbitInstanceKey, torrentPageSubtitle, useQbitInstance } from '../../_components/use-qbit-instance';
 import type { TorrentTracker } from '@/lib/qbittorrent-client';
 import { trackerCount, trackerStatusLabel } from '../../_components/torrent-trackers';
 
@@ -61,7 +61,7 @@ export default function TorrentTrackersPage() {
   // Only an admin is sent full URLs (anyone else gets each tracker's host); UX only, the server decides.
   const fullUrls = useMe()?.role === 'admin';
   const queryClient = useQueryClient();
-  const { instanceId } = useQbitInstance();
+  const { instanceId, subtitle: qbitLabel } = useQbitInstance();
   const trackersKey = ['qbittorrent', hash, 'trackers', qbitInstanceKey(instanceId)] as const;
 
   // A private torrent's trackers are an admin's to change; the route decides, and a
@@ -148,13 +148,13 @@ export default function TorrentTrackersPage() {
   const title = editable ? 'Manage Trackers' : 'Trackers';
 
   if (trackersQuery.isLoading) {
-    return <><PageHeader title={title} subtitle={torrentName} backHref="/torrents" /><PageSpinner /></>;
+    return <><PageHeader title={title} subtitle={torrentPageSubtitle(qbitLabel, torrentName)} backHref="/torrents" /><PageSpinner /></>;
   }
 
   if (!all) {
     return (
       <>
-        <PageHeader title={title} subtitle={torrentName} backHref="/torrents" />
+        <PageHeader title={title} subtitle={torrentPageSubtitle(qbitLabel, torrentName)} backHref="/torrents" />
         <ErrorState
           message={trackersQuery.error instanceof ApiError && trackersQuery.error.status === 404
             ? 'This torrent is no longer in qBittorrent.'
@@ -173,7 +173,7 @@ export default function TorrentTrackersPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title={title} subtitle={torrentName} backHref="/torrents" />
+      <PageHeader title={title} subtitle={torrentPageSubtitle(qbitLabel, torrentName)} backHref="/torrents" />
 
       <div className="mt-3 pb-8">
         <GroupedSection

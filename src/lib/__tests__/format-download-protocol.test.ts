@@ -12,4 +12,10 @@ describe('formatDownloadProtocol', () => {
     expect(formatDownloadProtocol('torrent')).toBe('Torrent');
     expect(formatDownloadProtocol('usenet')).toBe('Usenet');
   });
+
+  it("names Lidarr's protocol classes, a plugin's too, without the suffix", () => {
+    expect(formatDownloadProtocol('TorrentDownloadProtocol')).toBe('Torrent');
+    expect(formatDownloadProtocol('UsenetDownloadProtocol')).toBe('Usenet');
+    expect(formatDownloadProtocol('LucidaDownloadProtocol')).toBe('Lucida');
+  });
 });

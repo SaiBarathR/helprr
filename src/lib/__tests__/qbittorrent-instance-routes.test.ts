@@ -13,15 +13,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   instances: [{ id: 'q1', type: 'QBITTORRENT' }, { id: 'q2', type: 'QBITTORRENT' }],
   getQBittorrentClient: vi.fn(),
+  // A signed-in user without the capability (or admin role) the handler needs.
+  denied: false,
 }));
 
 const admin = { id: 'u1', role: 'admin', username: 'admin', capabilities: [] };
-vi.mock('@/lib/auth', () => {
+vi.mock('@/lib/auth', async () => {
+  const { NextResponse } = await import('next/server');
   const ok = async () => ({ ok: true, user: admin, session: { id: 's1' } });
-  return { requireUser: vi.fn(ok), requireUserCapability: vi.fn(ok), requireAdmin: vi.fn(ok), requireAuth: vi.fn(async () => null) };
+  const gated = async () => (mocks.denied
+    ? { ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+    : ok());
+  return { requireUser: vi.fn(ok), requireUserCapability: vi.fn(gated), requireAdmin: vi.fn(gated), requireAuth: vi.fn(async () => null) };
 });
-vi.mock('@/lib/permissions', () => ({ can: () => true }));
-vi.mock('@/lib/arr-instances', () => ({ listConnections: vi.fn(async (type: string) => (type === 'QBITTORRENT' ? mocks.instances : [])) }));
+vi.mock('@/lib/permissions', () => ({ can: () => !mocks.denied }));
+const listConnections = vi.hoisted(() => vi.fn(async (type: string) => (type === 'QBITTORRENT' ? mocks.instances : [])));
+vi.mock('@/lib/arr-instances', () => ({ listConnections }));
 vi.mock('@/lib/service-helpers', () => ({
   getQBittorrentClient: mocks.getQBittorrentClient,
   getQBittorrentClients: vi.fn(async () => []),
@@ -98,6 +105,7 @@ function call(handler: Handler, method: string, path: string, body: unknown, ins
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.denied = false;
   // Reaching the client is what is checked: what qBittorrent would answer is not.
   mocks.getQBittorrentClient.mockRejectedValue(new Error('stop here'));
 });
@@ -132,5 +140,31 @@ describe('qBittorrent routes and instanceId (QBT-29)', () => {
     await call(handler, method, path, body, null);
     expect(mocks.getQBittorrentClient).toHaveBeenCalled();
     for (const [instanceId] of mocks.getQBittorrentClient.mock.calls) expect(instanceId).toBeUndefined();
+  });
+
+  // Permission first: someone who may not use a handler learns nothing about
+  // which qBittorrents exist (403 for a bad id as for a real one).
+  it.each([
+    ...ROUTES,
+    ['POST /api/qbittorrent (add)', list.POST as Handler, 'POST', '/api/qbittorrent', { urls: `magnet:?xt=urn:btih:${HASH}` }] as const,
+  ])('%s refuses an unauthorised user with 403 before checking the instance', async (_name, handler, method, path, body) => {
+    mocks.denied = true;
+    for (const id of ['sonarr-1', 'q2']) {
+      const res = await call(handler, method, path, body, id);
+      expect(res.status, id).toBe(403);
+    }
+    expect(listConnections).not.toHaveBeenCalled();
+    expect(mocks.getQBittorrentClient).not.toHaveBeenCalled();
+  });
+  it('POST /api/qbittorrent (file add) refuses an unauthorised user with 403 before checking the instance', async () => {
+    mocks.denied = true;
+    for (const id of ['sonarr-1', 'q2']) {
+      const form = new FormData();
+      form.append('file', new File([new Uint8Array([100, 101])], 'a.torrent'));
+      const res = await list.POST(new NextRequest(`http://localhost/api/qbittorrent?instanceId=${id}`, { method: 'POST', body: form }));
+      expect(res.status, id).toBe(403);
+    }
+    expect(listConnections).not.toHaveBeenCalled();
+    expect(mocks.getQBittorrentClient).not.toHaveBeenCalled();
   });
 });

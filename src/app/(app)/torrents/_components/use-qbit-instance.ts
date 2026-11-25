@@ -45,7 +45,7 @@ export function useQbitInstance() {
   const stored = useUIStore((s) => s.torrentsInstance);
   const setStored = useUIStore((s) => s.setTorrentsInstance);
   const router = useAppRouter();
-  const { data } = useQbitInstances();
+  const { data, isPending } = useQbitInstances();
   const instances = Array.isArray(data) ? data : undefined;
 
   const known = (id: string) => !instances || instances.some((instance) => instance.id === id);
@@ -86,6 +86,8 @@ export function useQbitInstance() {
     instanceId,
     /** The address names a qBittorrent that is no longer connected (a push sent before it was removed). */
     unknownLink,
+    /** The address names a qBittorrent and the list that says whether it still exists hasn't loaded yet. */
+    checkingLink: Boolean(fromUrl) && isPending,
     instances: list,
     multiInstance: list.length > 1,
     /** The instance shown (the default when none is chosen), once the list has loaded. */
@@ -95,3 +97,10 @@ export function useQbitInstance() {
     select,
   };
 }
+
+/**
+ * A per-torrent page's subtitle: the qBittorrent first (only when there are
+ * several, so it survives truncation of a long name), then the torrent.
+ */
+export const torrentPageSubtitle = (instanceLabel: string | undefined, torrentName: string | undefined) =>
+  [instanceLabel, torrentName].filter(Boolean).join(' · ') || undefined;

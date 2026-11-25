@@ -320,7 +320,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
   const decisions: QueueDecision[] = [];
   const pendingStrikes: PendingStrike[] = [];
   const warnings: string[] = [];
-  const duplicates = duplicateHashWarning(source.duplicateHashes);
+  const duplicates = duplicateHashWarning(source.duplicateNames);
   if (duplicates) warnings.push(duplicates);
   let skippedFailedImport = 0;
   let skippedTrackerUnknown = 0;

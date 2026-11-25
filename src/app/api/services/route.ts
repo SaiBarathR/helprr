@@ -70,8 +70,10 @@ async function getHandler(): Promise<NextResponse> {
   if (!auth.ok) return auth.response;
 
   try {
+    // Each type's rows in a stable order, as the pages list them: default
+    // first, then by name (the database order of equal types was arbitrary).
     const connections = await prisma.serviceConnection.findMany({
-      orderBy: { type: 'asc' },
+      orderBy: [{ type: 'asc' }, { isDefault: 'desc' }, { label: 'asc' }, { createdAt: 'asc' }],
     });
 
     return NextResponse.json(connections.map(serializeConnection));

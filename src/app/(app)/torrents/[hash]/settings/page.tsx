@@ -16,7 +16,7 @@ import { ShareLimitsSection, type ShareLimitValues } from '../../_components/sha
 import { TorrentLocationSection, TorrentQueueSection, TorrentTagsSection } from '../../_components/torrent-organize-sections';
 import { parseTorrentTags } from '../../_components/torrent-tags';
 import { torrentQueryKey, useTorrent, useTorrentAction } from '../../_components/use-torrent';
-import { useQbitInstance } from '../../_components/use-qbit-instance';
+import { torrentPageSubtitle, useQbitInstance } from '../../_components/use-qbit-instance';
 
 type TorrentOption = 'seq_dl' | 'f_l_piece_prio' | 'auto_tmm';
 
@@ -36,7 +36,7 @@ const OPTIONS: {
 export default function TorrentSettingsPage() {
   const { hash } = useParams<{ hash: string }>();
   const queryClient = useQueryClient();
-  const { instanceId } = useQbitInstance();
+  const { instanceId, subtitle: qbitLabel } = useQbitInstance();
   const canBandwidth = useCan('torrents.bandwidth');
   const canManage = useCan('torrents.manage');
   const [pendingOptions, setPendingOptions] = useState<ReadonlySet<TorrentOption>>(() => new Set());
@@ -91,13 +91,13 @@ export default function TorrentSettingsPage() {
   };
 
   if (torrentQuery.isLoading) {
-    return <><PageHeader title="Torrent Settings" /><PageSpinner /></>;
+    return <><PageHeader title="Torrent Settings" subtitle={qbitLabel} /><PageSpinner /></>;
   }
 
   if (!torrent) {
     return (
       <>
-        <PageHeader title="Torrent Settings" />
+        <PageHeader title="Torrent Settings" subtitle={qbitLabel} />
         {torrentQuery.isError ? (
           <ErrorState
             message="Failed to load the torrent."
@@ -117,7 +117,7 @@ export default function TorrentSettingsPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title="Torrent Settings" subtitle={torrent.name} />
+      <PageHeader title="Torrent Settings" subtitle={torrentPageSubtitle(qbitLabel, torrent.name)} />
 
       <div className="mt-3 pb-8">
         {canBandwidth && (

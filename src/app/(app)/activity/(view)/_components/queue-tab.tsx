@@ -37,6 +37,7 @@ import { classifyQueueIssue } from '@/lib/queue-state';
 import { applyPendingImports, pendingImportKey, usePendingImports } from '@/lib/manual-import-tracker';
 import { useCan } from '@/components/permission-provider';
 import { cn } from '@/lib/utils';
+import { formatDownloadProtocol } from '@/lib/format';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 import { RemoveQueueDialog, type RemoveQueueOptions } from '../../_components/remove-queue-dialog';
 import { compareActivityQueueItems } from '@/lib/activity-queue-sort';
@@ -928,7 +929,7 @@ export function QueueTab({
                   <div>
                     <h3 className="font-semibold text-sm mb-2">Information</h3>
                     <div className="space-y-0 rounded-lg border divide-y">
-                      <InfoRow label="Protocol" value={selectedItem.protocol || '-'} />
+                      <InfoRow label="Protocol" value={selectedItem.protocol ? formatDownloadProtocol(selectedItem.protocol) : '-'} />
                       <InfoRow label="Client" value={selectedItem.downloadClient || '-'} />
                       <InfoRow label="Indexer" value={selectedItem.indexer || '-'} />
                       {qualityName && <InfoRow label="Quality" value={qualityName} />}

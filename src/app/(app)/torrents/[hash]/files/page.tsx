@@ -2,10 +2,10 @@
 
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
-import { Fragment, useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
-import { qbitInstanceKey, useQbitInstance } from '../../_components/use-qbit-instance';
+import { qbitInstanceKey, torrentPageSubtitle, useQbitInstance } from '../../_components/use-qbit-instance';
 import { useParams, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { ChevronRight, ChevronDown, Download, Folder, File, Gauge, Loader2, MoreVertical, Pencil, X } from 'lucide-react';
@@ -79,7 +79,7 @@ export default function TorrentFilesPage() {
   const [expandedDirs, setExpandedDirs] = useRouteViewState<Set<string>>('TorrentFilesPage:expandedDirs', new Set());
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   const queryClient = useQueryClient();
-  const { instanceId } = useQbitInstance();
+  const { instanceId, subtitle: qbitLabel } = useQbitInstance();
   const filesKey = ['qbittorrent', hash, 'files', qbitInstanceKey(instanceId)] as const;
 
   // Optimistic priority change. A 401 carries its status to the global
@@ -260,7 +260,7 @@ export default function TorrentFilesPage() {
   if (loading && files.length === 0) {
     return (
       <div className="space-y-3">
-        <PageHeader title={canManage ? 'Manage Files' : 'Files'} subtitle={torrentName} backHref="/torrents" />
+        <PageHeader title={canManage ? 'Manage Files' : 'Files'} subtitle={torrentPageSubtitle(qbitLabel, torrentName)} backHref="/torrents" />
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
@@ -271,7 +271,7 @@ export default function TorrentFilesPage() {
   if (error && files.length === 0) {
     return (
       <div className="space-y-3">
-        <PageHeader title={canManage ? 'Manage Files' : 'Files'} subtitle={torrentName} backHref="/torrents" />
+        <PageHeader title={canManage ? 'Manage Files' : 'Files'} subtitle={torrentPageSubtitle(qbitLabel, torrentName)} backHref="/torrents" />
         <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
           <p>{error?.message ?? 'Failed to fetch files'}</p>
         </div>
@@ -281,7 +281,7 @@ export default function TorrentFilesPage() {
 
   return (
     <div className="space-y-3 animate-content-in">
-      <PageHeader title={canManage ? 'Manage Files' : 'Files'} subtitle={torrentName} backHref="/torrents" />
+      <PageHeader title={canManage ? 'Manage Files' : 'Files'} subtitle={torrentPageSubtitle(qbitLabel, torrentName)} backHref="/torrents" />
 
       {files.length === 0 ? (
         // Metadata not fetched yet (magnet still resolving) or a file-less
@@ -460,12 +460,14 @@ function DirRow({
           <div style={{ paddingLeft: `${indent}px` }}>{rename.form}</div>
         ) : (
           <div
-            className="flex items-center gap-2 px-3 py-2.5"
+            // Wider on touch: the checkbox's 44px hit area reaches past an 8px gap onto the folder toggle.
+            className="flex items-center gap-2 pointer-coarse:gap-3.5 px-3 py-2.5"
             style={{ paddingLeft: `${12 + indent}px` }}
           >
             {/* Checkbox */}
             {canManage && (
-              <span className="relative flex items-center justify-center shrink-0">
+              // A label, so its 44px hit area (touch-target) ticks the 16px box.
+              <label className="relative touch-target flex items-center justify-center shrink-0">
                 <input
                   type="checkbox"
                   checked={checkState === 'all'}
@@ -476,7 +478,7 @@ function DirRow({
                   onChange={handleCheckboxChange}
                   className="rounded border-border h-4 w-4"
                 />
-              </span>
+              </label>
             )}
 
             {/* Expand toggle + folder icon + name */}
@@ -607,13 +609,15 @@ function FileRow({
         <QuickContextMenu label={`Actions for ${node.name}`} groups={groups}>
           <div className="flex items-start gap-2">
             {canManage && (
-              <input
-                type="checkbox"
-                checked={isSelected}
-                aria-label={`Select ${node.name}`}
-                onChange={() => onToggleDownload([file.index], isSelected)}
-                className="rounded border-border h-4 w-4 mt-0.5 shrink-0"
-              />
+              <label className="relative touch-target flex shrink-0 mt-0.5">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  aria-label={`Select ${node.name}`}
+                  onChange={() => onToggleDownload([file.index], isSelected)}
+                  className="rounded border-border h-4 w-4"
+                />
+              </label>
             )}
             <File className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
             <span className="text-xs break-all line-clamp-2 leading-snug flex-1">{node.name}</span>
@@ -664,7 +668,7 @@ function FileRow({
               <SelectTrigger
                 size="sm"
                 aria-label={`Priority for ${node.name}`}
-                className="h-6 text-[10px] px-2 min-w-[70px] border-border/50"
+                className="h-6 text-[10px] px-2 min-w-[70px] border-border/50 pointer-coarse:data-[size=sm]:h-11 pointer-coarse:min-w-[88px] pointer-coarse:text-xs"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -731,6 +735,13 @@ function RenameForm({
 }) {
   const [value, setValue] = useState(target.name);
   const name = value.trim();
+  const actionsRef = useRef<HTMLDivElement>(null);
+  // It opens in the row's place, which can be low on the screen: bring the
+  // buttons above the floating bottom nav and player bar (the row's scroll margin).
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => actionsRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -781,12 +792,12 @@ function RenameForm({
           <p>Renaming inside this torrent can stop its import: the app looks for the files by the names it grabbed.</p>
         </div>
       )}
-      <div className="flex gap-2">
-        <Button type="submit" className="flex-1" disabled={pending || !name || name === target.name}>
+      <div ref={actionsRef} className="flex gap-2 scroll-mb-[calc(var(--footer-cover)+1rem)]">
+        <Button type="submit" className="flex-1 pointer-coarse:h-11" disabled={pending || !name || name === target.name}>
           {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {warning ? 'Rename Anyway' : 'Rename'}
         </Button>
-        <Button type="button" variant="outline" className="flex-1" disabled={pending} onClick={onCancel}>
+        <Button type="button" variant="outline" className="flex-1 pointer-coarse:h-11" disabled={pending} onClick={onCancel}>
           Cancel
         </Button>
       </div>

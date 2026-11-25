@@ -29,7 +29,7 @@ vi.mock('@/lib/arr-instances', () => ({
   isMultiInstanceType: (type: string) => ['SONARR', 'RADARR', 'LIDARR', 'QBITTORRENT'].includes(type),
 }));
 
-import { POST } from '@/app/api/services/route';
+import { GET, POST } from '@/app/api/services/route';
 
 const existing = { id: 'qbit-main', type: 'QBITTORRENT', label: 'qBittorrent', isDefault: true, url: 'http://qbit-main:8080', apiKey: 'main-password', username: 'admin', externalUrl: null, customHeaders: {}, createdAt: new Date(), updatedAt: new Date() };
 const save = (body: Record<string, unknown>) => POST(new NextRequest('http://helprr.test/api/services', {
@@ -83,5 +83,15 @@ describe('POST /api/services for qBittorrent (QBT-29)', () => {
     expect(res.status).toBe(200);
     expect(mocks.create).not.toHaveBeenCalled();
     expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'qbit-main' }, data: expect.objectContaining({ label: 'Main' }) });
+  });
+});
+
+describe('GET /api/services', () => {
+  it('lists each type default first, then by name, so Settings → Instances keeps its order between loads', async () => {
+    mocks.findMany.mockResolvedValue([]);
+    await GET();
+    expect(mocks.findMany).toHaveBeenCalledWith({
+      orderBy: [{ type: 'asc' }, { isDefault: 'desc' }, { label: 'asc' }, { createdAt: 'asc' }],
+    });
   });
 });

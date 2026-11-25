@@ -47,6 +47,7 @@ import { TorrentCategoryDrawer, clearCategoryDrawerReturn, peekCategoryDrawerRet
 import { PageTitle } from '@/components/layout/page-title';
 import { withInstanceQuery } from '@/lib/query-fetch';
 import { qbitInstanceKey, useQbitInstance } from './_components/use-qbit-instance';
+import { QbitGone } from './_components/qbit-gone';
 
 
 type CategoryList = Record<string, { name: string; savePath: string }>;
@@ -77,16 +78,7 @@ export default function TorrentsPage() {
     return (
       <div className="space-y-3 animate-content-in">
         <PageTitle>Torrents</PageTitle>
-        <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
-          <p>This qBittorrent is no longer connected to Helprr.</p>
-          <div className="mt-3 flex flex-wrap justify-center gap-2">
-            {qbit.instances.map((instance) => (
-              <Button key={instance.id} variant="outline" size="sm" className="min-h-11" onClick={() => qbit.select(instance.id)}>
-                Show {instance.label}
-              </Button>
-            ))}
-          </div>
-        </div>
+        <QbitGone instances={qbit.instances} onShow={qbit.select} />
       </div>
     );
   }

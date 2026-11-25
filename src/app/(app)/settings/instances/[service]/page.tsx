@@ -342,7 +342,8 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
           }
         }
         toast.success(
-          `Connection successful${data.version ? ` (v${data.version})` : ''}${data.serverName ? ` - ${data.serverName}` : ''}`,
+          // Versions show without a leading "v" (qBittorrent sends one, the arrs don't).
+          `Connection successful${data.version ? ` (${String(data.version).replace(/^v(?=\d)/, '')})` : ''}${data.serverName ? ` - ${data.serverName}` : ''}`,
           { icon: <CheckCircle className="h-4 w-4 text-green-500" /> },
         );
       } else {

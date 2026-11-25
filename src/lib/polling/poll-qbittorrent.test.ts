@@ -167,3 +167,26 @@ describe('pollQBittorrent: errored, missing files and stalled torrents (QBT-12)'
     expect(await poll(minutes(2), [{ hash: 'a', state: 'error' }])).toEqual([]);
   });
 });
+
+describe('pollQBittorrent: completed torrents', () => {
+  it('pushes Download Complete when a download finishes', async () => {
+    await poll(minutes(0), [{ hash: 'a', state: 'downloading', progress: 0.5 }]);
+    expect(types(await poll(minutes(1), [{ hash: 'a', state: 'uploading', progress: 1 }]))).toEqual(['torrentCompleted']);
+  });
+
+  it('does not push it again when a finished torrent is rechecked', async () => {
+    await poll(minutes(0), [{ hash: 'a', state: 'downloading', progress: 0.5 }]);
+    await poll(minutes(1), [{ hash: 'a', state: 'uploading', progress: 1 }]);
+    // qBittorrent reports the check's own progress while it runs.
+    expect(await poll(minutes(2), [{ hash: 'a', state: 'checkingUP', progress: 0.3 }])).toEqual([]);
+    expect(await poll(minutes(3), [{ hash: 'a', state: 'checkingDL', progress: 0.8 }])).toEqual([]);
+    expect(await poll(minutes(4), [{ hash: 'a', state: 'stalledUP', progress: 1 }])).toEqual([]);
+  });
+
+  it('pushes it again when a recheck finds data missing and the torrent downloads it', async () => {
+    await poll(minutes(0), [{ hash: 'a', state: 'uploading', progress: 1 }]);
+    await poll(minutes(1), [{ hash: 'a', state: 'checkingUP', progress: 0.3 }]);
+    expect(await poll(minutes(2), [{ hash: 'a', state: 'downloading', progress: 0.9 }])).toEqual([]);
+    expect(types(await poll(minutes(3), [{ hash: 'a', state: 'uploading', progress: 1 }]))).toEqual(['torrentCompleted']);
+  });
+});

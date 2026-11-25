@@ -60,4 +60,11 @@ describe('Operation audit', () => {
     expect(pathLine('→ /data/Other')).toBeTruthy();
     expect(screen.getByText('ROOT FOLDER')).toBeTruthy();
   });
+
+  it('names the qBittorrent of a torrent delete when the route does (there are several)', async () => {
+    records = [record({ id: 'seed', instanceId: 'q2', instanceLabel: 'Seedbox' }), record({ id: 'one' })];
+    renderPage();
+    expect(await screen.findByText('qBittorrent · Seedbox')).toBeTruthy();
+    expect(screen.getByText('qBittorrent')).toBeTruthy();
+  });
 });

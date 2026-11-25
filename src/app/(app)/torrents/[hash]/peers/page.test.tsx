@@ -12,7 +12,8 @@ const mocks = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 // One qBittorrent, the default (use-qbit-instance.test.ts covers choosing one).
-vi.mock('@/app/(app)/torrents/_components/use-qbit-instance', () => ({
+vi.mock('@/app/(app)/torrents/_components/use-qbit-instance', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   qbitInstanceKey: (id: string | undefined) => id ?? 'default',
   useQbitInstance: () => ({ instanceId: undefined, instances: [], multiInstance: false, current: undefined, subtitle: undefined, select: () => {} }),
 }));

@@ -4,6 +4,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { parsePageParams } from '@/lib/pagination';
+import { listConnections } from '@/lib/arr-instances';
 
 // Admin-only viewer for the unified file/destructive operation trail.
 async function getHandler(request: NextRequest): Promise<NextResponse> {
@@ -22,9 +23,17 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       }),
       prisma.fileOperationAudit.count(),
     ]);
+    // With several qBittorrents, which one a row is (the same torrent can be
+    // in two). A row of a qBittorrent removed since keeps no name.
+    const qbits = await listConnections('QBITTORRENT');
+    const qbitLabels = new Map(qbits.length > 1 ? qbits.map((connection) => [connection.id, connection.label]) : []);
+    const named = records.map((record) => ({
+      ...record,
+      instanceLabel: record.service === 'QBITTORRENT' && record.instanceId ? qbitLabels.get(record.instanceId) ?? null : null,
+    }));
 
     return NextResponse.json(
-      { page, pageSize, total, records },
+      { page, pageSize, total, records: named },
       { headers: { 'Cache-Control': 'private, no-store' } }
     );
   } catch (error) {

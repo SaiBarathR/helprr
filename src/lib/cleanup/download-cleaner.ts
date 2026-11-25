@@ -233,7 +233,7 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
   const trackerDomains = await fetchCleanupTrackerDomains(source.clients, torrents);
   const decisions: DownloadDecision[] = [];
   const warnings: string[] = [];
-  const duplicates = duplicateHashWarning(source.duplicateHashes);
+  const duplicates = duplicateHashWarning(source.duplicateNames);
   if (duplicates) warnings.push(duplicates);
   // Tracker data is load-bearing when the ignore list or any enabled rule
   // matches on trackers; a torrent whose lookup failed must then be skipped

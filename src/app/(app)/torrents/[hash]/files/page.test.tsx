@@ -11,7 +11,8 @@ const mocks = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 // One qBittorrent, the default (use-qbit-instance.test.ts covers choosing one).
-vi.mock('@/app/(app)/torrents/_components/use-qbit-instance', () => ({
+vi.mock('@/app/(app)/torrents/_components/use-qbit-instance', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   qbitInstanceKey: (id: string | undefined) => id ?? 'default',
   useQbitInstance: () => ({ instanceId: undefined, instances: [], multiInstance: false, current: undefined, subtitle: undefined, select: () => {} }),
 }));
@@ -39,6 +40,8 @@ beforeEach(() => {
   // Open folders are kept per route; each test starts with them closed.
   sessionStorage.clear();
   resetRouteViewStateForTests();
+  // jsdom has no scrolling; the rename form scrolls its buttons into view.
+  Element.prototype.scrollIntoView = vi.fn();
   mocks.asked = [];
   mocks.canManage = true;
   files = [file(0, 'Pack/one.mkv'), file(1, 'Pack/two.mkv')];
