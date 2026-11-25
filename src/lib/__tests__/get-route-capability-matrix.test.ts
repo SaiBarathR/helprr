@@ -25,6 +25,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/admin/arr-system/tasks',
     'GET /api/admin/arr-system/tasks/[id]',
     'GET /api/admin/arr-system/logs',
+    // Its backup list (id, name, type, size and time; no paths).
+    'GET /api/admin/arr-system/backups',
     // qBittorrent's main log, redacted of IP addresses and credentials.
     'GET /api/qbittorrent/log',
     'GET /api/admin/database-backup',
@@ -623,7 +625,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(314);
+    expect(handlers.size).toBe(315);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

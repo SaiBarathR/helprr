@@ -91,6 +91,13 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/sonarr/library-command',
     // Run now for a scheduled task of one Sonarr/Radarr/Lidarr/Prowlarr instance, allow-listed by name.
     'POST /api/admin/arr-system/tasks',
+    // Restart or shut down one Sonarr/Radarr/Lidarr/Prowlarr instance.
+    'POST /api/admin/arr-system/power',
+    // Its backups: the file, restore, restore from a file and delete, each with the admin's password.
+    'POST /api/admin/arr-system/backups/[id]/download',
+    'POST /api/admin/arr-system/backups/[id]/restore',
+    'POST /api/admin/arr-system/backups/upload',
+    'DELETE /api/admin/arr-system/backups/[id]',
     // qBittorrent's queueing and global seeding limits: server-wide, allow-listed keys only.
     'PATCH /api/qbittorrent/queue-seeding',
     'POST /api/sonarr/[id]/anime',
@@ -648,7 +655,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(293);
+    expect(handlers.size).toBe(298);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

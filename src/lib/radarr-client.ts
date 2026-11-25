@@ -3,6 +3,7 @@ import { ARR_RELEASE_TIMEOUT_MS } from '@/lib/arr-release-timeout';
 import { historyPageWithoutLinks, withoutHistoryLinks, withoutReleaseLinks } from '@/lib/arr-release-links';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
+import { arrSystemAdminApi, type ArrSystemAdminApi } from '@/lib/arr-system-admin-api';
 import type {
   RadarrMovie,
   RadarrCollection,
@@ -80,6 +81,8 @@ interface DeleteQueueOptions {
 
 export class RadarrClient {
   private client: AxiosInstance;
+  /** Restart, shut down and System → Backup, for the admin routes under /api/admin/arr-system only. */
+  readonly systemAdmin: ArrSystemAdminApi;
 
   constructor(url: string, apiKey: string, customHeaders?: Record<string, string>) {
     this.client = axios.create({
@@ -94,6 +97,7 @@ export class RadarrClient {
       httpsAgent: keepAliveHttpsAgent,
       beforeRedirect: refuseRedirectToAnotherHost,
     });
+    this.systemAdmin = arrSystemAdminApi(this.client, '/api/v3');
   }
 
   private async get<T>(endpoint: string, params?: Record<string, unknown>, config?: { timeout?: number }): Promise<T> {

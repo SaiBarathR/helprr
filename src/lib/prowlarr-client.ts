@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
+import { arrSystemAdminApi, type ArrSystemAdminApi } from '@/lib/arr-system-admin-api';
 import { urlsToOrigins } from '@/lib/url-origins';
 import { MAX_TORRENT_BYTES } from '@/lib/manual-downloads/release-source';
 import type { ArrUpdate, HealthCheck, Tag } from '@/types/arr';
@@ -341,6 +342,8 @@ function throwUpstreamMessage(error: unknown): never {
 
 export class ProwlarrClient {
   private client: AxiosInstance;
+  /** Restart, shut down and System → Backup, for the admin routes under /api/admin/arr-system only. */
+  readonly systemAdmin: ArrSystemAdminApi;
 
   constructor(url: string, apiKey: string, customHeaders?: Record<string, string>) {
     this.client = axios.create({
@@ -355,6 +358,7 @@ export class ProwlarrClient {
       httpsAgent: keepAliveHttpsAgent,
       beforeRedirect: refuseRedirectToAnotherHost,
     });
+    this.systemAdmin = arrSystemAdminApi(this.client, '/api/v1');
   }
 
   private async get<T>(endpoint: string, params?: Record<string, unknown>): Promise<T> {

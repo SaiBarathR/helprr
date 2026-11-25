@@ -2,10 +2,11 @@
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Play } from 'lucide-react';
+import { Loader2, Play, Power, RotateCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { pollCommandAt } from '@/lib/arr-command';
 import { ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
@@ -14,7 +15,7 @@ import { invalidateMovies, invalidateMusic, invalidateSeries } from '@/lib/query
 import { formatDistanceToNowShort } from '@/lib/format';
 import { formatDateTime } from '@/lib/date-format';
 import { cn } from '@/lib/utils';
-import type { ArrLogEntry, ArrLogLevel, ArrLogPage, ArrSystemStatus, ArrSystemTask } from '@/lib/arr-system';
+import type { ArrLogEntry, ArrLogLevel, ArrLogPage, ArrPowerAction, ArrSystemStatus, ArrSystemTask } from '@/lib/arr-system';
 
 export type SystemService = 'sonarr' | 'radarr' | 'lidarr' | 'prowlarr';
 
@@ -68,28 +69,19 @@ const REFRESHES: Partial<Record<string, (client: ReturnType<typeof useQueryClien
   RefreshArtist: invalidateMusic,
 };
 
-/**
- * System → Tasks of one instance, with Run now for the tasks the server allows.
- * The running set is the sheet's (`running`), so leaving the tab mid-run and
- * coming back still shows the run and can't start it again.
- */
-export function ArrTasksPanel({
-  instanceId,
-  running,
-  setRunning,
-}: {
-  instanceId: string;
+/** Runs in progress, kept by the sheet as "<instance>:<task>" so they outlive a tab. */
+export interface TaskRuns {
   running: ReadonlySet<string>;
   setRunning: (update: (prev: ReadonlySet<string>) => ReadonlySet<string>) => void;
-}) {
-  const queryClient = useQueryClient();
-  const query = useQuery({
-    queryKey: queryKeys.arrSystem('tasks', instanceId),
-    queryFn: jsonFetcher<ArrSystemTask[]>('/api/admin/arr-system/tasks', instanceId),
-    select: ensureArray<ArrSystemTask>,
-    staleTime: 30_000,
-  });
+}
 
+/**
+ * Run now for one instance's scheduled tasks, shared by its Tasks tab and the
+ * Backups tab's Back up now (the Backup task): one run at a time per task,
+ * followed to the end with the started / finished / failed toasts.
+ */
+export function useTaskRunner(instanceId: string, { running, setRunning }: TaskRuns) {
+  const queryClient = useQueryClient();
   const setTask = (name: string, on: boolean) => setRunning((prev) => {
     const next = new Set(prev);
     if (on) next.add(`${instanceId}:${name}`);
@@ -98,39 +90,58 @@ export function ArrTasksPanel({
   });
   const isRunning = (name: string) => running.has(`${instanceId}:${name}`);
 
-  async function run(task: ArrSystemTask) {
-    setTask(task.taskName, true);
+  async function run(taskName: string, label: string) {
+    setTask(taskName, true);
     try {
       const res = await fetch(withInstanceQuery('/api/admin/arr-system/tasks', instanceId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: task.taskName }),
+        body: JSON.stringify({ name: taskName }),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        toast.error(`${task.name} failed`, { description: data?.error });
+        toast.error(`${label} failed`, { description: data?.error });
         return;
       }
       const started = (await res.json()) as { id?: number };
-      toast.success(`${task.name} started`);
+      toast.success(`${label} started`);
       // Without an id there is nothing to follow; "started" is all that is known.
       if (!started.id) return;
       const status = await pollCommandAt(withInstanceQuery(`/api/admin/arr-system/tasks/${started.id}`, instanceId));
       if (status === 'completed') {
-        REFRESHES[task.taskName]?.(queryClient);
-        toast.success(`${task.name} finished`);
+        REFRESHES[taskName]?.(queryClient);
+        toast.success(`${label} finished`);
       } else if (status === 'timeout') {
-        toast(`${task.name} is still running`, { description: 'The app carries on with it.' });
+        toast(`${label} is still running`, { description: 'The app carries on with it.' });
       } else {
-        toast.error(`${task.name} failed`);
+        toast.error(`${label} failed`);
       }
     } catch {
-      toast.error(`${task.name} failed`);
+      toast.error(`${label} failed`);
     } finally {
-      setTask(task.taskName, false);
-      void query.refetch();
+      setTask(taskName, false);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.arrSystem('tasks', instanceId) });
+      // A backup run by hand (or one that failed half way) changes the list.
+      if (taskName === 'Backup') void queryClient.invalidateQueries({ queryKey: queryKeys.arrSystem('backups', instanceId) });
     }
   }
+
+  return { run, isRunning };
+}
+
+/**
+ * System → Tasks of one instance, with Run now for the tasks the server allows.
+ * The running set is the sheet's (`runs`), so leaving the tab mid-run and
+ * coming back still shows the run and can't start it again.
+ */
+export function ArrTasksPanel({ instanceId, runs }: { instanceId: string; runs: TaskRuns }) {
+  const query = useQuery({
+    queryKey: queryKeys.arrSystem('tasks', instanceId),
+    queryFn: jsonFetcher<ArrSystemTask[]>('/api/admin/arr-system/tasks', instanceId),
+    select: ensureArray<ArrSystemTask>,
+    staleTime: 30_000,
+  });
+  const { run, isRunning } = useTaskRunner(instanceId, runs);
 
   if (query.isLoading) return <PanelLoading />;
   if (query.isError) return <PanelMessage>Could not read its tasks. It may be offline.</PanelMessage>;
@@ -155,7 +166,7 @@ export function ArrTasksPanel({
               className="shrink-0 pointer-coarse:h-11"
               disabled={isRunning(task.taskName)}
               aria-label={`Run ${task.name} now`}
-              onClick={() => void run(task)}
+              onClick={() => void run(task.taskName, task.name)}
             >
               {isRunning(task.taskName) ? <Loader2 className="animate-spin" /> : <Play />}
               Run
@@ -163,6 +174,103 @@ export function ArrTasksPanel({
           )}
         </div>
       ))}
+    </GroupedSection>
+  );
+}
+
+const POWER_COPY: Record<ArrPowerAction, {
+  label: string;
+  detail: (app: string) => string;
+  title: (app: string) => string;
+  description: (app: string) => string;
+  sent: (app: string) => string;
+}> = {
+  restart: {
+    label: 'Restart',
+    detail: (app) => `Stops and starts ${app}. Helprr can't reach it for a moment.`,
+    title: (app) => `Restart ${app}?`,
+    description: (app) => `${app} stops and starts again, which takes up to a minute. Downloads carry on in the download client; ${app}'s own tasks wait until it is back.`,
+    sent: (app) => `${app} is restarting`,
+  },
+  shutdown: {
+    label: 'Shut down',
+    detail: (app) => `Stops ${app}. Helprr can't start it again.`,
+    title: (app) => `Shut down ${app}?`,
+    // Some Docker images and service managers start the app again by themselves;
+    // Helprr can't tell, so it says what it knows.
+    description: (app) => `${app} stops. This can't be undone from Helprr: unless its container or service manager starts it again by itself, start it where it runs. Until then nothing reaches it, Helprr included.`,
+    sent: (app) => `${app} is shutting down`,
+  },
+};
+
+/**
+ * Restart or shut down one instance, as its System → Status does, each after
+ * a confirmation. At the end of the Tasks tab, like Shut Down at the end of
+ * an iPhone's Settings → General.
+ */
+export function ArrPowerSection({ instanceId, appName }: { instanceId: string; appName: string }) {
+  const [confirming, setConfirming] = useState<ArrPowerAction | null>(null);
+  // Kept while the dialog closes, so its text doesn't change as it fades.
+  const [shown, setShown] = useState<ArrPowerAction>('restart');
+  const [busy, setBusy] = useState(false);
+
+  async function send(action: ArrPowerAction) {
+    setBusy(true);
+    try {
+      const res = await fetch(withInstanceQuery('/api/admin/arr-system/power', instanceId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        toast.error(`${POWER_COPY[action].label} failed`, { description: data?.error });
+        return;
+      }
+      toast.success(POWER_COPY[action].sent(appName));
+      setConfirming(null);
+    } catch {
+      toast.error(`${POWER_COPY[action].label} failed`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const copy = POWER_COPY[shown];
+  return (
+    <GroupedSection title="Restart or shut down" className="mb-2">
+      {(['restart', 'shutdown'] as const).map((action) => (
+        <div key={action} className="grouped-row items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium">{POWER_COPY[action].label}</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">{POWER_COPY[action].detail(appName)}</div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn('shrink-0 pointer-coarse:h-11', action === 'shutdown' && 'text-destructive hover:text-destructive')}
+            disabled={busy}
+            aria-label={`${POWER_COPY[action].label} ${appName}`}
+            onClick={() => {
+              setShown(action);
+              setConfirming(action);
+            }}
+          >
+            {action === 'restart' ? <RotateCw /> : <Power />}
+            {POWER_COPY[action].label}
+          </Button>
+        </div>
+      ))}
+      <ConfirmDialog
+        open={confirming !== null}
+        onOpenChange={(open) => !busy && !open && setConfirming(null)}
+        title={copy.title(appName)}
+        description={copy.description(appName)}
+        confirmLabel={copy.label}
+        destructive={shown === 'shutdown'}
+        busy={busy}
+        onConfirm={() => send(shown)}
+      />
     </GroupedSection>
   );
 }
@@ -313,7 +421,7 @@ export function ArrLogsPanel({
   );
 }
 
-function PanelLoading() {
+export function PanelLoading() {
   return (
     <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -322,6 +430,6 @@ function PanelLoading() {
   );
 }
 
-function PanelMessage({ children }: { children: React.ReactNode }) {
+export function PanelMessage({ children }: { children: React.ReactNode }) {
   return <p className="py-6 text-center text-sm text-muted-foreground">{children}</p>;
 }

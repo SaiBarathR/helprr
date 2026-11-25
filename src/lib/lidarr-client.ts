@@ -3,6 +3,7 @@ import { ARR_RELEASE_TIMEOUT_MS } from '@/lib/arr-release-timeout';
 import { historyPageWithoutLinks, withoutHistoryLinks, withoutReleaseLinks } from '@/lib/arr-release-links';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
+import { arrSystemAdminApi, type ArrSystemAdminApi } from '@/lib/arr-system-admin-api';
 import type {
   LidarrArtist,
   LidarrAlbum,
@@ -77,6 +78,8 @@ interface WantedResponse {
  */
 export class LidarrClient {
   private client: AxiosInstance;
+  /** Restart, shut down and System → Backup, for the admin routes under /api/admin/arr-system only. */
+  readonly systemAdmin: ArrSystemAdminApi;
   private baseUrl: string;
 
   constructor(url: string, apiKey: string, customHeaders?: Record<string, string>) {
@@ -93,6 +96,7 @@ export class LidarrClient {
       httpsAgent: keepAliveHttpsAgent,
       beforeRedirect: refuseRedirectToAnotherHost,
     });
+    this.systemAdmin = arrSystemAdminApi(this.client, '/api/v1');
   }
 
   // Lidarr's image fields are inconsistent: for some artists `url` is a full
