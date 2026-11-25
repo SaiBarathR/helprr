@@ -68,6 +68,9 @@ import { POST as downloadPost } from '@/app/api/admin/arr-system/backups/[id]/do
 import { POST as uploadPost } from '@/app/api/admin/arr-system/backups/upload/route';
 import { toBackups, uploadedBackupProblem, zipEntryNames } from '@/lib/server/arr-system';
 
+/** An axios error with no answer (a timeout, a cut connection) or one that never reached the app. */
+const noAnswer = (code: string) => Object.assign(new Error(code), { isAxiosError: true, code });
+
 /** A stored (uncompressed) zip with these files, as the apps' backups are laid out. */
 function makeZip(files: Record<string, string>): Uint8Array {
   const enc = new TextEncoder();
@@ -180,7 +183,7 @@ beforeEach(() => {
   mocks.admin.deleteBackup.mockResolvedValue(undefined);
   mocks.admin.restoreBackup.mockResolvedValue(undefined);
   mocks.admin.restoreUploadedBackup.mockResolvedValue(undefined);
-  mocks.admin.downloadBackup.mockResolvedValue({ stream: Readable.from([Buffer.from('PK zip bytes')]), size: 12 });
+  mocks.admin.downloadBackup.mockResolvedValue({ stream: Readable.from([Buffer.from('PK zip bytes')]), contentType: 'application/x-zip-compressed' });
 });
 
 describe('admin only', () => {
@@ -258,6 +261,17 @@ describe('restart and shut down', () => {
       targetLabel: 'RADARR · 4K',
       fields: [field],
     }));
+  });
+
+  it('takes JSON only, so a form on another site cannot send it', async () => {
+    const res = await powerPost(new NextRequest('http://localhost/api/admin/arr-system/power?instanceId=son-1', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'shutdown' }),
+      headers: { 'Content-Type': 'text/plain' },
+    }));
+    expect(res.status).toBe(415);
+    expect(mocks.getClient).not.toHaveBeenCalled();
+    expect(mocks.admin.power).not.toHaveBeenCalled();
   });
 
   it('records nothing when the app refuses', async () => {
@@ -359,6 +373,17 @@ describe('delete', () => {
   });
 });
 
+describe('delete without an answer', () => {
+  it('records it and says the backup may be deleted', async () => {
+    mocks.admin.deleteBackup.mockRejectedValue(noAnswer('ETIMEDOUT'));
+    const res = await del('son-1', '222');
+    expect(res.status).toBe(504);
+    expect(mocks.audit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      fields: [`backup delete sent: ${BACKUPS[1].name} (no answer from the app)`],
+    }));
+  });
+});
+
 describe('restore', () => {
   it('restores, then restarts the app, as its own page does', async () => {
     const res = await restore('son-1', '111');
@@ -378,6 +403,23 @@ describe('restore', () => {
     expect(await res.json()).toEqual({ ok: true, restarted: false });
   });
 
+  it('records a restore the app took but never answered, and says it may have gone through', async () => {
+    mocks.admin.restoreBackup.mockRejectedValue(noAnswer('ECONNABORTED'));
+    const res = await restore('son-1', '111');
+    expect(res.status).toBe(504);
+    expect((await res.json()).error).toMatch(/may have gone through/);
+    expect(mocks.admin.power).not.toHaveBeenCalled();
+    expect(mocks.audit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      fields: [`backup restore sent: ${BACKUPS[0].name} (no answer from the app)`],
+    }));
+  });
+
+  it('records nothing when the restore never reached the app', async () => {
+    mocks.admin.restoreBackup.mockRejectedValue(noAnswer('ECONNREFUSED'));
+    expect((await restore('son-1', '111')).status).toBe(500);
+    expect(mocks.audit).not.toHaveBeenCalled();
+  });
+
   it('neither restarts nor records a restore the app refused', async () => {
     mocks.admin.restoreBackup.mockRejectedValue(new Error('Request failed with status code 500'));
     expect((await restore('son-1', '111')).status).toBe(500);
@@ -394,11 +436,48 @@ describe('download', () => {
     expect(res.headers.get('cache-control')).toBe('private, no-store');
     expect(res.headers.get('content-type')).toBe('application/zip');
     expect(res.headers.get('content-disposition')).toBe(`attachment; filename="${BACKUPS[1].name}"`);
-    expect(res.headers.get('content-length')).toBe('12');
+    // The app's length isn't passed on: axios may have unzipped a proxy's gzip.
+    expect(res.headers.get('content-length')).toBeNull();
     expect(await res.text()).toBe('PK zip bytes');
     expect(mocks.audit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       fields: [`backup downloaded: ${BACKUPS[1].name}`],
     }));
+  });
+
+  it('refuses a sign-in page in place of the zip, recording nothing', async () => {
+    const stream = Readable.from([Buffer.from('<html>login</html>')]);
+    mocks.admin.downloadBackup.mockResolvedValue({ stream, contentType: 'text/html; charset=utf-8' });
+    const res = await download('son-1', '222');
+    expect(res.status).toBe(502);
+    expect(stream.destroyed).toBe(true);
+    expect(mocks.audit).not.toHaveBeenCalled();
+  });
+
+  it('records nothing when the app fails after the password, and drains its error stream', async () => {
+    const errorStream = Readable.from([Buffer.from('oops')]);
+    mocks.admin.downloadBackup.mockRejectedValue(Object.assign(new Error('Request failed with status code 500'), {
+      isAxiosError: true,
+      response: { status: 500, data: errorStream },
+    }));
+    expect((await download('son-1', '222')).status).toBe(500);
+    expect(errorStream.destroyed).toBe(true);
+    expect(mocks.audit).not.toHaveBeenCalled();
+  });
+
+  it("stops the app's stream when the download is abandoned", async () => {
+    const stream = new Readable({ read() {} });
+    mocks.admin.downloadBackup.mockResolvedValue({ stream, contentType: 'application/zip' });
+    const controller = new AbortController();
+    const res = await downloadPost(new NextRequest('http://localhost/api/admin/arr-system/backups/222/download?instanceId=son-1', {
+      method: 'POST',
+      body: JSON.stringify(FACTORS),
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+    }), ctx('222'));
+    expect(res.status).toBe(200);
+    controller.abort();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(stream.destroyed).toBe(true);
   });
 
   it('builds the path from the checked type and name, never from the app\'s path field', async () => {
@@ -426,6 +505,20 @@ describe('restore from a file', () => {
     expect((await upload('son-1', {}, { length: 10 * 1024 * 1024 + 1 })).status).toBe(413);
     expect(mocks.getClient).not.toHaveBeenCalled();
     expect(mocks.stepUp).not.toHaveBeenCalled();
+  });
+
+  it('refuses a file over its own limit that is still under the proxy limit', async () => {
+    const big = makeZip({ 'sonarr.db': 'x'.repeat(10 * 1024 * 1024 - 32 * 1024) });
+    expect((await upload('son-1', { file: big })).status).toBe(413);
+    expect(mocks.stepUp).not.toHaveBeenCalled();
+  });
+
+  it('records an upload restore the app never answered', async () => {
+    mocks.admin.restoreUploadedBackup.mockRejectedValue(noAnswer('ECONNRESET'));
+    expect((await upload('son-1')).status).toBe(504);
+    expect(mocks.audit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      fields: ['backup restore from a file sent (no answer from the app)'],
+    }));
   });
 
   it.each([
@@ -457,6 +550,26 @@ describe('zip check', () => {
     expect(zipEntryNames(zip.subarray(0, zip.length - 10))).toBeNull();
     expect(zipEntryNames(new TextEncoder().encode('PK not really a zip, just text that is long enough'))).toBeNull();
     expect(zipEntryNames(new Uint8Array())).toBeNull();
+  });
+
+  it('refuses a central directory that lies about itself', () => {
+    const zip = makeZip({ 'sonarr.db': 'b' });
+    const end = zip.length - 22;
+    const edit = (fn: (v: DataView) => void) => {
+      const copy = zip.slice();
+      fn(new DataView(copy.buffer));
+      return copy;
+    };
+    // More entries than there are.
+    expect(zipEntryNames(edit((v) => v.setUint16(end + 10, 5, true)))).toBeNull();
+    // The directory starts past the end record.
+    expect(zipEntryNames(edit((v) => v.setUint32(end + 16, end + 4, true)))).toBeNull();
+    // ZIP64 markers.
+    expect(zipEntryNames(edit((v) => v.setUint16(end + 10, 0xffff, true)))).toBeNull();
+    expect(zipEntryNames(edit((v) => v.setUint32(end + 16, 0xffffffff, true)))).toBeNull();
+    // A name that runs past the end record.
+    const central = new DataView(zip.buffer).getUint32(end + 16, true);
+    expect(zipEntryNames(edit((v) => v.setUint16(central + 28, 0xfff0, true)))).toBeNull();
   });
 
   it("wants each app's own database at the top level", () => {

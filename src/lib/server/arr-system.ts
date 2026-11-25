@@ -4,6 +4,7 @@
 // few fields, and every text the app wrote is redacted, so nothing else it
 // returns (paths of its own config, keys) reaches the browser.
 import { NextResponse, type NextRequest } from 'next/server';
+import { isAxiosError } from 'axios';
 import { prisma } from '@/lib/db';
 import { getLidarrClient, getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
@@ -351,4 +352,34 @@ export async function restartAfterRestore(
     }, scope);
     return false;
   }
+}
+
+/**
+ * The app took the request but no answer came back (a timeout, or a proxy in
+ * front of it cutting the connection). A restore or delete may then have
+ * happened anyway: the app moves a restored config.xml into place at once.
+ */
+export function upstreamNoAnswer(error: unknown): boolean {
+  return isAxiosError(error) && !error.response && !NEVER_SENT.has(error.code ?? '');
+}
+
+/** Connection errors that mean the request never reached the app. */
+const NEVER_SENT = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH', 'ERR_INVALID_URL']);
+
+/** A step that may have gone through: recorded, and said so to the admin. */
+export async function maybeDoneResponse(
+  request: NextRequest,
+  actor: SecurityAuditActor,
+  target: Pick<SystemTarget, 'type' | 'instanceId' | 'label'>,
+  step: string,
+  message: string,
+): Promise<NextResponse> {
+  logger.warn('App did not answer a backup step', {
+    userId: actor.id,
+    username: actor.username,
+    instanceId: target.instanceId,
+    step,
+  }, { scope: target.type.toLowerCase() });
+  await recordSystemAction(request, actor, target, `${step} (no answer from the app)`);
+  return NextResponse.json({ error: message }, { status: 504 });
 }

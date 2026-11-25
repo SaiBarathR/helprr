@@ -97,6 +97,11 @@ const BACKUPS = [
 function systemResponse(url: string, init?: RequestInit): Response {
   mocks.systemUrls.push(url);
   const instance = new URL(url, 'http://x').searchParams.get('instanceId') ?? '';
+  if (url.startsWith('/api/admin/arr-system/backups/upload')) {
+    const form = init?.body as FormData;
+    mocks.sent.push({ url, method: init?.method ?? 'GET', body: Object.fromEntries([...form.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : `file:${(v as File).name}`])) });
+    return new Response(JSON.stringify({ ok: true, restarted: false }));
+  }
   if (url.startsWith('/api/admin/arr-system/power') || /\/backups\/\d+/.test(url)) {
     mocks.sent.push({ url, method: init?.method ?? 'GET', body: JSON.parse(String(init?.body)) });
     if (mocks.refusePassword) {
@@ -331,5 +336,27 @@ describe('Service status, for admins: restart, shut down and backups', () => {
     // Back to the list once it is done.
     expect(await within(sheet).findByText('Back up now')).toBeTruthy();
     expect(mocks.sent).toHaveLength(2);
+  });
+
+  it('restores from a picked zip with the word and password, and turns away other files in the browser', async () => {
+    const sheet = await openSheet();
+    await userEvent.click(within(sheet).getByRole('tab', { name: 'Backups' }));
+    await within(sheet).findByText('Manual backup');
+    const input = within(sheet).getByLabelText('Backup file to restore') as HTMLInputElement;
+    await userEvent.upload(input, new File(['hello'], 'notes.txt', { type: 'text/plain' }), { applyAccept: false });
+    expect(within(sheet).queryByText('Restore from this file?')).toBeNull();
+
+    await userEvent.upload(input, new File(['PK'], 'sonarr_backup.zip', { type: 'application/zip' }));
+    expect(await within(sheet).findByText('Restore from this file?')).toBeTruthy();
+    await userEvent.type(within(sheet).getByPlaceholderText('RESTORE'), 'RESTORE');
+    await userEvent.type(within(sheet).getByLabelText('Your current password'), 'pw');
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Restore' }));
+    await waitFor(() => expect(mocks.sent).toEqual([{
+      url: '/api/admin/arr-system/backups/upload?instanceId=son-2',
+      method: 'POST',
+      // No code field without two-step sign-in.
+      body: { confirm: 'RESTORE', currentPassword: 'pw', file: 'file:sonarr_backup.zip' },
+    }]));
+    expect(await within(sheet).findByText('Back up now')).toBeTruthy();
   });
 });

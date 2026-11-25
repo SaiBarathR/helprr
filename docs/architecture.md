@@ -204,7 +204,12 @@ silently drops the rest, so the route also requires a `Content-Length` within
 that. It must be a zip holding this app's own database (another app's backup
 would swap in that app's `config.xml`), and goes to the app from memory. A
 restore restarts the app, as the app's own page does. Each step is a
-`SERVICE_UPDATED` security-audit row naming the step and the backup.
+`SERVICE_UPDATED` security-audit row naming the step and the backup. A restore
+or delete the app took but never answered (a timeout, a proxy cutting the
+connection) may still have happened, so it is recorded as sent with no answer
+and the admin is told so (504); one that never reached the app is not
+recorded. Restart and shutdown take no password, so the power route accepts
+JSON only (a cross-site form can't send it without a preflight).
 One upstream failure must not cancel every other source. Sonarr, Radarr, and
 Lidarr instances share two polling slots per cycle; an instance that fails twice
 in a row is skipped (without taking a slot) for 30 seconds, doubling to 5

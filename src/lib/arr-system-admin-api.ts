@@ -12,8 +12,8 @@ const RESTORE_TIMEOUT_MS = 120_000;
 
 export interface ArrBackupFile {
   stream: Readable;
-  /** From the app's Content-Length, or null. */
-  size: number | null;
+  /** The app's Content-Type, to tell a zip from a sign-in page. */
+  contentType: string;
 }
 
 export interface ArrSystemAdminApi {
@@ -57,10 +57,10 @@ export function arrSystemAdminApi(client: AxiosInstance, prefix: '/api/v3' | '/a
     },
     async downloadBackup(path) {
       // The backup files sit under the app's URL base, outside its API, and
-      // take the same key.
+      // take the same key. No Content-Length is passed on: axios unzips a
+      // response a proxy gzipped, and the app's length would then be wrong.
       const response = await client.get<Readable>(path, { responseType: 'stream' });
-      const size = Number(response.headers['content-length']);
-      return { stream: response.data, size: Number.isSafeInteger(size) && size >= 0 ? size : null };
+      return { stream: response.data, contentType: String(response.headers['content-type'] ?? '') };
     },
   };
 }

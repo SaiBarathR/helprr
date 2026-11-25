@@ -1,4 +1,5 @@
 import { Readable } from 'stream';
+import { isAxiosError } from 'axios';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
@@ -30,6 +31,12 @@ async function postHandler(request: NextRequest, { params }: { params: Promise<{
     const found = await findBackup(target.client, id);
     if (!found) return NextResponse.json({ error: 'That backup is no longer there' }, { status: 404 });
     const file = await target.client.systemAdmin.downloadBackup(found.path);
+    // An app that doesn't take the key on its backup files answers with its
+    // sign-in page (same host, so the redirect is followed): not a backup.
+    if (/text\/html/i.test(file.contentType)) {
+      file.stream.destroy();
+      return NextResponse.json({ error: 'The app sent a page instead of the backup. Download it in the app.' }, { status: 502 });
+    }
     // A download left half way stops the app's stream too.
     request.signal.addEventListener('abort', () => file.stream.destroy(), { once: true });
     logger.info('App backup downloaded', {
@@ -46,10 +53,11 @@ async function postHandler(request: NextRequest, { params }: { params: Promise<{
         'Content-Disposition': `attachment; filename="${found.backup.name}"`,
         'Cache-Control': 'private, no-store',
         'X-Content-Type-Options': 'nosniff',
-        ...(file.size !== null && { 'Content-Length': String(file.size) }),
       },
     });
   } catch (error) {
+    // An error answer to a streamed request is itself a stream: drain it, so its socket goes back to the pool.
+    if (isAxiosError(error)) (error.response?.data as { destroy?: () => void } | undefined)?.destroy?.();
     return upstreamErrorResponse(error, 'Failed to download the backup');
   }
 }

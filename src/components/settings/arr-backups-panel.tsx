@@ -170,14 +170,14 @@ export function ArrBackupsPanel({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setStep({ kind: 'download', backup })}>
+                  <DropdownMenuItem className="pointer-coarse:min-h-11" onClick={() => setStep({ kind: 'download', backup })}>
                     <Download /> Download
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setStep({ kind: 'restore', backup })}>
+                  <DropdownMenuItem className="pointer-coarse:min-h-11" onClick={() => setStep({ kind: 'restore', backup })}>
                     <RotateCcw /> Restore
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive" onClick={() => setStep({ kind: 'delete', backup })}>
+                  <DropdownMenuItem variant="destructive" className="pointer-coarse:min-h-11" onClick={() => setStep({ kind: 'delete', backup })}>
                     <Trash2 /> Delete
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -259,6 +259,13 @@ function BackupStep({
       }
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string; field?: string; needsStepUp?: boolean; needsCode?: boolean };
+        // The app didn't answer, so it may have done it: said as such, and back to the list.
+        if (res.status === 504) {
+          toast.warning(`${appName} did not answer`, { description: data.error });
+          stepUp.clear();
+          onDone();
+          return;
+        }
         // A wrong password or code shows under its field; anything else in a toast.
         if (!stepUp.onRefused(data, res.status)) toast.error(`${copy.action} failed`, { description: data.error });
         return;
@@ -311,33 +318,36 @@ function BackupStep({
         />
         <p>{consequence(step, appName)}</p>
       </div>
-      {copy.phrase && (
-        <div className="space-y-1.5">
-          <label htmlFor="backup-confirm-phrase" className="text-sm text-muted-foreground">
-            Type <span className="font-mono font-semibold text-foreground">{copy.phrase}</span> to confirm.
-          </label>
-          <Input
-            id="backup-confirm-phrase"
-            value={typed}
-            disabled={busy}
-            autoCapitalize="characters"
-            autoCorrect="off"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={copy.phrase}
-            onChange={(e) => setTyped(e.target.value)}
-          />
-        </div>
-      )}
-      <StepUpFields
-        stepUp={stepUp}
-        reason={step.kind === 'download' ? 'The file holds every password it keeps.' : 'This changes the app itself.'}
-      />
+      {/* Locked while it is sent, so nothing typed meanwhile shows up after a refusal. */}
+      <fieldset disabled={busy} className="space-y-4">
+        {copy.phrase && (
+          <div className="space-y-1.5">
+            <label htmlFor="backup-confirm-phrase" className="text-sm text-muted-foreground">
+              Type <span className="font-mono font-semibold text-foreground">{copy.phrase}</span> to confirm.
+            </label>
+            <Input
+              id="backup-confirm-phrase"
+              className="pointer-coarse:h-11"
+              value={typed}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={copy.phrase}
+              onChange={(e) => setTyped(e.target.value)}
+            />
+          </div>
+        )}
+        <StepUpFields
+          stepUp={stepUp}
+          reason={step.kind === 'download' ? 'The file holds every password it keeps.' : 'This changes the app itself.'}
+        />
+      </fieldset>
       <div className="flex gap-2">
-        <Button type="button" variant="outline" className="flex-1" disabled={busy} onClick={onDone}>
+        <Button type="button" variant="outline" className="flex-1 pointer-coarse:h-11" disabled={busy} onClick={onDone}>
           Cancel
         </Button>
-        <Button type="submit" variant={destructive ? 'destructive' : 'default'} className="flex-1" disabled={!canSubmit}>
+        <Button type="submit" variant={destructive ? 'destructive' : 'default'} className="flex-1 pointer-coarse:h-11" disabled={!canSubmit}>
           {busy && <Loader2 className="animate-spin" />}
           {copy.action}
         </Button>

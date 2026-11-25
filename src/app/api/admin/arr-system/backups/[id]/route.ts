@@ -5,7 +5,15 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 import { logger } from '@/lib/logger';
 import { confirmAdminStepUp } from '@/lib/server/confirm-password';
 import { BACKUP_DELETE_PHRASE } from '@/lib/arr-system';
-import { NO_STORE, findBackup, parseBackupId, recordSystemAction, resolveSystemTarget } from '@/lib/server/arr-system';
+import {
+  NO_STORE,
+  findBackup,
+  maybeDoneResponse,
+  parseBackupId,
+  recordSystemAction,
+  resolveSystemTarget,
+  upstreamNoAnswer,
+} from '@/lib/server/arr-system';
 
 // Delete one of an instance's backups from its disk. Admins only, with the
 // typed word and the admin's password (and a code with two-step sign-in on):
@@ -27,7 +35,13 @@ async function deleteHandler(request: NextRequest, { params }: { params: Promise
     if (stepUp) return stepUp;
     const found = await findBackup(target.client, id);
     if (!found) return NextResponse.json({ error: 'That backup is no longer there' }, { status: 404 });
-    await target.client.systemAdmin.deleteBackup(id);
+    try {
+      await target.client.systemAdmin.deleteBackup(id);
+    } catch (error) {
+      if (!upstreamNoAnswer(error)) throw error;
+      return maybeDoneResponse(request, auth.user, target, `backup delete sent: ${found.backup.name}`,
+        'The app did not answer. The backup may be deleted: check the list again.');
+    }
     logger.info('App backup deleted', {
       userId: auth.user.id,
       username: auth.user.username,

@@ -13,6 +13,12 @@ import { NO_STORE, recordSystemAction, resolveSystemTarget } from '@/lib/server/
 async function postHandler(request: NextRequest) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
+  // JSON only: a form on another site (a sibling subdomain counts as the same
+  // site for the session cookie) can post text/plain, but not JSON, without
+  // the browser asking first. This step takes no password.
+  if (!/^application\/json\b/i.test(request.headers.get('content-type') ?? '')) {
+    return NextResponse.json({ error: 'Expected JSON' }, { status: 415 });
+  }
   try {
     const body: unknown = await request.json().catch(() => null);
     const action = body && typeof body === 'object' ? (body as { action?: unknown }).action : undefined;

@@ -4,7 +4,14 @@ import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { confirmAdminStepUp } from '@/lib/server/confirm-password';
 import { BACKUP_RESTORE_PHRASE, BACKUP_UPLOAD_MAX_BYTES } from '@/lib/arr-system';
-import { NO_STORE, resolveSystemTarget, restartAfterRestore, uploadedBackupProblem } from '@/lib/server/arr-system';
+import {
+  NO_STORE,
+  maybeDoneResponse,
+  resolveSystemTarget,
+  restartAfterRestore,
+  uploadedBackupProblem,
+  upstreamNoAnswer,
+} from '@/lib/server/arr-system';
 
 export const runtime = 'nodejs';
 
@@ -24,7 +31,9 @@ async function postHandler(request: NextRequest) {
     // declared length is required and checked before anything is read.
     const length = Number(request.headers.get('content-length'));
     if (!request.headers.has('content-length') || !Number.isSafeInteger(length)) {
-      return NextResponse.json({ error: 'Content-Length is required' }, { status: 411 });
+      return NextResponse.json({
+        error: 'Helprr couldn’t tell how big the file is (a proxy in between may have dropped it), so it can’t check that all of it arrived. Restore it in the app.',
+      }, { status: 411 });
     }
     if (length > PROXY_BODY_LIMIT) {
       return NextResponse.json({ error: 'That file is too big to restore from Helprr. Restore it in the app.' }, { status: 413 });
@@ -54,7 +63,13 @@ async function postHandler(request: NextRequest) {
     }, 'arr-backup-restore', 'Restoring a backup');
     if (stepUp) return stepUp;
     // Sent under a fixed name: the app only looks at the extension.
-    await target.client.systemAdmin.restoreUploadedBackup(new Blob([bytes], { type: 'application/zip' }), 'backup.zip');
+    try {
+      await target.client.systemAdmin.restoreUploadedBackup(new Blob([bytes], { type: 'application/zip' }), 'backup.zip');
+    } catch (error) {
+      if (!upstreamNoAnswer(error)) throw error;
+      return maybeDoneResponse(request, auth.user, target, 'backup restore from a file sent',
+        'The app did not answer. The restore may have gone through: restart the app to finish it, then check.');
+    }
     const restarted = await restartAfterRestore(request, auth.user, target, 'backup restored from a file');
     return NextResponse.json({ ok: true, restarted }, { headers: NO_STORE });
   } catch (error) {

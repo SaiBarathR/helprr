@@ -4,7 +4,15 @@ import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { confirmAdminStepUp } from '@/lib/server/confirm-password';
 import { BACKUP_RESTORE_PHRASE } from '@/lib/arr-system';
-import { NO_STORE, findBackup, parseBackupId, resolveSystemTarget, restartAfterRestore } from '@/lib/server/arr-system';
+import {
+  NO_STORE,
+  findBackup,
+  maybeDoneResponse,
+  parseBackupId,
+  resolveSystemTarget,
+  restartAfterRestore,
+  upstreamNoAnswer,
+} from '@/lib/server/arr-system';
 
 // Restore one of an instance's listed backups, then restart it so the restore
 // takes effect, as the app's own System → Backup does. Admins only, with the
@@ -27,7 +35,13 @@ async function postHandler(request: NextRequest, { params }: { params: Promise<{
     if (stepUp) return stepUp;
     const found = await findBackup(target.client, id);
     if (!found) return NextResponse.json({ error: 'That backup is no longer there' }, { status: 404 });
-    await target.client.systemAdmin.restoreBackup(id);
+    try {
+      await target.client.systemAdmin.restoreBackup(id);
+    } catch (error) {
+      if (!upstreamNoAnswer(error)) throw error;
+      return maybeDoneResponse(request, auth.user, target, `backup restore sent: ${found.backup.name}`,
+        'The app did not answer. The restore may have gone through: restart the app to finish it, then check.');
+    }
     const restarted = await restartAfterRestore(request, auth.user, target, `backup restored: ${found.backup.name}`);
     return NextResponse.json({ ok: true, restarted }, { headers: NO_STORE });
   } catch (error) {
