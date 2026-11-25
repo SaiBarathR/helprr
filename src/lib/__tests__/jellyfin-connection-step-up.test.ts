@@ -151,6 +151,7 @@ describe('a member with settings.instances', () => {
     ['change', 'https://jf.example.com'],
   ])('cannot %s the external URL', async (_label, current) => {
     mocks.findFirst.mockResolvedValue({ ...stored, externalUrl: current });
+    mocks.findUnique.mockResolvedValue({ ...stored, externalUrl: current });
     const res = await save({ url: OLD_URL, apiKey: maskApiKey(STORED_KEY), externalUrl: 'https://evil.example' });
     expect(res.status).toBe(403);
     expect((await res.json()).error).toMatch(/Only an admin/);
