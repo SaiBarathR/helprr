@@ -42,4 +42,22 @@ describe('Operation audit', () => {
     renderPage();
     expect(await screen.findByText('Show.S01E01 • Show.S01E02 • #3 • +1 more')).toBeTruthy();
   });
+
+  it('shows a folder rename as old → new path and keeps a bulk root-folder move as → root', async () => {
+    const move = { service: 'RADARR', operation: 'MOVE_MEDIA', mediaType: 'movie', filesDeleted: null };
+    records = [
+      record({
+        ...move, id: 'rename', mediaTitle: 'The Sheep Detectives',
+        details: { targetIds: [11], fromPath: '/data/Movies/The Sheep Detectives (2026)', path: '/data/Movies/Sheep (2026)', rootFolderPath: '/data/Movies', moveFiles: true },
+      }),
+      record({ ...move, id: 'bulk', mediaTitle: '2 movies', fileCount: 2, details: { targetIds: [1, 2], rootFolderPath: '/data/Other', moveFiles: true, bulk: true } }),
+    ];
+    renderPage();
+    // The paths wrap after each separator, so their text spans several elements.
+    const pathLine = (text: string) => screen.getByText((_, element) => element?.tagName === 'P' && element.textContent === text);
+    expect(await screen.findByText('FOLDER RENAME')).toBeTruthy();
+    expect(pathLine('/data/Movies/The Sheep Detectives (2026) → /data/Movies/Sheep (2026)')).toBeTruthy();
+    expect(pathLine('→ /data/Other')).toBeTruthy();
+    expect(screen.getByText('ROOT FOLDER')).toBeTruthy();
+  });
 });

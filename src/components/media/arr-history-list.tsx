@@ -6,7 +6,7 @@ import { Copy, ExternalLink, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { formatDateTime } from '@/lib/date-format';
-import { formatBytes } from '@/lib/format';
+import { formatBytes, formatDownloadProtocol } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -238,7 +238,7 @@ export function ArrHistoryList({
                 {selectedHistoryItem.data?.protocol && (
                   <div className="flex justify-between items-center gap-4 px-4 py-2.5">
                     <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Protocol</span>
-                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere] capitalize">{selectedHistoryItem.data.protocol}</span>
+                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{formatDownloadProtocol(selectedHistoryItem.data.protocol)}</span>
                   </div>
                 )}
                 {selectedHistoryItem.data?.message && (

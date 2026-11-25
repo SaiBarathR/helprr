@@ -71,6 +71,9 @@ describe('library filter menu', () => {
     // The same tag id on two instances is two choices, named with their instance.
     await user.click(screen.getByRole('button', { name: 'Filter' }));
     expect(await item('anime (Radarr B)')).toBeTruthy();
+    // Shown before the first pick (so picking doesn't move the menu), but off.
+    const saveAction = await action('Save current filters…');
+    expect(phone ? (saveAction as HTMLButtonElement).disabled : saveAction.getAttribute('aria-disabled') === 'true').toBe(true);
     await user.click(await item('4k (Radarr A)'));
     expect(screen.getByTestId('chips').textContent).toBe('Tag: 4k (Radarr A)');
 
@@ -119,15 +122,25 @@ describe('library filter menu', () => {
     expect(onSaved).toHaveBeenLastCalledWith([]);
     expect(within(dialog).getByText('No saved filters.')).toBeTruthy();
 
-    // Undo from the toast puts it back.
-    const [, options] = toast.mock.calls.at(-1) as [string, { action: { onClick: () => void } }];
-    act(() => options.action.onClick());
+    // Undo inside the open dialog puts it back (a toast's action can't be tapped above a modal).
+    expect(toast).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole('button', { name: 'Undo' }));
     expect(onSaved).toHaveBeenLastCalledWith([expect.objectContaining({ name: 'Drama only' })]);
+    expect(within(dialog).queryByRole('button', { name: 'Undo' })).toBeNull();
 
     // Escape mid-rename cancels the rename and keeps the dialog open.
     await user.click(within(dialog).getByRole('button', { name: 'Rename Drama only' }));
     await user.keyboard('{Escape}');
     expect(screen.getByRole('dialog', { name: 'Saved filters' })).toBeTruthy();
     expect(within(dialog).queryByRole('textbox')).toBeNull();
+
+    // A delete still undone when the dialog closes moves to a toast that can undo it.
+    await user.click(within(dialog).getByRole('button', { name: 'Delete Drama only' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Done' }));
+    expect(screen.queryByRole('dialog', { name: 'Saved filters' })).toBeNull();
+    const [message, options] = toast.mock.calls.at(-1) as [string, { action: { onClick: () => void } }];
+    expect(message).toBe('Deleted “Drama only”');
+    act(() => options.action.onClick());
+    expect(onSaved).toHaveBeenLastCalledWith([expect.objectContaining({ name: 'Drama only' })]);
   });
 });

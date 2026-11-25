@@ -151,7 +151,8 @@ export function ArrTasksPanel({
             <Button
               variant="outline"
               size="sm"
-              className="shrink-0"
+              // 44 px on touch, like the other row actions.
+              className="shrink-0 pointer-coarse:h-11"
               disabled={isRunning(task.taskName)}
               aria-label={`Run ${task.name} now`}
               onClick={() => void run(task)}

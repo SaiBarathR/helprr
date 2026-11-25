@@ -30,6 +30,7 @@ import {
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { formatDate, formatDateTime, formatTime } from '@/lib/date-format';
+import { formatDownloadProtocol } from '@/lib/format';
 import type { EpisodeWithFile, HistoryItem, SonarrEpisodeFile, SonarrSeries, DiscoverSeasonDetailResponse } from '@/types';
 import { toCachedImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -845,7 +846,7 @@ export default function EpisodeDetailPage() {
                 {selectedHistoryItem.data?.protocol && (
                   <div className="flex justify-between items-center gap-4 px-4 py-2.5">
                     <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Protocol</span>
-                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere] capitalize">{selectedHistoryItem.data.protocol}</span>
+                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{formatDownloadProtocol(selectedHistoryItem.data.protocol)}</span>
                   </div>
                 )}
                 {selectedHistoryItem.data?.message && (

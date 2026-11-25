@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { resolveConnection, type ArrServiceType } from '@/lib/arr-instances';
+import { listConnections, resolveConnection, type ArrServiceType } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
@@ -18,6 +18,8 @@ const PROFILE_CACHE_HEADERS = {
   // Auth-gated: a cached answer must never be replayed to another session.
   'Vary': 'Cookie',
 } as const;
+
+const APP_NAME: Record<ArrServiceType, string> = { SONARR: 'Sonarr', RADARR: 'Radarr', LIDARR: 'Lidarr' };
 
 function itemName(item: QualityProfileItemResource): string {
   return item.quality?.name ?? item.name ?? 'Unknown';
@@ -96,6 +98,11 @@ export async function qualityProfileResponse(
   }
 
   try {
+    // A named instance must be one of this type's (the 400 the Activity routes give):
+    // resolveConnection's own error for it would surface as a 500.
+    if (instanceId && !(await listConnections(type)).some((connection) => connection.id === instanceId)) {
+      return NextResponse.json({ error: `Unknown ${APP_NAME[type]} instance` }, { status: 400 });
+    }
     const connection = await resolveConnection(type, instanceId);
     const scope = `${type.toLowerCase()}-qualityprofile`;
     const keySeed = `${connection.id}:${id}`;

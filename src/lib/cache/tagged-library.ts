@@ -300,10 +300,16 @@ export async function invalidateTaggedLibrary(scope: string, instanceId?: string
     const searchModule = SEARCH_MODULE_BY_SCOPE[scope];
     if (searchModule) ops.push(deleteCachedJson('searchindex', searchModule));
 
-    // Radarr collections derive from the movie library (membership + missing counts). Keep
-    // 'radarr-collections' in sync with COLLECTIONS_SCOPE in api/radarr/collections/route.ts.
+    // Radarr collections derive from the movie library (membership + missing counts), and a
+    // collection edit lands here too. Keep 'radarr-collections' in sync with COLLECTIONS_SCOPE in
+    // api/radarr/collections/route.ts. Its entries are written under a versioned read seed, so
+    // only the version bump makes the next read miss; the plain-seed delete alone left the old
+    // collections served for the rest of their TTL.
     if (scope === 'radarr') {
-      for (const seed of seeds) ops.push(deleteCachedJson('radarr-collections', seed));
+      for (const seed of seeds) {
+        bumpInvalidationVersion('radarr-collections', seed);
+        ops.push(deleteCachedJson('radarr-collections', seed));
+      }
     }
 
     // Insights' media analysis keeps its own normalized Sonarr episode-file cache
