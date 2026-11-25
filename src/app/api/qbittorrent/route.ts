@@ -16,10 +16,11 @@ import { deleteTorrentsAudited, TORRENT_DELETE_REFUSALS } from '@/lib/file-audit
 import { isInsideDownloadRoots, parseAddTorrentOptions, parseLocation, parseShareLimits, parseTags } from '@/lib/qbittorrent-inputs';
 import { projectTorrentsForSummary } from '@/lib/qbittorrent-summary';
 import { boundedBodyErrorResponse, readBoundedFormData } from '@/lib/server/bounded-body';
+import type { OutboundRules } from '@/lib/outbound-url';
 import {
   checkTorrentLink,
   fetchTorrentLink,
-  PRIVATE_LINK_MESSAGE,
+  isRefusedLink,
   TorrentLinkError,
   type FetchedTorrentLink,
 } from '@/lib/torrent-link-fetch';
@@ -301,14 +302,14 @@ async function mapWithLimit<T, R>(items: T[], limit: number, run: (item: T) => P
 type AddLine = { kind: 'magnet'; magnet: string; hash: string } | { kind: 'link'; url: string };
 
 /** The magnets and http(s) links, one per line; refused whole when a line is neither, so nothing is half-added. */
-function parseAddLines(urls: string): { ok: true; lines: AddLine[] } | { ok: false; error: string } {
+function parseAddLines(urls: string, rules: OutboundRules): { ok: true; lines: AddLine[] } | { ok: false; error: string } {
   const raw = urls.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (raw.length > MAX_ADD_ITEMS) return { ok: false, error: `Add at most ${MAX_ADD_ITEMS} torrents at once` };
   const lines: AddLine[] = [];
   for (const [index, line] of raw.entries()) {
     const where = raw.length > 1 ? `Line ${index + 1}: ` : '';
     if (/^https?:/i.test(line)) {
-      const checked = checkTorrentLink(line);
+      const checked = checkTorrentLink(line, rules);
       if (!checked.ok) return { ok: false, error: `${where}${checked.error}` };
       lines.push({ kind: 'link', url: checked.url.toString() });
       continue;
@@ -325,13 +326,13 @@ function parseAddLines(urls: string): { ok: true; lines: AddLine[] } | { ok: fal
 }
 
 /** Fetch a link (see torrent-link-fetch for the limits) and learn its hash: a .torrent, or the magnet it redirected to. */
-async function resolveLink(url: string): Promise<AddSource | AddOutcome> {
+async function resolveLink(url: string, rules: OutboundRules): Promise<AddSource | AddOutcome> {
   let fetched: FetchedTorrentLink;
   try {
-    fetched = await fetchTorrentLink(url);
+    fetched = await fetchTorrentLink(url, rules);
   } catch (error) {
     if (!(error instanceof TorrentLinkError)) throw error;
-    return failed(error.message, error.message === PRIVATE_LINK_MESSAGE ? 400 : 502);
+    return failed(error.message, isRefusedLink(error.message) ? 400 : 502);
   }
   try {
     if (fetched.kind === 'magnet') {
@@ -625,7 +626,10 @@ async function postHandler(request: NextRequest) {
       return NextResponse.json({ error: 'urls (magnet link) is required' }, { status: 400 });
     }
 
-    const parsedLines = parseAddLines(urls);
+    // The notification channels' address rules: an admin may name a LAN
+    // address (a Prowlarr or Jackett at home), anyone else the internet only.
+    const linkRules: OutboundRules = { allowPrivate: auth.user.role === 'admin' };
+    const parsedLines = parseAddLines(urls, linkRules);
     if (!parsedLines.ok) {
       logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet', validationFailed: true });
       return NextResponse.json({ error: parsedLines.error }, { status: 400 });
@@ -667,7 +671,7 @@ async function postHandler(request: NextRequest) {
 
     // Links are fetched only once everything else has passed.
     const items = await mapWithLimit(parsedLines.lines, LINK_FETCH_CONCURRENCY, async (line) =>
-      line.kind === 'link' ? resolveLink(line.url) : line
+      line.kind === 'link' ? resolveLink(line.url, linkRules) : line
     );
     const outcomes = await addTorrents(client, items, {
       ...parsedOptions.options,

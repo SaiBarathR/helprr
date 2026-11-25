@@ -42,6 +42,7 @@ import * as list from '@/app/api/qbittorrent/route';
 import * as summary from '@/app/api/qbittorrent/summary/route';
 import * as torrent from '@/app/api/qbittorrent/[hash]/route';
 import * as details from '@/app/api/qbittorrent/[hash]/details/route';
+import * as exportFile from '@/app/api/qbittorrent/[hash]/export/route';
 import * as files from '@/app/api/qbittorrent/[hash]/files/route';
 import * as priority from '@/app/api/qbittorrent/[hash]/files/priority/route';
 import * as rename from '@/app/api/qbittorrent/[hash]/files/rename/route';
@@ -68,6 +69,7 @@ const ROUTES: Array<[string, Handler, string, string, unknown?]> = [
   ['GET summary', summary.GET as Handler, 'GET', '/api/qbittorrent/summary?view=delta'],
   ['POST [hash]', torrent.POST as Handler, 'POST', `/api/qbittorrent/${HASH}`, { action: 'stop' }],
   ['GET [hash]/details', details.GET as Handler, 'GET', `/api/qbittorrent/${HASH}/details`],
+  ['GET [hash]/export', exportFile.GET as Handler, 'GET', `/api/qbittorrent/${HASH}/export`],
   ['GET [hash]/files', files.GET as Handler, 'GET', `/api/qbittorrent/${HASH}/files`],
   ['POST [hash]/files/priority', priority.POST as Handler, 'POST', `/api/qbittorrent/${HASH}/files/priority`, { ids: [0], priority: 0 }],
   ['POST [hash]/files/rename', rename.POST as Handler, 'POST', `/api/qbittorrent/${HASH}/files/rename`, { kind: 'file', path: 'a.mkv', name: 'b.mkv' }],

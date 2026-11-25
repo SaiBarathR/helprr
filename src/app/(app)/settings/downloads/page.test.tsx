@@ -12,7 +12,7 @@ import DownloadsSettingsPage from './page';
 
 const rule: BandwidthRule = {
   id: 'rule-1', name: 'Evenings', enabled: true, daysOfWeek: [1, 2, 3, 4, 5],
-  startHour: 18, startMinute: 0, endHour: 23, endMinute: 0, downloadLimitKbps: 5000, uploadLimitKbps: 1000,
+  startHour: 18, startMinute: 0, endHour: 23, endMinute: 0, downloadLimitKbps: 5000, uploadLimitKbps: 1000, target: 'global',
 };
 let root: Root;
 

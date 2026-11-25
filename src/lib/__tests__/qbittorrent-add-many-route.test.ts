@@ -26,7 +26,7 @@ vi.mock('@/lib/torrent-link-fetch', async (importOriginal) => ({
 }));
 
 import { POST } from '@/app/api/qbittorrent/route';
-import { PRIVATE_LINK_MESSAGE, TorrentLinkError } from '@/lib/torrent-link-fetch';
+import { BLOCKED_LINK_MESSAGE, PRIVATE_LINK_MESSAGE, TorrentLinkError } from '@/lib/torrent-link-fetch';
 
 const hashOf = (n: number) => String(n).repeat(40).slice(0, 40);
 const magnetOf = (n: number) => `magnet:?xt=urn:btih:${hashOf(n)}&dn=Test${n}`;
@@ -36,6 +36,7 @@ function torrentOf(name: string) {
 }
 
 const ADMIN = { id: 'u1', role: 'admin', template: 'admin', permissions: {} };
+const MEMBER = { id: 'u2', role: 'member', template: 'member', permissions: { 'torrents.add': true } };
 const VIEWER = { id: 'u3', role: 'member', template: 'member', permissions: { 'torrents.add': false } };
 
 /** qBittorrent's torrents list: what it already has, plus what was added (as qBittorrent lists it). */
@@ -205,13 +206,14 @@ describe('adding several magnets and links at once', () => {
     ['a javascript: URL', 'javascript:alert(1)', 'Enter a magnet link or an http(s) link to a .torrent file'],
     ['a loopback address', 'http://127.0.0.1:8080/a.torrent', PRIVATE_LINK_MESSAGE],
     ['a LAN address', 'http://192.168.0.10/a.torrent', PRIVATE_LINK_MESSAGE],
-    ['the cloud metadata address', 'http://169.254.169.254/latest/meta-data', PRIVATE_LINK_MESSAGE],
+    ['the cloud metadata address', 'http://169.254.169.254/latest/meta-data', BLOCKED_LINK_MESSAGE],
     ['an IPv6 loopback', 'http://[::1]/a.torrent', PRIVATE_LINK_MESSAGE],
     ['IPv4 wrapped in IPv6', 'http://[::ffff:127.0.0.1]/a.torrent', PRIVATE_LINK_MESSAGE],
     ['localhost', 'http://localhost:3050/a.torrent', PRIVATE_LINK_MESSAGE],
     ['a single-label name', 'http://prowlarr:9696/1/download', PRIVATE_LINK_MESSAGE],
     ['credentials in the link', 'https://user:pass@example.org/a.torrent', 'Leave the user name and password out of the link'],
-  ])('refuses %s before fetching or adding anything', async (_label, line, error) => {
+  ])('refuses a member %s before fetching or adding anything', async (_label, line, error) => {
+    mocks.requireUser.mockResolvedValue({ ok: true, user: MEMBER, session: {} });
     const res = await addLinks(line);
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error });
@@ -219,7 +221,37 @@ describe('adding several magnets and links at once', () => {
     expect(mocks.qbit.addMagnet).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['the cloud metadata address', 'http://169.254.169.254/latest/meta-data'],
+    ['an IPv6 link-local address', 'http://[fe80::1]/a.torrent'],
+    ['a metadata name', 'http://metadata.google.internal/a.torrent'],
+  ])('refuses an admin %s too', async (_label, line) => {
+    const res = await addLinks(line);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: BLOCKED_LINK_MESSAGE });
+    expect(mocks.fetchTorrentLink).not.toHaveBeenCalled();
+  });
+
+  it("fetches an admin's LAN link with the admin's rules", async () => {
+    const linked = torrentOf('From Prowlarr');
+    mocks.fetchTorrentLink.mockResolvedValueOnce({ kind: 'file', bytes: linked.bytes });
+    const res = await addLinks('http://192.168.0.124:9696/1/download?apikey=x');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ success: true, hash: linked.hash });
+    expect(mocks.fetchTorrentLink).toHaveBeenCalledWith('http://192.168.0.124:9696/1/download?apikey=x', { allowPrivate: true });
+  });
+
+  it("fetches a member's public link with the member's rules, so a redirect to the LAN is refused", async () => {
+    mocks.requireUser.mockResolvedValue({ ok: true, user: MEMBER, session: {} });
+    mocks.fetchTorrentLink.mockRejectedValueOnce(new TorrentLinkError(PRIVATE_LINK_MESSAGE));
+    const res = await addLinks('https://example.org/redirects-to-lan.torrent');
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: PRIVATE_LINK_MESSAGE });
+    expect(mocks.fetchTorrentLink).toHaveBeenCalledWith('https://example.org/redirects-to-lan.torrent', { allowPrivate: false });
+  });
+
   it('names the line it refuses when several are sent, and adds none of them', async () => {
+    mocks.requireUser.mockResolvedValue({ ok: true, user: MEMBER, session: {} });
     const res = await addLinks(`${magnetOf(1)}\nhttp://10.0.0.5/a.torrent`);
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: `Line 2: ${PRIVATE_LINK_MESSAGE}` });

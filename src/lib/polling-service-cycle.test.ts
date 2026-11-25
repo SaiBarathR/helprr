@@ -27,6 +27,16 @@ vi.mock('@/lib/polling/update-available', async (importOriginal) => ({
   checkUpdateAvailable: mocks.checkUpdate,
 }));
 
+// The saved alternative limits live in Redis; a map stands in for it.
+const savedAlt = vi.hoisted(() => ({ store: new Map<string, unknown>(), failLoad: false }));
+vi.mock('@/lib/bandwidth-scheduler/saved-alt', () => ({
+  loadSavedAltLimits: vi.fn(async () => {
+    if (savedAlt.failLoad) throw new Error('Redis unavailable');
+    return new Map(savedAlt.store);
+  }),
+  saveAltLimits: vi.fn(async (id: string, value: unknown) => { savedAlt.store.set(id, value); }),
+  forgetAltLimits: vi.fn(async (id: string) => { savedAlt.store.delete(id); }),
+}));
 vi.mock('@/lib/polling/poll-twitch', () => ({ pollTwitch: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/polling/poll-youtube', () => ({ pollYoutube: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/db', () => ({
@@ -435,7 +445,9 @@ describe('jobs that cannot load what they work on', () => {
   it('counts a bandwidth release it could not carry out as failed', async () => {
     const service = new PollingService();
     const internal = stubCycle(service);
-    internal.appliedBandwidth = new Map([['q1', { ruleId: 'r1', downloadKbps: 100, uploadKbps: 50 }]]);
+    internal.appliedBandwidth = new Map([['q1', {
+      ruleId: 'r1', downloadKbps: 100, uploadKbps: 50, limits: 'global', wroteGlobal: true, savedAlt: null,
+    }]]);
     internal.applyBandwidthSchedule = vi.fn(async () => {
       await (internal.releaseAppliedBandwidth as (context: string) => Promise<void>).call(service, 'test');
     });
@@ -550,20 +562,28 @@ describe('jobs that cannot load what they work on', () => {
 describe('bandwidth schedule', () => {
   // A qBittorrent that behaves like 5.1.4: transfer/setDownloadLimit writes the
   // limits of the active mode, app/setPreferences writes the named keys.
-  function fakeQbit(mode: 0 | 1) {
+  function fakeQbit(initialMode: 0 | 1) {
     const prefs = { dl_limit: 1_048_576, up_limit: 524_288, alt_dl_limit: 51_200, alt_up_limit: 20_480 };
+    const state = { mode: initialMode as 0 | 1 };
     const transfer = (regular: 'dl_limit' | 'up_limit', alt: 'alt_dl_limit' | 'alt_up_limit') => vi.fn(async (limit: number) => {
-      prefs[mode === 1 ? alt : regular] = limit;
+      prefs[state.mode === 1 ? alt : regular] = limit;
     });
     return {
       prefs,
+      state,
       setGlobalDownloadLimit: transfer('dl_limit', 'alt_dl_limit'),
       setGlobalUploadLimit: transfer('up_limit', 'alt_up_limit'),
+      getSpeedLimitsMode: vi.fn(async () => state.mode),
+      getSpeedLimits: vi.fn(async () => ({ ...prefs })),
       setSpeedLimits: vi.fn(async (limits: Partial<typeof prefs>) => {
         Object.assign(prefs, limits);
       }),
     };
   }
+  beforeEach(() => {
+    savedAlt.store.clear();
+    savedAlt.failLoad = false;
+  });
   // Every day, all day (start equals end).
   const rule = {
     id: 'r1', name: 'Night', enabled: true, daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
@@ -590,6 +610,166 @@ describe('bandwidth schedule', () => {
     expect((internal.appliedBandwidth as Map<string, unknown>).size).toBe(0);
     expect(qbit.setGlobalDownloadLimit).not.toHaveBeenCalled();
     expect(qbit.setGlobalUploadLimit).not.toHaveBeenCalled();
+    // A "global limits" rule (one saved before the choice, too) never asks for the mode.
+    expect(qbit.getSpeedLimitsMode).not.toHaveBeenCalled();
+  });
+
+  const whicheverRule = { ...rule, target: 'active' };
+  const USER_PREFS = { dl_limit: 1_048_576, up_limit: 524_288, alt_dl_limit: 51_200, alt_up_limit: 20_480 };
+  async function serviceWith(...clients: Array<ReturnType<typeof fakeQbit>>) {
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getQBittorrentClients').mockResolvedValue(
+      clients.map((client, i) => ({ connection: { id: `q${i + 1}` }, client })) as never,
+    );
+    const internal = new PollingService() as unknown as InternalPollingService;
+    return {
+      internal,
+      apply: (internal.applyBandwidthSchedule as (context: unknown) => Promise<void>).bind(internal),
+    };
+  }
+
+  it('sets the alternative limits while alternative mode is on, and puts the user\'s own back after', async () => {
+    const qbit = fakeQbit(1);
+    const { internal, apply } = await serviceWith(qbit);
+
+    await apply(context([whicheverRule]));
+    expect(qbit.prefs).toEqual({ ...USER_PREFS, alt_dl_limit: 300 * 1024, alt_up_limit: 100 * 1024 });
+    expect(savedAlt.store.get('q1')).toEqual({ savedAlt: { alt_dl_limit: 51_200, alt_up_limit: 20_480 }, wroteGlobal: false });
+
+    // Steady: nothing is written again.
+    await apply(context([whicheverRule]));
+    expect(qbit.setSpeedLimits).toHaveBeenCalledTimes(1);
+
+    await apply(context([]));
+    expect(qbit.prefs).toEqual(USER_PREFS);
+    expect(savedAlt.store.size).toBe(0);
+    expect((internal.appliedBandwidth as Map<string, unknown>).size).toBe(0);
+  });
+
+  it('sets the regular limits while alternative mode is off, as a global rule does', async () => {
+    const qbit = fakeQbit(0);
+    const { apply } = await serviceWith(qbit);
+
+    await apply(context([whicheverRule]));
+    expect(qbit.prefs).toEqual({ ...USER_PREFS, dl_limit: 300 * 1024, up_limit: 100 * 1024 });
+    expect(savedAlt.store.size).toBe(0);
+
+    await apply(context([]));
+    expect(qbit.prefs).toEqual({ ...USER_PREFS, dl_limit: 0, up_limit: 0 });
+  });
+
+  it('follows the mode when it is switched during the rule', async () => {
+    const qbit = fakeQbit(0);
+    const { apply } = await serviceWith(qbit);
+
+    await apply(context([whicheverRule]));
+    qbit.state.mode = 1;
+    await apply(context([whicheverRule]));
+    expect(qbit.prefs).toEqual({ dl_limit: 300 * 1024, up_limit: 100 * 1024, alt_dl_limit: 300 * 1024, alt_up_limit: 100 * 1024 });
+
+    // Back to the regular mode: the alternative limits are the user's again.
+    qbit.state.mode = 0;
+    await apply(context([whicheverRule]));
+    expect(qbit.prefs).toEqual({ ...USER_PREFS, dl_limit: 300 * 1024, up_limit: 100 * 1024 });
+    expect(savedAlt.store.size).toBe(0);
+
+    await apply(context([]));
+    expect(qbit.prefs).toEqual({ ...USER_PREFS, dl_limit: 0, up_limit: 0 });
+  });
+
+  it('puts the alternative limits back when the next rule sets the global ones', async () => {
+    const qbit = fakeQbit(1);
+    const { apply } = await serviceWith(qbit);
+
+    await apply(context([whicheverRule]));
+    await apply(context([{ ...rule, id: 'r2', downloadLimitKbps: 50 }]));
+    expect(qbit.prefs).toEqual({ ...USER_PREFS, dl_limit: 50 * 1024, up_limit: 100 * 1024 });
+    expect(savedAlt.store.size).toBe(0);
+  });
+
+  it('keeps the user\'s alternative limits across a restart', async () => {
+    const qbit = fakeQbit(1);
+    const before = await serviceWith(qbit);
+    await before.apply(context([whicheverRule]));
+
+    // A new process: it must not take the rule's values for the user's.
+    const after = await serviceWith(qbit);
+    await after.apply(context([{ ...whicheverRule, downloadLimitKbps: 200 }]));
+    expect(savedAlt.store.get('q1')).toEqual({ savedAlt: { alt_dl_limit: 51_200, alt_up_limit: 20_480 }, wroteGlobal: false });
+    expect(qbit.prefs.alt_dl_limit).toBe(200 * 1024);
+
+    await after.apply(context([]));
+    expect(qbit.prefs).toEqual(USER_PREFS);
+    expect(savedAlt.store.size).toBe(0);
+  });
+
+  it('restores after a restart when the rule ended while it was down', async () => {
+    const qbit = fakeQbit(1);
+    const before = await serviceWith(qbit);
+    await before.apply(context([whicheverRule]));
+
+    const after = await serviceWith(qbit);
+    await after.apply(context([]));
+    expect(qbit.prefs).toEqual(USER_PREFS);
+  });
+
+  it('writes nothing until it has read the saved alternative limits', async () => {
+    const qbit = fakeQbit(1);
+    const { apply } = await serviceWith(qbit);
+    savedAlt.failLoad = true;
+    await apply(context([whicheverRule]));
+    expect(qbit.setSpeedLimits).not.toHaveBeenCalled();
+    expect(qbit.getSpeedLimitsMode).not.toHaveBeenCalled();
+
+    savedAlt.failLoad = false;
+    await apply(context([whicheverRule]));
+    expect(qbit.prefs.alt_dl_limit).toBe(300 * 1024);
+  });
+
+  it('keeps the saved copy when qBittorrent took a write whose answer was lost', async () => {
+    const qbit = fakeQbit(1);
+    const { apply } = await serviceWith(qbit);
+    qbit.setSpeedLimits.mockImplementationOnce(async (limits) => {
+      Object.assign(qbit.prefs, limits);
+      throw new Error('timeout of 30000ms exceeded');
+    });
+
+    await apply(context([whicheverRule]));
+    await apply(context([whicheverRule]));
+    expect(savedAlt.store.get('q1')).toEqual({ savedAlt: { alt_dl_limit: 51_200, alt_up_limit: 20_480 }, wroteGlobal: false });
+
+    await apply(context([]));
+    expect(qbit.prefs).toEqual(USER_PREFS);
+  });
+
+  it('takes alternative limits the user sets while a rule holds them as theirs', async () => {
+    const qbit = fakeQbit(1);
+    const { apply } = await serviceWith(qbit);
+    await apply(context([whicheverRule]));
+
+    // Changed in qBittorrent (or on Torrents) during the rule.
+    qbit.prefs.alt_dl_limit = 80 * 1024;
+    qbit.prefs.alt_up_limit = 40 * 1024;
+    await apply(context([whicheverRule]));
+    // The rule applies again, and the new values are the ones kept.
+    expect(qbit.prefs.alt_dl_limit).toBe(300 * 1024);
+    expect(savedAlt.store.get('q1')).toEqual({ savedAlt: { alt_dl_limit: 80 * 1024, alt_up_limit: 40 * 1024 }, wroteGlobal: false });
+
+    await apply(context([]));
+    expect(qbit.prefs).toEqual({ ...USER_PREFS, alt_dl_limit: 80 * 1024, alt_up_limit: 40 * 1024 });
+  });
+
+  it('leaves the alternative limits alone when it cannot save a copy first', async () => {
+    const qbit = fakeQbit(1);
+    const { apply } = await serviceWith(qbit);
+    const store = await import('@/lib/bandwidth-scheduler/saved-alt');
+    vi.mocked(store.saveAltLimits).mockRejectedValueOnce(new Error('Redis unavailable'));
+
+    await apply(context([whicheverRule]));
+    expect(qbit.prefs).toEqual(USER_PREFS);
+
+    await apply(context([whicheverRule]));
+    expect(qbit.prefs.alt_dl_limit).toBe(300 * 1024);
   });
 
   it('limits every qBittorrent, retries only the one that refused, and releases each', async () => {

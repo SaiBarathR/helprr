@@ -24,7 +24,18 @@ export interface BandwidthRule {
   downloadLimitKbps: number;
   /** Upload limit in KB/s. 0 = unlimited. */
   uploadLimitKbps: number;
+  /**
+   * Which of qBittorrent's limits the rule sets. `global`: the regular ones
+   * only, so while Alternative Speed Limits is on the rule waits until it is
+   * switched off. `active`: the limits of whichever mode is on, so the rule
+   * applies either way and the user's own alternative limits are put back
+   * when it ends. A rule saved before the choice existed is `global`.
+   */
+  target: BandwidthTarget;
 }
+
+export const BANDWIDTH_TARGETS = ['global', 'active'] as const;
+export type BandwidthTarget = (typeof BANDWIDTH_TARGETS)[number];
 
 export interface BandwidthSchedule {
   rules: BandwidthRule[];
