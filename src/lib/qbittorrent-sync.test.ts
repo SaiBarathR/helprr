@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { QBittorrentClient } from '@/lib/qbittorrent-client';
 import {
   QBittorrentSync,
+  forgetQBittorrentSyncsExcept,
   qbittorrentSyncFor,
   resetQBittorrentSyncForTests,
   speedLimitsModeFrom,
@@ -10,7 +11,7 @@ import {
 
 const PASSKEY_URL = 'https://tracker.invalid/SECRETPASSKEY/announce';
 
-function fakeClient(connectionKey = 'k1') {
+function fakeClient(connectionKey = 'k1', instanceId?: string) {
   const answers: Array<unknown | Error | (() => Promise<unknown>)> = [];
   const rids: number[] = [];
   const getMaindata = vi.fn(async (rid: number) => {
@@ -20,7 +21,7 @@ function fakeClient(connectionKey = 'k1') {
     if (typeof next === 'function') return (next as () => Promise<unknown>)();
     return next;
   });
-  return { client: { getMaindata, connectionKey } as unknown as QBittorrentClient, answers, rids, getMaindata };
+  return { client: { getMaindata, connectionKey, instanceId } as unknown as QBittorrentClient, answers, rids, getMaindata };
 }
 
 const full = (rid: number, torrents: Record<string, Record<string, unknown>>, serverState: Record<string, unknown> = { dl_info_speed: 1 }) => ({
@@ -188,6 +189,34 @@ describe('qbittorrentSyncFor', () => {
     const next = qbittorrentSyncFor(other);
     expect(next).not.toBe(sync);
     expect(next.client).toBe(other);
+  });
+
+  // QBT-29: two qBittorrents never share a list or a response id.
+  it('keeps one state per qBittorrent instance, each with its own list and rid', async () => {
+    const first = fakeClient('k1', 'q1');
+    const second = fakeClient('k2', 'q2');
+    first.answers.push(full(5, { aaa: { name: 'A' } }), { rid: 6, torrents: { aaa: { progress: 1 } } });
+    second.answers.push(full(9, { bbb: { name: 'B' } }));
+    const one = qbittorrentSyncFor(first.client);
+    const two = qbittorrentSyncFor(second.client);
+    expect(two).not.toBe(one);
+    expect((await one.read()).torrents.map((t) => t.hash)).toEqual(['aaa']);
+    expect((await two.read()).torrents.map((t) => t.hash)).toEqual(['bbb']);
+    // Reading the second didn't replace the first: it goes on from its own rid.
+    expect(qbittorrentSyncFor(first.client)).toBe(one);
+    await one.read(0);
+    expect(first.rids).toEqual([0, 5]);
+    expect(second.rids).toEqual([0]);
+  });
+
+  it('starts an instance again when its setting changes, and lets a removed one go', () => {
+    const one = qbittorrentSyncFor(fakeClient('k1', 'q1').client);
+    const two = qbittorrentSyncFor(fakeClient('k2', 'q2').client);
+    const moved = qbittorrentSyncFor(fakeClient('k1-new-password', 'q1').client);
+    expect(moved).not.toBe(one);
+    forgetQBittorrentSyncsExcept(['q1']);
+    expect(qbittorrentSyncFor(fakeClient('k1-new-password', 'q1').client)).toBe(moved);
+    expect(qbittorrentSyncFor(fakeClient('k2', 'q2').client)).not.toBe(two);
   });
 });
 

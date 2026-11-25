@@ -280,6 +280,9 @@ export function invalidateInstances(qc: QueryClient) {
   qc.resetQueries({ queryKey: queryKeys.arrInstances() });
   qc.invalidateQueries({ queryKey: queryKeys.widgetServiceAvailability() });
   for (const svc of ['radarr', 'sonarr', 'lidarr'] as const) qc.invalidateQueries({ queryKey: [svc, 'library'] });
+  // The Torrents pages' qBittorrent picker (QBIT_INSTANCES_KEY): an added one
+  // shows the picker, a removed choice falls back, at once.
+  qc.invalidateQueries({ queryKey: ['qbittorrent', 'instances'] });
 }
 
 // After a monitor toggle, patch that one item's flag in the cached library lists

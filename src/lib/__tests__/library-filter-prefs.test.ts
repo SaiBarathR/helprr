@@ -21,7 +21,7 @@ afterEach(() => {
 
 describe('library facet and saved filter preferences', () => {
   it('upgrades a version 56 store with empty facets and no saved filters, keeping the rest', async () => {
-    expect(STORE_VERSION).toBe(57);
+    expect(STORE_VERSION).toBe(58);
     const state = await loadStored({ moviesFilter: ['missing'], seriesSort: 'year' }, 56);
     expect(state.moviesFilter).toEqual(['missing']);
     expect(state.seriesSort).toBe('year');

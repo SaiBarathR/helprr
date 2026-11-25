@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { User } from '@prisma/client';
 import { getQBittorrentClient } from '@/lib/service-helpers';
+import { qbittorrentInstanceOf } from '@/lib/server/qbittorrent-instance';
 import { requireUserCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
@@ -40,13 +41,15 @@ function logChange(user: User, message: string, details: Record<string, unknown>
 }
 
 /** The Tags screen: every tag, and the torrents that have it. */
-async function getHandler() {
+async function getHandler(request: NextRequest) {
   const auth = await requireUserCapability('torrents.view');
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     const [tags, torrents] = await Promise.all([client.getTags(), client.getTorrents()]);
     const counts = countTagged(torrents);
     // Rebuilt from names only: nothing else about the torrents goes to the browser.
@@ -69,6 +72,8 @@ async function getHandler() {
 async function postHandler(request: NextRequest) {
   const auth = await requireUserCapability('torrents.manage');
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
@@ -79,12 +84,12 @@ async function postHandler(request: NextRequest) {
     if (!parsed) return badRequest('A tag needs 1 to 100 characters and no comma');
     const [name] = parsed;
 
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     if ((await client.getTags()).includes(name)) {
       return NextResponse.json({ error: `There is already a tag named ${name}` }, { status: 409 });
     }
     await client.createTags([name]);
-    await bumpQbitCacheVersion();
+    await bumpQbitCacheVersion(client.instanceId);
     logChange(auth.user, 'qBittorrent tag created', { tag: name });
     logApiDuration(ROUTE, startedAt, { method: 'POST' });
     return NextResponse.json({ success: true, name });
@@ -97,6 +102,8 @@ async function postHandler(request: NextRequest) {
 async function deleteHandler(request: NextRequest) {
   const auth = await requireUserCapability('torrents.manage');
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
@@ -107,7 +114,7 @@ async function deleteHandler(request: NextRequest) {
     const names = parseTags(body.tags);
     if (!names) return badRequest('Choose 1 to 50 tags');
 
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     const [tags, torrents] = await Promise.all([client.getTags(), client.getTorrents()]);
     const missing = names.filter((name) => !tags.includes(name));
     if (missing.length > 0) {
@@ -116,7 +123,7 @@ async function deleteHandler(request: NextRequest) {
 
     const counts = countTagged(torrents);
     await client.deleteTags(names);
-    await bumpQbitCacheVersion();
+    await bumpQbitCacheVersion(client.instanceId);
     logChange(auth.user, 'qBittorrent tags deleted', {
       tags: names,
       torrents: Object.fromEntries(names.map((name) => [name, counts.get(name) ?? 0])),

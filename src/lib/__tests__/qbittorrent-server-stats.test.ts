@@ -16,7 +16,7 @@ vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handl
 
 import { GET } from '@/app/api/qbittorrent/transfer/stats/route';
 
-const get = GET as unknown as () => Promise<Response>;
+const get = () => (GET as unknown as (request: Request) => Promise<Response>)(new Request('http://localhost/api/qbittorrent/transfer/stats'));
 const PASSKEY = 'https://tracker.example/announce?passkey=SECRETPASSKEY';
 
 // A stand-in qBittorrent answering sync/maindata as 5.1.4 does.

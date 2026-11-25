@@ -136,7 +136,7 @@ describe('qBittorrent transfer info and preferences reach a browser field by fie
     });
 
     it('the transfer route carries the shown transfer figures only', async () => {
-      const { text, json } = await bodyOf(await getTransfer());
+      const { text, json } = await bodyOf(await getTransfer(new NextRequest('http://localhost/api/qbittorrent/transfer')));
       expectNoAddress(text);
       expect(Object.keys(json).sort()).toEqual(SHOWN_TRANSFER_FIELDS);
     });

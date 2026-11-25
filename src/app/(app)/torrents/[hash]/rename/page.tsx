@@ -15,11 +15,13 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { useCan } from '@/components/permission-provider';
 import type { QBittorrentSummaryResponse, QBittorrentTorrent } from '@/types';
 import { torrentQueryKey, useTorrent, useTorrentAction } from '../../_components/use-torrent';
+import { qbitInstanceKey, useQbitInstance } from '../../_components/use-qbit-instance';
 
 export default function RenameTorrentPage() {
   const { hash } = useParams<{ hash: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { instanceId } = useQbitInstance();
   const canManage = useCan('torrents.manage');
   const torrentQuery = useTorrent(hash);
   const torrent = torrentQuery.data;
@@ -42,9 +44,10 @@ export default function RenameTorrentPage() {
     if (!ok) return;
     // The list paints its cached summary before refetching; show the new name there at once.
     const rename = (t: QBittorrentTorrent) => (t.hash === hash ? { ...t, name: newName } : t);
-    queryClient.setQueryData<QBittorrentTorrent | null>(torrentQueryKey(hash), (old) => (old ? rename(old) : old));
+    queryClient.setQueryData<QBittorrentTorrent | null>(torrentQueryKey(hash, instanceId), (old) => (old ? rename(old) : old));
+    // This qBittorrent's list only: the same hash in another one is another torrent.
     queryClient.setQueriesData<QBittorrentSummaryResponse>(
-      { queryKey: ['torrents', 'summary'] },
+      { queryKey: ['torrents', 'summary', qbitInstanceKey(instanceId)] },
       (old) => (old ? { ...old, torrents: old.torrents.map(rename) } : old),
     );
     toast.success('Renamed');

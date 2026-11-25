@@ -18,7 +18,9 @@ vi.mock('@/lib/db', () => ({ prisma: {
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }));
 vi.mock('@/lib/notification-service', () => ({ notifyEvent: vi.fn() }));
 vi.mock('@/lib/service-helpers', () => ({
-  getQBittorrentClient: mocks.getQBittorrentClient, getSonarrClients: mocks.getSonarrClients,
+  getQBittorrentClient: mocks.getQBittorrentClient,
+  // One qBittorrent, the default: the cleaners list every instance.
+  getQBittorrentClients: async () => [{ connection: { id: 'q1', label: 'qBittorrent' }, client: await mocks.getQBittorrentClient() }], getSonarrClients: mocks.getSonarrClients,
   getRadarrClients: mocks.getRadarrClients,
 }));
 
@@ -297,7 +299,7 @@ describe('download cleaner cycle', () => {
     expect(mocks.auditCreate).toHaveBeenCalledOnce();
     const audit = mocks.auditCreate.mock.calls[0][0].data;
     expect(audit).toMatchObject({
-      userId: 'user-1', username: 'owner', service: 'QBITTORRENT', instanceId: null, operation: 'DELETE_TORRENT',
+      userId: 'user-1', username: 'owner', service: 'QBITTORRENT', instanceId: 'q1', operation: 'DELETE_TORRENT',
       mediaType: 'torrent', mediaId: null, mediaTitle: 'Example', fileCount: 1, filesDeleted: true, success: true, errorMessage: null,
       details: {
         cleaner: 'download', triggeredBy: 'manual', previewId: 'preview-1', hash: 'abc123', rule: { id: 'rule-a', name: 'Seed rule' },

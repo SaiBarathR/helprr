@@ -45,6 +45,7 @@ vi.mock('@/lib/arr-instances', () => ({
   clearConnectionMemo: vi.fn(),
   ensureDefaultForType: vi.fn(),
   isArrType: (type: string) => ['SONARR', 'RADARR', 'LIDARR'].includes(type),
+  isMultiInstanceType: (type: string) => ['SONARR', 'RADARR', 'LIDARR', 'QBITTORRENT'].includes(type),
 }));
 vi.mock('@/lib/cache/reference-labels', () => ({ invalidateReferenceLabels: vi.fn() }));
 vi.mock('@/lib/jellyfin-client', () => ({

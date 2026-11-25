@@ -55,7 +55,7 @@ export const SERVICE_CONFIG = [
     placeholder: 'http://192.168.1.10:8080',
     keyHelp: { where: 'your Web UI username and password, set in Tools → Options → Web UI → Authentication', path: null, href: null },
     supportsExternalUrl: false,
-    supportsMultiInstance: false,
+    supportsMultiInstance: true,
     supportsCustomHeaders: true,
   },
   {

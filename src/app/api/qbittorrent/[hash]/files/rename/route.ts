@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAxiosError } from 'axios';
 import { getQBittorrentClient } from '@/lib/service-helpers';
+import { qbittorrentInstanceOf } from '@/lib/server/qbittorrent-instance';
 import { requireUserCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
@@ -40,6 +41,8 @@ async function postHandler(
 ) {
   const auth = await requireUserCapability('torrents.manage');
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   const refuse = (status: number, error: string, reason: string, extra?: Record<string, unknown>) => {
@@ -68,7 +71,7 @@ async function postHandler(
     const parsed = parseTorrentEntryName(input.name);
     if (!parsed.ok) return refuse(400, parsed.error, 'name');
 
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     const [files, torrents] = await Promise.all([
       client.getTorrentFiles(hash),
       client.getTorrents(undefined, undefined, undefined, undefined, hash),
@@ -130,7 +133,7 @@ async function postHandler(
       }
       throw error;
     }
-    await bumpQbitCacheVersion();
+    await bumpQbitCacheVersion(client.instanceId);
     logger.info(
       kind === 'file' ? 'Torrent file renamed' : 'Torrent folder renamed',
       {

@@ -18,7 +18,8 @@ import { ResponsiveMenu, ResponsiveMenuCheckboxItem } from '@/components/ui/resp
 import { Textarea } from '@/components/ui/textarea';
 import { useCan, useMe } from '@/components/permission-provider';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
-import { ApiError } from '@/lib/query-fetch';
+import { ApiError, withInstanceQuery } from '@/lib/query-fetch';
+import { qbitInstanceKey, useQbitInstance } from '../../_components/use-qbit-instance';
 import {
   PEER_SORTS,
   countryFlag,
@@ -49,7 +50,8 @@ export default function TorrentPeersPage() {
   // Only an admin is sent addresses and may ban (a ban is global); UX only, the server decides.
   const isAdmin = useMe()?.role === 'admin';
   const queryClient = useQueryClient();
-  const peersKey = useMemo(() => ['qbittorrent', hash, 'peers'] as const, [hash]);
+  const { instanceId } = useQbitInstance();
+  const peersKey = useMemo(() => ['qbittorrent', hash, 'peers', qbitInstanceKey(instanceId)] as const, [hash, instanceId]);
 
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   useEffect(() => {
@@ -63,7 +65,7 @@ export default function TorrentPeersPage() {
     queryFn: async ({ signal }) => {
       const previous = queryClient.getQueryData<PeersState>(peersKey);
       const query = previous ? `?cursor=${encodeURIComponent(previous.cursor)}` : '';
-      const res = await fetch(`/api/qbittorrent/${hash}/peers${query}`, { signal });
+      const res = await fetch(withInstanceQuery(`/api/qbittorrent/${hash}/peers${query}`, instanceId), { signal });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new ApiError(res.status, data?.error || 'Failed to load the peers');
       return mergePeers(previous, data as PeersDelta);
@@ -79,10 +81,10 @@ export default function TorrentPeersPage() {
 
   const addMutation = useMutation({
     mutationFn: (peers: string[]) =>
-      postJson<{ requested: number; added: number | null; failed: number | null }>(`/api/qbittorrent/${hash}/peers`, { peers }, 'Failed to add peers'),
+      postJson<{ requested: number; added: number | null; failed: number | null }>(withInstanceQuery(`/api/qbittorrent/${hash}/peers`, instanceId), { peers }, 'Failed to add peers'),
   });
   const banMutation = useMutation({
-    mutationFn: (key: string) => postJson<{ banned: true }>(`/api/qbittorrent/${hash}/peers/ban`, { key }, 'Failed to ban the peer'),
+    mutationFn: (key: string) => postJson<{ banned: true }>(withInstanceQuery(`/api/qbittorrent/${hash}/peers/ban`, instanceId), { key }, 'Failed to ban the peer'),
   });
   const busy = addMutation.isPending || banMutation.isPending;
 

@@ -13,6 +13,7 @@ import {
   getJellyfinClient,
   getLidarrClients,
   getQBittorrentClient,
+  getQBittorrentClients,
   getRadarrClients,
   getSonarrClients,
 } from '@/lib/service-helpers';
@@ -80,12 +81,17 @@ async function section<T>(read: () => Promise<T>, state: { failed: boolean }): P
 }
 
 async function readDownloads() {
-  const client = await getQBittorrentClient();
-  const [torrents, transfer] = await Promise.all([client.getTorrents(), client.getTransferInfo()]);
+  // Every qBittorrent that answers added up, as the downloads badge counts
+  // them; it fails only when none answers.
+  const instances = await getQBittorrentClients();
+  if (instances.length === 0) await getQBittorrentClient(); // throws "not configured"
+  const settled = await Promise.allSettled(instances.map(({ client }) => Promise.all([client.getTorrents(), client.getTransferInfo()])));
+  const read = settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+  if (read.length === 0) throw (settled[0] as PromiseRejectedResult).reason;
   return {
-    downloading: torrentCounters(torrents).downloading,
-    downloadSpeed: transfer.dl_info_speed,
-    uploadSpeed: transfer.up_info_speed,
+    downloading: read.reduce((sum, [torrents]) => sum + torrentCounters(torrents).downloading, 0),
+    downloadSpeed: read.reduce((sum, [, transfer]) => sum + transfer.dl_info_speed, 0),
+    uploadSpeed: read.reduce((sum, [, transfer]) => sum + transfer.up_info_speed, 0),
   };
 }
 

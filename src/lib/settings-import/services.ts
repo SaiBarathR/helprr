@@ -2,7 +2,7 @@
 
 import type { Prisma, ServiceType } from '@prisma/client';
 import { parseCustomHeaders, isServiceType, isNonEmptyString, normalizeServiceUrl, REENTER_SECRET_MESSAGE } from '@/lib/service-connection-secrets';
-import { isArrType } from '@/lib/arr-instances';
+import { isArrType, isMultiInstanceType } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
 import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
 import type { ExportedServiceConnection } from '@/lib/settings-export';
@@ -38,22 +38,33 @@ export async function applyServiceConnectionInTxn(
     ? conn.username
     : conn.type === 'QBITTORRENT' ? 'admin' : null;
 
-  // Multi-instance: arr connections are identified by (type, label); other types
-  // are the single connection of their type. Older (pre-multi-instance) exports
-  // carry no label — arr connections fall back to the type name (the same value
-  // manual-fixups backfills existing rows to), so a legacy single-instance backup
-  // restores onto (and idempotently updates) the migrated connection instead of
-  // being skipped or duplicated. Single-instance types match by type alone, so
+  // Multi-instance: arr and qBittorrent connections are identified by (type,
+  // label); other types are the single connection of their type. Older
+  // (pre-multi-instance) exports carry no label — arr connections fall back to
+  // the type name (the same value manual-fixups backfills existing rows to), so a
+  // legacy single-instance backup restores onto (and idempotently updates) the
+  // migrated connection instead of being skipped or duplicated. qBittorrent was
+  // one connection named "qBittorrent" until it became multi-instance, so its
+  // older exports match that name. Single-instance types match by type alone, so
   // their label is cosmetic.
-  const isArr = isArrType(conn.type);
+  const isMulti = isMultiInstanceType(conn.type);
   const rawLabel = typeof conn.label === 'string' ? conn.label.trim() : '';
-  const label = isArr
-    ? (rawLabel || conn.type)
+  const label = isMulti
+    ? (rawLabel || (isArrType(conn.type) ? conn.type : findServiceByType(conn.type)?.label || conn.type))
     : (rawLabel || findServiceByType(conn.type)?.label || conn.type);
 
-  const existing = isArr
+  let existing = isMulti
     ? await tx.serviceConnection.findFirst({ where: { type: conn.type, label } })
     : await tx.serviceConnection.findFirst({ where: { type: conn.type } });
+  // The one qBittorrent of an older install was named "QBITTORRENT" or
+  // "qBittorrent" depending on its age, so a file's name may not match this
+  // install's: the connection at the same address is the same qBittorrent.
+  // A second row for it would be polled twice and leave every torrent "in two
+  // qBittorrents", which the cleaners skip.
+  if (!existing && conn.type === 'QBITTORRENT') {
+    const sameType = await tx.serviceConnection.findMany({ where: { type: conn.type } });
+    existing = sameType.find((row) => normalizeServiceUrl(row.url) === url) ?? null;
+  }
   // Stored secrets and token state belong to the address they were saved for:
   // a file that moves a connection must bring its own key, as an edit must.
   // (metadata is non-secret configuration and is kept, as the edit route does.)
@@ -102,7 +113,7 @@ export async function applyServiceConnectionInTxn(
     // already has instances of this type can't be matched to a specific instance, so
     // it lands as a new one labeled by type. Warn so the operator can spot a possible
     // duplicate of an existing instance instead of it being created silently.
-    if (isArr && rawLabel === '') {
+    if (isMulti && rawLabel === '') {
       const sameTypeCount = await tx.serviceConnection.count({ where: { type: conn.type } });
       if (sameTypeCount > 0) {
         skipped.push(`Imported ${conn.type} as a new instance "${label}" (backup predates instance labels) — verify it isn't a duplicate of an existing ${conn.type} instance.`);

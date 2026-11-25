@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useIsMutating, useMutation, useQuery } from '@tanstack/react-query';
-import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { toast } from 'sonner';
 import {
@@ -40,6 +40,7 @@ import { FolderPickerButton } from '../_components/folder-picker';
 import { TagAdder } from '../_components/torrent-organize-sections';
 import { useTorrentOptions } from '../_components/use-torrent';
 import { useCategoryDetails } from '../_components/use-categories';
+import { qbitInstanceKey, useQbitInstance } from '../_components/use-qbit-instance';
 import { addSaveFolder } from '../_components/category-links';
 import {
   buildFileTree,
@@ -190,6 +191,10 @@ function AddTorrentPageContent() {
 
   // Review step: set once the torrent is added stopped and files can be picked.
   const [reviewHash, setReviewHash] = useState<string | null>(null);
+  // The qBittorrent it went to: the review acts there, whatever is picked since.
+  const [reviewInstance, setReviewInstance] = useState<string | undefined>(undefined);
+  // Helprr's own add goes to the qBittorrent chosen on the Torrents pages (or here).
+  const qbit = useQbitInstance();
   const [reviewName, setReviewName] = useState<string | null>(null);
 
   // File selection review needs torrents.manage (file priorities + start) AND
@@ -252,8 +257,8 @@ function AddTorrentPageContent() {
   const arrUnsupported = addMode === 'magnet' ? lines.length > 0 && !arrMagnet : torrentFiles.length > 1;
 
   const categoriesQuery = useQuery({
-    queryKey: ['qbittorrent', 'categories'],
-    queryFn: jsonFetcher<Record<string, { name: string; savePath: string }>>('/api/qbittorrent/categories'),
+    queryKey: ['qbittorrent', 'categories', qbitInstanceKey(qbit.instanceId)],
+    queryFn: jsonFetcher<Record<string, { name: string; savePath: string }>>('/api/qbittorrent/categories', qbit.instanceId),
     staleTime: 60_000,
   });
   const categories = useMemo(
@@ -286,7 +291,7 @@ function AddTorrentPageContent() {
 
   const addMutation = useMutation({
     // `draft`: the Sonarr/Radarr choices when the files are picked for them (the advanced fallback).
-    mutationFn: async ({ review, options, input }: { review: boolean; options: AddTorrentOptions; input: AddInput; draft?: FallbackDraft }) => {
+    mutationFn: async ({ review, options, input, instanceId }: { review: boolean; options: AddTorrentOptions; input: AddInput; draft?: FallbackDraft; instanceId: string | undefined }) => {
       // With review, add .torrent files stopped so files can be deselected
       // before any data downloads. Magnets can't fetch metadata while stopped,
       // so they start with stopCondition=MetadataReceived: qBittorrent stops
@@ -297,7 +302,7 @@ function AddTorrentPageContent() {
       const savepath = options.autoTMM === true ? undefined : savePath.trim() || undefined;
 
       const res = input.kind === 'magnet'
-        ? await fetch('/api/qbittorrent', {
+        ? await fetch(withInstanceQuery('/api/qbittorrent', instanceId), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -321,7 +326,7 @@ function AddTorrentPageContent() {
               if (Array.isArray(value)) for (const tag of value) formData.append(key, tag);
               else formData.append(key, String(value));
             }
-            return fetch('/api/qbittorrent', { method: 'POST', body: formData });
+            return fetch(withInstanceQuery('/api/qbittorrent', instanceId), { method: 'POST', body: formData });
           })();
 
       const data = await parseApiResult(res);
@@ -332,7 +337,7 @@ function AddTorrentPageContent() {
       }
       return data;
     },
-    onSuccess: (data, { review, draft, input }) => {
+    onSuccess: (data, { review, draft, input, instanceId }) => {
       if (data.results) {
         showResults(input, data.results);
         return;
@@ -343,6 +348,7 @@ function AddTorrentPageContent() {
           // The files go to Sonarr/Radarr only when this add was for them.
           setFallback(draft ?? null);
           setReviewName(data.name ?? null);
+          setReviewInstance(instanceId);
           setReviewHash(data.hash);
           return;
         }
@@ -430,7 +436,7 @@ function AddTorrentPageContent() {
       return;
     }
     const options = addOptions();
-    if (options) addMutation.mutate({ review, options, input: currentInput() });
+    if (options) addMutation.mutate({ review, options, input: currentInput(), instanceId: qbit.instanceId });
   }
 
   if (reviewHash) {
@@ -443,6 +449,7 @@ function AddTorrentPageContent() {
     return (
       <ReviewStep
         hash={reviewHash}
+        instanceId={reviewInstance}
         displayName={displayName}
         startTorrent={startTorrent}
         stopOnMetadata={addMode === 'magnet'}
@@ -592,7 +599,7 @@ function AddTorrentPageContent() {
               suggestedName={arrMagnet ? magnetDisplayName(arrMagnet) ?? '' : ''}
               prefill={prefill}
               // Picking files adds the torrent stopped first (the same step as "Choose Files").
-              onChooseFiles={canReview ? (draft) => addMutation.mutate({ review: true, options: {}, draft, input: currentInput() }) : undefined}
+              onChooseFiles={canReview ? (draft) => addMutation.mutate({ review: true, options: {}, draft, input: currentInput(), instanceId: qbit.instanceId }) : undefined}
               choosingFiles={adding}
               sourceHint={arrUnsupported
                 ? 'Sonarr and Radarr take one magnet link or one .torrent file. For a .torrent link or several torrents, choose Add to qBittorrent only.'
@@ -603,6 +610,33 @@ function AddTorrentPageContent() {
         {destination === 'client' && (
         <>
         <div className="space-y-3 pt-1">
+          {qbit.multiInstance && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="qbit-instance">
+                qBittorrent
+              </label>
+              <Select
+                value={qbit.current?.id ?? ''}
+                onValueChange={(id) => {
+                  qbit.select(id);
+                  // Categories are each qBittorrent's own.
+                  setCategory(NO_CATEGORY);
+                }}
+                disabled={adding}
+              >
+                <SelectTrigger id="qbit-instance" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {qbit.instances.map((instance) => (
+                    <SelectItem key={instance.id} value={instance.id}>
+                      {instance.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground" htmlFor="save-path">
               Save at
@@ -951,12 +985,15 @@ function DestinationOption({ selected, disabled, onSelect, title, badge, descrip
 
 function ReviewStep({
   hash,
+  instanceId,
   displayName,
   startTorrent,
   stopOnMetadata,
   fallback,
 }: {
   hash: string;
+  /** The qBittorrent the torrent was added to. */
+  instanceId: string | undefined;
   displayName: string;
   startTorrent: boolean;
   stopOnMetadata: boolean;
@@ -972,8 +1009,8 @@ function ReviewStep({
   // Poll for files until metadata arrives (magnets fetch metadata even while
   // stopped); once the file list exists it's static, so polling stops.
   const filesQuery = useQuery({
-    queryKey: ['qbittorrent', hash, 'add-review-files'],
-    queryFn: jsonFetcher<{ files: TorrentFile[] }>(`/api/qbittorrent/${hash}/files`),
+    queryKey: ['qbittorrent', hash, 'add-review-files', qbitInstanceKey(instanceId)],
+    queryFn: jsonFetcher<{ files: TorrentFile[] }>(`/api/qbittorrent/${hash}/files`, instanceId),
     select: (d) => d.files ?? [],
     refetchInterval: (query) => ((query.state.data?.files?.length ?? 0) > 0 ? false : 1500),
     refetchIntervalInBackground: false,
@@ -991,7 +1028,7 @@ function ReviewStep({
   useEffect(() => {
     if (!hasMetadata || !stopPendingRef.current) return;
     stopPendingRef.current = false;
-    stopRequestRef.current = fetch(`/api/qbittorrent/${hash}`, {
+    stopRequestRef.current = fetch(withInstanceQuery(`/api/qbittorrent/${hash}`, instanceId), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'stop' }),
@@ -999,7 +1036,7 @@ function ReviewStep({
       () => undefined,
       () => undefined, // best effort — confirm still applies priorities
     );
-  }, [hasMetadata, hash]);
+  }, [hasMetadata, hash, instanceId]);
 
   const defaultExpandedDirs = useMemo(() => {
     const roots = new Set<string>();
@@ -1053,7 +1090,7 @@ function ReviewStep({
       // Let the fallback stop settle first so it can't land after our start.
       if (stopRequestRef.current) await stopRequestRef.current;
       if (excluded.size > 0) {
-        const res = await fetch(`/api/qbittorrent/${hash}/files/priority`, {
+        const res = await fetch(withInstanceQuery(`/api/qbittorrent/${hash}/files/priority`, instanceId), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids: [...excluded], priority: 0 }),
@@ -1064,7 +1101,7 @@ function ReviewStep({
         }
       }
       if (startTorrent) {
-        const res = await fetch(`/api/qbittorrent/${hash}`, {
+        const res = await fetch(withInstanceQuery(`/api/qbittorrent/${hash}`, instanceId), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'start' }),
@@ -1087,7 +1124,7 @@ function ReviewStep({
 
   const cancelMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/qbittorrent/${hash}`, {
+      const res = await fetch(withInstanceQuery(`/api/qbittorrent/${hash}`, instanceId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'delete', deleteFiles: false }),

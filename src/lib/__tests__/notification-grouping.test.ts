@@ -56,3 +56,26 @@ describe('grouping by recipients', () => {
     ]);
   });
 });
+
+// QBT-29: torrent pushes carry their qBittorrent, so a burst on two never mixes.
+describe('grouped qBittorrent pushes', () => {
+  it('groups per qBittorrent and opens that one', async () => {
+    const collector = new PollNotificationCollector();
+    for (const [instanceId, instanceLabel] of [['q1', 'Main'], ['q2', 'Seedbox']]) {
+      for (const hash of ['a', 'b', 'c']) {
+        collector.add({
+          eventType: 'torrentAdded',
+          title: `${instanceLabel} · Torrent Added`,
+          body: `${instanceLabel} ${hash}`,
+          metadata: { source: 'qbittorrent', instanceId, instanceLabel, hash, redirect: `/torrents?instance=${instanceId}` },
+        }, { service: 'qbittorrent', instanceId, reason: 'torrent-added', hash });
+      }
+    }
+    const notify = vi.fn<Notify>(async () => 1);
+    await collector.flush({ enabled: true, notify });
+    expect(notify.mock.calls.map(([event]) => [event.title, event.url, event.metadata?.instanceId])).toEqual([
+      ['Main · 3 Torrents Added', '/torrents?instance=q1', 'q1'],
+      ['Seedbox · 3 Torrents Added', '/torrents?instance=q2', 'q2'],
+    ]);
+  });
+});

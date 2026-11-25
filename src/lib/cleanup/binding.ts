@@ -34,6 +34,7 @@ export function queueCandidateBinding(decision: QueueDecision): QueueCandidateBi
   return {
     cleaner: 'queue',
     hash: decision.torrent.hash.toLowerCase(),
+    qbitInstanceId: decision.torrent.qbitInstanceId,
     strikeType: decision.strikeType,
     ruleId: decision.ruleId,
     strikeCount: decision.strikeCount,
@@ -47,6 +48,7 @@ export function downloadCandidateBinding(decision: DownloadDecision): DownloadCa
   return {
     cleaner: 'download',
     hash: decision.torrent.hash.toLowerCase(),
+    qbitInstanceId: decision.torrent.qbitInstanceId,
     ruleId: decision.rule.id,
     removalKind: decision.removalKind,
     deleteSourceFiles: decision.rule.deleteSourceFiles,

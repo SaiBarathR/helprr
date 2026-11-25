@@ -637,26 +637,18 @@
  ],
  "pollQBittorrent": [
   {
-   "badge": [
-    "downloads",
-    "qbittorrent",
-    {
-     "total": 2,
-     "attention": 1
-    }
-   ]
-  },
-  {
    "notify": {
     "eventType": "torrentCompleted",
     "title": "Download Complete",
     "body": "A",
     "metadata": {
      "source": "qbittorrent",
+     "instanceId": "q1",
+     "instanceLabel": "qBittorrent",
      "hash": "a",
-     "redirect": "/torrents"
+     "redirect": "/torrents?instance=q1"
     },
-    "url": "/torrents"
+    "url": "/torrents?instance=q1"
    }
   },
   {
@@ -666,10 +658,12 @@
     "body": "C",
     "metadata": {
      "source": "qbittorrent",
+     "instanceId": "q1",
+     "instanceLabel": "qBittorrent",
      "hash": "c",
-     "redirect": "/torrents"
+     "redirect": "/torrents?instance=q1"
     },
-    "url": "/torrents"
+    "url": "/torrents?instance=q1"
    }
   },
   {
@@ -679,10 +673,12 @@
     "body": "D",
     "metadata": {
      "source": "qbittorrent",
+     "instanceId": "q1",
+     "instanceLabel": "qBittorrent",
      "hash": "d",
-     "redirect": "/torrents"
+     "redirect": "/torrents?instance=q1"
     },
-    "url": "/torrents"
+    "url": "/torrents?instance=q1"
    }
   },
   {
@@ -692,10 +688,12 @@
     "body": "Gone",
     "metadata": {
      "source": "qbittorrent",
+     "instanceId": "q1",
+     "instanceLabel": "qBittorrent",
      "hash": "gone",
-     "redirect": "/torrents"
+     "redirect": "/torrents?instance=q1"
     },
-    "url": "/torrents"
+    "url": "/torrents?instance=q1"
    }
   },
   {
@@ -744,6 +742,16 @@
      ]
     }
    }
+  },
+  {
+   "badge": [
+    "downloads",
+    "qbittorrent",
+    {
+     "total": 2,
+     "attention": 1
+    }
+   ]
   },
   {
    "jobReport": {
@@ -1655,16 +1663,6 @@
    }
   },
   {
-   "badge": [
-    "downloads",
-    "qbittorrent",
-    {
-     "total": 2,
-     "attention": 1
-    }
-   ]
-  },
-  {
    "pollingState.update": {
     "where": {
      "serviceConnectionId": "q1"
@@ -1710,6 +1708,16 @@
      ]
     }
    }
+  },
+  {
+   "badge": [
+    "downloads",
+    "qbittorrent",
+    {
+     "total": 2,
+     "attention": 1
+    }
+   ]
   },
   {
    "jobReport": {

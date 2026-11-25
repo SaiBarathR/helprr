@@ -10,8 +10,16 @@ const mocks = vi.hoisted(() => ({
   claim: vi.fn(async (): Promise<{ id: string; at: Date } | null> => ({ id: 'md1', at: new Date() })),
   release: vi.fn(async (...args: unknown[]) => args.length > 0),
 }));
-vi.mock('../fallback', () => ({ claimFallback: mocks.claim, releaseClaim: mocks.release }));
-vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: async () => mocks.qbit }));
+vi.mock('../fallback', () => ({
+  claimFallback: mocks.claim,
+  releaseClaim: mocks.release,
+  // One qBittorrent, the default, as Helprr had before there could be several.
+  fallbackTorrentHome: async (hash: string) => {
+    // As before: qBittorrent's hashes filter, here its answer for that hash.
+    const [torrent] = hash ? await mocks.qbit.getTorrents() : [];
+    return torrent ? { ok: true, client: mocks.qbit, connection: { id: 'q1' }, torrent } : { ok: false, reason: 'missing' };
+  },
+}));
 vi.mock('@/lib/db', () => ({ prisma: {
   manualDownload: { update: mocks.update, count: async () => mocks.others },
   fileOperationAudit: { create: mocks.auditCreate },

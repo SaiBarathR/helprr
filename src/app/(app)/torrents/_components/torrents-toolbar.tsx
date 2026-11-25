@@ -15,6 +15,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Filter, Gauge, Link2, Plus, RefreshCw,
 import type { QBittorrentTransferInfo } from '@/types';
 import type { TorrentsFilterPreference as FilterType, TorrentsSortKeyPreference as SortKey } from '@/lib/store';
 import { SORT_OPTIONS, filterOptions, formatSpeed } from './torrent-list';
+import type { useQbitInstance } from './use-qbit-instance';
 
 /** A Category, Tag or Tracker block of the filter menu: pick any number. */
 export interface TorrentFacetGroup {
@@ -47,6 +48,7 @@ export function TorrentsToolbar({
   transferInfo,
   search,
   setSearch,
+  qbit,
 }: {
   ref?: Ref<HTMLDivElement>;
   menuFilters: ActiveFilter[];
@@ -68,6 +70,8 @@ export function TorrentsToolbar({
   transferInfo: QBittorrentTransferInfo | null;
   search: string;
   setSearch: (search: string) => void;
+  /** Which qBittorrent the page shows; picked in the filter menu when there are several. */
+  qbit: Pick<ReturnType<typeof useQbitInstance>, 'instances' | 'multiInstance' | 'current' | 'select'>;
 }) {
   return (
     <div ref={ref} className="page-toolbar page-toolbar-flush [--flush-pb:0.5rem] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
@@ -110,6 +114,22 @@ export function TorrentsToolbar({
               {opt.label}
             </ResponsiveMenuCheckboxItem>
           ))}
+          {qbit.multiInstance && (
+            <>
+              <ResponsiveMenuSeparator />
+              <ResponsiveMenuLabel>qBittorrent</ResponsiveMenuLabel>
+              {/* One at a time: each has its own torrents, categories and speed mode. */}
+              {qbit.instances.map((instance) => (
+                <ResponsiveMenuCheckboxItem
+                  key={instance.id}
+                  checked={qbit.current?.id === instance.id}
+                  onCheckedChange={() => { if (qbit.current?.id !== instance.id) qbit.select(instance.id); }}
+                >
+                  <span className="min-w-0 truncate">{instance.label}</span>
+                </ResponsiveMenuCheckboxItem>
+              ))}
+            </>
+          )}
           {facetGroups.map((group) => group.options.length > 0 && (
             <Fragment key={group.key}>
               <ResponsiveMenuSeparator />
@@ -241,16 +261,24 @@ export function TorrentsToolbar({
         )}
       </div>
 
-      {transferInfo && (
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <ArrowDown className="h-3 w-3 text-green-500" />
-            {formatSpeed(transferInfo.dl_info_speed)}
-          </span>
-          <span className="flex items-center gap-1">
-            <ArrowUp className="h-3 w-3 text-blue-500" />
-            {formatSpeed(transferInfo.up_info_speed)}
-          </span>
+      {(transferInfo || (qbit.multiInstance && qbit.current)) && (
+        <div className="flex items-center gap-3 text-xs text-muted-foreground min-w-0">
+          {/* Which qBittorrent these torrents are, when there are several. */}
+          {qbit.multiInstance && qbit.current && (
+            <span className="min-w-0 truncate font-medium text-foreground/80">{qbit.current.label}</span>
+          )}
+          {transferInfo && (
+            <>
+              <span className="flex items-center gap-1">
+                <ArrowDown className="h-3 w-3 text-green-500" />
+                {formatSpeed(transferInfo.dl_info_speed)}
+              </span>
+              <span className="flex items-center gap-1">
+                <ArrowUp className="h-3 w-3 text-blue-500" />
+                {formatSpeed(transferInfo.up_info_speed)}
+              </span>
+            </>
+          )}
         </div>
       )}
 

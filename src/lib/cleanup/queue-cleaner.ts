@@ -69,7 +69,9 @@ import {
   CleanupExecutionBinding,
   CleanupItemOutcome,
   CleanupRunContext,
+  CleanupTorrent,
 } from './types';
+import { duplicateHashWarning, fetchCleanupTrackerDomains, listCleanupTorrents } from './torrent-sources';
 
 const LOG = 'queue-cleaner';
 
@@ -279,23 +281,16 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
     return emptyResult(opts, noCandidatesBinding, ['Queue Cleaner is disabled']);
   }
 
-  let qbit;
-  try {
-    qbit = await getQBittorrentClient();
-  } catch (err) {
-    logger.warn('qBittorrent unavailable', { err: String(err) }, { scope: LOG });
+  // Every qBittorrent's torrents, or none (src/lib/cleanup/torrent-sources.ts).
+  const source = await listCleanupTorrents();
+  if (!source.ok) {
+    logger.warn(source.reason === 'unavailable' ? 'qBittorrent unavailable' : 'qBittorrent listing failed', {}, { scope: LOG });
     if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
-    return emptyResult(opts, noCandidatesBinding, ['qBittorrent is unavailable — nothing was evaluated']);
+    return emptyResult(opts, noCandidatesBinding, [source.reason === 'unavailable'
+      ? 'qBittorrent is unavailable — nothing was evaluated'
+      : 'qBittorrent torrent listing failed — nothing was evaluated']);
   }
-
-  let torrents: QBittorrentTorrent[];
-  try {
-    torrents = await qbit.getTorrents();
-  } catch (err) {
-    logger.warn('qBittorrent listing failed', { err: String(err) }, { scope: LOG });
-    if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
-    return emptyResult(opts, noCandidatesBinding, ['qBittorrent torrent listing failed — nothing was evaluated']);
-  }
+  const { torrents, listedHashes } = source;
 
   const [{ sonarr: sonarrInstances, radarr: radarrInstances, lidarr: lidarrInstances, complete: arrQueuesComplete }, loadedStrikes] = await Promise.all([
     loadArrQueues(cfg),
@@ -308,7 +303,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
     return emptyResult(opts, noCandidatesBinding, ['At least one Sonarr/Radarr/Lidarr queue could not be read — cycle aborted as a safety measure']);
   }
 
-  const trackerDomains = await batchFetchTrackerDomains(qbit, torrents);
+  const trackerDomains = await fetchCleanupTrackerDomains(source.clients, torrents);
   const correlation = buildCorrelationIndex(sonarrInstances, radarrInstances, lidarrInstances);
 
   const journal = new StrikeJournal();
@@ -325,6 +320,8 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
   const decisions: QueueDecision[] = [];
   const pendingStrikes: PendingStrike[] = [];
   const warnings: string[] = [];
+  const duplicates = duplicateHashWarning(source.duplicateHashes);
+  if (duplicates) warnings.push(duplicates);
   let skippedFailedImport = 0;
   let skippedTrackerUnknown = 0;
 
@@ -631,7 +628,8 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
       }
 
       try {
-        await pruneOrphanStrikes(torrents.map((t) => t.hash));
+        // Every listed hash: one left out for being in two qBittorrents keeps its strikes.
+        await pruneOrphanStrikes(listedHashes);
         await pruneStrikesForMissingRules();
       } catch (err) {
         logger.warn('Prune in auto-dryRun failed', { err: String(err) }, { scope: LOG });
@@ -775,7 +773,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
     // The cycle's removals are done and recorded; a failed prune must not
     // turn them into an errored cycle.
     try {
-      await pruneOrphanStrikes(torrents.map((t) => t.hash));
+      await pruneOrphanStrikes(listedHashes);
       await pruneStrikesForMissingRules();
     } catch (err) {
       logger.warn('Prune after cleanup cycle failed', { err: String(err) }, { scope: LOG });
@@ -868,12 +866,13 @@ async function revalidateQueueDecision(
       return { ok: false, status: 'stale', message: 'Cleaner configuration changed after preview', errorMessage: 'Preview configuration no longer matches' };
     }
 
-    const qbit = await getQBittorrentClient();
+    // The qBittorrent the preview found it in, never another one.
+    const qbit = await getQBittorrentClient(expected.torrent.qbitInstanceId);
     const torrents = await qbit.getTorrents(undefined, undefined, undefined, undefined, expected.torrent.hash);
     if (torrents.length !== 1) {
       return { ok: false, status: 'stale', message: 'Torrent is no longer present', errorMessage: 'Torrent disappeared after preview' };
     }
-    const torrent = torrents[0];
+    const torrent: CleanupTorrent = { ...torrents[0], qbitInstanceId: expected.torrent.qbitInstanceId };
     const fetchedDomains = (await batchFetchTrackerDomains(qbit, [torrent])).get(torrent.hash.toLowerCase()) ?? null;
     if (fetchedDomains === null && config.ignoredDownloads.length > 0) {
       return { ok: false, status: 'failed', message: 'Could not read tracker data to re-check the ignore list', errorMessage: 'Tracker lookup failed during revalidation' };
@@ -1179,15 +1178,16 @@ async function recordQueueRevalidationOutcome(
     reSearched: false,
     message: revalidation.message,
     errorMessage: revalidation.errorMessage,
-    targets: [{ target: 'qbittorrent', attempted: false, before: 'unknown', after: 'unknown', errorMessage: revalidation.errorMessage }],
+    targets: [{ target: 'qbittorrent', instanceId: decision.torrent.qbitInstanceId, attempted: false, before: 'unknown', after: 'unknown', errorMessage: revalidation.errorMessage }],
   };
   await writeQueueHistory(decision, outcome, run);
   return outcome;
 }
 
-async function inspectQbit(hash: string): Promise<{ state: 'present' | 'absent' | 'unknown'; errorMessage?: string }> {
+async function inspectQbit(torrent: CleanupTorrent): Promise<{ state: 'present' | 'absent' | 'unknown'; errorMessage?: string }> {
+  const hash = torrent.hash;
   try {
-    const qbit = await getQBittorrentClient();
+    const qbit = await getQBittorrentClient(torrent.qbitInstanceId);
     const torrents = await qbit.getTorrents(undefined, undefined, undefined, undefined, hash);
     return { state: torrents.length === 0 ? 'absent' : 'present' };
   } catch (error) {
@@ -1344,7 +1344,7 @@ export async function executeQueueCleanerRemoval(
         callError = formatError(error);
       }
 
-      const clientAfter = removeFromClient ? await inspectQbit(d.torrent.hash) : null;
+      const clientAfter = removeFromClient ? await inspectQbit(d.torrent) : null;
       if (clientAfter?.state === 'absent') removedFromClientObserved = true;
       const after = await inspectQueueLink(link);
       const errorMessage = [callError || clientAfter?.errorMessage, after.errorMessage].filter(Boolean).join('; ');
@@ -1390,15 +1390,16 @@ export async function executeQueueCleanerRemoval(
     let callError: string | undefined;
     const startedAt = new Date();
     try {
-      const qbit = await getQBittorrentClient();
+      const qbit = await getQBittorrentClient(d.torrent.qbitInstanceId);
       await qbit.deleteTorrent(d.torrent.hash, true);
     } catch (error) {
       callError = formatError(error);
     }
-    const after = await inspectQbit(d.torrent.hash);
+    const after = await inspectQbit(d.torrent);
     const errorMessage = [callError, after.errorMessage].filter(Boolean).join('; ');
     targets.push({
       target: 'qbittorrent',
+      instanceId: d.torrent.qbitInstanceId,
       attempted: true,
       before: 'present',
       after: after.state,
@@ -1407,6 +1408,7 @@ export async function executeQueueCleanerRemoval(
     await recordOperationAudit({
       user: run.actor,
       service: 'QBITTORRENT',
+      instanceId: d.torrent.qbitInstanceId,
       operation: 'DELETE_TORRENT',
       targetType: 'torrent',
       targetTitle: d.torrent.name,
@@ -1427,10 +1429,11 @@ export async function executeQueueCleanerRemoval(
     });
   }
 
-  const qbitAfter = await inspectQbit(d.torrent.hash);
+  const qbitAfter = await inspectQbit(d.torrent);
   if (!targets.some((target) => target.target === 'qbittorrent')) {
     targets.push({
       target: 'qbittorrent',
+      instanceId: d.torrent.qbitInstanceId,
       attempted: shouldDeleteFromClient && !d.options.changeCategory,
       before: 'present',
       after: qbitAfter.state,

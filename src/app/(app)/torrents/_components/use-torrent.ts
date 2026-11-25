@@ -3,17 +3,19 @@
 import { useCallback } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ApiError } from '@/lib/query-fetch';
+import { ApiError, withInstanceQuery } from '@/lib/query-fetch';
 import type { QBittorrentTorrent } from '@/types';
+import { qbitInstanceKey, useQbitInstance } from './use-qbit-instance';
 
-export const torrentQueryKey = (hash: string) => ['qbittorrent', 'torrent', hash] as const;
+export const torrentQueryKey = (hash: string, instanceId?: string) => ['qbittorrent', 'torrent', hash, qbitInstanceKey(instanceId)] as const;
 
-/** One torrent's live info; null once qBittorrent no longer has it. */
+/** One torrent's live info, in the chosen qBittorrent; null once it no longer has it. */
 export function useTorrent(hash: string) {
+  const { instanceId } = useQbitInstance();
   return useQuery({
-    queryKey: torrentQueryKey(hash),
+    queryKey: torrentQueryKey(hash, instanceId),
     queryFn: async ({ signal }): Promise<QBittorrentTorrent | null> => {
-      const res = await fetch(`/api/qbittorrent?hashes=${encodeURIComponent(hash)}`, { signal });
+      const res = await fetch(withInstanceQuery(`/api/qbittorrent?hashes=${encodeURIComponent(hash)}`, instanceId), { signal });
       if (!res.ok) throw new ApiError(res.status, `GET /api/qbittorrent → ${res.status}`);
       const torrents = (await res.json()) as QBittorrentTorrent[];
       return torrents.find((t) => t.hash === hash) ?? null;
@@ -30,10 +32,11 @@ export interface TorrentOptions {
 
 /** qBittorrent's tags and whether its queueing is on, for the settings pages. */
 export function useTorrentOptions() {
+  const { instanceId } = useQbitInstance();
   return useQuery({
-    queryKey: ['qbittorrent', 'options'] as const,
+    queryKey: ['qbittorrent', 'options', qbitInstanceKey(instanceId)] as const,
     queryFn: async ({ signal }): Promise<TorrentOptions> => {
-      const res = await fetch('/api/qbittorrent/options', { signal });
+      const res = await fetch(withInstanceQuery('/api/qbittorrent/options', instanceId), { signal });
       if (!res.ok) throw new ApiError(res.status, `GET /api/qbittorrent/options → ${res.status}`);
       return res.json();
     },
@@ -41,8 +44,8 @@ export function useTorrentOptions() {
   });
 }
 
-async function postTorrentAction(body: Record<string, unknown>): Promise<void> {
-  const res = await fetch('/api/qbittorrent', {
+async function postTorrentAction({ body, instanceId }: { body: Record<string, unknown>; instanceId?: string }): Promise<void> {
+  const res = await fetch(withInstanceQuery('/api/qbittorrent', instanceId), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -59,10 +62,11 @@ async function postTorrentAction(body: Record<string, unknown>): Promise<void> {
  * the failure has been toasted, which is also SpeedLimitInput's contract.
  */
 export function useTorrentAction() {
+  const { instanceId } = useQbitInstance();
   const { mutateAsync } = useMutation({ mutationFn: postTorrentAction });
   return useCallback(async (body: Record<string, unknown>): Promise<boolean> => {
     try {
-      await mutateAsync(body);
+      await mutateAsync({ body, instanceId });
       return true;
     } catch (err) {
       // 401 is handled globally (redirect to /login); only toast other failures.
@@ -71,5 +75,5 @@ export function useTorrentAction() {
       }
       return false;
     }
-  }, [mutateAsync]);
+  }, [instanceId, mutateAsync]);
 }

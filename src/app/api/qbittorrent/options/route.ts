@@ -1,17 +1,20 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
+import { qbittorrentInstanceOf } from '@/lib/server/qbittorrent-instance';
 import { requireUserCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 
 /** What the torrent settings pages offer: qBittorrent's tags, and whether its queueing is on. */
-async function getHandler() {
+async function getHandler(request: NextRequest) {
   const auth = await requireUserCapability('torrents.view');
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     const [tags, queueingEnabled] = await Promise.all([client.getTags(), client.isQueueingEnabled()]);
     logApiDuration('/api/qbittorrent/options', startedAt, { method: 'GET' });
     return NextResponse.json({ tags, queueingEnabled });

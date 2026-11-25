@@ -46,6 +46,7 @@ vi.mock('@/lib/arr-instances', () => ({
   clearConnectionMemo: mocks.clearConnectionMemo,
   resolveConnection: mocks.resolveConnection,
   isArrType: (type: string) => ['SONARR', 'RADARR', 'LIDARR'].includes(type),
+  isMultiInstanceType: (type: string) => ['SONARR', 'RADARR', 'LIDARR', 'QBITTORRENT'].includes(type),
 }));
 vi.mock('@/lib/cleanup/scheduler', () => ({
   restartQueueCleaner: mocks.restartQueueCleaner,

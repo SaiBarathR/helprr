@@ -97,7 +97,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
   discover: ['discoverContentType', 'discoverSort', 'discoverSortDirection', 'discoverFilters'],
   anime: ['animeSort', 'animeFilters', 'animeCarouselOrder', 'disabledAnimeCarousels'],
   torrents: [
-    'torrentsFilter', 'torrentsCategoryFilter', 'torrentsTagFilter', 'torrentsTrackerFilter',
+    'torrentsFilter', 'torrentsCategoryFilter', 'torrentsTagFilter', 'torrentsTrackerFilter', 'torrentsInstance',
     'torrentsSortKey', 'torrentsSortDir', 'torrentsView', 'torrentsTableColumns',
   ],
   prowlarr: ['prowlarrIndexerView'],

@@ -1,13 +1,14 @@
-import { Prisma, type ManualDownload, type ManualDownloadFile, type ManualDownloadSource, type ManualDownloadStatus } from '@prisma/client';
+import { Prisma, type ManualDownload, type ManualDownloadFile, type ManualDownloadSource, type ManualDownloadStatus, type ServiceConnection } from '@prisma/client';
 import axios from 'axios';
 import { prisma } from '@/lib/db';
 import { resolveConnection } from '@/lib/arr-instances';
-import { getQBittorrentClient } from '@/lib/service-helpers';
+import { findQBittorrentsWithTorrent } from '@/lib/service-helpers';
+import type { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { runWithOperationAudit, systemAuditActor, type AuditActor } from '@/lib/file-audit';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import type { RadarrClient } from '@/lib/radarr-client';
 import type { SonarrClient } from '@/lib/sonarr-client';
-import type { ArrRemotePathMapping, DownloadClient, HistoryItem, ManualImportItem } from '@/types';
+import type { ArrRemotePathMapping, DownloadClient, HistoryItem, ManualImportItem, QBittorrentTorrent } from '@/types';
 import {
   addOptionIssues,
   addTitlePayload,
@@ -108,20 +109,45 @@ function notVisible(app: string, savePath: string, ambiguous: boolean): string {
 }
 
 /**
+ * The qBittorrent that holds a fallback download's torrent. Helprr adds it to
+ * the qBittorrent chosen on Add Torrent and keeps no record of which, so it is
+ * found by hash. Two that list it can't be told apart, so neither is used;
+ * `strict` (before changing the torrent) also refuses while another
+ * qBittorrent did not answer, as that one may be holding a copy too.
+ */
+export async function fallbackTorrentHome(infoHash: string, strict: boolean): Promise<
+  | { ok: true; client: QBittorrentClient; connection: ServiceConnection; torrent: QBittorrentTorrent }
+  | { ok: false; reason: 'unreachable' | 'missing' | 'ambiguous' }
+> {
+  let result;
+  try {
+    result = await findQBittorrentsWithTorrent(infoHash);
+  } catch {
+    return { ok: false, reason: 'unreachable' };
+  }
+  if (result.found.length > 1) return { ok: false, reason: 'ambiguous' };
+  if (result.found.length === 1 && !(strict && result.failed > 0)) return { ok: true, ...result.found[0] };
+  return { ok: false, reason: result.failed > 0 ? 'unreachable' : 'missing' };
+}
+
+const AMBIGUOUS_TORRENT = 'This torrent is in more than one qBittorrent, so Helprr cannot tell which one to use. Remove it from all but one.';
+
+/**
  * Where Arr sees qBittorrent's folder: through a remote path mapping for the
- * host Arr knows qBittorrent by, or unchanged; each checked in Arr's own listing.
+ * host Arr knows qBittorrent by (that of `qbittorrentUrl`, the instance with
+ * the torrent), or unchanged; each checked in Arr's own listing.
  */
 async function locateSaveFolder(
   client: RadarrClient | SonarrClient,
   savePath: string,
+  qbittorrentUrl: string,
   known?: { clients: DownloadClient[]; mappings: ArrRemotePathMapping[] },
 ): Promise<{ path: string | null; mapping: ArrPathCandidate['mapping']; ambiguous: boolean }> {
-  const [clients, mappings, qbittorrent] = await Promise.all([
+  const [clients, mappings] = await Promise.all([
     known?.clients ?? client.getDownloadClients(),
     known?.mappings ?? client.getRemotePathMappings(),
-    prisma.serviceConnection.findFirst({ where: { type: 'QBITTORRENT' }, select: { url: true } }),
   ]);
-  const { host, ambiguous } = qbittorrentHostInArr(clients, qbittorrent?.url ?? null);
+  const { host, ambiguous } = qbittorrentHostInArr(clients, qbittorrentUrl);
   for (const candidate of arrPathCandidates(savePath, mappings, host)) {
     if (await arrSees(client, candidate.path)) return { path: candidate.path, mapping: candidate.mapping, ambiguous };
   }
@@ -146,18 +172,19 @@ export async function checkFallback(input: FallbackInput): Promise<FallbackCheck
   }
   plan.instance = { id: connection.id, label: connection.label };
 
-  let torrent;
-  let files;
-  try {
-    const qbit = await getQBittorrentClient();
-    [torrent] = await qbit.getTorrents(undefined, undefined, undefined, undefined, input.infoHash.toLowerCase());
-    files = torrent ? await qbit.getTorrentFiles(torrent.hash) : [];
-  } catch {
-    error('QBITTORRENT_UNREACHABLE', 'qBittorrent did not answer. Check that it is running and try again.');
+  const home = await fallbackTorrentHome(input.infoHash, true);
+  if (!home.ok) {
+    if (home.reason === 'ambiguous') error('TORRENT_AMBIGUOUS', AMBIGUOUS_TORRENT);
+    else if (home.reason === 'missing') error('TORRENT_NOT_FOUND', 'That torrent is not in qBittorrent any more. Add it again.');
+    else error('QBITTORRENT_UNREACHABLE', 'qBittorrent did not answer. Check that it is running and try again.');
     return done();
   }
-  if (!torrent) {
-    error('TORRENT_NOT_FOUND', 'That torrent is not in qBittorrent any more. Add it again.');
+  const { torrent } = home;
+  let files;
+  try {
+    files = await home.client.getTorrentFiles(torrent.hash);
+  } catch {
+    error('QBITTORRENT_UNREACHABLE', 'qBittorrent did not answer. Check that it is running and try again.');
     return done();
   }
   const selected = new Set(input.selectedFileIndexes);
@@ -218,7 +245,7 @@ export async function checkFallback(input: FallbackInput): Promise<FallbackCheck
 
   // Arr must see the folder qBittorrent saves into, directly or through its remote path mappings.
   try {
-    const where = await locateSaveFolder(client, torrent.save_path, { clients, mappings });
+    const where = await locateSaveFolder(client, torrent.save_path, home.connection.url, { clients, mappings });
     plan.arrSavePath = where.path;
     plan.mapping = where.mapping;
     if (!where.path) error('PATH_NOT_VISIBLE', notVisible(app, torrent.save_path, where.ambiguous));
@@ -327,7 +354,11 @@ export async function startFallbackDownload(
   }
 
   try {
-    const qbit = await getQBittorrentClient();
+    const home = await fallbackTorrentHome(input.infoHash, true);
+    if (!home.ok) {
+      throw new Error(home.reason === 'ambiguous' ? AMBIGUOUS_TORRENT : home.reason === 'missing' ? 'it is not in qBittorrent any more' : 'qBittorrent did not answer');
+    }
+    const qbit = home.client;
     const hash = input.infoHash.toLowerCase();
     const skipped = torrent.files.filter((file) => !file.selected).map((file) => file.index);
     const chosen = torrent.files.filter((file) => file.selected).map((file) => file.index);
@@ -481,10 +512,12 @@ type Checked = { ok: true; located: Located } | { ok: false; status: 'DOWNLOADIN
  * not moving or checking; and where Arr sees qBittorrent's folder now.
  */
 async function checkDownloaded(download: DownloadWithFiles, client: RadarrClient | SonarrClient): Promise<Checked> {
-  const qbit = await getQBittorrentClient();
-  const [torrent] = await qbit.getTorrents(undefined, undefined, undefined, undefined, download.infoHash.toLowerCase());
-  if (!torrent) return { ok: false, status: 'BLOCKED', message: 'The torrent is no longer in qBittorrent.' };
-  const files = await qbit.getTorrentFiles(torrent.hash);
+  const home = await fallbackTorrentHome(download.infoHash, false);
+  if (!home.ok && home.reason === 'unreachable') throw new Error('qBittorrent did not answer');
+  if (!home.ok && home.reason === 'ambiguous') return { ok: false, status: 'BLOCKED', message: AMBIGUOUS_TORRENT };
+  if (!home.ok) return { ok: false, status: 'BLOCKED', message: 'The torrent is no longer in qBittorrent.' };
+  const { torrent } = home;
+  const files = await home.client.getTorrentFiles(torrent.hash);
   let finished = !SETTLING_STATES.has(torrent.state);
   for (const file of download.files.filter((entry) => entry.selected)) {
     const now = files.find((entry) => entry.index === file.fileIndex);
@@ -496,7 +529,7 @@ async function checkDownloaded(download: DownloadWithFiles, client: RadarrClient
     if (now.progress < 1) finished = false;
   }
   if (!finished) return { ok: false, status: 'DOWNLOADING', message: 'The chosen files have not finished downloading in qBittorrent.' };
-  const where = await locateSaveFolder(client, torrent.save_path);
+  const where = await locateSaveFolder(client, torrent.save_path, home.connection.url);
   if (!where.path) return { ok: false, status: 'BLOCKED', message: notVisible(appOf(download.service), torrent.save_path, where.ambiguous) };
   return { ok: true, located: { savePath: torrent.save_path, mapping: where.mapping } };
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
+import { qbittorrentInstanceOf } from '@/lib/server/qbittorrent-instance';
 import { requireUserCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
@@ -23,6 +24,8 @@ async function getHandler(
 ) {
   const auth = await requireUserCapability('torrents.view');
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
@@ -33,14 +36,14 @@ async function getHandler(
     const cursorParam = request.nextUrl.searchParams.get('cursor');
     const cursor = cursorParam && CURSOR.test(cursorParam) ? cursorParam : undefined;
     const seesAddress = seesPeerAddresses(auth.user);
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     const [sync, listed] = await Promise.all([
       client.getTorrentPeers(hash, request.signal),
       // Whether it is private, for the page's first request: it decides who may add peers (below).
       cursor ? null : client.getTorrents(undefined, undefined, undefined, undefined, hash, request.signal).catch(() => null),
     ]);
-    // The history is per user and torrent, and per view, so a cursor never crosses into another's list.
-    const scope = `${auth.user.id}:${hash.toLowerCase()}:${seesAddress ? 'addresses' : 'no-addresses'}`;
+    // The history is per user, qBittorrent and torrent, and per view, so a cursor never crosses into another's list.
+    const scope = `${auth.user.id}:${client.instanceId ?? ''}:${hash.toLowerCase()}:${seesAddress ? 'addresses' : 'no-addresses'}`;
     const delta = peerDeltaHistory.response(scope, cursor, peersForViewer(hash, sync, seesAddress));
     if (!cursor) {
       const torrent = listed?.find((entry) => entry.hash.toLowerCase() === hash.toLowerCase());
@@ -70,6 +73,8 @@ async function postHandler(
 ) {
   const auth = await requireUserCapability('torrents.manage');
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   const refuse = (status: number, error: string, reason: string) => {
@@ -90,7 +95,7 @@ async function postHandler(
     const parsed = parsePeerAddresses((body as Record<string, unknown>).peers);
     if (!parsed.ok) return refuse(400, parsed.error, 'peers');
 
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     // A private torrent is shared only with its tracker's peers: one added by
     // hand gets the content (private trackers ban for that), which is why
     // qBittorrent offers no Add Peers for one. As for its trackers, it is an

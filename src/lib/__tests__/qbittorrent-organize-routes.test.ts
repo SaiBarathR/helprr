@@ -153,7 +153,7 @@ describe('GET /api/qbittorrent/options', () => {
   it("returns qBittorrent's tags and whether queueing is on", async () => {
     mocks.qbit.getTags.mockResolvedValue(['4k']);
     mocks.qbit.isQueueingEnabled.mockResolvedValue(false);
-    const res = await getOptions();
+    const res = await getOptions(new NextRequest('http://localhost/api/qbittorrent/options'));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ tags: ['4k'], queueingEnabled: false });
     expect(mocks.requireUserCapability).toHaveBeenCalledWith('torrents.view');
@@ -161,7 +161,7 @@ describe('GET /api/qbittorrent/options', () => {
 
   it('checks torrents.view before reading anything', async () => {
     mocks.requireUserCapability.mockResolvedValue(FORBIDDEN);
-    expect((await getOptions()).status).toBe(403);
+    expect((await getOptions(new NextRequest('http://localhost/api/qbittorrent/options'))).status).toBe(403);
     expect(mocks.qbit.getTags).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,9 @@
 import { etagJson } from '@/lib/etag-json';
-import { matchesTorrentFilter, projectTorrentsForSummary, torrentCounters } from '@/lib/qbittorrent-summary';
+import { matchesTorrentFilter, projectTorrentsForSummary, sumTransferInfo, torrentCounters } from '@/lib/qbittorrent-summary';
 import { NextRequest, NextResponse } from 'next/server';
-import { getQBittorrentClient } from '@/lib/service-helpers';
+import { getQBittorrentClient, getQBittorrentClients } from '@/lib/service-helpers';
+import { qbittorrentInstanceParam } from '@/lib/server/qbittorrent-instance';
+import type { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { requireUserCapability } from '@/lib/auth';
 import type { QBittorrentSummaryResponse } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
@@ -24,8 +26,7 @@ const SUMMARY_CACHE_HEADERS = {
   'Vary': 'Cookie',
 } as const;
 
-async function loadSummary(version: number, filter?: string): Promise<QBittorrentSummaryResponse> {
-  const client = await getQBittorrentClient();
+async function loadSummary(client: QBittorrentClient, version: number, filter?: string): Promise<QBittorrentSummaryResponse> {
   const { torrents, serverState } = await qbittorrentSyncFor(client).read(QBITTORRENT_SYNC_MAX_AGE_MS, version);
   // Field by field: the merged rows carry the magnet and tracker URL, and
   // server_state the last external IPv4 and IPv6 address (the owner's public IP).
@@ -52,22 +53,50 @@ async function getHandler(request: NextRequest) {
     // list is no longer sorted or narrowed by category upstream: the page does
     // both itself.
     const filter = searchParams.get('filter') || undefined;
+    const view = searchParams.get('view');
 
-    const version = await getQbitCacheVersion();
+    // The dashboard's totals: every qBittorrent's counters and speeds added
+    // up. One that doesn't answer is left out, unless none answers.
+    if (view === 'counters' && searchParams.get('instanceId') === 'all') {
+      const instances = await getQBittorrentClients();
+      const read = await Promise.allSettled(instances.map(async ({ client }) => loadSummary(client, await getQbitCacheVersion(client.instanceId))));
+      const payloads = read.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+      if (payloads.length === 0) {
+        if (instances.length === 0) await getQBittorrentClient(); // throws "not configured"
+        throw read.find((result) => result.status === 'rejected')?.reason ?? new Error('No qBittorrent answered');
+      }
+      const torrents = payloads.flatMap((payload) => payload.torrents);
+      logApiDuration('/api/qbittorrent/summary', startedAt, { torrentCount: torrents.length, filter: 'all', instances: payloads.length });
+      return etagJson(request, {
+        ...torrentCounters(torrents),
+        transferInfo: sumTransferInfo(payloads.flatMap((payload) => (payload.transferInfo ? [payload.transferInfo] : []))),
+        // Alternative speed mode is per qBittorrent: "on" only when all are.
+        speedLimitsMode: payloads.every((payload) => payload.speedLimitsMode === 1) ? 1 : 0,
+      }, SUMMARY_CACHE_HEADERS);
+    }
+
+    const instance = await qbittorrentInstanceParam(searchParams.get('instanceId'));
+    if (!instance.ok) return instance.response;
+    const client = await getQBittorrentClient(instance.instanceId);
+    const version = await getQbitCacheVersion(client.instanceId);
     const seed = JSON.stringify([version, filter ?? '']);
-    const payload = await loadSummary(version, filter);
+    const payload = await loadSummary(client, version, filter);
 
     logApiDuration('/api/qbittorrent/summary', startedAt, {
       torrentCount: payload.torrents.length,
       filter: filter || 'all',
     });
 
-    const view = searchParams.get('view');
     if (view === 'delta') {
-      const scope = JSON.stringify([auth.user.id, seed]);
-      return etagJson(request, torrentDeltaHistory.response(scope, searchParams.get('cursor') || undefined, payload), SUMMARY_CACHE_HEADERS);
+      // A cursor is for one user, filter, version and qBittorrent.
+      const scope = JSON.stringify([auth.user.id, client.instanceId ?? '', seed]);
+      // Which qBittorrent this is, so the page acts on the one it shows even
+      // when it asked for "the default" and the default has changed since.
+      return etagJson(request, { ...torrentDeltaHistory.response(scope, searchParams.get('cursor') || undefined, payload), instanceId: client.instanceId }, SUMMARY_CACHE_HEADERS);
     }
-    return etagJson(request, view === 'counters' ? { ...torrentCounters(payload.torrents), transferInfo: payload.transferInfo, speedLimitsMode: payload.speedLimitsMode } : payload, SUMMARY_CACHE_HEADERS);
+    return etagJson(request, view === 'counters'
+      ? { ...torrentCounters(payload.torrents), transferInfo: payload.transferInfo, speedLimitsMode: payload.speedLimitsMode }
+      : { ...payload, instanceId: client.instanceId }, SUMMARY_CACHE_HEADERS);
   } catch (error) {
     console.error('Failed to fetch qBittorrent summary:', error);
     logApiDuration('/api/qbittorrent/summary', startedAt, { failed: true });

@@ -4,18 +4,19 @@ import { passiveTorrentRefreshIntervalMs } from '@/lib/qbittorrent-summary';
 import { applyTorrentDelta, type TorrentDeltaResponse } from '@/lib/qbittorrent-delta';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
-import { backoffRefetchInterval } from '@/lib/query-fetch';
+import { backoffRefetchInterval, withInstanceQuery } from '@/lib/query-fetch';
 import { fetchOrOffline, isQueryOffline } from '@/lib/network-error';
 import type { QBittorrentTorrent, QBittorrentSummaryResponse, QBittorrentTransferInfo } from '@/types';
 import type { TorrentsFilterPreference as FilterType } from '@/lib/store';
 import { mergeTorrents, type PendingFieldOverride } from './torrent-list';
+import { qbitInstanceKey } from './use-qbit-instance';
 
 /**
  * The torrent list as qBittorrent reports it, polled as deltas, with the
  * optimistic overrides (row fields, delete tombstones, alt speed mode) that a
  * poll must not revert until it confirms them.
  */
-export function useTorrentsSummary(filter: FilterType[], hasHydrated: boolean) {
+export function useTorrentsSummary(filter: FilterType[], hasHydrated: boolean, instanceId: string | undefined) {
   const [torrents, setTorrents] = useState<QBittorrentTorrent[]>([]);
   const [transferInfo, setTransferInfo] = useState<QBittorrentTransferInfo | null>(null);
   const [speedLimitsMode, setSpeedLimitsMode] = useState(0);
@@ -27,29 +28,31 @@ export function useTorrentsSummary(filter: FilterType[], hasHydrated: boolean) {
   // part of the query key so switching filters refetches immediately.
   const filterSignature = filter.length === 1 ? filter[0] : filter.length === 0 ? '__all__' : '__multi__';
   const deltaSnapshots = useRef(new Map<string, { cursor: string; payload: QBittorrentSummaryResponse }>());
+  // A cursor is one qBittorrent's: never sent with another's list.
+  const snapshotKey = `${qbitInstanceKey(instanceId)}|${filterSignature}`;
 
   const summaryQuery = useQuery({
-    queryKey: ['torrents', 'summary', filterSignature],
+    queryKey: ['torrents', 'summary', qbitInstanceKey(instanceId), filterSignature],
     queryFn: async ({ signal }): Promise<QBittorrentSummaryResponse> => {
       const params = new URLSearchParams();
       if (filterSignature !== '__all__' && filterSignature !== '__multi__') params.set('filter', filterSignature);
-      const previous = deltaSnapshots.current.get(filterSignature);
+      const previous = deltaSnapshots.current.get(snapshotKey);
       params.set('view', 'delta');
       if (previous) params.set('cursor', previous.cursor);
       const qs = params.toString();
-      const res = await fetchOrOffline(qs ? `/api/qbittorrent/summary?${qs}` : '/api/qbittorrent/summary', { signal });
+      const res = await fetchOrOffline(withInstanceQuery(`/api/qbittorrent/summary?${qs}`, instanceId), { signal });
       if (!res.ok) throw new Error('Failed to fetch');
       const data = (await res.json()) as TorrentDeltaResponse & { error?: string };
       if (data.error) throw new Error(data.error);
       signal.throwIfAborted();
       try {
-        const payload = applyTorrentDelta(previous?.payload, data);
-        deltaSnapshots.current.set(filterSignature, { cursor: data.cursor, payload });
+        const payload = { ...applyTorrentDelta(previous?.payload, data), instanceId: data.instanceId };
+        deltaSnapshots.current.set(snapshotKey, { cursor: data.cursor, payload });
         // The finite upstream filter set is small; cap defensively as well.
         if (deltaSnapshots.current.size > 16) deltaSnapshots.current.delete(deltaSnapshots.current.keys().next().value!);
         return payload;
       } catch (error) {
-        deltaSnapshots.current.delete(filterSignature);
+        deltaSnapshots.current.delete(snapshotKey);
         throw error; // The next query retry requests a full reset.
       }
     },
@@ -155,6 +158,8 @@ export function useTorrentsSummary(filter: FilterType[], hasHydrated: boolean) {
 
   return {
     torrents,
+    /** The qBittorrent the list came from (the server's default when none was chosen). */
+    listInstanceId: summaryQuery.data?.instanceId,
     setTorrents,
     transferInfo,
     speedLimitsMode,

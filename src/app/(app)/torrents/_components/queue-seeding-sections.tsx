@@ -11,7 +11,8 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
+import { qbitInstanceKey, useQbitInstance } from './use-qbit-instance';
 import {
   MAX_ACTIVE_LIMIT,
   SHARE_LIMIT_ACTIONS,
@@ -41,8 +42,8 @@ const COUNTS: { key: CountKey; label: string }[] = [
   { key: 'max_active_torrents', label: 'Max Active Torrents' },
 ];
 
-async function patchPreferences(patch: QueueSeedingPatch): Promise<void> {
-  const res = await fetch(PREFS_URL, {
+async function patchPreferences({ patch, instanceId }: { patch: QueueSeedingPatch; instanceId?: string }): Promise<void> {
+  const res = await fetch(withInstanceQuery(PREFS_URL, instanceId), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
@@ -144,9 +145,11 @@ function CountInput({ label, value, onSave }: { label: string; value: number; on
  */
 export function QueueSeedingSections({ isAdmin }: { isAdmin: boolean }) {
   const queryClient = useQueryClient();
+  const { instanceId } = useQbitInstance();
+  const prefsKey = [...KEY, qbitInstanceKey(instanceId)] as const;
   const query = useQuery({
-    queryKey: KEY,
-    queryFn: jsonFetcher<QueueSeedingPreferences>(PREFS_URL),
+    queryKey: prefsKey,
+    queryFn: jsonFetcher<QueueSeedingPreferences>(PREFS_URL, instanceId),
     // qBittorrent's own Web UI can change them; read fresh on each visit.
     staleTime: 0,
   });
@@ -155,16 +158,16 @@ export function QueueSeedingSections({ isAdmin }: { isAdmin: boolean }) {
 
   const { mutateAsync, isPending } = useMutation({
     mutationFn: patchPreferences,
-    onSuccess: (_data, patch) => {
-      queryClient.setQueryData<QueueSeedingPreferences>(KEY, (old) => (old ? { ...old, ...patch } : old));
-      if (patch.queueing_enabled !== undefined) void queryClient.invalidateQueries({ queryKey: OPTIONS_KEY });
+    onSuccess: (_data, { patch, instanceId: sentTo }) => {
+      queryClient.setQueryData<QueueSeedingPreferences>([...KEY, qbitInstanceKey(sentTo)], (old) => (old ? { ...old, ...patch } : old));
+      if (patch.queueing_enabled !== undefined) void queryClient.invalidateQueries({ queryKey: [...OPTIONS_KEY, qbitInstanceKey(sentTo)] });
     },
   });
 
   /** Resolves false once the failure has been toasted. */
   const save = async (patch: QueueSeedingPatch, success?: string): Promise<boolean> => {
     try {
-      await mutateAsync(patch);
+      await mutateAsync({ patch, instanceId });
       if (success) toast.success(success);
       return true;
     } catch (error) {

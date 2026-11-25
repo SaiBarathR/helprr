@@ -17,6 +17,7 @@ import {
 const first: CleanupCandidateBinding = {
   cleaner: 'download',
   hash: 'aaa',
+  qbitInstanceId: 'q1',
   ruleId: 'rule-1',
   removalKind: 'seeding',
   deleteSourceFiles: false,
@@ -25,6 +26,7 @@ const first: CleanupCandidateBinding = {
 const second: CleanupCandidateBinding = {
   cleaner: 'download',
   hash: 'bbb',
+  qbitInstanceId: 'q1',
   ruleId: 'rule-2',
   removalKind: 'imported',
   deleteSourceFiles: true,

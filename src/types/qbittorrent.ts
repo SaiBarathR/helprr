@@ -85,4 +85,6 @@ export interface QBittorrentSummaryResponse {
   torrents: QBittorrentTorrent[];
   transferInfo: QBittorrentTransferInfo | null;
   speedLimitsMode?: number;
+  /** The qBittorrent instance the list was read from (QBT-29). */
+  instanceId?: string;
 }

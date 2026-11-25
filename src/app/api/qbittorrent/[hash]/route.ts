@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
+import { qbittorrentInstanceOf } from '@/lib/server/qbittorrent-instance';
 import { requireAuth, requireUserCapability } from '@/lib/auth';
 import type { Capability } from '@/lib/capabilities';
 import { logApiDuration } from '@/lib/server-perf';
@@ -77,8 +78,10 @@ async function postHandler(
     }
     const auth = await requireUserCapability(requiredCap);
     if (!auth.ok) return auth.response;
+    const instance = await qbittorrentInstanceOf(request);
+    if (!instance.ok) return instance.response;
 
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
 
     switch (action) {
       case 'pause':
@@ -93,7 +96,7 @@ async function postHandler(
         const outcome = await deleteTorrentsAudited(client, auth.user, hash, body.deleteFiles === true);
         if (outcome !== 'deleted') {
           // The list may have changed (or a delete may have gone through): let the next read see it.
-          await bumpQbitCacheVersion();
+          await bumpQbitCacheVersion(client.instanceId);
           logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action, refused: outcome });
           const { status, ...refusal } = TORRENT_DELETE_REFUSALS[outcome];
           return NextResponse.json(refusal, { status });
@@ -179,7 +182,7 @@ async function postHandler(
     }
 
     // Bust the summary cache so post-action refetches see post-action state.
-    await bumpQbitCacheVersion();
+    await bumpQbitCacheVersion(client.instanceId);
     logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action });
     return NextResponse.json({ success: true });
   } catch (error) {

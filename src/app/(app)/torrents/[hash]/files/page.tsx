@@ -4,7 +4,8 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import { Fragment, useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
+import { qbitInstanceKey, useQbitInstance } from '../../_components/use-qbit-instance';
 import { useParams, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { ChevronRight, ChevronDown, Download, Folder, File, Gauge, Loader2, MoreVertical, Pencil, X } from 'lucide-react';
@@ -78,13 +79,14 @@ export default function TorrentFilesPage() {
   const [expandedDirs, setExpandedDirs] = useRouteViewState<Set<string>>('TorrentFilesPage:expandedDirs', new Set());
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   const queryClient = useQueryClient();
-  const filesKey = ['qbittorrent', hash, 'files'] as const;
+  const { instanceId } = useQbitInstance();
+  const filesKey = ['qbittorrent', hash, 'files', qbitInstanceKey(instanceId)] as const;
 
   // Optimistic priority change. A 401 carries its status to the global
   // MutationCache handler (redirect to /login).
   const setPriorityMutation = useMutation({
     mutationFn: async ({ fileIds, priority }: { fileIds: number[]; priority: number }) => {
-      const res = await fetch(`/api/qbittorrent/${hash}/files/priority`, {
+      const res = await fetch(withInstanceQuery(`/api/qbittorrent/${hash}/files/priority`, instanceId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: fileIds, priority }),
@@ -118,7 +120,7 @@ export default function TorrentFilesPage() {
   const [renameWarning, setRenameWarning] = useState<RenameWarning | null>(null);
   const { mutateAsync: mutateRename, isPending: renamePending } = useMutation({
     mutationFn: async ({ target, name, confirm }: { target: RenameTarget; name: string; confirm: boolean }): Promise<RenameResult> => {
-      const res = await fetch(`/api/qbittorrent/${hash}/files/rename`, {
+      const res = await fetch(withInstanceQuery(`/api/qbittorrent/${hash}/files/rename`, instanceId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind: target.kind, path: target.path, name, confirm }),
@@ -203,7 +205,7 @@ export default function TorrentFilesPage() {
     queryKey: filesKey,
     // The files route, not /details: that one also asks qBittorrent for the
     // properties, trackers and magnet, which this page doesn't show.
-    queryFn: jsonFetcher<{ files: TorrentFile[] }>(`/api/qbittorrent/${hash}/files`),
+    queryFn: jsonFetcher<{ files: TorrentFile[] }>(`/api/qbittorrent/${hash}/files`, instanceId),
     select: (d) => d.files ?? [],
     // Pause polling while a priority change is in flight so the next poll can't
     // overwrite the optimistic update before the server commits (matches the old

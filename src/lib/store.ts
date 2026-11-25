@@ -293,7 +293,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 57;
+export const STORE_VERSION = 58;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -677,6 +677,9 @@ interface UIState {
   setTorrentsTagFilter: (filter: string[]) => void;
   torrentsTrackerFilter: string[];
   setTorrentsTrackerFilter: (filter: string[]) => void;
+  /** The qBittorrent the Torrents pages show (a connection id); '' for the default one. */
+  torrentsInstance: string;
+  setTorrentsInstance: (id: string) => void;
   torrentsSortKey: TorrentsSortKeyPreference;
   setTorrentsSortKey: (sortKey: TorrentsSortKeyPreference) => void;
   torrentsSortDir: TorrentsSortDirectionPreference;
@@ -875,6 +878,7 @@ const PERSISTED_KEYS = [
   'torrentsCategoryFilter',
   'torrentsTagFilter',
   'torrentsTrackerFilter',
+  'torrentsInstance',
   'torrentsSortKey',
   'torrentsSortDir',
   'torrentsView',
@@ -1215,6 +1219,8 @@ export const useUIStore = create<UIState>()(
       setTorrentsTagFilter: (filter) => set({ torrentsTagFilter: filter }),
       torrentsTrackerFilter: [],
       setTorrentsTrackerFilter: (filter) => set({ torrentsTrackerFilter: filter }),
+      torrentsInstance: '',
+      setTorrentsInstance: (id) => set({ torrentsInstance: id }),
       torrentsSortKey: 'added_on',
       setTorrentsSortKey: (sortKey) => set({ torrentsSortKey: sortKey }),
       torrentsSortDir: 'desc',

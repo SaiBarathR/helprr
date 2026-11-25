@@ -162,8 +162,14 @@ export interface PendingStrike {
   lastSeenAt: Date;
 }
 
+/**
+ * A torrent as a cleaner sees it: with the qBittorrent instance that lists it,
+ * which every re-read, strike clear and removal for it goes to.
+ */
+export type CleanupTorrent = QBittorrentTorrent & { qbitInstanceId: string };
+
 export interface QueueDecision {
-  torrent: QBittorrentTorrent;
+  torrent: CleanupTorrent;
   strikeType: StrikeType;
   ruleId: string | null;
   ruleName: string | null;
@@ -182,7 +188,7 @@ export interface QueueDecision {
 }
 
 export interface DownloadDecision {
-  torrent: QBittorrentTorrent;
+  torrent: CleanupTorrent;
   rule: SeedingRuleShape;
   reason: string;
   seedingHours: number;
@@ -246,6 +252,7 @@ export interface CleanupItemOutcome {
 export interface QueueCandidateBinding {
   cleaner: 'queue';
   hash: string;
+  qbitInstanceId: string;
   strikeType: StrikeType;
   ruleId: string | null;
   strikeCount: number;
@@ -261,6 +268,7 @@ export interface QueueCandidateBinding {
 export interface DownloadCandidateBinding {
   cleaner: 'download';
   hash: string;
+  qbitInstanceId: string;
   ruleId: string;
   removalKind: DownloadDecision['removalKind'];
   deleteSourceFiles: boolean;

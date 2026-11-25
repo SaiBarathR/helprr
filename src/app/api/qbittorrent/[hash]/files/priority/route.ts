@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
+import { qbittorrentInstanceOf } from '@/lib/server/qbittorrent-instance';
 import { requireUserCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
@@ -13,6 +14,8 @@ async function postHandler(
 ) {
   const auth = await requireUserCapability('torrents.manage');
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   try {
@@ -40,7 +43,7 @@ async function postHandler(
     const parsedIds = ids as number[];
     const parsedPriority = priority as 0 | 1 | 6 | 7;
 
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     await client.setFilePriority(hash, parsedIds, parsedPriority);
 
     logApiDuration('/api/qbittorrent/[hash]/files/priority', startedAt, {

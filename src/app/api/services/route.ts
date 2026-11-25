@@ -16,7 +16,7 @@ import {
 } from '@/lib/service-connection-secrets';
 import { withApiLogging } from '@/lib/api-logger';
 import { isRefusedRedirect, REDIRECT_REFUSED_MESSAGE } from '@/lib/redirect-guard';
-import { clearConnectionMemo, ensureDefaultForType, isArrType } from '@/lib/arr-instances';
+import { clearConnectionMemo, ensureDefaultForType, isArrType, isMultiInstanceType } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
 import { withDefaultScheme } from '@/lib/service-url';
 import { changedFieldNames, recordSecurityEvent, serviceTargetLabel } from '@/lib/security-audit';
@@ -172,11 +172,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
     // Resolve the target row:
     //  - id present        → edit that exact instance
-    //  - arr type, no id    → CREATE a new instance (multi-instance)
-    //  - non-arr, no id     → upsert the single instance of that type
+    //  - multi-instance type (arrs, qBittorrent), no id → CREATE a new instance
+    //  - any other type, no id → upsert the single instance of that type
     const existing = idValue
       ? await prisma.serviceConnection.findUnique({ where: { id: idValue } })
-      : isArrType(type)
+      : isMultiInstanceType(type)
         ? null
         : await prisma.serviceConnection.findFirst({ where: { type } });
 
@@ -274,14 +274,29 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       username = selectedUserId;
     }
 
-    // Label: arr instances require a user-supplied name; single-instance types
-    // default to the service's display label.
+    const otherQbits = type === 'QBITTORRENT'
+      ? await prisma.serviceConnection.findMany({ where: { type, ...(existing && { id: { not: existing.id } }) } })
+      : [];
+    // Label: multi-instance types require a user-supplied name; single-instance
+    // types default to the service's display label. The first qBittorrent may
+    // still come without one, as before qBittorrent became multi-instance
+    // (API clients and the demo seed add it that way).
     const rawLabel = typeof body.label === 'string' ? body.label.trim() : '';
-    const label = isArrType(type)
-      ? (rawLabel || existing?.label || '')
+    const unnamedFallback = type === 'QBITTORRENT' && otherQbits.length === 0 ? (findServiceByType(type)?.label || type) : '';
+    const label = isMultiInstanceType(type)
+      ? (rawLabel || existing?.label || unnamedFallback)
       : (existing?.label || rawLabel || findServiceByType(type)?.label || type);
-    if (isArrType(type) && !label) {
+    if (isMultiInstanceType(type) && !label) {
       return NextResponse.json({ error: 'A name is required for this instance' }, { status: 400 });
+    }
+    // Two connections to one qBittorrent would be polled twice (every push
+    // sent twice) and put every torrent "in two qBittorrents", which the
+    // cleaners skip: one address is one instance.
+    if (type === 'QBITTORRENT') {
+      const same = otherQbits.find((other) => normalizeServiceUrl(other.url) === normalizeServiceUrl(url));
+      if (same) {
+        return NextResponse.json({ error: `This qBittorrent is already connected as "${same.label}"` }, { status: 409 });
+      }
     }
 
     // Stored headers this request did not carry were entered for the old

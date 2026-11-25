@@ -259,6 +259,7 @@ export async function deleteTorrentsAudited(
     await runWithOperationAudit({
       user,
       service: 'QBITTORRENT',
+      instanceId: client.instanceId ?? null,
       operation: 'DELETE_TORRENT',
       targetType: 'torrent',
       targetTitle: snapshot.targetTitle,

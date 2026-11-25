@@ -12,6 +12,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { jsonFetcher } from '@/lib/query-fetch';
 import type { QbitLogLevel, QbitLogPage } from '@/lib/qbittorrent-log';
+import { qbitInstanceKey, useQbitInstance } from '../_components/use-qbit-instance';
 
 // qBittorrent's types go from Normal up to Critical; each choice shows one and
 // everything above it, as a log reader usually wants.
@@ -25,11 +26,12 @@ const SHOW: { value: string; label: string; levels: QbitLogLevel[] }[] = [
 /** Torrents settings → Log (QBT-24): qBittorrent's main log, newest first, for admins. */
 export default function TorrentLogPage() {
   const [show, setShow] = useState('all');
+  const { instanceId, subtitle } = useQbitInstance();
   const levels = (SHOW.find((option) => option.value === show) ?? SHOW[0]).levels.join(',');
   const query = useInfiniteQuery({
-    queryKey: ['qbittorrent', 'log', levels],
+    queryKey: ['qbittorrent', 'log', levels, qbitInstanceKey(instanceId)],
     queryFn: ({ pageParam, signal }) =>
-      jsonFetcher<QbitLogPage>(`/api/qbittorrent/log?levels=${levels}${pageParam === null ? '' : `&before=${pageParam}`}`)({ signal }),
+      jsonFetcher<QbitLogPage>(`/api/qbittorrent/log?levels=${levels}${pageParam === null ? '' : `&before=${pageParam}`}`, instanceId)({ signal }),
     initialPageParam: null as number | null,
     getNextPageParam: (last) => last.nextBefore ?? undefined,
     staleTime: 30_000,
@@ -41,7 +43,7 @@ export default function TorrentLogPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title="qBittorrent Log" className="*:readable-column" backHref="/torrents/settings" />
+      <PageHeader title="qBittorrent Log" subtitle={subtitle} className="*:readable-column" backHref="/torrents/settings" />
 
       <div className="mt-3 pb-8 readable-column">
         <GroupedSection className="mb-4">

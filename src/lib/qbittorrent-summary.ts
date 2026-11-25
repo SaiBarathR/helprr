@@ -94,6 +94,27 @@ export function normalizeTransferInfo(info: QBittorrentTransferInfo): QBittorren
   };
 }
 
+/**
+ * Several qBittorrents' transfer figures as one (the dashboard's totals):
+ * speeds and amounts add up; a limit is unlimited (0) when any of them is,
+ * else the limits add up; the status is "connected" only when all are.
+ */
+export function sumTransferInfo(infos: QBittorrentTransferInfo[]): QBittorrentTransferInfo | null {
+  if (infos.length === 0) return null;
+  const sum = (pick: (info: QBittorrentTransferInfo) => number) => infos.reduce((total, info) => total + (pick(info) || 0), 0);
+  const limit = (pick: (info: QBittorrentTransferInfo) => number) => (infos.some((info) => !(pick(info) > 0)) ? 0 : sum(pick));
+  return {
+    dl_info_speed: sum((info) => info.dl_info_speed),
+    dl_info_data: sum((info) => info.dl_info_data),
+    up_info_speed: sum((info) => info.up_info_speed),
+    up_info_data: sum((info) => info.up_info_data),
+    dl_rate_limit: limit((info) => info.dl_rate_limit),
+    up_rate_limit: limit((info) => info.up_rate_limit),
+    dht_nodes: sum((info) => info.dht_nodes),
+    connection_status: infos.find((info) => info.connection_status !== 'connected')?.connection_status ?? 'connected',
+  };
+}
+
 export function passiveTorrentRefreshIntervalMs(baseMs: number, connection?: { saveData?: boolean; effectiveType?: string } | null): number {
   if (!connection?.saveData && connection?.effectiveType !== 'slow-2g' && connection?.effectiveType !== '2g') {
     return baseMs;

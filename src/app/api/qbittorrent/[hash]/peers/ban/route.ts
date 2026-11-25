@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
+import { qbittorrentInstanceOf } from '@/lib/server/qbittorrent-instance';
 import { requireAdmin } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
@@ -26,6 +27,8 @@ async function postHandler(
 ) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
+  const instance = await qbittorrentInstanceOf(request);
+  if (!instance.ok) return instance.response;
   const startedAt = performance.now();
 
   const refuse = (status: number, error: string, reason: string) => {
@@ -45,7 +48,7 @@ async function postHandler(
     const key = body && typeof body === 'object' ? (body as Record<string, unknown>).key : undefined;
     if (typeof key !== 'string' || !PEER_KEY.test(key)) return refuse(400, 'Name the peer to ban', 'key');
 
-    const client = await getQBittorrentClient();
+    const client = await getQBittorrentClient(instance.instanceId);
     const address = findPeerAddress(hash, await client.getTorrentPeers(hash, request.signal), key);
     if (!address) return refuse(409, 'That peer is no longer connected', 'gone');
 

@@ -13,14 +13,16 @@ const mocks = vi.hoisted(() => ({
 }));
 const client = vi.hoisted(() => ({
   connectionKey: 'poll-sync-test',
+  instanceId: 'q1',
   getMaindata: async (rid: number) => {
     mocks.rids.push(rid);
     return mocks.answers.shift();
   },
 }));
 
-vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: vi.fn(async () => client) }));
-vi.mock('@/lib/arr-instances', () => ({ getDefaultConnection: vi.fn(async () => ({ id: 'q1' })) }));
+vi.mock('@/lib/service-helpers', () => ({
+  getQBittorrentClients: vi.fn(async () => [{ connection: { id: 'q1', label: 'qBittorrent' }, client }]),
+}));
 vi.mock('@/lib/cache/badge-counts', () => ({ writeBadgeSlice: vi.fn() }));
 vi.mock('@/lib/polling-job-report', () => ({ noteJobFailure: vi.fn() }));
 vi.mock('@/lib/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
@@ -31,6 +33,7 @@ vi.mock('./shared', () => ({
   getPollingState: vi.fn(async () => ({ state: { lastQueueIds: mocks.saved }, firstRun: mocks.saved === null })),
   notifyAndLog: mocks.notifyAndLog,
   wantedNotices: vi.fn(async (notices: unknown[]) => notices),
+  instanceTitle: (base: string, label: string, count: number) => (count > 1 ? `${label} · ${base}` : base),
 }));
 
 import { pollQBittorrent } from './poll-qbittorrent';

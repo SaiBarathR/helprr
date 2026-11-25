@@ -16,6 +16,7 @@ import { ShareLimitsSection, type ShareLimitValues } from '../../_components/sha
 import { TorrentLocationSection, TorrentQueueSection, TorrentTagsSection } from '../../_components/torrent-organize-sections';
 import { parseTorrentTags } from '../../_components/torrent-tags';
 import { torrentQueryKey, useTorrent, useTorrentAction } from '../../_components/use-torrent';
+import { useQbitInstance } from '../../_components/use-qbit-instance';
 
 type TorrentOption = 'seq_dl' | 'f_l_piece_prio' | 'auto_tmm';
 
@@ -35,6 +36,7 @@ const OPTIONS: {
 export default function TorrentSettingsPage() {
   const { hash } = useParams<{ hash: string }>();
   const queryClient = useQueryClient();
+  const { instanceId } = useQbitInstance();
   const canBandwidth = useCan('torrents.bandwidth');
   const canManage = useCan('torrents.manage');
   const [pendingOptions, setPendingOptions] = useState<ReadonlySet<TorrentOption>>(() => new Set());
@@ -45,7 +47,7 @@ export default function TorrentSettingsPage() {
 
   const setTorrentField = <K extends keyof QBittorrentTorrent>(field: K, value: QBittorrentTorrent[K]) => {
     queryClient.setQueryData<QBittorrentTorrent | null>(
-      torrentQueryKey(hash),
+      torrentQueryKey(hash, instanceId),
       (old) => (old ? { ...old, [field]: value } : old),
     );
   };

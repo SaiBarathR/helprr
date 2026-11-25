@@ -5,6 +5,11 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// One qBittorrent, the default (use-qbit-instance.test.ts covers choosing one).
+vi.mock('@/app/(app)/torrents/_components/use-qbit-instance', () => ({
+  qbitInstanceKey: (id: string | undefined) => id ?? 'default',
+  useQbitInstance: () => ({ instanceId: undefined, instances: [], multiInstance: false, current: undefined, subtitle: undefined, select: () => {} }),
+}));
 vi.mock('@/components/layout/navigation-provider', () => ({
   useAppRouter: () => ({ back: vi.fn(), push: vi.fn() }),
   canGoBackInApp: () => true,

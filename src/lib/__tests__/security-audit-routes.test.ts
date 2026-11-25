@@ -91,6 +91,7 @@ vi.mock('@/lib/arr-instances', () => ({
   ensureDefaultForType: vi.fn(),
   setDefaultConnection: vi.fn(),
   isArrType: (type: string) => ['SONARR', 'RADARR', 'LIDARR'].includes(type),
+  isMultiInstanceType: (type: string) => ['SONARR', 'RADARR', 'LIDARR', 'QBITTORRENT'].includes(type),
 }));
 vi.mock('@/lib/cache/tagged-library', () => ({ invalidateTaggedLibrary: vi.fn() }));
 vi.mock('@/lib/cache/reference-labels', () => ({ invalidateReferenceLabels: vi.fn() }));

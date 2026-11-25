@@ -9,6 +9,7 @@ export interface TorrentDeltaResponse {
   order?: string[];
   transferInfo: QBittorrentSummaryResponse['transferInfo'];
   speedLimitsMode: QBittorrentSummaryResponse['speedLimitsMode'];
+  instanceId?: string;
 }
 
 export function diffTorrentSummary(previous: QBittorrentSummaryResponse | undefined, current: QBittorrentSummaryResponse, cursor: string): TorrentDeltaResponse {

@@ -45,15 +45,17 @@ import { TorrentDetailDrawer, type TorrentDetailData } from './_components/torre
 import { TorrentDeleteDrawer } from './_components/torrent-delete-drawer';
 import { TorrentCategoryDrawer, clearCategoryDrawerReturn, peekCategoryDrawerReturn, type CategoryDrawerState } from './_components/torrent-category-drawer';
 import { PageTitle } from '@/components/layout/page-title';
+import { withInstanceQuery } from '@/lib/query-fetch';
+import { qbitInstanceKey, useQbitInstance } from './_components/use-qbit-instance';
 
 
 type CategoryList = Record<string, { name: string; savePath: string }>;
 
 /** qBittorrent's categories (null when it refused); offline, the ones the loaded torrents name. */
-async function fetchCategories(torrents: QBittorrentTorrent[]): Promise<CategoryList | null> {
+async function fetchCategories(torrents: QBittorrentTorrent[], instanceId: string | undefined): Promise<CategoryList | null> {
   try {
     // Fetch categories via a dedicated endpoint call
-    const res = await fetch('/api/qbittorrent/categories');
+    const res = await fetch(withInstanceQuery('/api/qbittorrent/categories', instanceId));
     return res.ok ? await res.json() : null;
   } catch {
     // Fallback: extract unique categories from loaded torrents
@@ -68,6 +70,35 @@ async function fetchCategories(torrents: QBittorrentTorrent[]): Promise<Category
 // --- Main page ---
 
 export default function TorrentsPage() {
+  const qbit = useQbitInstance();
+  // A push about a qBittorrent removed since: say so, never show another one's
+  // torrents under its link (the same hash there would be another torrent).
+  if (qbit.unknownLink) {
+    return (
+      <div className="space-y-3 animate-content-in">
+        <PageTitle>Torrents</PageTitle>
+        <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
+          <p>This qBittorrent is no longer connected to Helprr.</p>
+          <div className="mt-3 flex flex-wrap justify-center gap-2">
+            {qbit.instances.map((instance) => (
+              <Button key={instance.id} variant="outline" size="sm" className="min-h-11" onClick={() => qbit.select(instance.id)}>
+                Show {instance.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  // One qBittorrent at a time. Remounted on a switch, so nothing on screen
+  // (the list, a selection, an open drawer, an optimistic change) carries over
+  // from one instance to another; an action still on its way keeps the
+  // instance it was sent to.
+  return <TorrentsView key={qbitInstanceKey(qbit.instanceId)} qbit={qbit} />;
+}
+
+function TorrentsView({ qbit }: { qbit: ReturnType<typeof useQbitInstance> }) {
+  const { instanceId: chosenInstanceId } = qbit;
   const { toolbarRef, toolbarStyle } = useToolbarHeight();
   const router = useRouter();
   const { adjustBadge } = useBadgeActions();
@@ -139,6 +170,7 @@ export default function TorrentsPage() {
 
   const {
     torrents,
+    listInstanceId,
     setTorrents,
     transferInfo,
     speedLimitsMode,
@@ -153,7 +185,10 @@ export default function TorrentsPage() {
     refresh,
     error,
     offline,
-  } = useTorrentsSummary(filter, hasHydrated);
+  } = useTorrentsSummary(filter, hasHydrated, chosenInstanceId);
+  // Actions go to the qBittorrent the list was read from: with none chosen,
+  // that is the default the server answered with, even if it changes meanwhile.
+  const instanceId = chosenInstanceId ?? listInstanceId;
 
   const listRef = useRef<HTMLDivElement | null>(null);
 
@@ -166,7 +201,7 @@ export default function TorrentsPage() {
     setDetailLoading(true);
     setDetailData(null);
     try {
-      const res = await fetch(`/api/qbittorrent/${hash}/details`, { signal: controller.signal });
+      const res = await fetch(withInstanceQuery(`/api/qbittorrent/${hash}/details`, instanceId), { signal: controller.signal });
       // Superseded (another torrent opened) or drawer closed while in flight:
       // this response no longer owns the drawer state.
       if (controller.signal.aborted || detailHashRef.current !== hash) return;
@@ -181,7 +216,7 @@ export default function TorrentsPage() {
     } finally {
       if (detailHashRef.current === hash) setDetailLoading(false);
     }
-  }, []);
+  }, [instanceId]);
 
   // A selection brought back from New category waits for the first loaded
   // list (even an empty one): the placeholder before it would drop every hash.
@@ -254,7 +289,7 @@ export default function TorrentsPage() {
       );
     }
     try {
-      const res = await fetch('/api/qbittorrent', {
+      const res = await fetch(withInstanceQuery('/api/qbittorrent', instanceId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hash, action, ...extra }),
@@ -297,7 +332,7 @@ export default function TorrentsPage() {
       if (!opts?.silent) toast.error(err instanceof Error ? err.message : 'Action failed');
       return false;
     }
-  }, [refetchSummary, pendingDeleteRef, pendingFieldRef, setTorrents, torrentsRef]);
+  }, [instanceId, refetchSummary, pendingDeleteRef, pendingFieldRef, setTorrents, torrentsRef]);
 
   // `targets`: the torrents a drawer opened on, which a poll pruning the selection must not change.
   const bulkAction = useCallback(async (action: string, extra?: Record<string, unknown>, targets?: string[]): Promise<boolean> => {
@@ -371,15 +406,15 @@ export default function TorrentsPage() {
   const openCategoryDrawer = useCallback((hash: string, bulk?: boolean) => {
     setCategoryDrawer({ open: true, hash, bulk });
     setCategoriesLoading(true);
-    void fetchCategories(torrentsRef.current).then(showCategories);
-  }, [showCategories, torrentsRef]);
+    void fetchCategories(torrentsRef.current, instanceId).then(showCategories);
+  }, [instanceId, showCategories, torrentsRef]);
 
   // Taken once the page is up, so a later visit doesn't open the drawer again.
   useEffect(() => {
     if (!categoryReturn) return;
     clearCategoryDrawerReturn();
-    void fetchCategories(torrentsRef.current).then(showCategories);
-  }, [categoryReturn, showCategories, torrentsRef]);
+    void fetchCategories(torrentsRef.current, instanceId).then(showCategories);
+  }, [categoryReturn, instanceId, showCategories, torrentsRef]);
 
   const openBulkCategory = useCallback(() => {
     void openCategoryDrawer(Array.from(selectedTorrents).join('|'), true);
@@ -427,7 +462,7 @@ export default function TorrentsPage() {
     pendingSpeedModeRef.current = { value: next, prev, until: Date.now() + OPTIMISTIC_STATE_TTL_MS };
     setSpeedLimitsMode(next);
     try {
-      const res = await fetch('/api/qbittorrent/transfer/limits', {
+      const res = await fetch(withInstanceQuery('/api/qbittorrent/transfer/limits', instanceId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'toggleSpeedLimitsMode' }),
@@ -440,7 +475,7 @@ export default function TorrentsPage() {
       setSpeedLimitsMode(prev);
       toast.error('Failed to toggle speed mode');
     }
-  }, [refetchSummary, speedLimitsMode, pendingSpeedModeRef, setSpeedLimitsMode]);
+  }, [instanceId, refetchSummary, speedLimitsMode, pendingSpeedModeRef, setSpeedLimitsMode]);
 
   const filteredTorrents = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -590,6 +625,7 @@ export default function TorrentsPage() {
         transferInfo={transferInfo}
         search={search}
         setSearch={setSearch}
+        qbit={qbit}
       />
       {/* Below the sticky toolbar, so it can't push over sticky table headers;
           the filter button's dot stays in view. */}
@@ -682,7 +718,7 @@ export default function TorrentsPage() {
               tableId="torrents"
               columns={tableColumns}
               rows={filteredTorrents}
-              rowKey={(t) => t.hash}
+              rowKey={(t) => `${qbitInstanceKey(instanceId)}:${t.hash}`}
               sortKey={sortKey}
               sortDir={sortDir}
               onSort={(key) => handleHeaderSort(key as SortKey)}
@@ -699,7 +735,7 @@ export default function TorrentsPage() {
               <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50">
                 {visibleTorrents.map((torrent) => (
                   <TorrentRow
-                    key={torrent.hash}
+                    key={`${qbitInstanceKey(instanceId)}:${torrent.hash}`}
                     torrent={torrent}
                     selected={selectedTorrents.has(torrent.hash)}
                     onToggleSelect={toggleSelect}
