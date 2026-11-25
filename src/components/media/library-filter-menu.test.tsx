@@ -33,11 +33,11 @@ const MOVIES = [
 ] as unknown as RadarrMovieListItem[];
 
 // The parts of a library page the filter menu drives, with the page's state kept here.
-function Page({ onSaved }: { onSaved: (list: SavedLibraryFilter[]) => void }) {
+function Page({ onSaved, initialSaved = [] }: { onSaved: (list: SavedLibraryFilter[]) => void; initialSaved?: SavedLibraryFilter[] }) {
   const [status, setStatus] = useState<string[]>([]);
   const [facets, setFacets] = useState<LibraryFacetFilters>(EMPTY_LIBRARY_FACETS);
   const [instance, setInstance] = useState('all');
-  const [saved, setSaved] = useState<SavedLibraryFilter[]>([]);
+  const [saved, setSaved] = useState<SavedLibraryFilter[]>(initialSaved);
   const menu = useLibraryFilterMenu({
     items: MOVIES, status, setStatus, facets, setFacets, instance, setInstance, watch: 'all', saved,
     updateSaved: (update) => setSaved((list) => {
@@ -142,5 +142,40 @@ describe('library filter menu', () => {
     expect(message).toBe('Deleted “Drama only”');
     act(() => options.action.onClick());
     expect(onSaved).toHaveBeenLastCalledWith([expect.objectContaining({ name: 'Drama only' })]);
+  });
+
+  it('keeps an Undo for every filter deleted while the dialog is open', async () => {
+    viewport.phone = false;
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const onSaved = vi.fn();
+    const filter = (id: string, name: string): SavedLibraryFilter => ({
+      id, name, status: [], instance: 'all', watch: 'all', facets: { ...EMPTY_LIBRARY_FACETS, genres: [name] },
+    });
+    const names = (list: SavedLibraryFilter[]) => list.map((f) => f.name);
+    render(<Page onSaved={onSaved} initialSaved={[filter('1', 'Drama'), filter('2', 'Kids'), filter('3', 'Horror')]} />);
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename or delete…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Saved filters' });
+
+    // Two deletes: Undo in the dialog takes them back newest first, each to its old place.
+    await user.click(within(dialog).getByRole('button', { name: 'Delete Drama' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Delete Kids' }));
+    expect(within(dialog).getByText('Deleted “Kids”')).toBeTruthy();
+    await user.click(within(dialog).getByRole('button', { name: 'Undo' }));
+    expect(names(onSaved.mock.lastCall![0])).toEqual(['Kids', 'Horror']);
+    expect(within(dialog).getByText('Deleted “Drama”')).toBeTruthy();
+    await user.click(within(dialog).getByRole('button', { name: 'Undo' }));
+    expect(names(onSaved.mock.lastCall![0])).toEqual(['Drama', 'Kids', 'Horror']);
+
+    // Two deletes left pending at Done: one toast undoes both.
+    toast.mockClear();
+    await user.click(within(dialog).getByRole('button', { name: 'Delete Drama' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Delete Horror' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Done' }));
+    expect(toast).toHaveBeenCalledTimes(1);
+    const [message, options] = toast.mock.calls[0] as [string, { action: { onClick: () => void } }];
+    expect(message).toBe('Deleted 2 filters');
+    act(() => options.action.onClick());
+    expect(names(onSaved.mock.lastCall![0])).toEqual(['Drama', 'Kids', 'Horror']);
   });
 });

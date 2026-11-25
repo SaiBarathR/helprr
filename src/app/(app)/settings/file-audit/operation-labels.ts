@@ -1,5 +1,5 @@
 import type { FileOperation } from '@prisma/client';
-import { parentPath } from '@/lib/paths';
+import { parentPath, sameFolder } from '@/lib/paths';
 
 // Keyed on the Prisma enum so a new operation can't ship without a badge (the
 // type check and operation-labels.test.ts both fail on a missing key).
@@ -58,7 +58,8 @@ export function moveMediaPaths(
   if (record.operation !== 'MOVE_MEDIA' || !record.details) return null;
   const { fromPath, path, rootFolderPath } = record.details;
   if (typeof fromPath === 'string' && typeof path === 'string') {
-    return { label: parentPath(fromPath) === parentPath(path) ? 'FOLDER RENAME' : OP_LABEL.MOVE_MEDIA, from: fromPath, to: path };
+    const renamed = !sameFolder(fromPath, path) && sameFolder(parentPath(fromPath), parentPath(path));
+    return { label: renamed ? 'FOLDER RENAME' : OP_LABEL.MOVE_MEDIA, from: fromPath, to: path };
   }
   return typeof rootFolderPath === 'string' ? { label: OP_LABEL.MOVE_MEDIA, from: null, to: rootFolderPath } : null;
 }
