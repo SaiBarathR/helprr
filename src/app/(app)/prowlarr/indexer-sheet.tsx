@@ -4,13 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import { CheckCircle, Loader2, Minus, Plus, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { fmtNum } from '@/components/widgets/prowlarr-stats-shared';
@@ -27,6 +20,7 @@ import { prowlarrStatsQuery } from './prowlarr-stats-query';
 import type { IndexerActions } from './use-indexer-actions';
 import { historyEventLabel } from './history-events';
 import { prowlarrTagsQuery } from './prowlarr-tags-query';
+import { ProwlarrSheet, ProwlarrSheetBody } from './prowlarr-sheet';
 import type { Tag } from '@/types/arr';
 import { formatDate as formatShortDate, formatDateTime } from '@/lib/date-format';
 
@@ -258,132 +252,128 @@ export function IndexerSheet({
   const pending = indexer ? actions.pendingEdits.has(indexer.id) : false;
 
   return (
-    <Drawer open={open} autoFocus onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DrawerContent>
-        <DrawerHeader>
-          <DrawerTitle className="text-base leading-snug [overflow-wrap:anywhere]">
-            {indexer?.name ?? 'Indexer'}
-          </DrawerTitle>
-          <DrawerDescription>
-            {indexer ? [indexer.implementationName, indexer.protocol, indexer.privacy].filter(Boolean).join(' · ') : ''}
-          </DrawerDescription>
-        </DrawerHeader>
-        {indexer && (
-          <div className="px-4 pb-8 flex-1 min-h-0 overflow-y-auto space-y-4">
-            {canManage && (
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 text-sm">
-                  <Switch
-                    checked={indexer.enable}
-                    onCheckedChange={(enable) => void actions.handleToggle(indexer, enable)}
-                    disabled={pending}
-                    aria-label={`${indexer.name} enabled`}
-                  />
-                  {indexer.enable ? 'Enabled' : 'Disabled'}
-                </label>
-                <div className="ml-auto flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 gap-1.5"
-                    onClick={() => void actions.handleTest(indexer.id)}
-                    disabled={actions.testingId === indexer.id}
-                  >
-                    {actions.testingId === indexer.id
-                      ? <Loader2 className="h-4 w-4 animate-spin" />
-                      : <CheckCircle className="h-4 w-4" />}
-                    Test
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-9 w-9 text-rose-400"
-                    aria-label={`Delete ${indexer.name}`}
-                    onClick={() => actions.setConfirmDelete({ id: indexer.id, name: indexer.name })}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+    <ProwlarrSheet
+      open={open}
+      onClose={onClose}
+      autoFocus
+      title={indexer?.name ?? 'Indexer'}
+      description={indexer ? [indexer.implementationName, indexer.protocol, indexer.privacy].filter(Boolean).join(' · ') : ''}
+    >
+      {indexer && (
+        <ProwlarrSheetBody className="space-y-4">
+          {canManage && (
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-sm">
+                <Switch
+                  checked={indexer.enable}
+                  onCheckedChange={(enable) => void actions.handleToggle(indexer, enable)}
+                  disabled={pending}
+                  aria-label={`${indexer.name} enabled`}
+                />
+                {indexer.enable ? 'Enabled' : 'Disabled'}
+              </label>
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1.5"
+                  onClick={() => void actions.handleTest(indexer.id)}
+                  disabled={actions.testingId === indexer.id}
+                >
+                  {actions.testingId === indexer.id
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <CheckCircle className="h-4 w-4" />}
+                  Test
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 text-rose-400"
+                  aria-label={`Delete ${indexer.name}`}
+                  onClick={() => actions.setConfirmDelete({ id: indexer.id, name: indexer.name })}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
-            )}
+            </div>
+          )}
 
-            {blockedStatus && (
-              <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3">
-                <BlockedStatusDetails status={blockedStatus} />
+          {blockedStatus && (
+            <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3">
+              <BlockedStatusDetails status={blockedStatus} />
+            </div>
+          )}
+
+          <IndexerQuickEdit indexer={indexer} canManage={canManage} actions={actions} open={open} />
+
+          <section aria-label="Last 7 days">
+            <p className="mb-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Last 7 days</p>
+            {stats ? (
+              <div className="grid grid-cols-2 gap-2">
+                <IndexerStat label="Queries" value={fmtNum(stats.numberOfQueries + stats.numberOfRssQueries + stats.numberOfAuthQueries)} />
+                <IndexerStat label="Grabs" value={fmtNum(stats.numberOfGrabs)} />
+                <IndexerStat label="Failed" value={fmtNum(stats.numberOfFailedQueries + stats.numberOfFailedRssQueries)} />
+                <IndexerStat label="Avg response" value={`${fmtNum(Math.round(stats.averageResponseTime))} ms`} />
               </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {statsQuery.isLoading ? 'Loading…' : 'No activity in the last 7 days.'}
+              </p>
             )}
+          </section>
 
-            <IndexerQuickEdit indexer={indexer} canManage={canManage} actions={actions} open={open} />
-
-            <section aria-label="Last 7 days">
-              <p className="mb-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Last 7 days</p>
-              {stats ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <IndexerStat label="Queries" value={fmtNum(stats.numberOfQueries + stats.numberOfRssQueries + stats.numberOfAuthQueries)} />
-                  <IndexerStat label="Grabs" value={fmtNum(stats.numberOfGrabs)} />
-                  <IndexerStat label="Failed" value={fmtNum(stats.numberOfFailedQueries + stats.numberOfFailedRssQueries)} />
-                  <IndexerStat label="Avg response" value={`${fmtNum(Math.round(stats.averageResponseTime))} ms`} />
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {statsQuery.isLoading ? 'Loading…' : 'No activity in the last 7 days.'}
-                </p>
+          <section aria-label="Recent activity">
+            <div className="mb-1.5 flex items-center gap-2">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Recent activity</p>
+              {records.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-my-2 ml-auto h-9 px-2 text-xs"
+                  onClick={() => onSeeAllHistory(indexer.id)}
+                >
+                  See all
+                </Button>
               )}
-            </section>
-
-            <section aria-label="Recent activity">
-              <div className="mb-1.5 flex items-center gap-2">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Recent activity</p>
-                {records.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="-my-2 ml-auto h-9 px-2 text-xs"
-                    onClick={() => onSeeAllHistory(indexer.id)}
-                  >
-                    See all
-                  </Button>
-                )}
+            </div>
+            {records.length > 0 ? (
+              <div className="rounded-lg bg-muted/30 overflow-hidden divide-y divide-border/40">
+                {records.map((record) => (
+                  <div key={record.id} className="flex items-center gap-2 px-3 py-2 text-[11px]">
+                    <span className="w-10 shrink-0 text-muted-foreground">
+                      {historyEventLabel(record.eventType)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{record.data?.query || record.data?.source || '—'}</span>
+                    {record.successful === false && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-rose-500/40 text-rose-400">Failed</Badge>
+                    )}
+                    <span className="shrink-0 text-muted-foreground">
+                      {formatShortDate(record.date, { month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                ))}
               </div>
-              {records.length > 0 ? (
-                <div className="rounded-lg bg-muted/30 overflow-hidden divide-y divide-border/40">
-                  {records.map((record) => (
-                    <div key={record.id} className="flex items-center gap-2 px-3 py-2 text-[11px]">
-                      <span className="w-10 shrink-0 text-muted-foreground">
-                        {historyEventLabel(record.eventType)}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate">{record.data?.query || record.data?.source || '—'}</span>
-                      {record.successful === false && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-rose-500/40 text-rose-400">Failed</Badge>
-                      )}
-                      <span className="shrink-0 text-muted-foreground">
-                        {formatShortDate(record.date, { month: 'short', day: 'numeric' })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {historyQuery.isLoading ? 'Loading…' : historyQuery.isError ? 'Failed to load recent activity.' : 'No recent activity for this indexer.'}
-                </p>
-              )}
-            </section>
-
-            {indexer.categories.length > 0 && (
-              <details className="text-xs">
-                <summary className="cursor-pointer text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
-                  Categories ({indexer.categories.length})
-                </summary>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {indexer.categories.map((category) => (
-                    <Badge key={category} variant="outline" className="text-[10px] px-1.5 py-0">{category}</Badge>
-                  ))}
-                </div>
-              </details>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {historyQuery.isLoading ? 'Loading…' : historyQuery.isError ? 'Failed to load recent activity.' : 'No recent activity for this indexer.'}
+              </p>
             )}
-          </div>
-        )}
-      </DrawerContent>
-    </Drawer>
+          </section>
+
+          {indexer.categories.length > 0 && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
+                Categories ({indexer.categories.length})
+              </summary>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {indexer.categories.map((category) => (
+                  <Badge key={category} variant="outline" className="text-[10px] px-1.5 py-0">{category}</Badge>
+                ))}
+              </div>
+            </details>
+          )}
+        </ProwlarrSheetBody>
+      )}
+    </ProwlarrSheet>
   );
 }

@@ -122,17 +122,25 @@ export function prowlarrCategoryIds(tree: readonly ProwlarrCategory[]): Set<numb
 /** Standard Newznab categories end below 100000; above that are an indexer's own, which Prowlarr sends unnamed. */
 const CUSTOM_CATEGORY_START = 100_000;
 
+const parentOf = (id: number) => Math.floor(id / 1000) * 1000;
+
 /**
  * The names to show for a release's categories: the standard ones, most
  * specific first, so "Movies/HD" stands in for "Movies" when both are there.
+ * After a search in some categories, only the release's categories in them
+ * (or the parent of one picked): indexers file most anime under Movies/Other
+ * too, which read as wrong next to a TV/Anime search. A release in none of
+ * them keeps all of its own, so a mis-filed one still says what it is.
  */
-export function releaseCategoryNames(categories: unknown, limit = 2): string[] {
+export function releaseCategoryNames(categories: unknown, limit = 2, searched: readonly number[] = []): string[] {
   if (!Array.isArray(categories)) return [];
-  const named = categories.filter(isNamedCategory).filter(({ id }) => id > 0 && id < CUSTOM_CATEGORY_START);
+  const standard = categories.filter(isNamedCategory).filter(({ id }) => id > 0 && id < CUSTOM_CATEGORY_START);
+  const inSearch = standard.filter(({ id }) => searched.some((picked) => picked === id || parentOf(id) === picked || parentOf(picked) === id));
+  const named = inSearch.length > 0 ? inSearch : standard;
   const ids = new Set(named.map(({ id }) => id));
   const names = named
     // A parent (2000) goes when one of its own subcategories (2001–2999) is there.
-    .filter(({ id }) => id % 1000 !== 0 || ![...ids].some((other) => other !== id && Math.floor(other / 1000) * 1000 === id))
+    .filter(({ id }) => id % 1000 !== 0 || ![...ids].some((other) => other !== id && parentOf(other) === id))
     .sort((a, b) => (a.id % 1000 === 0 ? 1 : 0) - (b.id % 1000 === 0 ? 1 : 0))
     .map(({ name }) => name);
   return [...new Set(names)].slice(0, limit);

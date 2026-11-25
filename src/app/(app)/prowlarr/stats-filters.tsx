@@ -1,9 +1,9 @@
 'use client';
 
-import { Filter, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
+import type { ActiveFilter } from '@/components/ui/active-filter-bar';
 import {
   ResponsiveMenu,
   ResponsiveMenuActionItem,
@@ -14,6 +14,7 @@ import {
 import { formatDate } from '@/lib/date-format';
 import type { ProwlarrIndexerSummary } from '@/lib/prowlarr-client';
 import type { Tag } from '@/types/arr';
+import { FilterButton } from './filter-button';
 import { NO_STATS_FILTERS, endOfLocalDay, hasStatsFilters, type StatsFilters } from './prowlarr-stats-query';
 
 const PROTOCOLS: { value: StatsFilters['protocol']; label: string }[] = [
@@ -61,17 +62,7 @@ export function StatsFilterMenu({
       titleInDropdown
       align="end"
       contentClassName="w-64 max-h-[min(32rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto"
-      trigger={(
-        <Button
-          variant="outline"
-          size="icon"
-          className="relative h-auto self-stretch aspect-square rounded-lg bg-card"
-          aria-label={filterButtonLabel('Filters', active)}
-        >
-          <Filter className="h-4 w-4" />
-          <FilterDot active={active} />
-        </Button>
-      )}
+      trigger={<FilterButton label="Filters" active={active} />}
     >
       <ResponsiveMenuLabel>Up to</ResponsiveMenuLabel>
       {/* Keys stay in the field: the dropdown would read them as a search of its items. */}
@@ -85,7 +76,7 @@ export function StatsFilterMenu({
           className="h-9 min-w-0 flex-1 text-sm"
         />
         {filters.endDate && (
-          <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" aria-label="Count up to now" onClick={() => onChange({ ...filters, endDate: '' })}>
+          <Button variant="ghost" size="icon" className="relative touch-target h-9 w-9 shrink-0" aria-label="Count up to now" onClick={() => onChange({ ...filters, endDate: '' })}>
             <X className="h-4 w-4" />
           </Button>
         )}

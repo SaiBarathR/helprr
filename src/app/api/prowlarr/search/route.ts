@@ -163,7 +163,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       publishDate: release.publishDate ?? null,
       indexer: redactProwlarrText(release.indexer ?? ''),
       protocol: release.protocol ?? '',
-      categories: releaseCategoryNames(release.categories).map(redactProwlarrText),
+      categories: releaseCategoryNames(release.categories, 2, categories).map(redactProwlarrText),
       grabs: Number.isInteger(release.grabs) ? Number(release.grabs) : null,
       flags: releaseFlags(release.indexerFlags, publicIndexers.has(release.indexerId)),
     }));

@@ -62,7 +62,7 @@ import { fmtNum } from '@/components/widgets/prowlarr-stats-shared';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { HistoryEventIcon, historyEventLabel } from './history-events';
-import { HISTORY_FILTERS, HistoryFilterBar, type HistoryFilterValue, type HistorySort } from './history-filters';
+import { HISTORY_FILTERS, HistoryFilterBar, historyActiveFilters, type HistoryFilterValue, type HistorySort } from './history-filters';
 import { useCan } from '@/components/permission-provider';
 import { useAppRouter } from '@/components/layout/navigation-provider';
 import { IndexerSheet, BlockedStatusDetails, formatDate, getActiveBlockedStatus } from './indexer-sheet';
@@ -772,7 +772,7 @@ function StatsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-stretch gap-2">
+      <div className="flex items-center justify-between gap-2">
         {/* Date range pill selector */}
         <div className="flex bg-card border border-border rounded-lg p-1 gap-0.5 w-fit">
           {DATE_RANGES.map((r) => (
@@ -1192,14 +1192,21 @@ function HistoryTab({ indexerId, onIndexerChange }: {
   return (
     <div className="space-y-3">
       <HistoryFilterBar
+        summary={!loading && !historyQuery.isError && records.length > 0 && `Showing ${records.length} of ${totalRecords} records`}
         activeFilter={activeFilter}
         onFilterChange={setActiveFilter}
         indexerId={indexerId}
-        indexerLabel={indexerLabel}
         indexerOptions={indexerOptions}
         onIndexerChange={onIndexerChange}
         sort={sort}
         onSortChange={setSort}
+      />
+      <ActiveFilterBar
+        filters={historyActiveFilters({ activeFilter, onFilterChange: setActiveFilter, indexerId, indexerLabel, onIndexerChange })}
+        onClearAll={() => {
+          setActiveFilter('');
+          onIndexerChange(null);
+        }}
       />
 
       {loading ? (
@@ -1216,9 +1223,6 @@ function HistoryTab({ indexerId, onIndexerChange }: {
         </div>
       ) : (
         <>
-          <p className="text-xs text-muted-foreground">
-            Showing {records.length} of {totalRecords} records
-          </p>
           <div className="rounded-xl bg-card border border-border overflow-hidden divide-y divide-border/50">
             {records.map((record) => {
               const d = record.data ?? {};

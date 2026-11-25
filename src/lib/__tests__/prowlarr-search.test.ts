@@ -80,6 +80,18 @@ describe('releaseCategoryNames', () => {
     expect(releaseCategoryNames([{ id: 2040, name: 'Movies/HD' }, { id: 5040, name: 'TV/HD' }, { id: 5070, name: 'TV/Anime' }], 2)).toHaveLength(2);
     expect(releaseCategoryNames(undefined)).toEqual([]);
   });
+
+  it('after a search in some categories, names only the release\'s categories in them', () => {
+    const anime = [{ id: 5000, name: 'TV' }, { id: 5070, name: 'TV/Anime' }, { id: 2020, name: 'Movies/Other' }];
+    expect(releaseCategoryNames(anime, 2, [5070])).toEqual(['TV/Anime']);
+    // A picked parent covers its subcategories; a picked subcategory keeps its parent.
+    expect(releaseCategoryNames(anime, 2, [2000])).toEqual(['Movies/Other']);
+    expect(releaseCategoryNames([{ id: 5000, name: 'TV' }, { id: 2020, name: 'Movies/Other' }], 2, [5070])).toEqual(['TV']);
+  });
+
+  it('keeps all of a release\'s categories when none is in the search', () => {
+    expect(releaseCategoryNames([{ id: 2040, name: 'Movies/HD' }, { id: 8000, name: 'Other' }], 2, [5070])).toEqual(['Movies/HD', 'Other']);
+  });
 });
 
 describe('releaseFlags', () => {

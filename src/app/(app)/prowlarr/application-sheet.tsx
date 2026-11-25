@@ -6,16 +6,10 @@ import { toast } from 'sonner';
 import { AlertTriangle, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
 import type { ProwlarrApplicationSummary } from '@/lib/prowlarr-applications';
 import type { ProwlarrApplicationBulkEdit, ProwlarrSyncLevel } from '@/lib/prowlarr-client';
+import { ProwlarrSheet, ProwlarrSheetBody } from './prowlarr-sheet';
 import { prowlarrTagsQuery } from './prowlarr-tags-query';
 
 export const SYNC_LEVELS: Record<string, string> = {
@@ -107,112 +101,111 @@ export function ApplicationSheet({ application, onClose }: {
 
   return (
     <>
-      <Drawer open={open} autoFocus onOpenChange={(next) => { if (!next) onClose(); }}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle className="text-base leading-snug [overflow-wrap:anywhere]">{name || 'App'}</DrawerTitle>
-            <DrawerDescription>
-              {application ? `${application.implementationName} · ${SYNC_LEVELS[application.syncLevel] ?? application.syncLevel}` : ''}
-            </DrawerDescription>
-          </DrawerHeader>
-          {application && (
-            <div className="px-4 pb-8 flex-1 min-h-0 overflow-y-auto space-y-4">
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="h-9 gap-1.5" disabled={testing} onClick={() => void post('test', `${name} test passed`, `${name} test failed`, setTesting)}>
-                  {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-                  Test
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-1.5"
-                  disabled={syncing || application.syncLevel === 'disabled'}
-                  onClick={() => void post('sync', `${name} sync started`, `${name} sync failed`, setSyncing)}
-                >
-                  {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  Sync now
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Sync now adds missing indexers to {name}{fullSync ? ' and updates the rest' : ''}. It removes none; Sync All on the Apps tab does that.
-              </p>
+      <ProwlarrSheet
+        open={open}
+        onClose={onClose}
+        autoFocus
+        size="content"
+        title={name || 'App'}
+        description={application ? `${application.implementationName} · ${SYNC_LEVELS[application.syncLevel] ?? application.syncLevel}` : ''}
+      >
+        {application && (
+          <ProwlarrSheetBody className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-9 gap-1.5" disabled={testing} onClick={() => void post('test', `${name} test passed`, `${name} test failed`, setTesting)}>
+                {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                Test
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5"
+                disabled={syncing || application.syncLevel === 'disabled'}
+                onClick={() => void post('sync', `${name} sync started`, `${name} sync failed`, setSyncing)}
+              >
+                {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Sync now
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Sync now adds missing indexers to {name}{fullSync ? ' and updates the rest' : ''}. It removes none; Sync All on the Apps tab does that.
+            </p>
 
-              <section aria-label="Sync level" className="space-y-1.5">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Sync level</p>
-                <div role="group" aria-label="Sync level" className="rounded-lg bg-muted/30 divide-y divide-border/40">
-                  {(['disabled', 'addOnly', 'fullSync'] as const).map((level) => {
-                    const selected = application.syncLevel === level;
-                    return (
-                      <button
-                        key={level}
-                        type="button"
-                        aria-pressed={selected}
-                        disabled={pending}
-                        onClick={() => pickSyncLevel(level)}
-                        className="flex w-full items-start gap-3 px-3 py-2.5 text-left disabled:opacity-60"
+            <section aria-label="Sync level" className="space-y-1.5">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Sync level</p>
+              <div role="group" aria-label="Sync level" className="rounded-lg bg-muted/30 divide-y divide-border/40">
+                {(['disabled', 'addOnly', 'fullSync'] as const).map((level) => {
+                  const selected = application.syncLevel === level;
+                  return (
+                    <button
+                      key={level}
+                      type="button"
+                      aria-pressed={selected}
+                      disabled={pending}
+                      onClick={() => pickSyncLevel(level)}
+                      className="flex w-full items-start gap-3 px-3 py-2.5 text-left disabled:opacity-60"
+                    >
+                      <span
+                        aria-hidden
+                        className={cn(
+                          'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border',
+                          selected ? 'border-primary' : 'border-muted-foreground/50',
+                        )}
                       >
-                        <span
-                          aria-hidden
-                          className={cn(
-                            'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border',
-                            selected ? 'border-primary' : 'border-muted-foreground/50',
-                          )}
-                        >
-                          {selected && <span className="h-2 w-2 rounded-full bg-primary" />}
-                        </span>
-                        <span className="min-w-0">
-                          <span className={cn('block text-sm', selected && 'font-medium')}>{SYNC_LEVELS[level]}</span>
-                          <span className="block text-xs text-muted-foreground">{SYNC_LEVEL_HELP[level](name)}</span>
-                        </span>
-                      </button>
+                        {selected && <span className="h-2 w-2 rounded-full bg-primary" />}
+                      </span>
+                      <span className="min-w-0">
+                        <span className={cn('block text-sm', selected && 'font-medium')}>{SYNC_LEVELS[level]}</span>
+                        <span className="block text-xs text-muted-foreground">{SYNC_LEVEL_HELP[level](name)}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {fullSync && (
+                <p role="note" className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-400" aria-hidden />
+                  <span className="min-w-0">
+                    Full sync overwrites changes made to these indexers in {name}, and removes indexers from {name} that Prowlarr no longer has or whose tags no longer match.
+                  </span>
+                </p>
+              )}
+            </section>
+
+            {tags.length > 0 && (
+              <section aria-label="Tags" className="space-y-1.5">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Tags</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {tags.map((tag) => {
+                    const assigned = application.tags.includes(tag.id);
+                    return (
+                      <Button
+                        key={tag.id}
+                        variant={assigned ? 'default' : 'outline'}
+                        size="sm"
+                        className="h-8 px-2.5 text-xs"
+                        aria-pressed={assigned}
+                        disabled={pending}
+                        // One tag at a time, so a tag added elsewhere in the meantime is kept.
+                        onClick={() => void edit(
+                          { tags: [tag.id], applyTags: assigned ? 'remove' : 'add' },
+                          `Could not change the tags of ${name}`,
+                        )}
+                      >
+                        {tag.label}
+                      </Button>
                     );
                   })}
                 </div>
-                {fullSync && (
-                  <p role="note" className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">
-                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-400" aria-hidden />
-                    <span className="min-w-0">
-                      Full sync overwrites changes made to these indexers in {name}, and removes indexers from {name} that Prowlarr no longer has or whose tags no longer match.
-                    </span>
-                  </p>
-                )}
+                <p className="text-xs text-muted-foreground">
+                  With tags, only indexers that share one sync to {name}; with none, every indexer does.
+                  {fullSync && ' Under full sync, indexers that stop matching are removed from it at the next Sync All.'}
+                </p>
               </section>
-
-              {tags.length > 0 && (
-                <section aria-label="Tags" className="space-y-1.5">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Tags</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {tags.map((tag) => {
-                      const assigned = application.tags.includes(tag.id);
-                      return (
-                        <Button
-                          key={tag.id}
-                          variant={assigned ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-8 px-2.5 text-xs"
-                          aria-pressed={assigned}
-                          disabled={pending}
-                          // One tag at a time, so a tag added elsewhere in the meantime is kept.
-                          onClick={() => void edit(
-                            { tags: [tag.id], applyTags: assigned ? 'remove' : 'add' },
-                            `Could not change the tags of ${name}`,
-                          )}
-                        >
-                          {tag.label}
-                        </Button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    With tags, only indexers that share one sync to {name}; with none, every indexer does.
-                    {fullSync && ' Under full sync, indexers that stop matching are removed from it at the next Sync All.'}
-                  </p>
-                </section>
-              )}
-            </div>
-          )}
-        </DrawerContent>
-      </Drawer>
+            )}
+          </ProwlarrSheetBody>
+        )}
+      </ProwlarrSheet>
 
       <ConfirmDialog
         open={confirmFullSync}
