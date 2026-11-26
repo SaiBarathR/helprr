@@ -20,8 +20,14 @@ export function isMultiInstanceType(type: ServiceType): boolean {
 // Hot-path memo: connection rows are read on nearly every API request but only
 // change via the settings CRUD routes, which call clearConnectionMemo(). The
 // short TTL bounds staleness for any edit path that misses the clear.
+// Kept on globalThis: each API route and the poller get their own copy of this
+// module, so a module-level map was cleared only in the route that saved the
+// instance. The poller's cache warm-up could then rebuild the combined library
+// from the old instance list under the new cache version, leaving a just-added
+// instance out of the Series/Movies/Music lists for minutes.
 const CONNECTION_MEMO_TTL_MS = 10_000;
-const connectionMemo = new Map<string, { value: unknown; at: number }>();
+const memoGlobal = globalThis as typeof globalThis & { __helprrConnectionMemo?: Map<string, { value: unknown; at: number }> };
+const connectionMemo = memoGlobal.__helprrConnectionMemo ??= new Map();
 
 function memoGet<T>(key: string): T | undefined {
   const entry = connectionMemo.get(key);

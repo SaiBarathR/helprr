@@ -636,6 +636,13 @@ describe('pollers on fixed fixtures (golden)', () => {
     // A release grabbed straight away pushes once, as before.
     expect(await cycle([sent(7, 'Film.Held'), sent(8, 'Film.Direct')])).toEqual(['Film.Direct']);
     expect(await cycle([sent(7, 'Film.Held'), sent(8, 'Film.Direct')])).toEqual([]);
+
+    // Every reason the arr holds a release, and one sent under the id it was held
+    // under (held ids are never remembered, so it is new once it is sent).
+    for (const status of ['downloadClientUnavailable', 'fallback']) {
+      expect(await cycle([sent(7, 'Film.Held'), { ...held(9, `Film.${status}`), status }])).toEqual([]);
+    }
+    expect(await cycle([sent(7, 'Film.Held'), sent(9, 'Film.SameId')])).toEqual(['Film.SameId']);
   });
 
   it.each([

@@ -146,6 +146,7 @@ describe('isPendingRelease', () => {
   it('is a release the *arr holds back, as its own queue offers Grab for', () => {
     expect(isPendingRelease({ status: 'delay' } as QueueRecord)).toBe(true);
     expect(isPendingRelease({ status: 'downloadClientUnavailable' } as QueueRecord)).toBe(true);
+    expect(isPendingRelease({ status: 'fallback' } as QueueRecord)).toBe(true);
     expect(isPendingRelease({ status: 'downloading' } as QueueRecord)).toBe(false);
     expect(isPendingRelease({ status: 'queued' } as QueueRecord)).toBe(false);
   });
