@@ -221,6 +221,13 @@ export function advanceHistoryCursor(
   allFetched: { id: number; date: string }[],
   prev: HistoryCursorState,
 ): { lastHistoryDate: Date | null; lastHistoryId: number | null; lastHistorySeenIds: number[] } {
+  // An empty history at the first look is a known start, not an unknown one:
+  // everything the app records from now on is new. Left unset, the first
+  // record ever (a new instance's first grab or import) would be taken as the
+  // starting point instead, and never pushed.
+  if (!prev.lastHistoryDate && allFetched.length === 0) {
+    return { lastHistoryDate: new Date(0), lastHistoryId: null, lastHistorySeenIds: [] };
+  }
   if (!prev.lastHistoryDate && allFetched.length > 0 && processed.length === 0) {
     const newestDate = new Date(allFetched[0].date);
     const newestTime = newestDate.getTime();
