@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appDisplayName, deriveInstances, severalInstanceLabels, withAppName } from './instance-filter';
+import { appDisplayName, deriveInstances, instanceName, severalInstanceLabels, withAppName } from './instance-filter';
 
 describe('withAppName', () => {
   it('names the app so same-named instances can be told apart', () => {
@@ -23,6 +23,19 @@ describe('withAppName', () => {
   it('leaves the label alone when the app is unknown', () => {
     expect(withAppName('main')).toBe('main');
     expect(withAppName('main', 'plex')).toBe('main');
+  });
+});
+
+describe('instanceName', () => {
+  it('shows a label that is just the type as the app name, as withAppName does (Series card and Calendar alike)', () => {
+    expect(instanceName('SONARR', 'sonarr')).toBe('Sonarr');
+    expect(instanceName('RADARR', 'radarr')).toBe(withAppName('RADARR', 'radarr'));
+  });
+
+  it('leaves every other label as the user named it, without the app the page already names', () => {
+    expect(instanceName('sonarr-anime', 'sonarr')).toBe('sonarr-anime');
+    expect(instanceName('Anime', 'sonarr')).toBe('Anime');
+    expect(instanceName(undefined, 'sonarr')).toBeUndefined();
   });
 });
 

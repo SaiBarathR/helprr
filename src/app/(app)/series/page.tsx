@@ -20,7 +20,7 @@ import {
   searchFilter,
   type ActiveFilter,
 } from '@/components/ui/active-filter-bar';
-import { withAppName } from '@/components/instance-filter';
+import { instanceName, withAppName } from '@/components/instance-filter';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import {
   ResponsiveMenu,
@@ -343,7 +343,7 @@ export default function SeriesPage() {
   // badge/filter only appear when more than one instance of the type exists.
   const instances = useMemo(() => {
     const m = new Map<string, string>();
-    for (const s of series) if (s.instanceId) m.set(s.instanceId, s.instanceLabel ?? s.instanceId);
+    for (const s of series) if (s.instanceId) m.set(s.instanceId, instanceName(s.instanceLabel, 'sonarr') ?? s.instanceId);
     return [...m].map(([id, label]) => ({ id, label }));
   }, [series]);
   const multiInstance = instances.length > 1;
@@ -721,7 +721,7 @@ export default function SeriesPage() {
     year: s.year,
     href: hrefForSeries(s),
     instanceId: s.instanceId,
-    instanceLabel: multiInstance ? s.instanceLabel : undefined,
+    instanceLabel: multiInstance ? instanceName(s.instanceLabel, 'sonarr') : undefined,
     monitored: s.monitored,
     status: s.status,
     images: s.images,
@@ -1057,7 +1057,7 @@ export default function SeriesPage() {
                     visibleFields={visibleFields}
                     watchLookup={{ scope: 'sonarr', instanceId: s.instanceId, arrId: s.id }}
                     rating={s.ratings?.value}
-                    instanceLabel={multiInstance ? s.instanceLabel : undefined}
+                    instanceLabel={multiInstance ? instanceName(s.instanceLabel, 'sonarr') : undefined}
                     onNavigate={handleNavigateToDetail}
                     imagePriority={startIndex + i < Math.min(posterColumns * 2, 4)}
                     selectable={selectionMode}
@@ -1108,7 +1108,7 @@ export default function SeriesPage() {
                   runtime={s.runtime}
                   episodeProgress={`${s.statistics.episodeCount}/${s.statistics.totalEpisodeCount}`}
                   genres={s.genres}
-                  instanceLabel={multiInstance ? s.instanceLabel : undefined}
+                  instanceLabel={multiInstance ? instanceName(s.instanceLabel, 'sonarr') : undefined}
                   onNavigate={handleNavigateToDetail}
                   imagePriority={startIndex + i < 6}
                   selectable={selectionMode}

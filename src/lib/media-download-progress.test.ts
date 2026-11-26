@@ -3,6 +3,8 @@ import type { QueueItem } from '@/types';
 import {
   filterQueueItemsForMedia,
   humanizeTimeLeft,
+  queueTimeLeftLabel,
+  timeLeftSeconds,
   summarizeMediaDownloads,
 } from './media-download-progress';
 
@@ -90,5 +92,19 @@ describe('media download progress', () => {
     expect(humanizeTimeLeft('00:00:45')).toBe('45s');
     expect(humanizeTimeLeft('')).toBeNull();
     expect(humanizeTimeLeft(undefined)).toBeNull();
+  });
+
+  it('reads TimeSpans with fractional seconds, as a held release has', () => {
+    expect(humanizeTimeLeft('1970.04:10:55.0718460')).toBe('1970d 4h');
+    expect(humanizeTimeLeft('01:59:12.3456789')).toBe('1h 59m');
+    expect(timeLeftSeconds('1.02:03:04.5')).toBe(((24 + 2) * 60 + 3) * 60 + 4);
+    expect(timeLeftSeconds('-00:01:00')).toBeNull();
+  });
+
+  it('labels a held release by the wait until it is sent', () => {
+    expect(queueTimeLeftLabel({ status: 'delay', timeleft: '3.04:10:55.0718460' })).toBe('in 3d 4h');
+    expect(queueTimeLeftLabel({ status: 'downloading', timeleft: '00:12:00' })).toBe('12m');
+    // Held with nothing left to wait (no download client yet): no label.
+    expect(queueTimeLeftLabel({ status: 'downloadClientUnavailable', timeleft: '00:00:00' })).toBeNull();
   });
 });

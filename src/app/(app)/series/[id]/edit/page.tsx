@@ -255,7 +255,7 @@ export default function SeriesEditPage() {
                     setRootFolderTouched(true);
                   }}
                 >
-                  <SelectTrigger id="root-folder" className="w-[180px] min-w-0 ml-3 border-0 bg-transparent text-right" title={rootFolder || undefined}>
+                  <SelectTrigger id="root-folder" className="w-[180px] min-w-0 ml-3 sm:w-auto sm:min-w-[180px] sm:max-w-md border-0 bg-transparent text-right" title={rootFolder || undefined}>
                     <SelectValue placeholder="Select folder">{rootFolder ? <span className="truncate">{rootFolder}</span> : null}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>

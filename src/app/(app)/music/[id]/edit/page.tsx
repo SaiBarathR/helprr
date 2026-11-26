@@ -195,7 +195,7 @@ export default function ArtistEditPage() {
               <div className="grouped-row">
                 <Label className="text-sm shrink-0">Root Folder</Label>
                 <Select value={rootFolder} onValueChange={setRootFolder}>
-                  <SelectTrigger className="w-[180px] min-w-0 ml-3" title={rootFolder || undefined}><SelectValue placeholder="Select folder">{rootFolder ? <span className="truncate">{rootFolder}</span> : null}</SelectValue></SelectTrigger>
+                  <SelectTrigger className="w-[180px] min-w-0 ml-3 sm:w-auto sm:min-w-[180px] sm:max-w-md" title={rootFolder || undefined}><SelectValue placeholder="Select folder">{rootFolder ? <span className="truncate">{rootFolder}</span> : null}</SelectValue></SelectTrigger>
                   <SelectContent>
                     {rootFolders.map((rf) => (
                       <SelectItem key={rf.id} value={rf.path}>{rf.path}</SelectItem>

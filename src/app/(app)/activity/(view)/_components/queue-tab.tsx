@@ -41,6 +41,7 @@ import { formatDownloadProtocol } from '@/lib/format';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 import { RemoveQueueDialog, type RemoveQueueOptions } from '../../_components/remove-queue-dialog';
 import { compareActivityQueueItems } from '@/lib/activity-queue-sort';
+import { queueTimeLeftLabel } from '@/lib/media-download-progress';
 import type { ActivitySortDirectionPreference } from '@/lib/store';
 import { QUEUE_PAGE_SIZE, QUEUE_QUERY_KEY, QueuePage, QueueRecord, RemoveTarget, appNameFor, bulkGrabOutcome, canManualImport, downloadSiblings, episodeLabel, formatBytes, getQueueCustomFormats, getQueueItemQuality, getQueueMediaHref, groupQueueByDownload, isPendingRelease, manualImportHref, packNoun, queueRecordKey, queueRemovalBatches, queueRemovalDelta, statusColor, statusLabel, uniqueQueueRecords } from './queue-records';
 import { ManualImportStrip, TabErrorState, useSourceChipLabel } from './shared';
@@ -536,9 +537,9 @@ export function QueueTab({
                             )}
                           </div>
                         </div>
-                        {rep.timeleft && (
+                        {queueTimeLeftLabel(rep) && (
                           <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
-                            {rep.timeleft}
+                            {queueTimeLeftLabel(rep)}
                           </span>
                         )}
                       </div>
@@ -692,8 +693,8 @@ export function QueueTab({
                           </div>
                         </div>
                         <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                          {rep.timeleft && (
-                            <span className="text-[10px] text-muted-foreground">{rep.timeleft}</span>
+                          {queueTimeLeftLabel(rep) && (
+                            <span className="text-[10px] text-muted-foreground">{queueTimeLeftLabel(rep)}</span>
                           )}
                           <ChevronRight
                             className={`h-4 w-4 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`}
@@ -885,7 +886,7 @@ export function QueueTab({
                   <div>
                     <div className="flex justify-between text-xs text-muted-foreground mb-1">
                       <span>{progress.toFixed(1)}%</span>
-                      {selectedItem.timeleft && <span>{selectedItem.timeleft}</span>}
+                      {queueTimeLeftLabel(selectedItem) && <span>{queueTimeLeftLabel(selectedItem)}</span>}
                     </div>
                     <Progress value={progress} className="h-2" />
                   </div>

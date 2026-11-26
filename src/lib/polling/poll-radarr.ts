@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { getRadarrClients } from '@/lib/service-helpers';
 import { logger } from '@/lib/logger';
 import { noteJobFailure } from '@/lib/polling-job-report';
-import { classifyQueueIssue } from '@/lib/queue-state';
+import { classifyQueueIssue, isHeldRelease } from '@/lib/queue-state';
 import { writeBadgeSlice } from '@/lib/cache/badge-counts';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { PollNotificationCollector } from '@/lib/notification-grouping';
@@ -53,7 +53,10 @@ export async function pollRadarr(context: CycleContext) {
       const tagMap = await buildTagMap(client);
       const queue = await fetchAllQueueRecords(client, true);
       const prevMap = readQueueSnapshots(state.lastQueueIds);
-      const currentSnapshots: QueueSnapshot[] = queue.records.map((r) => ({
+      // Held releases are left out (not remembered either), so a release only
+      // counts as new once it has really been sent to the download client.
+      const sentRecords = queue.records.filter((r) => !isHeldRelease(r.status));
+      const currentSnapshots: QueueSnapshot[] = sentRecords.map((r) => ({
         id: r.id,
         state: r.trackedDownloadState ?? '',
         status: r.trackedDownloadStatus ?? '',
@@ -62,7 +65,7 @@ export async function pollRadarr(context: CycleContext) {
       let importIssueCount = 0;
       let downloadFailedCount = 0;
 
-      for (const item of queue.records) {
+      for (const item of sentRecords) {
         const metadata = {
           source: 'radarr' as const,
           instanceId,

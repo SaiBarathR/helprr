@@ -1,4 +1,5 @@
 import type { QueueItem } from '@/types';
+import { isHeldRelease } from '@/lib/queue-state';
 
 export type MediaQueueSource = 'sonarr' | 'radarr';
 
@@ -42,12 +43,22 @@ export interface MediaDownloadSummary {
   progress: number | null;
 }
 
-/**
- * *arr `timeleft` is a .NET TimeSpan string — `hh:mm:ss` or `d.hh:mm:ss`
- * (e.g. `10.14:40:12`). Reduce it to the two largest units for display.
- */
+// *arr `timeleft` is a .NET TimeSpan string: `hh:mm:ss` or `d.hh:mm:ss`, with
+// fractional seconds when the arr computed it (a held release's wait reads
+// `1970.04:10:55.0718460`).
+const TIME_SPAN = /^(?:(\d+)\.)?(\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?$/;
+
+/** The TimeSpan in whole seconds, or null when there is none to read. */
+export function timeLeftSeconds(value: string | null | undefined): number | null {
+  const match = value?.trim().match(TIME_SPAN);
+  if (!match) return null;
+  const [, d, h, m, s] = match;
+  return ((Number(d ?? 0) * 24 + Number(h)) * 60 + Number(m)) * 60 + Number(s);
+}
+
+/** The TimeSpan (e.g. `10.14:40:12`) in its two largest units for display. */
 export function humanizeTimeLeft(value: string | null | undefined): string | null {
-  const match = value?.trim().match(/^(?:(\d+)\.)?(\d{1,2}):(\d{2}):(\d{2})$/);
+  const match = value?.trim().match(TIME_SPAN);
   if (!match) return null;
   const [, d, h, m, s] = match;
   const parts: Array<[number, string]> = [
@@ -63,6 +74,15 @@ export function humanizeTimeLeft(value: string | null | undefined): string | nul
     .filter(([amount]) => amount > 0)
     .map(([amount, unit]) => `${amount}${unit}`);
   return kept.join(' ');
+}
+
+/**
+ * A queue row's time left. A held release (a delay profile) has not started:
+ * its time left is the wait until the arr sends it, so it reads "in 3d 4h".
+ */
+export function queueTimeLeftLabel(item: Pick<QueueItem, 'status' | 'timeleft'>): string | null {
+  const left = humanizeTimeLeft(item.timeleft);
+  return left && isHeldRelease(item.status) ? `in ${left}` : left;
 }
 
 function statusInfo(item: QueueItem): { label: string; tone: MediaDownloadTone } {

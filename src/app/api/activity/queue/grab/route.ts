@@ -5,6 +5,7 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 import { readJsonBody } from '@/lib/bulk-editor';
 import { bumpQueueCacheVersion, fetchAllQueueRecords } from '@/lib/activity-queue';
 import { asJsonObject, resolveActivityArrTarget } from '@/lib/activity-arr-target';
+import { isHeldRelease } from '@/lib/queue-state';
 
 // Same bound as the bulk removal: a selection can hold every loaded queue record.
 const QUEUE_GRAB_MAX_IDS = 1000;
@@ -27,7 +28,7 @@ async function readPendingIds(client: Parameters<typeof fetchAllQueueRecords>[0]
     ]);
     if (queue.records.length < queue.totalRecords) return null;
     return new Set(queue.records
-      .filter((record) => record.status === 'delay' || record.status === 'downloadClientUnavailable')
+      .filter((record) => isHeldRelease(record.status))
       .map((record) => record.id));
   } catch {
     return null;

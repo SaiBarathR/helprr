@@ -1,5 +1,5 @@
 import type { QueueItem } from '@/types';
-import { classifyQueueIssue } from '@/lib/queue-state';
+import { classifyQueueIssue, isHeldRelease } from '@/lib/queue-state';
 
 export function statusColor(status: string, tracked?: string) {
   if (tracked === 'warning' || status === 'warning') return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
@@ -91,7 +91,7 @@ export function needsManualImport(item: QueueItem): boolean {
 
 /** A release the *arr is holding back (delay profile, or no download client to send it to), as its own queue does. */
 export function isPendingRelease(item: QueueItem): boolean {
-  return item.status === 'delay' || item.status === 'downloadClientUnavailable';
+  return isHeldRelease(item.status);
 }
 
 /** Needs an import the import page can do: it handles Sonarr, Radarr and Lidarr. */

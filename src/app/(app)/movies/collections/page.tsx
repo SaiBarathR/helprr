@@ -21,7 +21,7 @@ import {
   searchFilter,
   type ActiveFilter,
 } from '@/components/ui/active-filter-bar';
-import { withAppName } from '@/components/instance-filter';
+import { instanceName, withAppName } from '@/components/instance-filter';
 import { MoviesSubNav } from '@/components/media/movies-subnav';
 import { CollectionCard } from '@/components/media/collection-card';
 import {
@@ -84,7 +84,7 @@ export default function MovieCollectionsPage() {
   // Instances present in the data — drives the multi-instance label + filter.
   const instances = useMemo(() => {
     const m = new Map<string, string>();
-    for (const c of collections) if (c.instanceId) m.set(c.instanceId, c.instanceLabel ?? c.instanceId);
+    for (const c of collections) if (c.instanceId) m.set(c.instanceId, instanceName(c.instanceLabel, 'radarr') ?? c.instanceId);
     return [...m].map(([id, label]) => ({ id, label }));
   }, [collections]);
   const multiInstance = instances.length > 1;

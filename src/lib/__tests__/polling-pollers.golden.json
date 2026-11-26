@@ -203,7 +203,7 @@
     "activity",
     "sonarr",
     {
-     "total": 10,
+     "total": 12,
      "attention": 6
     }
    ]
@@ -411,7 +411,7 @@
     "activity",
     "radarr",
     {
-     "total": 10,
+     "total": 12,
      "attention": 6
     }
    ]
@@ -623,7 +623,7 @@
     "activity",
     "lidarr",
     {
-     "total": 10,
+     "total": 12,
      "attention": 6
     }
    ]
@@ -1472,7 +1472,7 @@
     "activity",
     "sonarr",
     {
-     "total": 5,
+     "total": 6,
      "attention": 3
     }
    ]
@@ -1636,7 +1636,7 @@
     "activity",
     "radarr",
     {
-     "total": 10,
+     "total": 12,
      "attention": 6
     }
    ]

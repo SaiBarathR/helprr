@@ -13,6 +13,15 @@
 // agree on, so symptoms surfaced in one place line up with actions in another.
 export type QueueIssue = 'import' | 'download' | null;
 
+// A release the arr is still holding back (a delay profile, no download client
+// it can use, or a wait for the preferred protocol): its queue lists it, but it
+// has not been sent to a download client. When it is sent, the download shows
+// up as a new queue record with its own id; a held release that is dropped just
+// leaves. So it is not a grab yet.
+export function isHeldRelease(status: string | undefined | null): boolean {
+  return status === 'delay' || status === 'downloadClientUnavailable' || status === 'fallback';
+}
+
 export function classifyQueueIssue(
   state: string | undefined | null,
   status: string | undefined | null,
