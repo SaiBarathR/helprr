@@ -22,6 +22,7 @@ import { ApiError } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
+import { instanceName } from '@/components/instance-filter';
 import type { CollectionMovieSummary, CollectionSummary } from '@/types';
 
 interface Props {
@@ -250,7 +251,7 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
                       <span className="text-[var(--hpr-amber)] font-medium"> · {missingMovies.length} missing</span>
                     )}
                     {multiInstance && collection.instanceLabel && (
-                      <span className="text-[var(--hpr-amber)]"> · {collection.instanceLabel}</span>
+                      <span className="text-[var(--hpr-amber)]"> · {instanceName(collection.instanceLabel, 'radarr')}</span>
                     )}
                   </p>
                   {collection.genres.length > 0 && (

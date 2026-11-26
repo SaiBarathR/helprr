@@ -5,6 +5,7 @@ import { Layers, Check, Eye } from 'lucide-react';
 import type { CollectionSummary } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { FadeInImage } from '@/components/media/fade-in-image';
+import { instanceName } from '@/components/instance-filter';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
 interface CollectionCardProps {
@@ -24,6 +25,7 @@ export const CollectionCard = memo(function CollectionCard({
 }: CollectionCardProps) {
   const poster = toCachedImageSrc(collection.poster, 'tmdb', { width: 360 });
   const complete = collection.missingMovies === 0;
+  const instanceLabel = instanceName(collection.instanceLabel, 'radarr');
 
   return (
     <QuickContextMenu label={`Actions for ${collection.title}`} groups={contextActionGroups}>
@@ -75,8 +77,8 @@ export const CollectionCard = memo(function CollectionCard({
             </p>
             <p className="mt-0.5 text-[10px] text-white/75 truncate">
               {collection.movieCount} {collection.movieCount === 1 ? 'film' : 'films'}
-              {multiInstance && collection.instanceLabel && (
-                <span className="hpr-scrim-accent font-medium"> · {collection.instanceLabel}</span>
+              {multiInstance && instanceLabel && (
+                <span className="hpr-scrim-accent font-medium"> · {instanceLabel}</span>
               )}
             </p>
           </div>

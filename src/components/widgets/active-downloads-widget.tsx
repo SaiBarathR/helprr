@@ -23,6 +23,7 @@ import {
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { fetchOrOffline } from '@/lib/network-error';
+import { queueTimeLeftLabel } from '@/lib/media-download-progress';
 
 const CARD_WIDTH = 200;
 const CARD_GAP = 10;
@@ -187,10 +188,10 @@ export function ActiveDownloadsWidget({
                       }}
                     >
                       <span>{formatBytes(it.size)}</span>
-                      {it.timeleft && (
+                      {queueTimeLeftLabel(it) && (
                         <>
                           <span>·</span>
-                          <span>{it.timeleft}</span>
+                          <span>{queueTimeLeftLabel(it)}</span>
                         </>
                       )}
                     </div>
@@ -290,7 +291,7 @@ export function ActiveDownloadsWidget({
                 >
                   {pct.toFixed(0)}%
                 </div>
-                {it.timeleft && (
+                {queueTimeLeftLabel(it) && (
                   <div
                     style={{
                       fontFamily: FONT_MONO,
@@ -299,7 +300,7 @@ export function ActiveDownloadsWidget({
                       marginLeft: 'auto',
                     }}
                   >
-                    {it.timeleft}
+                    {queueTimeLeftLabel(it)}
                   </div>
                 )}
               </div>

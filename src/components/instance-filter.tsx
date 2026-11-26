@@ -31,6 +31,16 @@ export function appDisplayName(type: string): string {
 }
 
 /**
+ * An instance's label as shown where its app is already plain (a Series card):
+ * older rows store the type itself ("SONARR") as the label, which reads as the
+ * app's name, as withAppName shows it; any other label is left as it is.
+ */
+export function instanceName(label: string | undefined, type: string): string | undefined {
+  const app = APP_NAMES[type.toLowerCase()];
+  return app && label?.toLowerCase() === app.toLowerCase() ? app : label;
+}
+
+/**
  * "main (Sonarr)": instances of different apps are often named alike. A label
  * that already names its app ("sonarr-anime") stays as it is.
  */

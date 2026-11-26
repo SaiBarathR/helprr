@@ -32,6 +32,22 @@ describe('compareActivityQueueItems', () => {
   );
 });
 
+describe('time left ordering', () => {
+  const item = (title: string, timeleft?: string): ActivityQueueSortableItem => ({ title, size: 1, sizeleft: 1, timeleft });
+
+  it('sorts by the duration, not the TimeSpan text; unknown last', () => {
+    const items = [
+      item('none'),
+      item('held long', '1970.04:10:55.0718460'),
+      item('held short', '694.01:41:34.0723369'),
+      item('hours', '02:00:00'),
+      item('minutes', '00:09:00'),
+    ];
+    const ascending = [...items].sort((a, b) => compareActivityQueueItems(a, b, 'timeleft', 'asc'));
+    expect(ascending.map((i) => i.title)).toEqual(['minutes', 'hours', 'held short', 'held long', 'none']);
+  });
+});
+
 describe('activity sort direction migration', () => {
   it.each([
     ['title', 'asc'],

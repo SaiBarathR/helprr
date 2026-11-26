@@ -26,7 +26,7 @@ import {
   searchFilter,
   type ActiveFilter,
 } from '@/components/ui/active-filter-bar';
-import { withAppName } from '@/components/instance-filter';
+import { instanceName, withAppName } from '@/components/instance-filter';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { useToolbarHeight } from '@/lib/hooks/use-toolbar-height';
@@ -284,7 +284,7 @@ export default function MusicPage() {
   // Connected instances derived from the (already instance-tagged) list.
   const instances = useMemo(() => {
     const map = new Map<string, string>();
-    for (const artist of artists) if (artist.instanceId) map.set(artist.instanceId, artist.instanceLabel ?? artist.instanceId);
+    for (const artist of artists) if (artist.instanceId) map.set(artist.instanceId, instanceName(artist.instanceLabel, 'lidarr') ?? artist.instanceId);
     return [...map].map(([id, label]) => ({ id, label }));
   }, [artists]);
   const multiInstance = instances.length > 1;
@@ -627,7 +627,7 @@ export default function MusicPage() {
       year: 0,
       href: hrefForArtist(artist),
       instanceId: artist.instanceId,
-      instanceLabel: multiInstance ? artist.instanceLabel : undefined,
+      instanceLabel: multiInstance ? instanceName(artist.instanceLabel, 'lidarr') : undefined,
       monitored: artist.monitored,
       hasFile: !!artist.statistics && artist.statistics.totalTrackCount > 0
         && artist.statistics.trackFileCount >= artist.statistics.totalTrackCount,
@@ -708,7 +708,7 @@ export default function MusicPage() {
         rating={artist.ratings?.value}
         sizeOnDisk={artist.statistics?.sizeOnDisk}
         genres={artist.genres}
-        instanceLabel={multiInstance ? artist.instanceLabel : undefined}
+        instanceLabel={multiInstance ? instanceName(artist.instanceLabel, 'lidarr') : undefined}
         onNavigate={handleNavigateToDetail}
         imagePriority={globalIndex !== undefined && globalIndex < 6}
         selectable={selectionMode}
@@ -945,7 +945,7 @@ export default function MusicPage() {
                     href={hrefForArtist(artist)}
                     visibleFields={visibleFields}
                     rating={artist.ratings?.value}
-                    instanceLabel={multiInstance ? artist.instanceLabel : undefined}
+                    instanceLabel={multiInstance ? instanceName(artist.instanceLabel, 'lidarr') : undefined}
                     onNavigate={handleNavigateToDetail}
                     imagePriority={startIndex + i < Math.min(posterColumns * 2, 4)}
                     selectable={selectionMode}

@@ -191,6 +191,8 @@ function arrInstance(id: string, label: string, kind: 'sonarr' | 'radarr' | 'lid
   const queueItem = (n: number, state: string, status = 'ok', extra: Record<string, unknown> = {}) => ({
     id: n, title: `${label}.Release.${n}`, trackedDownloadState: state, trackedDownloadStatus: status, ...media(n), ...quality, ...extra,
   });
+  // As the arr lists a held release: its own status, no tracked download yet.
+  const heldItem = (n: number) => ({ id: n, title: `${label}.Held.${n}`, status: 'delay', ...media(n), ...quality });
   if (previous) {
     mocks.states.set(id, {
       serviceConnectionId: id,
@@ -214,13 +216,15 @@ function arrInstance(id: string, label: string, kind: 'sonarr' | 'radarr' | 'lid
   }
   const client = {
     queue: {
-      totalRecords: 5,
+      totalRecords: 6,
       records: [
         queueItem(10, 'downloading'),
         queueItem(11, 'importPending', 'warning', { statusMessages: [{ title: 'x', messages: ['', 'No files found are eligible for import'] }] }),
         queueItem(9, 'failedPending', 'warning', { errorMessage: 'legacy item' }),
         queueItem(12, 'downloading'),
         queueItem(13, 'failedPending', 'warning', { errorMessage: 'Tracker said no', downloadId: 'HASH13' }),
+        // Held by a delay profile: listed, not sent to the download client, so no grab.
+        heldItem(14),
       ],
     },
     getTags: vi.fn(async () => [{ id: 1, label: 'kids' }, { id: 2, label: 'jazz' }]),
@@ -600,6 +604,38 @@ describe('pollers on fixed fixtures (golden)', () => {
     failing.client.getHistory = vi.fn(async () => { throw new Error('history down'); });
     mocks.radarr = [failing, arrInstance('i2', 'Anime', 'radarr', true)];
     expectGolden('pollRadarr:instanceFails', await run('pollRadarr'));
+  });
+
+  it.each([
+    ['pollSonarr', 'sonarr'],
+    ['pollRadarr', 'radarr'],
+    ['pollLidarr', 'lidarr'],
+  ] as const)('%s: a release held by a delay profile is a grab only once it is sent; one dropped while held never is', async (method, kind) => {
+    const instance = arrInstance('i1', 'Main', kind, true);
+    mocks[kind] = [instance];
+    const state = mocks.states.get('i1')!;
+    state.lastQueueIds = [];
+    const held = (id: number, title: string) => ({ id, title, status: 'delay' });
+    const sent = (id: number, title: string) => ({ id, title, status: 'downloading', trackedDownloadState: 'downloading', trackedDownloadStatus: 'ok', downloadId: `HASH${id}` });
+    const cycle = async (records: unknown[]) => {
+      mocks.out = [];
+      instance.client.queue = { totalRecords: records.length, records: records as never };
+      const out = await run(method);
+      const update = out.find((o) => 'pollingState.update' in (o as object)) as { 'pollingState.update': { data: { lastQueueIds: unknown } } };
+      state.lastQueueIds = update['pollingState.update'].data.lastQueueIds;
+      return notified(out).filter((e) => e.eventType === 'grabbed').map((e) => e.body);
+    };
+
+    // Held: nothing yet, however many polls it waits.
+    expect(await cycle([held(20628538, 'Film.Held'), held(355750964, 'Film.Dropped')])).toEqual([]);
+    expect(await cycle([held(20628538, 'Film.Held'), held(355750964, 'Film.Dropped')])).toEqual([]);
+    // Sent: the download shows under a new id, and that is the one push. The
+    // other held release is dropped (rejected or removed) and never pushes.
+    expect(await cycle([sent(7, 'Film.Held')])).toEqual(['Film.Held']);
+    expect(await cycle([sent(7, 'Film.Held')])).toEqual([]);
+    // A release grabbed straight away pushes once, as before.
+    expect(await cycle([sent(7, 'Film.Held'), sent(8, 'Film.Direct')])).toEqual(['Film.Direct']);
+    expect(await cycle([sent(7, 'Film.Held'), sent(8, 'Film.Direct')])).toEqual([]);
   });
 
   it.each([

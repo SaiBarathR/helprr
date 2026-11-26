@@ -2,6 +2,7 @@ import type {
   ActivitySortDirectionPreference,
   ActivitySortPreference,
 } from '@/lib/store';
+import { timeLeftSeconds } from '@/lib/media-download-progress';
 
 export interface ActivityQueueSortableItem {
   title?: string;
@@ -34,9 +35,14 @@ export function compareActivityQueueItems(
       comparison = progressA - progressB;
       break;
     }
-    case 'timeleft':
-      comparison = (a.timeleft || 'zz').localeCompare(b.timeleft || 'zz');
+    case 'timeleft': {
+      // By the duration, not the TimeSpan text ("694.01:41" before "1970.04:10");
+      // no time left sorts after every known one.
+      const leftA = timeLeftSeconds(a.timeleft) ?? Infinity;
+      const leftB = timeLeftSeconds(b.timeleft) ?? Infinity;
+      comparison = leftA === leftB ? 0 : leftA < leftB ? -1 : 1;
       break;
+    }
     case 'size':
       comparison = a.size - b.size;
       break;

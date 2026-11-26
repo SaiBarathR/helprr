@@ -28,7 +28,7 @@ import {
   searchFilter,
   type ActiveFilter,
 } from '@/components/ui/active-filter-bar';
-import { withAppName } from '@/components/instance-filter';
+import { instanceName, withAppName } from '@/components/instance-filter';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { useIsMobile } from '@/hooks/use-is-mobile';
@@ -328,7 +328,7 @@ export default function MoviesPage() {
   // Connected instances derived from the (already instance-tagged) list.
   const instances = useMemo(() => {
     const m = new Map<string, string>();
-    for (const movie of movies) if (movie.instanceId) m.set(movie.instanceId, movie.instanceLabel ?? movie.instanceId);
+    for (const movie of movies) if (movie.instanceId) m.set(movie.instanceId, instanceName(movie.instanceLabel, 'radarr') ?? movie.instanceId);
     return [...m].map(([id, label]) => ({ id, label }));
   }, [movies]);
   const multiInstance = instances.length > 1;
@@ -721,7 +721,7 @@ export default function MoviesPage() {
       year: movie.year,
       href: hrefForMovie(movie),
       instanceId: movie.instanceId,
-      instanceLabel: multiInstance ? movie.instanceLabel : undefined,
+      instanceLabel: multiInstance ? instanceName(movie.instanceLabel, 'radarr') : undefined,
       monitored: movie.monitored,
       hasFile: movie.hasFile,
       status: movie.status,
@@ -1062,7 +1062,7 @@ export default function MoviesPage() {
                     visibleFields={visibleFields}
                     watchLookup={{ scope: 'radarr', instanceId: movie.instanceId, arrId: movie.id }}
                     rating={movie.ratings?.imdb?.value || movie.ratings?.tmdb?.value}
-                    instanceLabel={multiInstance ? movie.instanceLabel : undefined}
+                    instanceLabel={multiInstance ? instanceName(movie.instanceLabel, 'radarr') : undefined}
                     onNavigate={handleNavigateToDetail}
                     imagePriority={startIndex + i < Math.min(posterColumns * 2, 4)}
                     selectable={selectionMode}
@@ -1114,7 +1114,7 @@ export default function MoviesPage() {
                   sizeOnDisk={movie.sizeOnDisk}
                   runtime={movie.runtime}
                   genres={movie.genres}
-                  instanceLabel={multiInstance ? movie.instanceLabel : undefined}
+                  instanceLabel={multiInstance ? instanceName(movie.instanceLabel, 'radarr') : undefined}
                   onNavigate={handleNavigateToDetail}
                   imagePriority={startIndex + i < 6}
                   selectable={selectionMode}
