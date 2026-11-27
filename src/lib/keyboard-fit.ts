@@ -243,17 +243,21 @@ export function keepIosFromScrolling(node: HTMLElement): () => void {
  * the same box (a sheet scrolling as one column has it under the fields:
  * two-step's Turn on sat behind the keyboard until dragged), after the field
  * above, which ⌃ needs. A read-only field is no neighbour here: iOS's arrows
- * skip it.
+ * skip it. A field on the page scrolls the page, within the part on screen.
  */
 export function revealFocusedField(node: HTMLElement) {
   const field = document.activeElement;
   if (!(field instanceof HTMLElement) || !node.contains(field)) return;
   for (let box = field.parentElement; box && node.contains(box); box = box.parentElement) {
-    if (box.scrollHeight <= box.clientHeight) continue;
-    const overflow = getComputedStyle(box).overflowY;
-    if (overflow !== 'auto' && overflow !== 'scroll') continue;
-    const viewTop = box.getBoundingClientRect().top + box.clientTop;
-    const viewBottom = viewTop + box.clientHeight;
+    // A field on the page itself (followPageKeyboard): the document scrolls.
+    const page = box === document.scrollingElement;
+    if (!page) {
+      if (box.scrollHeight <= box.clientHeight) continue;
+      const overflow = getComputedStyle(box).overflowY;
+      if (overflow !== 'auto' && overflow !== 'scroll') continue;
+    }
+    const boxTop = page ? 0 : box.getBoundingClientRect().top + box.clientTop;
+    const [viewTop, viewBottom] = page ? pageView() : [boxTop, boxTop + box.clientHeight];
     // How far the box may scroll (+ is down) and keep `top`–`bottom` in view.
     const keep = (top: number, bottom: number) => ({ min: bottom - viewBottom, max: top - viewTop });
     const fieldRect = field.getBoundingClientRect();
@@ -275,22 +279,100 @@ export function revealFocusedField(node: HTMLElement) {
       return null;
     };
     const next = nearest(1);
-    const send = at >= 0 && !next ? sendButton(field) : null;
-    for (const found of [next, nearest(-1), send]) {
+    const form = 'form' in field ? (field as HTMLInputElement).form : null;
+    // A short confirm step (data-keyboard-whole) is kept whole when it fits:
+    // its button from any field, then its heading, which says what is confirmed.
+    const whole = form?.hasAttribute('data-keyboard-whole') ? form : null;
+    const send = at >= 0 && (!next || whole) && form ? sendButton(form) : null;
+    const heading = whole && send ? { el: whole, rect: whole.getBoundingClientRect() } : null;
+    for (const found of [next, nearest(-1), send, heading]) {
       // One in a part that doesn't scroll (a pinned search box or buttons) doesn't move.
       if (!found || !box.contains(found.el)) continue;
       const { rect } = found;
       const centre = (rect.top + rect.bottom) / 2;
-      // A field needs its centre in view for the arrows; the button, all of it for a tap.
-      const [top, bottom] = found === send ? [rect.top, rect.bottom] : [centre - 4, centre + 4];
+      // A field needs its centre in view for the arrows; the button, all of it
+      // for a tap; the form, its top.
+      const [top, bottom] = found === send ? [rect.top, rect.bottom] : found === heading ? [rect.top, rect.top] : [centre - 4, centre + 4];
       const both = { min: Math.max(range.min, bottom - viewBottom), max: Math.min(range.max, top - viewTop) };
       if (both.min <= both.max) range = both;
     }
     // Taller than the box (a long text area): show its top.
     const by = range.min > range.max ? range.max : Math.min(Math.max(0, range.min), range.max);
-    if (by) box.scrollTop += by;
+    if (by && page) window.scrollBy(0, by);
+    else if (by) box.scrollTop += by;
     return;
   }
+}
+
+/**
+ * The part of the page on screen, top and bottom in client coordinates: the
+ * visual viewport (the keyboard covers the rest of the layout viewport), under
+ * the bars pinned over its top (the top nav, or with the nav at the bottom the
+ * status-bar scrim, then a page's sticky toolbar) and, in a Safari tab, above
+ * Safari's floating address bar.
+ */
+function pageView(): [number, number] {
+  const viewport = window.visualViewport;
+  let top = viewport?.offsetTop ?? 0;
+  const bottom = top + (viewport?.height ?? window.innerHeight) - (safariBarOverKeyboard() ? 60 : 0);
+  // In page order, so a toolbar pinned under the top nav or the scrim is
+  // counted after it (a hidden one has no box and is skipped).
+  for (const bar of document.querySelectorAll<HTMLElement>('.app-tab-bar, .app-status-scrim, .page-toolbar')) {
+    const rect = bar.getBoundingClientRect();
+    if (rect.top <= top + 1 && rect.bottom > top) top = rect.bottom;
+  }
+  return [top, bottom];
+}
+
+/**
+ * Keeps a field on the page itself (in `main`, not in a sheet or dialog, which
+ * place themselves) usable with the keyboard up. The phone's bottom tab bar
+ * steps aside (html[data-page-keyboard], globals.css): it stayed fixed to the
+ * foot of the screen, behind the keyboard, until the page was scrolled, and
+ * then iOS drew it just above the keyboard, over the form's buttons (Edit
+ * Movie's Save and Cancel, Add Torrent). And when the keyboard opens, the page
+ * scrolls as little as it takes to show the field, the centres of its
+ * neighbours and, from its last field, its form's submit button, as a sheet
+ * does (revealFocusedField): Save sat half under the keyboard's Done bar.
+ * Again when the field's form changes size while the keyboard is up: a new
+ * folder name adds Move Files and the new path above Save, pushing it back
+ * under the keyboard.
+ */
+export function followPageKeyboard(main: HTMLElement): () => void {
+  const root = document.documentElement;
+  let stopFollowing: (() => void) | null = null;
+  const resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
+    if (root.hasAttribute('data-page-keyboard')) revealFocusedField(root);
+  });
+  const release = () => {
+    stopFollowing?.();
+    stopFollowing = null;
+    resized?.disconnect();
+    root.removeAttribute('data-page-keyboard');
+  };
+  // On the document, not `main`: a focused field that is removed (Go saves and
+  // the page moves on) fires no focusout, and a sheet's field focused after
+  // that must not leave this following the keyboard it opens.
+  const onFocusIn = (event: FocusEvent) => {
+    const field = event.target;
+    if (!opensKeyboard(field) || !main.contains(field as Node)) return release();
+    stopFollowing ??= followKeyboard(root, (covered) => root.toggleAttribute('data-page-keyboard', covered > 0));
+    resized?.disconnect();
+    const form = field instanceof HTMLElement && 'form' in field ? (field as HTMLInputElement).form : null;
+    if (form) resized?.observe(form);
+  };
+  const onFocusOut = (event: FocusEvent) => {
+    // Focus going on to another field of the page keeps the keyboard up.
+    if (opensKeyboard(event.relatedTarget) && main.contains(event.relatedTarget as Node)) return;
+    release();
+  };
+  document.addEventListener('focusin', onFocusIn);
+  main.addEventListener('focusout', onFocusOut);
+  return () => {
+    document.removeEventListener('focusin', onFocusIn);
+    main.removeEventListener('focusout', onFocusOut);
+    release();
+  };
 }
 
 /**
@@ -339,17 +421,21 @@ export function formRoomTooShort(scroll: HTMLElement): boolean | undefined {
   if (!body || body === scroll) return false;
   const box = body;
   const room = box.clientHeight - Math.max(0, scroll.scrollHeight - scroll.clientHeight);
-  return room < arrowRoomNeeded(fields.filter(({ el }) => box.contains(el)).map(({ rect }) => rect));
+  // A step kept whole while typing (data-keyboard-whole, see revealFocusedField)
+  // needs room from its top to its button too: Backups' Download step lost its
+  // heading above a pinned body that had room for the field and button only.
+  const whole = box.querySelector<HTMLFormElement>('form[data-keyboard-whole]');
+  const send = whole && sendButton(whole);
+  const span = whole && send ? send.rect.bottom - whole.getBoundingClientRect().top : 0;
+  return room < Math.max(span, arrowRoomNeeded(fields.filter(({ el }) => box.contains(el)).map(({ rect }) => rect)));
 }
 
 /**
- * The focused field's form's default button (the first that submits it: a
- * <button> with no type does, and one outside the form joined by form="…"
- * counts), if it is on screen.
+ * A form's default button (the first that submits it: a <button> with no type
+ * does, and one outside the form joined by form="…" counts), if it is on screen.
  */
-function sendButton(field: HTMLElement) {
-  const form = 'form' in field ? (field as HTMLInputElement).form : null;
-  const el = form && [...form.elements].find(
+function sendButton(form: HTMLFormElement) {
+  const el = [...form.elements].find(
     (control): control is HTMLButtonElement | HTMLInputElement =>
       (control instanceof HTMLButtonElement || control instanceof HTMLInputElement) && control.type === 'submit',
   );
@@ -358,9 +444,15 @@ function sendButton(field: HTMLElement) {
   return rect.bottom > rect.top ? { el, rect } : null;
 }
 
-/** A field the keyboard's ⌃ / ⌄ arrows go to: shown, enabled, typed into or picked from. */
+/**
+ * A field the keyboard's ⌃ / ⌄ arrows go to: shown, enabled, typed into or
+ * picked from, and in the tab order. They follow it, so a control taken out
+ * of it is no stop: Radix's Select puts a hidden <select tabindex="-1"> beside
+ * its button inside a form, and counted as the field above Folder it kept the
+ * Edit pages' Save under the keyboard.
+ */
 function isArrowStop(el: HTMLElement) {
-  if (!(isTextField(el) || el instanceof HTMLSelectElement) || el.disabled || el.closest('[hidden], [inert]')) return false;
+  if (!(isTextField(el) || el instanceof HTMLSelectElement) || el.disabled || el.tabIndex < 0 || el.closest('[hidden], [inert]')) return false;
   return !(el instanceof HTMLInputElement && el.type === 'hidden');
 }
 

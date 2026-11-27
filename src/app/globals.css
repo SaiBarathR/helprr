@@ -379,6 +379,14 @@
     backdrop-filter: blur(8px);
     pointer-events: auto;
   }
+
+  /* While the keyboard is up for a field on the page (followPageKeyboard in
+     keyboard-fit.ts), the tabs stay behind it, as in a native app: once the
+     page was scrolled, iOS drew the bar just above the keyboard, over the
+     form's buttons, with a blank band under it. */
+  :root[data-nav-position="bottom"][data-page-keyboard] .app-tab-bar {
+    visibility: hidden;
+  }
 }
 
 /* Below 360px the floating bar's five slots are 42px wide and "Dashboard" at

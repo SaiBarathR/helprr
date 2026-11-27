@@ -158,7 +158,15 @@ export default function SeriesEditPage() {
     <div className="animate-content-in">
       <PageHeader title={`Edit ${series.title}`} backHref={detailHref} />
 
-      <div className="mx-auto max-w-2xl px-4 pt-4 pb-8 space-y-6">
+      {/* A form, so the keyboard's Go saves and, with the keyboard up, the page
+          keeps Save above it while the folder name is typed (followPageKeyboard). */}
+      <form
+        className="mx-auto max-w-2xl px-4 pt-4 pb-8 space-y-6"
+        onSubmit={(event) => {
+          event.preventDefault();
+          handleSave();
+        }}
+      >
         {/* Quality Profile */}
         <div className="grouped-section">
           <p className="grouped-section-title">Quality Profile</p>
@@ -316,14 +324,15 @@ export default function SeriesEditPage() {
         {/* Actions: Save first, as on the Movies and Music Edit pages. */}
         <div className="flex gap-3 pt-2">
           <Button
+            type="submit"
             className="flex-1"
-            onClick={handleSave}
             disabled={saving || folderError !== null}
           >
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save Changes
           </Button>
           <Button
+            type="button"
             variant="outline"
             className="flex-1"
             onClick={() => goBackOr(router, detailHref)}
@@ -332,7 +341,7 @@ export default function SeriesEditPage() {
             Cancel
           </Button>
         </div>
-      </div>
+      </form>
 
       <ConfirmDialog
         open={confirmMove}
