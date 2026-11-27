@@ -87,7 +87,9 @@ async function getHandler(request: NextRequest) {
       }
     }
     const stats = await client.getIndexerStats(params);
-    return NextResponse.json(stats);
+    // Hosts are the addresses that queried Prowlarr (the apps' LAN, or public,
+    // IPs): admins only, as peer addresses are. The page then shows no host charts.
+    return NextResponse.json(auth.user.role === 'admin' ? stats : { ...stats, hosts: [] });
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to fetch indexer stats');
   }

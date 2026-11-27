@@ -4,6 +4,7 @@ import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAdmin } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { boundedBodyErrorResponse, readBoundedJson } from '@/lib/server/bounded-body';
 import { prisma } from '@/lib/db';
 import { recordSecurityEvent, serviceTargetLabel } from '@/lib/security-audit';
 import {
@@ -136,11 +137,16 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
 
+  // JSON only: this takes no password and sends the arr's API key to the
+  // address in the body, and a form on a sibling subdomain (the same site, for
+  // the session cookie) can post text/plain, not JSON, without the browser asking.
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    body = await readBoundedJson(request, 4096);
+  } catch (error) {
+    const refused = boundedBodyErrorResponse(error);
+    if (refused) return refused;
+    throw error;
   }
   const input = parseAdd(body);
   if (typeof input === 'string') return NextResponse.json({ error: input }, { status: 400 });

@@ -159,6 +159,18 @@ describe('GET status', () => {
       .toEqual({ version: '4.0.20.3014', branch: 'main', updateVersion: null, updateChecked: false });
   });
 
+  it('shows the version without waiting out an update list that hangs', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      mocks.client.getUpdates.mockReturnValue(new Promise(() => {}));
+      const answer = statusGet(req('/api/admin/arr-system/status?instanceId=son-1'));
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(await (await answer).json()).toEqual({ version: '4.0.20.3014', branch: 'main', updateVersion: null, updateChecked: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('drops a version that is not a version', async () => {
     mocks.client.getSystemStatus.mockResolvedValue({ version: '<img src=x>', branch: 'main' });
     mocks.client.getUpdates.mockResolvedValue([{ version: 'http://evil/?apikey=1', latest: true, installed: false }]);

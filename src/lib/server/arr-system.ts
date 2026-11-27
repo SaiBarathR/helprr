@@ -89,8 +89,18 @@ function versionString(value: unknown): string {
 }
 
 /** The version and branch, and the newer version the app offers, if any. */
+// How long the card waits for the update list: the app asks its own update
+// server for it, which can hang up to the client's 30 s where that is blocked.
+const UPDATE_LIST_WAIT_MS = 5_000;
+
 export async function readSystemStatus(client: SystemClient): Promise<ArrSystemStatus> {
-  const [status, updates] = await Promise.allSettled([client.getSystemStatus(), client.getUpdates()]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const updatesSoon = Promise.race([
+    client.getUpdates(),
+    new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), UPDATE_LIST_WAIT_MS); }),
+  ]).finally(() => clearTimeout(timer));
+  // Not in time: the version shows now, with the update left unchecked.
+  const [status, updates] = await Promise.allSettled([client.getSystemStatus(), updatesSoon]);
   if (status.status === 'rejected') throw status.reason;
   const raw = (status.value ?? {}) as { version?: unknown; branch?: unknown };
   const version = versionString(raw.version);

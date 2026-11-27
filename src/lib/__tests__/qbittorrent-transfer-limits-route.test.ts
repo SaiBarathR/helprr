@@ -102,6 +102,14 @@ describe('POST /api/qbittorrent/transfer/limits', () => {
     },
   );
 
+  it('refuses 1–1023 bytes per second, which qBittorrent would store as unlimited', async () => {
+    for (const limit of [1, 512, 1023]) {
+      expect((await post({ action: 'setAltUploadLimit', limit })).status).toBe(400);
+    }
+    expect(upstreamCalls()).toEqual([]);
+    expect((await post({ action: 'setAltUploadLimit', limit: 1024 })).status).toBe(200);
+  });
+
   it('refuses a body that is not JSON', async () => {
     expect((await post('{')).status).toBe(400);
     expect(upstreamCalls()).toEqual([]);

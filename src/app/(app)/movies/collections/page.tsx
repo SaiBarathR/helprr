@@ -375,7 +375,8 @@ export default function MovieCollectionsPage() {
                 {
                   id: 'manage',
                   actions: [
-                    ...(canMonitor
+                    // Monitoring adds the missing movies, so it needs movies.add too.
+                    ...(canMonitor && (c.monitored || canAdd)
                       ? [{
                           id: 'toggle-monitoring',
                           label: c.monitored ? 'Unmonitor collection' : 'Monitor collection',

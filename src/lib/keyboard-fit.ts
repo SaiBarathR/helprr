@@ -251,6 +251,9 @@ export function revealFocusedField(node: HTMLElement) {
   for (let box = field.parentElement; box && node.contains(box); box = box.parentElement) {
     // A field on the page itself (followPageKeyboard): the document scrolls.
     const page = box === document.scrollingElement;
+    // One in a bar pinned over the page (a toolbar's search box) is on screen
+    // however far the page is scrolled; scrolling only made the list jump.
+    if (page && field.closest('.app-tab-bar, .app-status-scrim, .page-toolbar')) return;
     if (!page) {
       if (box.scrollHeight <= box.clientHeight) continue;
       const overflow = getComputedStyle(box).overflowY;

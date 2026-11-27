@@ -18,11 +18,13 @@ const LIMIT_ACTIONS = new Map<unknown, SpeedLimitPreference>([
   ['setAltUploadLimit', 'alt_up_limit'],
 ]);
 
-// Bytes per second; 0 is unlimited. qBittorrent keeps a limit in a 32-bit int.
+// Bytes per second; 0 is unlimited. qBittorrent keeps a limit in a 32-bit int,
+// in whole KiB: 1–1023 bytes would be stored as 0, unlimited.
 const MAX_LIMIT = 2_147_483_647;
+const MIN_LIMIT = 1024;
 
 function parseLimit(value: unknown): number | null {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= MAX_LIMIT ? value : null;
+  return typeof value === 'number' && Number.isInteger(value) && (value === 0 || (value >= MIN_LIMIT && value <= MAX_LIMIT)) ? value : null;
 }
 
 async function getHandler(request: NextRequest) {
@@ -76,7 +78,7 @@ async function postHandler(request: NextRequest) {
   if (preference) {
     const limit = parseLimit(body?.limit);
     if (limit === null) {
-      return NextResponse.json({ error: 'Limit must be a whole number of bytes per second, 0 for unlimited' }, { status: 400 });
+      return NextResponse.json({ error: 'Limit must be 0 for unlimited, or a whole number of bytes per second from 1024 (1 KiB/s)' }, { status: 400 });
     }
     update = { [preference]: limit };
   } else if (action !== 'toggleSpeedLimitsMode') {

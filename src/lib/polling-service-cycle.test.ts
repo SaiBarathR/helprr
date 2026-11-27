@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   info: vi.fn(),
   warn: vi.fn(),
   loadLibrary: vi.fn(),
+  libraryChanges: vi.fn(async () => {}),
   findConnections: vi.fn(async () => [] as unknown[]),
   findConnection: vi.fn(async () => null as unknown),
   findHistory: vi.fn(async () => null as unknown),
@@ -89,6 +90,10 @@ vi.mock('@/lib/logger', () => ({
 vi.mock('@/lib/cache/tagged-library', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/cache/tagged-library')>()),
   getCachedTaggedLibrary: mocks.loadLibrary,
+}));
+vi.mock('@/lib/polling/library-changes', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/polling/library-changes')>()),
+  notifyLibraryChanges: mocks.libraryChanges,
 }));
 
 import { PollingService } from '@/lib/polling-service';
@@ -383,6 +388,45 @@ describe('an Arr instance that keeps failing', () => {
       /^Skipped after 2 failed polls in a row \(last error: connect ETIMEDOUT\); next try in \d+s$/,
     );
     expect(health('warmCaches')?.lastError).toBe('sonarr: Sonarr is skipped after repeated failures');
+  });
+});
+
+describe('Title Added/Deleted while another instance is skipped', () => {
+  it('still reads the instances that answer, on their own, and tells their changes', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    const proto = PollingService.prototype as unknown as Record<string, (...args: unknown[]) => Promise<void>>;
+    internal.warmCaches = proto.warmCaches.bind(service);
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getSonarrClients').mockResolvedValue([
+      { connection: { id: 's1', label: 'Down', updatedAt: new Date(0) }, client: {} },
+      { connection: { id: 's2', label: 'Up', updatedAt: new Date(0) }, client: {} },
+    ] as never);
+    vi.spyOn(services, 'getRadarrClients').mockResolvedValue([] as never);
+    vi.spyOn(services, 'getLidarrClients').mockResolvedValue([] as never);
+    mocks.loadLibrary.mockImplementation(async (opts: { getInstances: () => Promise<Array<{ connection: { id: string } }>> }) => {
+      const ids = (await opts.getInstances()).map(({ connection }) => connection.id);
+      return { items: [], cached: false, available: true, complete: true, failedInstanceIds: [] as string[], ids };
+    });
+    // Down failed two polls in a row: the polls and the warm skip it for now.
+    for (let i = 0; i < 2; i += 1) arrInstanceBackoff.recordFailure({ id: 's1', version: 0 }, new Error('connect ETIMEDOUT'), Date.now());
+
+    await internal.poll();
+
+    // Up is read on its own (never under 'all', which must list every instance)...
+    const seeds = mocks.loadLibrary.mock.calls
+      .map(([opts]) => opts as { scope: string; cacheKeySeed: string })
+      .filter(({ scope }) => scope === 'sonarr')
+      .map(({ cacheKeySeed }) => cacheKeySeed);
+    expect(seeds).toEqual(['answering:s2']);
+    // ...and its changes told, with Down counted as not answering.
+    const sonarr = mocks.libraryChanges.mock.calls.filter((call) => (call as unknown[])[0] === 'sonarr');
+    expect(sonarr).toHaveLength(1);
+    const [, instances, result] = sonarr[0] as unknown as [string, unknown[], { failedInstanceIds: string[] }];
+    expect(instances).toHaveLength(2);
+    expect(result.failedInstanceIds).toEqual(['s1']);
+    const health = service.getHealth().sources.find((entry) => entry.source === 'warmCaches');
+    expect(health?.lastError).toBe('sonarr: Down is skipped after repeated failures');
   });
 });
 

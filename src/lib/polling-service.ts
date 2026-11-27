@@ -94,9 +94,19 @@ async function warmLibrary<C, T extends object>(
   // An instance the polls are skipping would only wait out its timeout, and a
   // load missing it is never cached, so this warm could not succeed anyway.
   const instances = await getInstances();
-  const skipped = instances.find(({ connection }) =>
+  const skipped = instances.filter(({ connection }) =>
     backoff.remainingMs({ id: connection.id, version: connection.updatedAt.getTime() }) > 0);
-  if (skipped) throw new Error(`${scope}: ${skipped.connection.label} is skipped after repeated failures`);
+  if (skipped.length > 0) {
+    // Title Added/Deleted still go out for the instances that answer, from a
+    // read of just those (its own cache entry: 'all' must list every instance).
+    const answering = instances.filter((instance) => !skipped.includes(instance));
+    if (onRead && answering.length > 0) {
+      const seed = `answering:${answering.map(({ connection }) => connection.id).sort().join(',')}`;
+      const result = await getCachedTaggedLibrary({ scope, cacheKeySeed: seed, getInstances: async () => answering, fetchOne });
+      await onRead(instances, { ...result, failedInstanceIds: [...result.failedInstanceIds, ...skipped.map(({ connection }) => connection.id)] });
+    }
+    throw new Error(`${scope}: ${skipped[0].connection.label} is skipped after repeated failures`);
+  }
   const result = await getCachedTaggedLibrary({ scope, cacheKeySeed: 'all', getInstances, fetchOne });
   if (onRead) await onRead(instances, result);
   // Counted here: a load this warm joined (or a cache hit) never asks for them.

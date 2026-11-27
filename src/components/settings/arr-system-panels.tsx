@@ -89,8 +89,14 @@ export function useTaskRunner(instanceId: string, { running, setRunning }: TaskR
     return next;
   });
   const isRunning = (name: string) => running.has(`${instanceId}:${name}`);
+  // `running` is state: a double tap lands before the button is disabled, and
+  // would queue two Backups (or two whole-library refreshes).
+  const starting = useRef(new Set<string>());
 
   async function run(taskName: string, label: string) {
+    const key = `${instanceId}:${taskName}`;
+    if (starting.current.has(key)) return;
+    starting.current.add(key);
     setTask(taskName, true);
     try {
       const res = await fetch(withInstanceQuery('/api/admin/arr-system/tasks', instanceId), {
@@ -119,6 +125,7 @@ export function useTaskRunner(instanceId: string, { running, setRunning }: TaskR
     } catch {
       toast.error(`${label} failed`);
     } finally {
+      starting.current.delete(key);
       setTask(taskName, false);
       void queryClient.invalidateQueries({ queryKey: queryKeys.arrSystem('tasks', instanceId) });
       // A backup run by hand (or one that failed half way) changes the list.
