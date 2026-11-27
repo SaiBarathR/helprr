@@ -194,6 +194,8 @@ export default function ArtistEditPage() {
                 <SelectTrigger className="w-[180px] min-w-0 ml-3"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All new albums</SelectItem>
+                  {/* Lidarr's third choice (Sonarr has only the two): without it the field showed empty. */}
+                  <SelectItem value="new">Newly released only</SelectItem>
                   <SelectItem value="none">None</SelectItem>
                 </SelectContent>
               </Select>

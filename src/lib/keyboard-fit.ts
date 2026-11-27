@@ -253,7 +253,7 @@ export function revealFocusedField(node: HTMLElement) {
     const page = box === document.scrollingElement;
     // One in a bar pinned over the page (a toolbar's search box) is on screen
     // however far the page is scrolled; scrolling only made the list jump.
-    if (page && field.closest('.app-tab-bar, .app-status-scrim, .page-toolbar')) return;
+    if (page && field.closest(PINNED_BARS)) return;
     if (!page) {
       if (box.scrollHeight <= box.clientHeight) continue;
       const overflow = getComputedStyle(box).overflowY;
@@ -341,6 +341,25 @@ function pageView(): [number, number] {
  * folder name adds Move Files and the new path above Save, pushing it back
  * under the keyboard.
  */
+/** Bars pinned over the page: a field in one is on screen however far the page is scrolled. */
+const PINNED_BARS = '.app-tab-bar, .app-status-scrim, .page-toolbar';
+
+// How much shorter than the layout viewport the visible part must be for the
+// keyboard to be up (the smallest iPhone keyboard is ~250 px; Safari's own bars
+// change the visible part by less).
+const PAGE_KEYBOARD_MIN_PX = 150;
+
+/**
+ * Whether the keyboard is up, wherever iOS has panned the visible part. Panned
+ * to the bottom (a tall form scrolled to its field, or the page scrolled with
+ * the keyboard up) it covers nothing below the visible part, and the tab bar,
+ * fixed to the layout viewport's bottom, then showed just above the keyboard.
+ */
+function pageKeyboardUp(covered: number, viewport: VisualViewport): boolean {
+  if (covered > 0) return true;
+  return viewport.scale <= 1.01 && document.documentElement.clientHeight - viewport.height > PAGE_KEYBOARD_MIN_PX;
+}
+
 export function followPageKeyboard(main: HTMLElement): () => void {
   const root = document.documentElement;
   let stopFollowing: (() => void) | null = null;
@@ -359,7 +378,7 @@ export function followPageKeyboard(main: HTMLElement): () => void {
   const onFocusIn = (event: FocusEvent) => {
     const field = event.target;
     if (!opensKeyboard(field) || !main.contains(field as Node)) return release();
-    stopFollowing ??= followKeyboard(root, (covered) => root.toggleAttribute('data-page-keyboard', covered > 0));
+    stopFollowing ??= followKeyboard(root, (covered, viewport) => root.toggleAttribute('data-page-keyboard', pageKeyboardUp(covered, viewport)));
     resized?.disconnect();
     const form = field instanceof HTMLElement && 'form' in field ? (field as HTMLInputElement).form : null;
     if (form) resized?.observe(form);
@@ -369,11 +388,41 @@ export function followPageKeyboard(main: HTMLElement): () => void {
     if (opensKeyboard(event.relatedTarget) && main.contains(event.relatedTarget as Node)) return;
     release();
   };
+  // iOS scrolls the page when a field in a sticky toolbar takes focus (it takes
+  // the field for off screen), and the list under it jumped by about the
+  // toolbar's height. A tapped one is focused here instead, moved out of
+  // Safari's sight for a frame so it has nothing to scroll to, as sheets do
+  // (keepIosFromScrolling).
+  let touchStart: { x: number; y: number } | null = null;
+  const onTouchStart = (event: TouchEvent) => {
+    const touch = event.changedTouches[0];
+    touchStart = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  };
+  const onTouchEnd = (event: TouchEvent) => {
+    const field = event.target;
+    const touch = event.changedTouches[0];
+    if (!isTextField(field) || field === document.activeElement || !field.closest(PINNED_BARS) || !touchStart || !touch) return;
+    // A scroll that happens to end on the field is not a tap on it.
+    if (Math.abs(touch.clientX - touchStart.x) > 10 || Math.abs(touch.clientY - touchStart.y) > 10) return;
+    event.preventDefault();
+    field.style.transform = 'translateY(-2000px)';
+    field.focus({ preventScroll: true });
+    requestAnimationFrame(() => { field.style.transform = ''; });
+  };
+  const ios = isIOS();
   document.addEventListener('focusin', onFocusIn);
   main.addEventListener('focusout', onFocusOut);
+  if (ios) {
+    main.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+    main.addEventListener('touchend', onTouchEnd, { capture: true, passive: false });
+  }
   return () => {
     document.removeEventListener('focusin', onFocusIn);
     main.removeEventListener('focusout', onFocusOut);
+    if (ios) {
+      main.removeEventListener('touchstart', onTouchStart, true);
+      main.removeEventListener('touchend', onTouchEnd, true);
+    }
     release();
   };
 }

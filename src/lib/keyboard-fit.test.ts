@@ -778,14 +778,16 @@ describe('revealFocusedField on the page itself', () => {
 });
 
 describe('followPageKeyboard', () => {
-  function setUp(visibleHeight: number) {
+  function setUp(visibleHeight: number, offsetTop = 0) {
     vi.stubGlobal('visualViewport', {
       height: visibleHeight,
-      offsetTop: 0,
+      offsetTop,
       scale: 1,
       addEventListener() {},
       removeEventListener() {},
     });
+    // The layout viewport (jsdom has no layout): the keyboard doesn't change it.
+    Object.defineProperty(document.documentElement, 'clientHeight', { value: window.innerHeight, configurable: true });
     vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
     const main = document.createElement('main');
     const field = document.createElement('input');
@@ -803,7 +805,52 @@ describe('followPageKeyboard', () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     document.documentElement.removeAttribute('data-page-keyboard');
+    Reflect.deleteProperty(document.documentElement, 'clientHeight');
     document.body.replaceChildren();
+  });
+
+  it('on iOS, focuses a tapped toolbar field out of Safari\'s sight, so Safari does not scroll the list to it', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)');
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback));
+    const { main, stop } = setUp(window.innerHeight - 300);
+    const toolbar = document.createElement('div');
+    toolbar.className = 'page-toolbar';
+    const search = document.createElement('input');
+    toolbar.append(search);
+    main.prepend(toolbar);
+    const touch = (type: string, y: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'changedTouches', { value: [{ clientX: 50, clientY: y }] });
+      search.dispatchEvent(event);
+      return event;
+    };
+    try {
+      touch('touchstart', 80);
+      const end = touch('touchend', 80);
+      expect(end.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(search);
+      expect(search.style.transform).toBe('translateY(-2000px)');
+      frames.forEach((frame) => frame(0));
+      expect(search.style.transform).toBe('');
+      // A drag that ends on it is a scroll, not a tap.
+      search.blur();
+      touch('touchstart', 80);
+      expect(touch('touchend', 140).defaultPrevented).toBe(false);
+    } finally {
+      stop();
+    }
+  });
+
+  it('keeps the page marked while iOS has panned the visible part down to the keyboard', () => {
+    // A 300 px keyboard, the visible part panned 300 px down: nothing below it is covered.
+    const { field, stop } = setUp(window.innerHeight - 300, 300);
+    try {
+      field.focus();
+      expect(marked()).toBe(true);
+    } finally {
+      stop();
+    }
   });
 
   it('marks the page while the keyboard is up for one of its fields, through ⌄ to the next', () => {

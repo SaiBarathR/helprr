@@ -115,6 +115,24 @@ describe('edit page root folder', () => {
   });
 });
 
+describe('monitor new albums', () => {
+  it("shows Lidarr's 'new' choice, which most artists have, instead of an empty field", async () => {
+    const saved = ITEM.monitorNewItems;
+    ITEM.monitorNewItems = 'new';
+    try {
+      renderPage();
+      const select = () => screen.getAllByRole('combobox').find((el) =>
+        Array.from((el as HTMLSelectElement).options, (o) => o.value).includes('none')) as HTMLSelectElement | undefined;
+      await waitFor(() => expect(select()?.value).toBe('new'));
+      fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+      await waitFor(() => expect(puts).toHaveLength(1));
+      expect(puts[0].body).toEqual(expect.objectContaining({ monitorNewItems: 'new' }));
+    } finally {
+      ITEM.monitorNewItems = saved;
+    }
+  });
+});
+
 describe('the keyboard', () => {
   it("saves with the keyboard's Go in Folder: Save is its form's only submit button", async () => {
     renderPage();
