@@ -17,7 +17,13 @@ import { SeerrClient } from '@/lib/seerr-client';
 import { resolveConnection, listConnections } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 
-const cachedQBittorrentClients = new Map<string, { configKey: string; client: QBittorrentClient }>();
+// Kept on globalThis, like the connection memo (arr-instances.ts): each API
+// route and the poller get their own copy of this module, and a map per copy
+// meant a qBittorrent session, and a sign-in, per route.
+const qbitClientsGlobal = globalThis as typeof globalThis & {
+  __helprrQBittorrentClients?: Map<string, { configKey: string; client: QBittorrentClient }>;
+};
+const cachedQBittorrentClients = qbitClientsGlobal.__helprrQBittorrentClients ??= new Map();
 
 export function buildJellyfinConnectionFingerprint(connection: ServiceConnection): string {
   return sha256Hex(stableStringify({

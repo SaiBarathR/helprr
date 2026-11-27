@@ -113,6 +113,13 @@ describe('Web Share Target request boundaries', () => {
     expect(response.headers.get('location')).toBe(`/login?next=${encodeURIComponent('/torrents/add')}`);
   });
 
+  it('refuses a signed-out share whose text is too long, rather than taking it for a file', async () => {
+    mocks.requireUser.mockResolvedValue(SIGNED_OUT);
+    const response = await POST(formRequest(new URLSearchParams({ title: 'A page', text: 'x'.repeat(3_000) }).toString()));
+    expect(response.status).toBe(413);
+    expect(response.headers.get('location')).toBeNull();
+  });
+
   it('caps URL-encoded redirect expansion even when each source field is valid', async () => {
     const body = new URLSearchParams({
       title: '🧪'.repeat(256),
@@ -168,6 +175,14 @@ describe('sharing .torrent files', () => {
     expect(response.status).toBe(303);
     expect(response.headers.get('location')).toBe('/torrents/add?shared=files');
     expect(mocks.keepSharedTorrents).toHaveBeenCalledWith('u1', [{ name: 'a.torrent', bytes: TORRENT }]);
+  });
+
+  it('still opens Add when the files could not be kept', async () => {
+    mocks.requireUser.mockResolvedValue({ ok: true, user: ADDER, session: {} });
+    mocks.keepSharedTorrents.mockRejectedValueOnce(new Error('OOM command not allowed'));
+    const response = await shareFiles([{ name: 'a.torrent', bytes: TORRENT }]);
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('/torrents/add?shared=files');
   });
 
   it('reads a torrent larger than the text limit for that user', async () => {

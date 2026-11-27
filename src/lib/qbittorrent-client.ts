@@ -261,17 +261,19 @@ export class QBittorrentClient {
   ): Promise<T> {
     signal?.throwIfAborted();
     await this.ensureAuthenticated();
+    const sent = this.cookie;
     try {
       const response = await this.client.get<T>(endpoint, {
         params,
         signal,
         ...raw,
-        headers: { Cookie: this.cookie! },
+        headers: { Cookie: sent! },
       });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 403) {
-        this.cookie = null;
+        // Only the session this request used: another may already have signed in again.
+        if (this.cookie === sent) this.cookie = null;
         await this.ensureAuthenticated();
         const response = await this.client.get<T>(endpoint, {
           params,
@@ -287,17 +289,19 @@ export class QBittorrentClient {
 
   private async post<T>(endpoint: string, data?: string): Promise<T> {
     await this.ensureAuthenticated();
+    const sent = this.cookie;
     try {
       const response = await this.client.post<T>(endpoint, data, {
         headers: {
-          Cookie: this.cookie!,
+          Cookie: sent!,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
       });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 403) {
-        this.cookie = null;
+        // Only the session this request used: another may already have signed in again.
+        if (this.cookie === sent) this.cookie = null;
         await this.ensureAuthenticated();
         const response = await this.client.post<T>(endpoint, data, {
           headers: {

@@ -648,6 +648,7 @@ describe('pollers on fixed fixtures (golden)', () => {
   it.each([
     ['pollSonarr', 'sonarr', 'Sonarr'],
     ['pollRadarr', 'radarr', 'Radarr'],
+    ['pollLidarr', 'lidarr', 'Lidarr'],
   ] as const)('%s: health that clears sends one restored push after the hold, then nothing', async (method, kind, name) => {
     resetHealthTracking();
     const instance = arrInstance('i1', 'Main', kind, true);
@@ -690,6 +691,7 @@ describe('pollers on fixed fixtures (golden)', () => {
   it.each([
     ['pollSonarr', 'sonarr'],
     ['pollRadarr', 'radarr'],
+    ['pollLidarr', 'lidarr'],
   ] as const)('%s: a warning that clears and returns inside the hold sends nothing; pushes not recorded are retried', async (method, kind) => {
     resetHealthTracking();
     const instance = arrInstance('i1', 'Main', kind, false);

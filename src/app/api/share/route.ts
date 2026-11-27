@@ -14,6 +14,7 @@ import {
   type SharedTorrentFile,
 } from '@/lib/share/shared-torrents';
 import { parseTorrentInfoHash } from '@/lib/torrent-metainfo';
+import { logger } from '@/lib/logger';
 
 const SHARE_BODY_MAX_BYTES = 16 * 1024;
 // The manifest offers Helprr for .torrent files (its `torrent` file field), so
@@ -26,6 +27,9 @@ const SHARE_TEXT_MAX_BYTES = 2_048;
 const SHARE_URL_MAX_BYTES = 2_048;
 const SHARE_REDIRECT_QUERY_MAX_BYTES = 8 * 1024;
 const SHARE_REDIRECT_LOCATION_MAX_BYTES = 8 * 1024;
+
+/** One shared field past its own cap: refused as too large, never taken for a file. */
+class SharedFieldTooLargeError extends BoundedBodyError {}
 
 /**
  * 303 to a *relative* Location.
@@ -72,7 +76,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     // Signed out, only a file makes a share this large (each text field is
     // capped far below it), and a file can't survive the sign-in: sign in, then
     // share again from the Add page's app.
-    if (!auth.ok && error instanceof BoundedBodyError && error.status === 413) {
+    if (!auth.ok && error instanceof BoundedBodyError && error.status === 413 && !(error instanceof SharedFieldTooLargeError)) {
       return redirectOrPayloadTooLarge(`/login?next=${encodeURIComponent('/torrents/add')}`);
     }
     const response = boundedBodyErrorResponse(error);
@@ -98,7 +102,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   // .torrent files open Torrents -> Add with them; a magnet or .torrent link
   // in the text is routed there by the /share page (also after a sign-in).
   if (torrents.length > 0) {
-    await keepSharedTorrents(auth.user.id, torrents);
+    // Not kept (Redis refused the write): Add still opens and asks to share
+    // them again, instead of the share landing on a raw error page.
+    try {
+      await keepSharedTorrents(auth.user.id, torrents);
+    } catch (error) {
+      logger.warn('Shared torrents could not be kept', { error }, { scope: 'share' });
+    }
     return redirectOrPayloadTooLarge('/torrents/add?shared=files');
   }
 
@@ -131,13 +141,13 @@ async function readShared(
   const url = form.get('url');
 
   if (typeof title === 'string' && [...title].length > SHARE_TITLE_MAX_CODE_POINTS) {
-    throw new BoundedBodyError(413, 'Shared payload is too large');
+    throw new SharedFieldTooLargeError(413, 'Shared payload is too large');
   }
   if (typeof text === 'string' && Buffer.byteLength(text, 'utf8') > SHARE_TEXT_MAX_BYTES) {
-    throw new BoundedBodyError(413, 'Shared payload is too large');
+    throw new SharedFieldTooLargeError(413, 'Shared payload is too large');
   }
   if (typeof url === 'string' && Buffer.byteLength(url, 'utf8') > SHARE_URL_MAX_BYTES) {
-    throw new BoundedBodyError(413, 'Shared payload is too large');
+    throw new SharedFieldTooLargeError(413, 'Shared payload is too large');
   }
 
   if (typeof title === 'string' && title) params.set('title', title);

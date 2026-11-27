@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn<(input: { data: Record<string, unknown> }) => Promise<object>>(async () => ({})),
   auditCreate: vi.fn(),
   others: 0,
+  unreachable: false,
   audits: [] as Array<{ operation: string; filesDeleted: boolean | null }>,
   qbit: { getTorrents: vi.fn(async () => [{ hash: 'x', name: 'Night.of.the.Living.Dead', size: 100, progress: 0.5 }]), deleteTorrent: vi.fn(async () => {}) },
   claim: vi.fn(async (): Promise<{ id: string; at: Date } | null> => ({ id: 'md1', at: new Date() })),
@@ -15,6 +16,7 @@ vi.mock('../fallback', () => ({
   releaseClaim: mocks.release,
   // One qBittorrent, the default, as Helprr had before there could be several.
   fallbackTorrentHome: async (hash: string) => {
+    if (mocks.unreachable) return { ok: false, reason: 'unreachable' };
     // As before: qBittorrent's hashes filter, here its answer for that hash.
     const [torrent] = hash ? await mocks.qbit.getTorrents() : [];
     return torrent ? { ok: true, client: mocks.qbit, connection: { id: 'q1' }, torrent } : { ok: false, reason: 'missing' };
@@ -247,6 +249,18 @@ describe('cancelling a manual download', () => {
       await expect(cancelManualDownload(fallback(), { ...none, removeFromClient: true }, actor)).rejects.toThrow('changed meanwhile');
       expect(mocks.qbit.deleteTorrent).not.toHaveBeenCalled();
       expect(mocks.release).not.toHaveBeenCalled();
+    });
+
+    it('says why nothing was removed while a qBittorrent does not answer', async () => {
+      mocks.unreachable = true;
+      try {
+        const cancelling = cancelManualDownload(fallback(), { ...none, removeFromClient: true }, actor);
+        await expect(cancelling).rejects.toBeInstanceOf(ManualDownloadCancelError);
+        await expect(cancelling).rejects.toThrow('A qBittorrent did not answer, so nothing was removed');
+        expect(mocks.qbit.deleteTorrent).not.toHaveBeenCalled();
+      } finally {
+        mocks.unreachable = false;
+      }
     });
 
     it('puts it back as it was when removing it fails, so it can be cancelled again', async () => {

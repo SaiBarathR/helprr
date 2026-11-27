@@ -113,6 +113,22 @@ describe('adding several magnets and links at once', () => {
     expect(mocks.qbit.addTorrentFile).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps at most 25 MB of fetched .torrent files for one add', async () => {
+    // Three valid 9 MB files (a big pieces field): the third would pass 25 MB.
+    const big = (name: string) => {
+      const info = `d4:name${name.length}:${name}12:piece lengthi16384e6:pieces${9 * 1024 * 1024}:${'x'.repeat(9 * 1024 * 1024)}e`;
+      return { bytes: new TextEncoder().encode(`d8:announce4:http4:info${info}e`), hash: createHash('sha1').update(info).digest('hex') };
+    };
+    const files = [big('One'), big('Two'), big('Three')];
+    for (const file of files) mocks.fetchTorrentLink.mockResolvedValueOnce({ kind: 'file', bytes: file.bytes });
+
+    const res = await addLinks(['https://example.org/1.torrent', 'https://example.org/2.torrent', 'https://example.org/3.torrent'].join('\n'));
+    const { results } = await res.json();
+    expect(results.map((item: { result: string }) => item.result)).toEqual(['added', 'added', 'failed']);
+    expect(results[2].error).toBe('These links come to more than 25 MB of .torrent files; add fewer at once');
+    expect(mocks.qbit.addTorrentFile).toHaveBeenCalledTimes(2);
+  });
+
   it('adds a link that redirects to a magnet as that magnet', async () => {
     mocks.fetchTorrentLink.mockResolvedValueOnce({ kind: 'magnet', magnet: magnetOf(3) });
     const res = await addLinks('https://indexer.example.org/download?id=1');

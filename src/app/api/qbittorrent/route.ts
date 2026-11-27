@@ -36,6 +36,9 @@ const LINK_FETCH_CONCURRENCY = 3;
 // The proxy hands a route at most 10 MB of body (Next's proxyClientMaxBodySize,
 // left at its default), so several files share that.
 const MAX_ADD_FORM_BYTES = 10 * 1024 * 1024;
+// Fetched .torrent files one add keeps until it is done: each link may give
+// 10 MB, and twenty of them held at once would be 200 MB.
+const MAX_LINKED_TOTAL_BYTES = 25 * 1024 * 1024;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -670,9 +673,18 @@ async function postHandler(request: NextRequest) {
       : undefined;
 
     // Links are fetched only once everything else has passed.
-    const items = await mapWithLimit(parsedLines.lines, LINK_FETCH_CONCURRENCY, async (line) =>
-      line.kind === 'link' ? resolveLink(line.url, linkRules) : line
-    );
+    let linkedBytes = 0;
+    const items = await mapWithLimit(parsedLines.lines, LINK_FETCH_CONCURRENCY, async (line) => {
+      if (line.kind !== 'link') return line;
+      const item = await resolveLink(line.url, linkRules);
+      if ('kind' in item && item.kind === 'file') {
+        if (linkedBytes + item.bytes.byteLength > MAX_LINKED_TOTAL_BYTES) {
+          return failed('These links come to more than 25 MB of .torrent files; add fewer at once', 413);
+        }
+        linkedBytes += item.bytes.byteLength;
+      }
+      return item;
+    });
     const outcomes = await addTorrents(client, items, {
       ...parsedOptions.options,
       category,

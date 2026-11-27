@@ -85,11 +85,11 @@ type AnimeAutoMapRun = {
  */
 async function warmLibrary<C, T extends object>(
   scope: string,
-  getInstances: () => Promise<Array<{ connection: { id: string; label: string; updatedAt: Date }; client: C }>>,
+  getInstances: () => Promise<Array<{ connection: { id: string; label: string; updatedAt: Date; url: string; apiKey: string }; client: C }>>,
   fetchOne: (client: C) => Promise<T[]>,
   backoff: InstanceBackoff,
   // Reads the list this warm got (the library change alerts).
-  onRead?: (instances: Array<{ connection: { id: string; label: string; updatedAt: Date } }>, result: TaggedLibraryResult<T>) => Promise<void>,
+  onRead?: (instances: Array<{ connection: { id: string; label: string; updatedAt: Date; url: string; apiKey: string } }>, result: TaggedLibraryResult<T>) => Promise<void>,
 ): Promise<void> {
   // An instance the polls are skipping would only wait out its timeout, and a
   // load missing it is never cached, so this warm could not succeed anyway.
@@ -1105,7 +1105,15 @@ export class PollingService {
           );
           if (unchanged && !changedByUser) continue;
           if (!savedAlt || changedByUser) {
-            savedAlt = { alt_dl_limit: current.alt_dl_limit, alt_up_limit: current.alt_up_limit };
+            // Per limit: one still at the rule's value is not one the user
+            // changed, so its saved value stays (else the rule's value would be
+            // put back as theirs when the rule ends).
+            const theirs = (field: 'alt_dl_limit' | 'alt_up_limit', ruleBytes: number) =>
+              savedAlt && changedByUser && current[field] === ruleBytes ? savedAlt[field] : current[field];
+            savedAlt = {
+              alt_dl_limit: theirs('alt_dl_limit', (applied?.downloadKbps ?? 0) * 1024),
+              alt_up_limit: theirs('alt_up_limit', (applied?.uploadKbps ?? 0) * 1024),
+            };
             await saveAltLimits(instanceId, { savedAlt, wroteGlobal });
             // Held before the write: if qBittorrent takes it but the answer is
             // lost, the next cycle must not save the rule's values as the user's.
