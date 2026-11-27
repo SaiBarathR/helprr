@@ -147,7 +147,15 @@ export default function MovieEditPage() {
     <div className="animate-content-in">
       <PageHeader title={`Edit ${movie.title}`} backHref={detailHref} />
 
-      <div className="mx-auto max-w-2xl px-4 space-y-6 mt-4 pb-8">
+      {/* A form, so the keyboard's Go saves and, with the keyboard up, the page
+          keeps Save above it while the folder name is typed (followPageKeyboard). */}
+      <form
+        className="mx-auto max-w-2xl px-4 space-y-6 mt-4 pb-8"
+        onSubmit={(event) => {
+          event.preventDefault();
+          handleSave();
+        }}
+      >
         {/* Settings Section */}
         <div className="grouped-section">
           <div className="grouped-section-title">Settings</div>
@@ -254,14 +262,15 @@ export default function MovieEditPage() {
         {/* Action Buttons */}
         <div className="flex gap-3 pt-2">
           <Button
+            type="submit"
             className="flex-1"
-            onClick={handleSave}
             disabled={saving || folderError !== null}
           >
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save Changes
           </Button>
           <Button
+            type="button"
             variant="outline"
             className="flex-1"
             onClick={() => goBackOr(router, detailHref)}
@@ -270,7 +279,7 @@ export default function MovieEditPage() {
             Cancel
           </Button>
         </div>
-      </div>
+      </form>
 
       <ConfirmDialog
         open={confirmMove}

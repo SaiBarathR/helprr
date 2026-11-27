@@ -31,6 +31,8 @@ let puts: { url: string; body: Record<string, unknown> }[];
 
 beforeEach(() => {
   puts = [];
+  // In a form, Radix's Switch adds a hidden input that measures its control.
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(input, 'http://localhost');
     if (init?.method === 'PUT') {
@@ -110,5 +112,21 @@ describe('edit page root folder', () => {
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0].url).toBe('/api/lidarr/7?instanceId=inst-2');
     expect(puts[0].body).toEqual(expect.objectContaining({ path: ITEM.path }));
+  });
+});
+
+describe('the keyboard', () => {
+  it("saves with the keyboard's Go in Folder: Save is its form's only submit button", async () => {
+    renderPage();
+    const folder = () => screen.getByLabelText('Folder') as HTMLInputElement;
+    await waitFor(() => expect(folder().value).toBe('Band'));
+    // The form's submit button is the one a sheet or page keeps above the keyboard.
+    const form = folder().form!;
+    expect(form).not.toBeNull();
+    expect([...form.elements].filter((el) => (el as HTMLButtonElement).type === 'submit')).toEqual([
+      screen.getByRole('button', { name: 'Save Changes' }),
+    ]);
+    fireEvent.submit(form);
+    await waitFor(() => expect(puts).toHaveLength(1));
   });
 });

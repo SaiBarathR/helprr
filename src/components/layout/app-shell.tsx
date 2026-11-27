@@ -10,6 +10,7 @@ import { BrowseFreshnessNotice } from '@/components/browse-freshness-notice';
 import { getQueryClient } from '@/lib/query-client';
 import { RouteScrollRestoration } from '@/components/layout/route-scroll-restoration';
 import { DemoBanner } from '@/components/layout/demo-banner';
+import { followPageKeyboard } from '@/lib/keyboard-fit';
 
 export function AppShell({ children, demo = false }: { children: React.ReactNode; demo?: boolean }) {
   const mainRef = useRef<HTMLElement>(null);
@@ -30,6 +31,13 @@ export function AppShell({ children, demo = false }: { children: React.ReactNode
     observer?.observe(main);
     window.addEventListener('resize', measure);
     return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
+
+  // A page's own fields with the keyboard up: the tab bar steps aside and the
+  // field and its form's button are kept in view (sheets do this themselves).
+  useEffect(() => {
+    const main = mainRef.current;
+    return main ? followPageKeyboard(main) : undefined;
   }, []);
 
   // Waits for the saved prefs: the hydration render uses the store defaults,

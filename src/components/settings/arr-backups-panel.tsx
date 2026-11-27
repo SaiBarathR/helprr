@@ -353,6 +353,10 @@ function BackupStep({
   return (
     <form
       ref={formRef}
+      // Kept whole above the keyboard when it fits (keyboard-fit): with the
+      // typed word focused, the password and the buttons were behind the
+      // sheet's Done, and on Download the heading went once the keyboard rose.
+      data-keyboard-whole=""
       className="mb-2 space-y-4 px-1"
       onSubmit={(e) => {
         e.preventDefault();
