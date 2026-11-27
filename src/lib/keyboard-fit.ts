@@ -307,15 +307,17 @@ export function revealFocusedField(node: HTMLElement) {
 /**
  * The part of the page on screen, top and bottom in client coordinates: the
  * visual viewport (the keyboard covers the rest of the layout viewport), under
- * the bars pinned over its top (the top nav, a page's sticky toolbar) and, in
- * a Safari tab, above Safari's floating address bar.
+ * the bars pinned over its top (the top nav, or with the nav at the bottom the
+ * status-bar scrim, then a page's sticky toolbar) and, in a Safari tab, above
+ * Safari's floating address bar.
  */
 function pageView(): [number, number] {
   const viewport = window.visualViewport;
   let top = viewport?.offsetTop ?? 0;
   const bottom = top + (viewport?.height ?? window.innerHeight) - (safariBarOverKeyboard() ? 60 : 0);
-  // In page order, so a toolbar pinned under the top nav is counted after it.
-  for (const bar of document.querySelectorAll<HTMLElement>('.app-tab-bar, .page-toolbar')) {
+  // In page order, so a toolbar pinned under the top nav or the scrim is
+  // counted after it (a hidden one has no box and is skipped).
+  for (const bar of document.querySelectorAll<HTMLElement>('.app-tab-bar, .app-status-scrim, .page-toolbar')) {
     const rect = bar.getBoundingClientRect();
     if (rect.top <= top + 1 && rect.bottom > top) top = rect.bottom;
   }
@@ -332,28 +334,42 @@ function pageView(): [number, number] {
  * scrolls as little as it takes to show the field, the centres of its
  * neighbours and, from its last field, its form's submit button, as a sheet
  * does (revealFocusedField): Save sat half under the keyboard's Done bar.
+ * Again when the field's form changes size while the keyboard is up: a new
+ * folder name adds Move Files and the new path above Save, pushing it back
+ * under the keyboard.
  */
 export function followPageKeyboard(main: HTMLElement): () => void {
   const root = document.documentElement;
   let stopFollowing: (() => void) | null = null;
+  const resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
+    if (root.hasAttribute('data-page-keyboard')) revealFocusedField(root);
+  });
   const release = () => {
     stopFollowing?.();
     stopFollowing = null;
+    resized?.disconnect();
     root.removeAttribute('data-page-keyboard');
   };
+  // On the document, not `main`: a focused field that is removed (Go saves and
+  // the page moves on) fires no focusout, and a sheet's field focused after
+  // that must not leave this following the keyboard it opens.
   const onFocusIn = (event: FocusEvent) => {
-    if (stopFollowing || !opensKeyboard(event.target) || !main.contains(event.target as Node)) return;
-    stopFollowing = followKeyboard(root, (covered) => root.toggleAttribute('data-page-keyboard', covered > 0));
+    const field = event.target;
+    if (!opensKeyboard(field) || !main.contains(field as Node)) return release();
+    stopFollowing ??= followKeyboard(root, (covered) => root.toggleAttribute('data-page-keyboard', covered > 0));
+    resized?.disconnect();
+    const form = field instanceof HTMLElement && 'form' in field ? (field as HTMLInputElement).form : null;
+    if (form) resized?.observe(form);
   };
   const onFocusOut = (event: FocusEvent) => {
     // Focus going on to another field of the page keeps the keyboard up.
     if (opensKeyboard(event.relatedTarget) && main.contains(event.relatedTarget as Node)) return;
     release();
   };
-  main.addEventListener('focusin', onFocusIn);
+  document.addEventListener('focusin', onFocusIn);
   main.addEventListener('focusout', onFocusOut);
   return () => {
-    main.removeEventListener('focusin', onFocusIn);
+    document.removeEventListener('focusin', onFocusIn);
     main.removeEventListener('focusout', onFocusOut);
     release();
   };
@@ -428,9 +444,15 @@ function sendButton(form: HTMLFormElement) {
   return rect.bottom > rect.top ? { el, rect } : null;
 }
 
-/** A field the keyboard's ⌃ / ⌄ arrows go to: shown, enabled, typed into or picked from. */
+/**
+ * A field the keyboard's ⌃ / ⌄ arrows go to: shown, enabled, typed into or
+ * picked from, and in the tab order. They follow it, so a control taken out
+ * of it is no stop: Radix's Select puts a hidden <select tabindex="-1"> beside
+ * its button inside a form, and counted as the field above Folder it kept the
+ * Edit pages' Save under the keyboard.
+ */
 function isArrowStop(el: HTMLElement) {
-  if (!(isTextField(el) || el instanceof HTMLSelectElement) || el.disabled || el.closest('[hidden], [inert]')) return false;
+  if (!(isTextField(el) || el instanceof HTMLSelectElement) || el.disabled || el.tabIndex < 0 || el.closest('[hidden], [inert]')) return false;
   return !(el instanceof HTMLInputElement && el.type === 'hidden');
 }
 

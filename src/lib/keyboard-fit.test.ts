@@ -116,7 +116,7 @@ describe('revealFocusedField', () => {
     expect(box.scrollTop).toBe(0);
   });
 
-  it('skips fields the arrows do not go to: hidden or disabled', () => {
+  it('skips fields the arrows do not go to: hidden, disabled or out of the tab order', () => {
     const { node, box, fields } = form(3, { pitch: 100 });
     // Field 3 would need a scroll; hidden (the password manager's username) or disabled, it is no stop.
     fields[2].hidden = true;
@@ -124,6 +124,11 @@ describe('revealFocusedField', () => {
     expect(box.scrollTop).toBe(0);
     fields[2].hidden = false;
     fields[2].disabled = true;
+    focus(node, fields[1]);
+    expect(box.scrollTop).toBe(0);
+    // Radix Select's hidden <select tabindex="-1"> in a form.
+    fields[2].disabled = false;
+    fields[2].tabIndex = -1;
     focus(node, fields[1]);
     expect(box.scrollTop).toBe(0);
   });
@@ -730,6 +735,23 @@ describe('revealFocusedField on the page itself', () => {
     expect(save.getBoundingClientRect().bottom).toBeLessThanOrEqual(400);
   });
 
+  it('counts the header pinned under the status-bar scrim when the nav is at the bottom', () => {
+    const { folder, scrolled } = page();
+    // The scrim covers 0–59 (the status bar), the toolbar sticks under it at 59–103.
+    const scrim = document.createElement('div');
+    scrim.className = 'app-status-scrim';
+    vi.spyOn(scrim, 'getBoundingClientRect').mockReturnValue({ top: 0, bottom: 59 } as DOMRect);
+    const bar = document.createElement('header');
+    bar.className = 'page-toolbar';
+    vi.spyOn(bar, 'getBoundingClientRect').mockReturnValue({ top: 59, bottom: 103 } as DOMRect);
+    document.body.prepend(scrim, bar);
+    // The field at 120–156, Save 300 px lower: lifting Save would put the field under the header.
+    vi.mocked(folder.getBoundingClientRect).mockImplementation(() => ({ top: 120 - scrolled(), bottom: 156 - scrolled() }) as DOMRect);
+    folder.focus();
+    revealFocusedField(document.documentElement);
+    expect(scrolled()).toBe(0);
+  });
+
   it('keeps the field below a sticky toolbar rather than Save when both do not fit', () => {
     const { folder, scrolled } = page({ toolbar: true });
     // The field at 60–96, just under the 44 px toolbar, and Save 340 px lower.
@@ -781,6 +803,48 @@ describe('followPageKeyboard', () => {
     other.focus();
     stop();
     expect(marked()).toBe(false);
+  });
+
+  it('lets go once a focused field is removed without a focusout, when a sheet\'s field takes focus', () => {
+    const { field, sheet } = setUp(window.innerHeight - 300);
+    field.focus();
+    expect(marked()).toBe(true);
+    // Go saved and the page moved on: browsers fire no focusout for a removed field.
+    field.addEventListener('focusout', (event) => event.stopImmediatePropagation(), { capture: true });
+    field.remove();
+    sheet.focus();
+    expect(marked()).toBe(false);
+  });
+
+  it('shows Save again when the form grows under the field while the keyboard is up', () => {
+    let grow: () => void = () => {};
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: () => void) { grow = callback; }
+      observe() {}
+      disconnect() {}
+    });
+    Object.defineProperty(document, 'scrollingElement', { value: document.documentElement, configurable: true });
+    let scrolled = 0;
+    const { main } = setUp(400);
+    vi.mocked(window.scrollBy).mockImplementation(((_x: number, y: number) => { scrolled += y; }) as typeof window.scrollBy);
+    const form = document.createElement('form');
+    const folder = document.createElement('input');
+    const save = document.createElement('button');
+    save.type = 'submit';
+    form.append(folder, save);
+    main.append(form);
+    let saveTop = 340;
+    vi.spyOn(folder, 'getBoundingClientRect').mockImplementation(() => ({ top: 200 - scrolled, bottom: 236 - scrolled }) as DOMRect);
+    vi.spyOn(save, 'getBoundingClientRect').mockImplementation(() => ({ top: saveTop - scrolled, bottom: saveTop + 44 - scrolled }) as DOMRect);
+    folder.focus();
+    expect(marked()).toBe(true);
+    expect(scrolled).toBe(0);
+    // A new name adds Move Files and the new path between the field and Save.
+    saveTop = 460;
+    grow();
+    expect(save.getBoundingClientRect().bottom).toBeLessThanOrEqual(400);
+    expect(folder.getBoundingClientRect().top).toBeGreaterThanOrEqual(0);
+    Reflect.deleteProperty(document, 'scrollingElement');
   });
 
   it('leaves the page alone for a field in a sheet, and with no keyboard up', () => {
