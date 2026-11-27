@@ -464,6 +464,14 @@ describe('download', () => {
     expect(mocks.audit).not.toHaveBeenCalled();
   });
 
+  it("lets the app's stream go when the audit row can't be written", async () => {
+    const stream = new Readable({ read() {} });
+    mocks.admin.downloadBackup.mockResolvedValue({ stream, contentType: 'application/zip' });
+    mocks.audit.mockRejectedValueOnce(new Error('database unavailable'));
+    expect((await download('son-1', '222')).status).toBe(500);
+    expect(stream.destroyed).toBe(true);
+  });
+
   it("stops the app's stream when the download is abandoned", async () => {
     const stream = new Readable({ read() {} });
     mocks.admin.downloadBackup.mockResolvedValue({ stream, contentType: 'application/zip' });

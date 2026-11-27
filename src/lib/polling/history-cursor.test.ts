@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/db', () => ({ prisma: {} }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() } }));
@@ -12,12 +12,16 @@ const client = (records: Rec[]) => ({
 const unset = { lastHistoryDate: null, lastHistoryId: null, lastHistorySeenIds: [] as number[] };
 
 describe('history cursor at the first look', () => {
+  afterEach(() => vi.useRealTimers());
+
   it('a new instance with no history yet pushes its first record', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-26T14:00:00Z'), toFake: ['Date'] });
     // First poll: the app has recorded nothing.
     const first = await fetchNewHistoryPages(client([]), unset);
     expect(first.newRecords).toEqual([]);
     const cursor = advanceHistoryCursor(first.newRecords, first.allFetched, unset);
-    expect(cursor.lastHistoryDate).toEqual(new Date(0));
+    // An hour before the look, for an app whose clock runs a little behind.
+    expect(cursor.lastHistoryDate).toEqual(new Date('2026-11-26T13:00:00Z'));
 
     // Next poll: its first grab is new, not a silent starting point.
     const grab = { id: 1, date: '2026-11-26T14:10:00Z' };
@@ -26,6 +30,16 @@ describe('history cursor at the first look', () => {
     const after = advanceHistoryCursor(next.newRecords, next.allFetched, cursor);
     expect(after.lastHistoryDate).toEqual(new Date(grab.date));
     expect(after.lastHistoryId).toBe(1);
+  });
+
+  it('does not push older records that appear after an empty first look (a restored backup)', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-26T14:00:00Z'), toFake: ['Date'] });
+    const first = await fetchNewHistoryPages(client([]), unset);
+    const cursor = advanceHistoryCursor(first.newRecords, first.allFetched, unset);
+
+    const restored = [{ id: 900, date: '2026-10-02T09:00:00Z' }, { id: 899, date: '2026-10-01T09:00:00Z' }];
+    const next = await fetchNewHistoryPages(client(restored), cursor);
+    expect(next.newRecords).toEqual([]);
   });
 
   it('an instance that already has history still starts from its newest record, sending nothing', async () => {

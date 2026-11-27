@@ -24,8 +24,8 @@ vi.mock('./shared', async (importOriginal) => ({
 
 import { diffLibrary, notifyLibraryChanges, type LibraryItem } from './library-changes';
 
-const main = { connection: { id: 's1', label: 'Main', updatedAt: new Date(1000) } };
-const anime = { connection: { id: 's2', label: 'Anime', updatedAt: new Date(1000) } };
+const main = { connection: { id: 's1', label: 'Main', url: 'http://sonarr:8989', apiKey: 'key-1' } };
+const anime = { connection: { id: 's2', label: 'Anime', url: 'http://sonarr-anime:8989', apiKey: 'key-2' } };
 const series = (id: number, title: string, year?: number, instanceId = 's1'): LibraryItem => ({ id, title, year, instanceId });
 const read = (items: LibraryItem[], failedInstanceIds: string[] = [], cached = false) => ({ items, failedInstanceIds, cached });
 const noGrouping = async () => false;
@@ -42,10 +42,10 @@ beforeEach(() => {
 
 describe('diffLibrary', () => {
   it('compares only with a list of the same connection version', () => {
-    const known = { version: 1, titles: [[1, 'A'], [2, 'B']] as Array<[number, string]> };
-    expect(diffLibrary(known, 1, [[2, 'B'], [3, 'C']])).toEqual({ added: [[3, 'C']], deleted: [[1, 'A']] });
-    expect(diffLibrary(known, 2, [[3, 'C']])).toBeNull();
-    expect(diffLibrary(null, 1, [[3, 'C']])).toBeNull();
+    const known = { version: 'v1', titles: [[1, 'A'], [2, 'B']] as Array<[number, string]> };
+    expect(diffLibrary(known, 'v1', [[2, 'B'], [3, 'C']])).toEqual({ added: [[3, 'C']], deleted: [[1, 'A']] });
+    expect(diffLibrary(known, 'v2', [[3, 'C']])).toBeNull();
+    expect(diffLibrary(null, 'v1', [[3, 'C']])).toBeNull();
   });
 });
 
@@ -95,9 +95,16 @@ describe('notifyLibraryChanges', () => {
 
   it('starts again silently when the connection changed (another address may be another library)', async () => {
     await notifyLibraryChanges('sonarr', [main], read([series(1, 'Severance')]), noGrouping);
-    const edited = { connection: { ...main.connection, updatedAt: new Date(2000) } };
+    const edited = { connection: { ...main.connection, url: 'http://other-sonarr:8989' } };
     await notifyLibraryChanges('sonarr', [edited], read([series(9, 'Something Else')]), noGrouping);
     expect(mocks.notify).not.toHaveBeenCalled();
+  });
+
+  it('keeps comparing after a rename, which changes nothing about the library', async () => {
+    await notifyLibraryChanges('sonarr', [main], read([series(1, 'Severance')]), noGrouping);
+    const renamed = { connection: { ...main.connection, label: 'Main 4K' } };
+    await notifyLibraryChanges('sonarr', [renamed], read([series(1, 'Severance'), series(3, 'Pluribus', 2025)]), noGrouping);
+    expect(sent()).toEqual([{ eventType: 'titleAdded', title: 'Series Added', body: 'Pluribus (2025)', url: '/series/3?instance=s1' }]);
   });
 
   it('records a first list only from a live read, never from the cache (it may predate a new or re-pointed instance)', async () => {

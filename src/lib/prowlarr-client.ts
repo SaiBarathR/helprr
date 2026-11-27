@@ -326,6 +326,8 @@ interface CommandResponse {
 // Prowlarr reports validation failures in the response body; surface those as
 // the error message instead of axios's generic status text.
 function throwUpstreamMessage(error: unknown): never {
+  // A 404 keeps its status: routes answer an app deleted while the page was open with 404.
+  if (axios.isAxiosError(error) && error.response?.status === 404) throw error;
   if (axios.isAxiosError(error) && error.response?.data) {
     const data = error.response.data;
     // Prowlarr's messages can quote an indexer URL with its key in it, and

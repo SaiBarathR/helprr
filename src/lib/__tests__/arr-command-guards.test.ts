@@ -57,8 +57,8 @@ const member = { id: 'member-1', username: 'member', role: 'member', template: '
 const forbidden = () => ({ ok: false, response: Response.json({ error: 'Forbidden' }, { status: 403 }) });
 
 type Handler = (request: NextRequest) => Promise<Response>;
-const post = (handler: Handler, path: string, body: unknown) =>
-  handler(new NextRequest(`http://helprr.test${path}`, { method: 'POST', body: JSON.stringify(body) }));
+const post = (handler: Handler, path: string, body: unknown, contentType = 'application/json') =>
+  handler(new NextRequest(`http://helprr.test${path}`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': contentType } }));
 
 const allUpstream = () => [
   ...Object.values(mocks.sonarr),
@@ -244,6 +244,12 @@ describe.each([
   { service: 'radarr', handler: radarrLibraryCommand as Handler, client: mocks.radarr, instanceId: 'rad-1', names: ['RssSync', 'RefreshMovie', 'RefreshCollections'] },
 ])('POST /api/$service/library-command', ({ service, handler, client, instanceId, names }) => {
   const send = (body: unknown, query = `?instanceId=${instanceId}`) => post(handler, `/api/${service}/library-command${query}`, body);
+
+  it('refuses a text/plain post, which a form on another site can send', async () => {
+    const res = await post(handler, `/api/${service}/library-command?instanceId=${instanceId}`, { name: names[0] }, 'text/plain');
+    expect(res.status).toBe(415);
+    expect(allUpstream().every((fn) => fn.mock.calls.length === 0)).toBe(true);
+  });
 
   it.each(names)('an admin runs %s without ids on the instance named', async (name) => {
     const res = await send({ name });

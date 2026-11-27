@@ -216,6 +216,10 @@ export async function fetchNewHistoryPages<T extends { id: number; date: string 
   return { allFetched, newRecords: filterNewHistory(allFetched, cursor) };
 }
 
+// How far before the first look an empty history's start is put: the app's
+// clock may run a little behind Helprr's.
+const FIRST_LOOK_CLOCK_MARGIN_MS = 60 * 60 * 1000;
+
 export function advanceHistoryCursor(
   processed: { id: number; date: string }[],
   allFetched: { id: number; date: string }[],
@@ -224,9 +228,10 @@ export function advanceHistoryCursor(
   // An empty history at the first look is a known start, not an unknown one:
   // everything the app records from now on is new. Left unset, the first
   // record ever (a new instance's first grab or import) would be taken as the
-  // starting point instead, and never pushed.
+  // starting point instead, and never pushed. From this look, not from 1970:
+  // older records that appear later (a restored backup) are not news.
   if (!prev.lastHistoryDate && allFetched.length === 0) {
-    return { lastHistoryDate: new Date(0), lastHistoryId: null, lastHistorySeenIds: [] };
+    return { lastHistoryDate: new Date(Date.now() - FIRST_LOOK_CLOCK_MARGIN_MS), lastHistoryId: null, lastHistorySeenIds: [] };
   }
   if (!prev.lastHistoryDate && allFetched.length > 0 && processed.length === 0) {
     const newestDate = new Date(allFetched[0].date);

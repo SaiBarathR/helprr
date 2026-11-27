@@ -101,8 +101,10 @@ linked release notes. To stop the check, turn off **Check for updates** in
 On the same page admins see each Sonarr, Radarr, Lidarr and Prowlarr version, and
 **update available** when the app itself offers a newer one. Helprr never installs it:
 update the app the way you installed it. Tap the app's row for its **Tasks** (each
-scheduled task's interval and last and next run, with **Run** for the ones that can't
-install an update or delete files or history) and **Logs** (its recent warnings and
+scheduled task's interval and last and next run, with **Run** for the routine ones: never
+one that installs an update or deletes files or titles. Housekeeping clears only rows left
+by titles already deleted, and Prowlarr's Application Indexer Sync, as on its schedule,
+removes indexers from an app set to Full Sync) and **Logs** (its recent warnings and
 errors, with addresses cut to their host and keys, passwords and magnet links removed).
 The **Tasks** tab ends with **Restart** and **Shut down**, each after a confirmation.
 Helprr can't start an app it shut down: start it where it runs (some Docker images and

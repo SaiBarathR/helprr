@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { boundedBodyErrorResponse, readBoundedJson } from '@/lib/server/bounded-body';
 import { logger } from '@/lib/logger';
 import { RUNNABLE_TASKS } from '@/lib/arr-system';
 import { NO_STORE, resolveSystemTarget, toCommandResult, toSystemTasks } from '@/lib/server/arr-system';
@@ -26,7 +27,10 @@ async function postHandler(request: NextRequest) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
   try {
-    const body: unknown = await request.json().catch(() => null);
+    // JSON only, as for restart and shut down: a form on a sibling subdomain (the
+    // same site, for the session cookie) can post text/plain, but not JSON,
+    // without the browser asking first, and this takes no password.
+    const body: unknown = await readBoundedJson(request, 1024);
     const name = body && typeof body === 'object' ? (body as { name?: unknown }).name : undefined;
     if (typeof name !== 'string' || !name) {
       return NextResponse.json({ error: 'Task name is required' }, { status: 400 });
@@ -49,6 +53,8 @@ async function postHandler(request: NextRequest) {
     // The sheet needs only the id, to follow the run.
     return NextResponse.json(result);
   } catch (error) {
+    const refused = boundedBodyErrorResponse(error);
+    if (refused) return refused;
     return upstreamErrorResponse(error, 'Failed to run task');
   }
 }

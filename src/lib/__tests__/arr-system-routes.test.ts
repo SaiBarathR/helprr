@@ -209,6 +209,14 @@ describe('GET tasks', () => {
 });
 
 describe('POST tasks (Run now)', () => {
+  it('refuses a text/plain post, which a form on another site can send', async () => {
+    const res = await tasksPost(new NextRequest('http://localhost/api/admin/arr-system/tasks?instanceId=rad-1', {
+      method: 'POST', body: JSON.stringify({ name: 'CheckHealth' }), headers: { 'Content-Type': 'text/plain' },
+    }));
+    expect(res.status).toBe(415);
+    expect(mocks.client.runTask).not.toHaveBeenCalled();
+  });
+
   it('runs an allowed task on the instance named and passes on only id, name and status', async () => {
     const res = await run('rad-1', 'CheckHealth');
     expect(res.status).toBe(200);

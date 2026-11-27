@@ -16,6 +16,10 @@ beforeAll(async () => {
     req.on('data', (chunk) => { raw += chunk; });
     req.on('end', () => {
       seen.push({ method: req.method ?? '', url: req.url ?? '', body: raw ? JSON.parse(raw) : undefined });
+      if (req.url === '/api/v1/applications/77') {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ message: 'NotFound' }));
+      }
       res.writeHead(req.method === 'POST' && req.url === '/api/v1/applications' ? 201 : 202, { 'Content-Type': 'application/json' });
       // Prowlarr answers app writes with whole apps, keys included.
       res.end(JSON.stringify(req.url === '/api/v1/applications/bulk' ? [APP] : { ...APP, id: 9, name: 'new' }));
@@ -37,6 +41,11 @@ describe('ProwlarrClient apps', () => {
   it('saves one app back unchanged at its own address', async () => {
     await new ProwlarrClient(base, 'key').resaveApplication(APP as never);
     expect(seen).toEqual([{ method: 'PUT', url: '/api/v1/applications/4', body: APP }]);
+  });
+
+  it('keeps the 404 for an app deleted meanwhile, so the route can answer it', async () => {
+    await expect(new ProwlarrClient(base, 'key').resaveApplication({ ...APP, id: 77 } as never))
+      .rejects.toMatchObject({ response: { status: 404 } });
   });
 
   it('keeps only the id and name of an added app', async () => {

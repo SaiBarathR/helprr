@@ -1,4 +1,4 @@
-// When a health poll (Sonarr, Radarr, Prowlarr) sends "Health Warning" or
+// When a health poll (Sonarr, Radarr, Lidarr, Prowlarr) sends "Health Warning" or
 // "Health Restored", and which hash it stores.
 import crypto from 'crypto';
 import { redactHealthMessage } from '@/lib/arr-health';
@@ -59,11 +59,12 @@ export function healthTransition(
 }
 
 /**
- * Sonarr's and Radarr's health pushes for one instance; returns the hash to
- * store. Both open that instance's health sheet on Settings → Service status.
+ * Sonarr's, Radarr's and Lidarr's health pushes for one instance; returns the
+ * hash to store. Each opens that instance's health sheet on Settings → Service
+ * status.
  */
 export async function notifyArrHealth(args: {
-  service: 'sonarr' | 'radarr';
+  service: 'sonarr' | 'radarr' | 'lidarr';
   instanceId: string;
   instanceLabel: string;
   instanceCount: number;
@@ -75,7 +76,7 @@ export async function notifyArrHealth(args: {
   const decision = healthTransition(instanceId, state.lastHealthHash, healthHash, health.length);
   if (!decision.notify) return decision.save;
 
-  const name = service === 'sonarr' ? 'Sonarr' : 'Radarr';
+  const name = service === 'sonarr' ? 'Sonarr' : service === 'radarr' ? 'Radarr' : 'Lidarr';
   const url = arrHealthHref(service, instanceId);
   const metadata = { source: service, instanceId, redirect: url };
   if (decision.notify === 'warning') {

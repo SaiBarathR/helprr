@@ -13,8 +13,9 @@ export function isSystemServiceType(type: unknown): type is SystemServiceType {
 
 /**
  * The scheduled tasks Run now may start, per app, by task name: the app's own
- * scheduled work, which can neither install an update nor delete files,
- * library titles or history. Some do real work, as on their schedule: RSS
+ * scheduled work, which can neither install an update nor delete files or
+ * library titles (Housekeeping clears only history and other rows left by
+ * titles already deleted). Some do real work, as on their schedule: RSS
  * Sync can grab, Refresh Monitored Downloads (every minute anyway) imports
  * finished downloads, a refresh run by hand rescans every title rather than
  * the stale ones, Refresh Collections adds a monitored collection's missing

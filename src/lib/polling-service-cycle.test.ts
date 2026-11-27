@@ -759,6 +759,20 @@ describe('bandwidth schedule', () => {
     expect(qbit.prefs).toEqual({ ...USER_PREFS, alt_dl_limit: 80 * 1024, alt_up_limit: 40 * 1024 });
   });
 
+  it('keeps the saved value of the alternative limit the user did not change', async () => {
+    const qbit = fakeQbit(1);
+    const { apply } = await serviceWith(qbit);
+    await apply(context([whicheverRule]));
+
+    // Only the download limit changed; the upload one is still the rule's.
+    qbit.prefs.alt_dl_limit = 80 * 1024;
+    await apply(context([whicheverRule]));
+    expect(savedAlt.store.get('q1')).toEqual({ savedAlt: { alt_dl_limit: 80 * 1024, alt_up_limit: 20_480 }, wroteGlobal: false });
+
+    await apply(context([]));
+    expect(qbit.prefs).toEqual({ ...USER_PREFS, alt_dl_limit: 80 * 1024 });
+  });
+
   it('leaves the alternative limits alone when it cannot save a copy first', async () => {
     const qbit = fakeQbit(1);
     const { apply } = await serviceWith(qbit);

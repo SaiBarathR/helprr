@@ -10,8 +10,7 @@ import { PollNotificationCollector } from '@/lib/notification-grouping';
 import { fetchAllQueueRecords } from '@/lib/activity-queue';
 import { getMediaHrefFromIds } from '@/lib/media-href';
 import crypto from 'crypto';
-import { redactHealthMessage } from '@/lib/arr-health';
-import { arrHealthHref } from '@/lib/arr-health-link';
+import { notifyArrHealth } from './health-transition';
 import { importFailureBody, downloadFailureBody, buildTagMap, mediaFilterMeta, readQueueSnapshots, errorMessage, getPollingState, historyCursorFromState, fetchNewHistoryPages, advanceHistoryCursor, notifyAndLog, instanceTitle, type CycleContext, type QueueSnapshot } from './shared';
 
 export async function pollLidarr(context: CycleContext) {
@@ -175,17 +174,12 @@ export async function pollLidarr(context: CycleContext) {
 
       const health = await client.getHealth();
       const healthHash = crypto.createHash('md5').update(JSON.stringify(health)).digest('hex');
-      if (state.lastHealthHash && healthHash !== state.lastHealthHash && health.length > 0) {
-        await notifyAndLog({
-          eventType: 'healthWarning',
-          title: instanceTitle('Lidarr Health Warning', instanceLabel, n),
-          body: health.map((h) => redactHealthMessage(h.message)).join('; ').slice(0, 200),
-          url: arrHealthHref('lidarr', instanceId),
-          // Tagged like Lidarr's other events, so the music.view rule (push and the
-          // digest without Lidarr) applies: a health message can name an artist.
-          metadata: { source: 'lidarr', instanceId, redirect: arrHealthHref('lidarr', instanceId) },
-        }, { service: 'lidarr', instanceId, reason: 'health-changed', healthCount: health.length });
-      }
+      // Warning and Restored as for Sonarr and Radarr. Tagged source 'lidarr' like
+      // Lidarr's other events, so the music.view rule (push and the digest
+      // without Lidarr) applies: a health message can name an artist.
+      const savedHealthHash = await notifyArrHealth({
+        service: 'lidarr', instanceId, instanceLabel, instanceCount: n, state, health, healthHash,
+      });
 
       await collector.flush({ enabled: groupingEnabled, notify: notifyAndLog });
 
@@ -197,7 +191,7 @@ export async function pollLidarr(context: CycleContext) {
           lastHistoryDate: cursor.lastHistoryDate,
           lastHistoryId: cursor.lastHistoryId,
           lastHistorySeenIds: cursor.lastHistorySeenIds,
-          lastHealthHash: healthHash,
+          lastHealthHash: savedHealthHash,
         },
       });
       logger.debug('Lidarr polling state updated', {

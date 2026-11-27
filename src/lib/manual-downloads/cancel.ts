@@ -88,7 +88,10 @@ async function cancelSteps(download: ManualDownload, options: CancelOptions, act
       if (!home.ok && home.reason === 'ambiguous') {
         throw new ManualDownloadCancelError('This torrent is in more than one qBittorrent, so nothing was removed. Remove it in qBittorrent, then cancel without removing it.');
       }
-      if (!home.ok && home.reason === 'unreachable') throw new Error('qBittorrent did not answer');
+      if (!home.ok && home.reason === 'unreachable') {
+        // Strict: also when the torrent was found but another qBittorrent, which may hold a copy, did not answer.
+        throw new ManualDownloadCancelError('A qBittorrent did not answer, so nothing was removed (it may hold this torrent). Try again once it answers, or cancel without removing it.');
+      }
       if (home.ok) {
         const qbit = home.client;
         const snapshot = await snapshotTorrentDeleteTargets(qbit, hash);

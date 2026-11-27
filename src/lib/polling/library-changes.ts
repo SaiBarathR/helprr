@@ -5,6 +5,7 @@
 // instance's titles are kept in Redis and compared with the next list; the
 // names are kept too, since a deleted title is no longer in the list.
 import { getRedisClient } from '@/lib/redis';
+import { sha256Hex } from '@/lib/cache/keys';
 import { logger } from '@/lib/logger';
 import { noteJobFailure } from '@/lib/polling-job-report';
 import { getMediaHrefFromIds } from '@/lib/media-href';
@@ -14,12 +15,15 @@ import { errorMessage, instanceTitle, notifyAndLog, wantedNotices } from './shar
 export type LibraryItem = { id: number; title?: string; year?: number; instanceId: string };
 
 interface Instance {
-  connection: { id: string; label: string; updatedAt: Date };
+  connection: { id: string; label: string; url: string; apiKey: string };
 }
 
 export interface KnownLibrary {
-  /** The connection's updatedAt: another URL or key may be another library. */
-  version: number;
+  /**
+   * A hash of the connection's URL and key: another one may be another
+   * library. Not its updatedAt, which a rename or a default change also moves.
+   */
+  version: string;
   /** [id, name] of each title. */
   titles: Array<[number, string]>;
 }
@@ -36,7 +40,7 @@ function parseKnown(raw: string | null): KnownLibrary | null {
   if (!raw) return null;
   try {
     const value = JSON.parse(raw) as Partial<KnownLibrary>;
-    if (typeof value.version !== 'number' || !Array.isArray(value.titles)) return null;
+    if (typeof value.version !== 'string' || !Array.isArray(value.titles)) return null;
     return {
       version: value.version,
       titles: value.titles.filter((t): t is [number, string] => Array.isArray(t) && typeof t[0] === 'number' && typeof t[1] === 'string'),
@@ -57,7 +61,7 @@ function itemName(item: LibraryItem): string {
  * when there is nothing to compare with: no list yet, or one from another
  * version of the connection.
  */
-export function diffLibrary(known: KnownLibrary | null, version: number, titles: Array<[number, string]>): { added: Array<[number, string]>; deleted: Array<[number, string]> } | null {
+export function diffLibrary(known: KnownLibrary | null, version: string, titles: Array<[number, string]>): { added: Array<[number, string]>; deleted: Array<[number, string]> } | null {
   if (!known || known.version !== version) return null;
   const now = new Set(titles.map(([id]) => id));
   const before = new Set(known.titles.map(([id]) => id));
@@ -92,7 +96,7 @@ export async function notifyLibraryChanges(
       const titles = result.items
         .filter((item) => item.instanceId === connection.id && typeof item.id === 'number')
         .map((item): [number, string] => [item.id, itemName(item)]);
-      const version = connection.updatedAt.getTime();
+      const version = sha256Hex(`${connection.url}|${connection.apiKey}`);
       const key = knownKey(service, connection.id);
       const diff = diffLibrary(parseKnown(await redis.get(key)), version, titles);
       if (diff && diff.added.length === 0 && diff.deleted.length === 0) continue;

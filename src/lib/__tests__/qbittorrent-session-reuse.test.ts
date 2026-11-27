@@ -100,6 +100,15 @@ describe('qBittorrent session reuse', () => {
     expect(logins).toEqual(['secret', 'new-secret', 'new-secret']);
   });
 
+  it('shares the session with another copy of the module, as each API route bundle loads its own', async () => {
+    const row = connection();
+    expect(await (await getQBittorrentClient(row.id)).getVersion()).toBe('v5.1.4');
+    vi.resetModules();
+    const copy = await import('@/lib/service-helpers');
+    expect(await (await copy.getQBittorrentClient(row.id)).getVersion()).toBe('v5.1.4');
+    expect(logins).toHaveLength(1);
+  });
+
   it('keeps a session per instance, even on the same qBittorrent', async () => {
     const main = connection({ apiKey: 'main' });
     const seedbox = connection({ apiKey: 'seedbox', isDefault: false });

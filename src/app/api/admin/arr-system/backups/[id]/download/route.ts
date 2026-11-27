@@ -45,7 +45,13 @@ async function postHandler(request: NextRequest, { params }: { params: Promise<{
       instanceId: target.instanceId,
       backup: found.backup.name,
     }, { scope: target.type.toLowerCase() });
-    await recordSystemAction(request, auth.user, target, `backup downloaded: ${found.backup.name}`);
+    try {
+      await recordSystemAction(request, auth.user, target, `backup downloaded: ${found.backup.name}`);
+    } catch (error) {
+      // Not handed on, so the app's stream is let go rather than left holding its socket.
+      file.stream.destroy();
+      throw error;
+    }
     return new Response(Readable.toWeb(file.stream) as ReadableStream<Uint8Array>, {
       headers: {
         'Content-Type': 'application/zip',
