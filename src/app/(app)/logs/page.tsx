@@ -54,7 +54,8 @@ async function downloadOrShare(url: string, fallbackName: string) {
       if (navigator.canShare?.({ files: [file] })) {
         toast.dismiss(toastId);
         try {
-          await navigator.share({ files: [file], title: filename });
+          // Files only: iOS saves a title or text as a second item ("Save 2 Items").
+          await navigator.share({ files: [file] });
           return;
         } catch (error) {
           if ((error as Error).name === 'AbortError') return;

@@ -13,7 +13,8 @@ export async function saveFile(blob: Blob, filename: string): Promise<'saved' | 
     const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
     if (navigator.canShare?.({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: filename });
+        // Files only: iOS saves a title or text as a second item ("Save 2 Items").
+        await navigator.share({ files: [file] });
         return 'saved';
       } catch (error) {
         if ((error as Error).name === 'AbortError') return 'cancelled';
