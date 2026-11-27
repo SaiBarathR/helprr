@@ -819,6 +819,7 @@ interface UIState {
   searchHistory: Record<string, string[]>;
   addSearchTerm: (key: string, term: string) => void;
   removeSearchTerm: (key: string, term: string) => void;
+  clearSearchHistory: () => void;
   // Settings import
   applyImportedUiPrefs: (partial: Record<string, unknown>) => void;
 }
@@ -1434,6 +1435,7 @@ export const useUIStore = create<UIState>()(
           const prev = state.searchHistory[key] ?? [];
           return { searchHistory: { ...state.searchHistory, [key]: prev.filter((h) => h !== term) } };
         }),
+      clearSearchHistory: () => set({ searchHistory: {} }),
       applyImportedUiPrefs: (partial) =>
         set((state) => {
           const next: Record<string, unknown> = {};

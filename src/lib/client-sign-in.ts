@@ -1,6 +1,7 @@
 'use client';
 
 import { getQueryClient } from '@/lib/query-client';
+import { useUIStore } from '@/lib/store';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 import {
   broadcastAuthenticationBoundary,
@@ -40,6 +41,9 @@ export async function completeBrowserSignIn(): Promise<void> {
   // this a different user signing in on the same browser could briefly see
   // the previous user's cached lists/sessions/widgets.
   getQueryClient().clear();
+  // Recent searches stay on the device and are what the previous account
+  // typed (an admin's magnet, trackers and all): this account starts without them.
+  useUIStore.getState().clearSearchHistory();
   invalidateExternalUrls();
   // The successful response changed the origin-wide cookie. Notify other
   // tabs immediately so their mounted state cannot keep running under the
