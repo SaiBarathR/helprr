@@ -168,6 +168,23 @@ describe('sending a release to Sonarr/Radarr', () => {
     expect(clientRequestId).toMatch(/^[0-9a-f]{32}$/);
   });
 
+  it('checks with the keyboard\'s Go in the release name, and Go never sends', async () => {
+    mocks.preflight.push(() => json(plan()));
+    renderForm();
+    const user = await chooseFilm();
+    const name = screen.getByLabelText('Release name') as HTMLInputElement;
+    // Check is the field's form's submit button: what a sheet keeps above the iOS keyboard.
+    expect(name.form?.querySelector('[type="submit"]')?.textContent).toBe('Check');
+    await user.type(name, '{Enter}');
+    expect(await screen.findByText('Ready: Radarr will take it')).toBeTruthy();
+    expect(mocks.bodies).toHaveLength(1);
+
+    await user.type(name, '{Enter}');
+    expect(screen.getByRole('button', { name: 'Send to Radarr' })).toBeTruthy();
+    expect(mocks.bodies).toHaveLength(1);
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
   it('offers to monitor an unmonitored title, and a changed choice must be checked again', async () => {
     mocks.preflight.push(() => json(plan({ ok: false, errors: [{ code: 'TARGET_UNMONITORED', message: 'Night of the Living Dead is not monitored.' }] })));
     renderForm();
