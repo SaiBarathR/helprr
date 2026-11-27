@@ -726,6 +726,21 @@ describe('revealFocusedField on the page itself', () => {
     document.body.replaceChildren();
   });
 
+  it('leaves the page where it is for a search box in the sticky toolbar', () => {
+    // The list was scrolled part way down; the toolbar stays pinned at 0–100.
+    const { scrolled } = page();
+    const toolbar = document.createElement('header');
+    toolbar.className = 'page-toolbar';
+    vi.spyOn(toolbar, 'getBoundingClientRect').mockReturnValue({ top: 0, bottom: 100 } as DOMRect);
+    const search = document.createElement('input');
+    vi.spyOn(search, 'getBoundingClientRect').mockReturnValue({ top: 56, bottom: 92 } as DOMRect);
+    toolbar.append(search);
+    document.body.prepend(toolbar);
+    search.focus();
+    revealFocusedField(document.documentElement);
+    expect(scrolled()).toBe(0);
+  });
+
   it('scrolls the page to show the form\'s Save above the keyboard from its last field', () => {
     // Save at 380–424 sat half under the keyboard (the visible part ends at 400).
     const { folder, save, scrolled } = page();

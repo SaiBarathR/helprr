@@ -289,7 +289,8 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
               <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6">
                 {/* Action bar */}
                 <div className="flex flex-wrap items-center gap-2 pb-3">
-                  {canMonitor && (
+                  {/* Turning it on adds the missing movies, so that needs movies.add too. */}
+                  {canMonitor && (monitored || canAdd) && (
                     <label className="inline-flex items-center gap-2 rounded-lg border border-border bg-card/60 px-3 py-1.5 text-sm">
                       {monitored ? <Eye className="h-4 w-4 text-[var(--hpr-amber)]" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
                       <span className="select-none">Monitored</span>

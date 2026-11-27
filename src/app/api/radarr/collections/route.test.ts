@@ -163,7 +163,8 @@ describe('PUT /api/radarr/collections', () => {
     expect(refused.status).toBe(403);
     expect((await refused.json()).error).toContain(cap);
 
-    mocks.user = member({ 'movies.view': true, 'movies.editMonitoring': false, 'movies.editTags': false, 'movies.changePath': false, [cap]: true });
+    // movies.add as well for monitoring, which adds the collection's missing movies.
+    mocks.user = member({ 'movies.view': true, 'movies.editMonitoring': false, 'movies.editTags': false, 'movies.changePath': false, 'movies.add': true, [cap]: true });
     expect((await edit(body)).status).toBe(200);
   });
 
@@ -175,6 +176,16 @@ describe('PUT /api/radarr/collections', () => {
     mocks.user = member({ 'movies.view': true, 'movies.editMonitoring': true, 'movies.editTags': true, 'movies.changePath': true });
     expect((await edit({ monitored: true, ...body })).status).toBe(403);
     expect(mocks.client.updateCollections).not.toHaveBeenCalled();
+  });
+
+  it('needs movies.add as well to turn monitoring on: Radarr then adds the missing movies', async () => {
+    mocks.user = member({ 'movies.view': true, 'movies.editMonitoring': true, 'movies.add': false });
+    const refused = await edit({ monitored: true });
+    expect(refused.status).toBe(403);
+    expect((await refused.json()).error).toContain('movies.add');
+    expect(mocks.client.updateCollections).not.toHaveBeenCalled();
+    // Turning it off adds nothing.
+    expect((await edit({ monitored: false })).status).toBe(200);
   });
 
   it('drops the collections cache even when the tags write fails after the bulk one', async () => {

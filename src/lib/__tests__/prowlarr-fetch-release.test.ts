@@ -65,13 +65,19 @@ describe('ProwlarrClient.fetchReleaseLink', () => {
     await expect(new ProwlarrClient(base, 'key').fetchReleaseLink(`${base}/6/download?file=huge`)).rejects.toThrow(/maxContentLength/);
   });
 
-  it('fetches nothing from another server or outside the base path', async () => {
+  it('fetches nothing outside the base path', async () => {
     seen.length = 0;
     const client = new ProwlarrClient(`${base}/prowlarr`, 'key');
     await expect(client.fetchReleaseLink('http://169.254.169.254/latest/meta-data')).rejects.toThrow(/another server/);
     await expect(client.fetchReleaseLink(`${base}/6/download?file=torrent`)).rejects.toThrow(/another server/);
-    await expect(client.fetchReleaseLink(`${base.replace('http:', 'https:')}/prowlarr/6/download`)).rejects.toThrow(/another server/);
     expect(seen).toEqual([]);
+  });
+
+  it('asks the configured address for a link whose host or scheme a proxy changed, never the one it names', async () => {
+    seen.length = 0;
+    const client = new ProwlarrClient(base, 'key');
+    await expect(client.fetchReleaseLink('https://169.254.169.254/6/download?file=torrent')).resolves.toMatchObject({ kind: 'TORRENT_FILE' });
+    expect(seen).toEqual(['/6/download?file=torrent']);
   });
 
   it('fails on an error answer', async () => {

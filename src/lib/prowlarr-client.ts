@@ -489,10 +489,14 @@ export class ProwlarrClient {
   async fetchReleaseLink(link: string): Promise<ProwlarrFetchedRelease> {
     const base = new URL(this.client.defaults.baseURL ?? '');
     const url = new URL(link);
-    if (url.origin !== base.origin || !url.pathname.startsWith(base.pathname.replace(/\/?$/, '/'))) {
+    if (!url.pathname.startsWith(base.pathname.replace(/\/?$/, '/'))) {
       throw new Error('Prowlarr gave a download link on another server.');
     }
-    const response = await this.client.get<ArrayBuffer>(url.toString(), {
+    // Asked at Prowlarr's configured address, whatever host and scheme the link
+    // names: Prowlarr writes them from the request, which a proxy in front of it
+    // can change (no X-Forwarded-Proto, or another Host). The API key in the
+    // link so only ever goes to the configured address.
+    const response = await this.client.get<ArrayBuffer>(new URL(url.pathname + url.search, base.origin).toString(), {
       responseType: 'arraybuffer',
       maxRedirects: 0,
       maxContentLength: MAX_TORRENT_BYTES,

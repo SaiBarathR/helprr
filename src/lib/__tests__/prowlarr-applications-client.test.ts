@@ -16,6 +16,10 @@ beforeAll(async () => {
     req.on('data', (chunk) => { raw += chunk; });
     req.on('end', () => {
       seen.push({ method: req.method ?? '', url: req.url ?? '', body: raw ? JSON.parse(raw) : undefined });
+      if (req.url?.startsWith('/1/download')) {
+        res.writeHead(302, { Location: 'magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c' });
+        return res.end();
+      }
       if (req.url === '/api/v1/applications/77') {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ message: 'NotFound' }));
@@ -46,6 +50,15 @@ describe('ProwlarrClient apps', () => {
   it('keeps the 404 for an app deleted meanwhile, so the route can answer it', async () => {
     await expect(new ProwlarrClient(base, 'key').resaveApplication({ ...APP, id: 77 } as never))
       .rejects.toMatchObject({ response: { status: 404 } });
+  });
+
+  it('fetches a download link at its own address, whatever host a proxy made Prowlarr write into it', async () => {
+    const fetched = await new ProwlarrClient(base, 'key').fetchReleaseLink('https://prowlarr.example.com/1/download?apikey=x&link=abc');
+    expect(fetched).toEqual({ kind: 'MAGNET', magnetUrl: 'magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c' });
+    expect(seen.at(-1)).toMatchObject({ method: 'GET', url: '/1/download?apikey=x&link=abc' });
+    // Still only under Prowlarr's own path.
+    await expect(new ProwlarrClient(`${base}/prowlarr`, 'key').fetchReleaseLink(`${base}/elsewhere/1/download`))
+      .rejects.toThrow('another server');
   });
 
   it('keeps only the id and name of an added app', async () => {

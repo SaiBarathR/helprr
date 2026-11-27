@@ -323,6 +323,11 @@ async function putHandler(request: NextRequest) {
       if (missing.length > 0) {
         return NextResponse.json({ error: `Forbidden: you cannot change ${missing.join(', ')}` }, { status: 403 });
       }
+      // Radarr adds a monitored collection's missing movies (and may search for
+      // them) on its next refresh: turning monitoring on is adding movies.
+      if (edit.monitored === true && !can(auth.user, 'movies.add')) {
+        return NextResponse.json({ error: 'Forbidden: monitoring a collection adds its missing movies, which needs movies.add' }, { status: 403 });
+      }
     }
 
     const client = await getRadarrClient(instanceId);

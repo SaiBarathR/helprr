@@ -246,6 +246,15 @@ describe('POST /api/prowlarr/applications/from-connection', () => {
     expect(mocks.prowlarr.addApplication).not.toHaveBeenCalled();
   });
 
+  it('refuses a text/plain post: a form on another site could send the arr key to its own address', async () => {
+    const res = await addPost(new NextRequest('http://helprr.test/api/prowlarr/applications/from-connection', {
+      method: 'POST', body: JSON.stringify({ ...ADD_BODY, testOnly: true }), headers: { 'Content-Type': 'text/plain' },
+    }));
+    expect(res.status).toBe(415);
+    expect(mocks.findFirst).not.toHaveBeenCalled();
+    expect(mocks.prowlarr.getApplicationTemplates).not.toHaveBeenCalled();
+  });
+
   it('fills Prowlarr’s own form, tests it, adds it, and answers with only the id and name', async () => {
     const res = await add(ADD_BODY);
     const text = await res.text();
@@ -341,6 +350,14 @@ describe('POST /api/prowlarr/applications/from-connection', () => {
 
 describe('GET /api/prowlarr/stats filters', () => {
   const stats = (query: string) => statsGet(new NextRequest(`http://helprr.test/api/prowlarr/stats${query}`));
+
+  it('shows the addresses that queried Prowlarr to admins only', async () => {
+    const hosts = [{ host: '192.168.0.124', numberOfQueries: 5, numberOfGrabs: 1 }];
+    mocks.prowlarr.getIndexerStats.mockResolvedValue({ indexers: [], userAgents: [], hosts });
+    expect((await (await stats('')).json()).hosts).toEqual(hosts);
+    mocks.requireUserCapability.mockResolvedValue({ ok: true, user: { id: 'u2', username: 'member', role: 'member' }, session: {} });
+    expect(await (await stats('')).json()).toEqual({ indexers: [], userAgents: [], hosts: [] });
+  });
 
   it('passes on the end date, indexers, tags and protocols as Helprr writes them', async () => {
     const res = await stats('?startDate=2026-11-01T00:00:00Z&endDate=2026-11-10T23:59:59.999Z&indexers=4,2,4&tags=1&protocols=torrent');
