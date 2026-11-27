@@ -415,6 +415,16 @@ export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFi
         </label>
       )}
 
+      {/* A form, so the keyboard's Go runs Check and a sheet keeps Check above
+          the iOS keyboard while the name is typed (keyboard-fit's send button).
+          Enter never sends: Send isn't a submit button, and submit only checks. */}
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!advanced && !busy && body && !result?.ok) check.mutate(request());
+        }}
+      >
       {!advanced && (
       <Field label="Release name" htmlFor="link-release" hint={`${app} reads the title, episodes and quality from this name.`}>
         <Input
@@ -456,6 +466,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFi
       <div className="space-y-2 pt-1">
         {advanced ? (
           <Button
+            type="button"
             className="w-full"
             disabled={busy || !draftReady}
             onClick={() => onChooseFiles!({ service, instanceId: instanceId!, externalId: target!.externalId, title: target!.title, ...(addOptions ? { add: addOptions } : {}) })}
@@ -465,6 +476,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFi
           </Button>
         ) : result?.ok ? (
           <Button
+            type="button"
             className="w-full"
             onClick={() => {
               // The same submission keeps its id, so a retry after a lost answer returns the same download.
@@ -477,7 +489,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFi
             Send to {app}
           </Button>
         ) : (
-          <Button className="w-full" onClick={() => check.mutate(request())} disabled={busy || !body}>
+          <Button type="submit" className="w-full" disabled={busy || !body}>
             {check.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {checked ? 'Check again' : 'Check'}
           </Button>
@@ -487,8 +499,9 @@ export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFi
             {!sourceReady ? (sourceHint ?? (release.kind === 'magnet' ? 'Paste a magnet link first.' : 'Choose a .torrent file first.')) : !target ? `Choose the ${service === 'RADARR' ? 'movie' : 'series'} it is for.` : 'Choose a quality profile and root folder.'}
           </p>
         )}
-        <Button variant="outline" className="w-full" onClick={() => (onCancel ? onCancel() : router.push('/torrents'))} disabled={busy}>Cancel</Button>
+        <Button type="button" variant="outline" className="w-full" onClick={() => (onCancel ? onCancel() : router.push('/torrents'))} disabled={busy}>Cancel</Button>
       </div>
+      </form>
     </div>
   );
 }
