@@ -1,6 +1,6 @@
 # The only process that runs yt-dlp, TwitchDownloaderCLI and ffmpeg. Debian rather than
 # Alpine because Jellyfin's ffmpeg, which carries its own Intel driver, ships for Debian.
-FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS base
+FROM node:24.22.3-bookworm-slim@sha256:873f586f3794f52281bd039bf02c048a0be08fde619338f9941bad1eb6b34530 AS base
 # Prisma picks its engine from the OpenSSL it finds when generating.
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
